@@ -848,7 +848,7 @@ int tlslistener(SSL_CTX *ssl_ctx) {
     return 0;
 }
 
-char *parsehostport(char *s, char **host, char **port) {
+char *parsehostport(char *s, struct peer *peer) {
     char *p, *field;
     int ipv6 = 0;
 
@@ -871,11 +871,11 @@ char *parsehostport(char *s, char **host, char **port) {
 	printf("missing host/address\n");
 	exit(1);
     }
-    *host = malloc(p - field + 1);
-    if (!*host)
+    peer->host = malloc(p - field + 1);
+    if (!peer->host)
 	errx("malloc failed");
-    memcpy(*host, field, p - field);
-    (*host)[p - field] = '\0';
+    memcpy(peer->host, field, p - field);
+    peer->host[p - field] = '\0';
     if (ipv6) {
 	p++;
 	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n') {
@@ -891,20 +891,51 @@ char *parsehostport(char *s, char **host, char **port) {
 		printf("syntax error, : but no following port\n");
 		exit(1);
 	    }
-	    *port = malloc(p - field + 1);
-	    if (!*port)
+	    peer->port = malloc(p - field + 1);
+	    if (!peer->port)
 		errx("malloc failed");
-	    memcpy(*port, field, p - field);
-	    (*port)[p - field ] = '\0';
+	    memcpy(peer->port, field, p - field);
+	    peer->port[p - field] = '\0';
     } else
-        *port = NULL;
+        peer->port = NULL;
+    return p;
+}
+
+// * is default, else longest match ... ";" used for separator
+char *parserealmlist(char *s, struct peer *peer) {
+    char *p;
+    int i, n, l;
+
+    for (p = s, n = 1; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++)
+	if (*p == ';')
+	    n++;
+    l = p - s;
+    if (!l) {
+	peer->realms = NULL;
+	return p;
+    }
+    peer->realmdata = malloc(l + 1);
+    if (!peer->realmdata)
+	errx("malloc failed");
+    memcpy(peer->realmdata, s, l);
+    peer->realmdata[l] = '\0';
+    peer->realms = malloc((1+n) * sizeof(char *));
+    if (!peer->realms)
+	errx("malloc failed");
+    peer->realms[0] = peer->realmdata;
+    for (n = 1, i = 0; i < l; i++)
+	if (peer->realmdata[i] == ';') {
+	    peer->realmdata[i] = '\0';
+	    peer->realms[n++] = peer->realmdata + i + 1;
+	}	
+    peer->realms[n] = NULL;
     return p;
 }
 
 void getconfig(const char *filename) {
     FILE *f;
     char line[1024];
-    char *p, *field;
+    char *p, *field, **r;
     struct peer *peer;
     
     peer_count = 0;
@@ -934,9 +965,15 @@ void getconfig(const char *filename) {
 	}
 	peer->type = *p;
 	for (p++; *p == ' ' || *p == '\t'; p++);
-	p = parsehostport(p, &peer->host, &peer->port);
+	p = parsehostport(p, peer);
 	if (!peer->port)
 	    peer->port = (peer->type == 'U' ? DEFAULT_UDP_PORT : DEFAULT_TLS_PORT);
+	for (; *p == ' ' || *p == '\t'; p++);
+	p = parserealmlist(p, peer);
+	if (!peer->realms) {
+	    printf("realm list must be specified\n");
+	    exit(1);
+	}
 	for (; *p == ' ' || *p == '\t'; p++);
 	field = p;
 	for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
@@ -956,7 +993,7 @@ void getconfig(const char *filename) {
 	    /* check that rest of line only white space */
 	    for (; *p == ' ' || *p == '\t'; p++);
 	    if (*p && *p != '\n') {
-		printf("max 3 fields per line, found a 4th\n");
+		printf("max 4 fields per line, found a 5th\n");
 		exit(1);
 	    }
 	}
@@ -992,6 +1029,10 @@ void getconfig(const char *filename) {
 	}
 	printf("got type %c, host %s, port %s, secret %s\n", peers[peer_count].type,
 	       peers[peer_count].host, peers[peer_count].port, peers[peer_count].secret);
+	printf("    with realms:");
+	for (r = peer->realms; *r; r++)
+	    printf(" %s", *r);
+	printf("\n");
 	peer_count++;
     }
     fclose(f);

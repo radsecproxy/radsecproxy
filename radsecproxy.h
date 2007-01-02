@@ -65,6 +65,8 @@ struct peer {
     char type; /* U for UDP, T for TLS */
     char *host;
     char *port;
+    char *realmdata;
+    char **realms;
     char *secret;
     SSL *sslcl, *sslsrv;
     pthread_mutex_t lock;
