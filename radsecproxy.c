@@ -851,11 +851,6 @@ int tlslistener(SSL_CTX *ssl_ctx) {
 	SSL_set_fd(peer->sslsrv, snew);
 	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)peer))
 	    errx("pthread_create failed");
-	
-	for (;;) {
-	    /* currently only one server thread, so just halt here */
-	    sleep(1000);
-	}
     }
     return 0;
 }
