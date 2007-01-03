@@ -590,8 +590,6 @@ void *clientrd(void *arg) {
 	lastconnecttry = peer->lastconnecttry;
 	buf = (peer->type == 'U' ? radudpget(peer->sockcl, &peer, NULL) : radtlsget(peer->sslcl));
 	if (!buf && peer->type == 'T') {
-	    printf("retry in 60s\n");
-	    sleep(60); /* should have exponential backoff perhaps, better do it inside radtlsget */
 	    tlsconnect(peer, &lastconnecttry, "clientrd");
 	    continue;
 	}
