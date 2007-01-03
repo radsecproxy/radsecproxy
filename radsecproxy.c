@@ -471,6 +471,23 @@ int pwdcrypt(uint8_t *plain, uint8_t *enc, uint8_t enclen, uint8_t *shared, uint
     return 1;
 }
 
+struct peer *id2peer(char *id, uint8_t len) {
+    int i;
+    char **realm;
+
+    for (i = 0; i < peer_count; i++) {
+	for (realm = peers[i].realms; *realm; realm++) {
+	    /* assume test@domain */
+	    printf("realmlength %d, usernamelenght %d\n", strlen(*realm), len);
+	    if (strlen(*realm) == len && !memcmp(id + 5, *realm, len)) {
+		printf("found matching realm: %s, host %s\n", *realm, peers[i].host);
+		return peers + i;
+	    }
+	}
+    }
+    return NULL;
+}
+
 struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
     uint8_t code, id, *auth, *attr, *usernameattr = NULL, *userpwdattr = NULL, pwd[128], pwdlen;
     int i;
@@ -478,7 +495,6 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
     int left;
     struct peer *to;
     unsigned char newauth[16];
-    char **realm;
     
     code = *(uint8_t *)buf;
     id = *(uint8_t *)(buf + 1);
@@ -516,29 +532,23 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
 
     if (usernameattr) {
 	printf("radsrv: Username: ");
-	for (i = 0; i < usernameattr[RAD_Attr_Length]; i++)
+	for (i = 0; i < usernameattr[RAD_Attr_Length] - 2; i++)
 	    printf("%c", usernameattr[RAD_Attr_Value + i]);
 	printf("\n");
     }
 
     /* find out where to send the packet, for now we send to first connected
        TLS peer if UDP, and first UDP peer if TLS */
-    
+
+    to = id2peer(&usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
+    if (!to) {
+	printf("radsrv: ignoring request, don't know where to send it\n");
+	return NULL;
+    }
+
+#if 0    
     i = peer_count;
     
-    for (i = 0; i < peer_count; i++) {
-	for (realm = peers[i].realms; *realm; realm++) {
-	    /* assume test@domain */
-	    printf("realmlength %d, usernamelenght %d, usernameattr+5 %s\n", strlen(*realm), usernameattr[RAD_Attr_Length] - 5, usernameattr + 5);
-	    if (strlen(*realm) == usernameattr[RAD_Attr_Length] - 5 && !memcmp(usernameattr + 5, *realm, strlen(*realm))) {
-		printf("found matching realm: %s, host %s\n", *realm, peers[i].host);
-		break;
-	    }
-	}
-	if (*realm)
-	    break;
-    }
-#if 0    
     switch (from->type) {
     case 'U':
 	for (i = 0; i < peer_count; i++)
@@ -551,8 +561,6 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
 		break;
 	break;
     }
-#endif
-    
     if (i == peer_count) {
 	printf("radsrv: ignoring request, don't know where to send it\n");
 	return NULL;
@@ -560,6 +568,8 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
 
     to = &peers[i];
     
+#endif
+		 
     if (!RAND_bytes(newauth, 16)) {
 	printf("radsrv: failed to generate random auth\n");
 	return NULL;
