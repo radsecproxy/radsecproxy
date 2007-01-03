@@ -476,13 +476,17 @@ struct peer *id2peer(char *id, uint8_t len) {
     char **realm, *idrealm;
 
     idrealm = strchr(id, '@');
-    if (idrealm)
+    if (idrealm) {
 	idrealm++;
-    len -= idrealm - id;
+	len -= idrealm - id;
+    } else {
+	idrealm = "-";
+	len = 1;
+    }
     for (i = 0; i < peer_count; i++) {
 	for (realm = peers[i].realms; *realm; realm++) {
-	    printf("realm len %d\n", len);
-	    if (strlen(*realm) == len && !memcmp(idrealm, *realm, len)) {
+	    if ((strlen(*realm) == 1 && **realm == '*') ||
+		(strlen(*realm) == len && !memcmp(idrealm, *realm, len))) {
 		printf("found matching realm: %s, host %s\n", *realm, peers[i].host);
 		return peers + i;
 	    }
