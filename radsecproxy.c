@@ -227,7 +227,7 @@ void tlsconnect(struct peer *peer, struct timeval *when, char *text) {
     struct timeval now;
     time_t elapsed;
     unsigned long error;
-    
+
     pthread_mutex_lock(&peer->lock);
     if (when && memcmp(&peer->lastconnecttry, when, sizeof(struct timeval))) {
 	/* already reconnected, nothing to do */
@@ -241,16 +241,15 @@ void tlsconnect(struct peer *peer, struct timeval *when, char *text) {
     for (;;) {
 	printf("tlsconnect: trying to open TLS connection to %s port %s\n", peer->host, peer->port);
 	gettimeofday(&now, NULL);
-	if (when) { // don't wait first time
-	    elapsed = now.tv_sec - peer->lastconnecttry.tv_sec;
-	    if (peer->connectionok) {
-		peer->connectionok = 0;
-		sleep(10);
-	    } else if (elapsed < 5)
-		sleep(10);
-	    else if (elapsed < 600)
-		sleep(elapsed * 2);
-	    else
+	elapsed = now.tv_sec - peer->lastconnecttry.tv_sec;
+	if (peer->connectionok) {
+	    peer->connectionok = 0;
+	    sleep(10);
+	} else if (elapsed < 5)
+	    sleep(10);
+	else if (elapsed < 600)
+	    sleep(elapsed * 2);
+	else if (elapsed < 10000) /* no sleep at startup */
 		sleep(900);
 	}
 	if (peer->sockcl >= 0)
