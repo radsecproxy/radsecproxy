@@ -479,7 +479,7 @@ struct peer *id2peer(char *id, uint8_t len) {
 	for (realm = peers[i].realms; *realm; realm++) {
 	    /* assume test@domain */
 	    printf("realmlength %d, usernamelenght %d\n", strlen(*realm), len);
-	    if (strlen(*realm) == len && !memcmp(id + 5, *realm, len)) {
+	    if (strlen(*realm) == len && !memcmp(id + 5, *realm, len - 5)) {
 		printf("found matching realm: %s, host %s\n", *realm, peers[i].host);
 		return peers + i;
 	    }
