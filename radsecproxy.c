@@ -473,13 +473,16 @@ int pwdcrypt(uint8_t *plain, uint8_t *enc, uint8_t enclen, uint8_t *shared, uint
 
 struct peer *id2peer(char *id, uint8_t len) {
     int i;
-    char **realm;
+    char **realm, *idrealm;
 
+    idrealm = strchr(id, '@');
+    if (idrealm)
+	idrealm++;
+    len -= idrealm - id;
     for (i = 0; i < peer_count; i++) {
 	for (realm = peers[i].realms; *realm; realm++) {
-	    /* assume test@domain */
-	    printf("realmlength %d, usernamelength %d\n", strlen(*realm), len);
-	    if (strlen(*realm) == len - 5 && !memcmp(id + 5, *realm, len - 5)) {
+	    printf("realm len %d\n", len);
+	    if (strlen(*realm) == len && !memcmp(idrealm, *realm, len)) {
 		printf("found matching realm: %s, host %s\n", *realm, peers[i].host);
 		return peers + i;
 	    }
@@ -537,39 +540,12 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
 	printf("\n");
     }
 
-    /* find out where to send the packet, for now we send to first connected
-       TLS peer if UDP, and first UDP peer if TLS */
-
     to = id2peer(&usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
     if (!to) {
 	printf("radsrv: ignoring request, don't know where to send it\n");
 	return NULL;
     }
 
-#if 0    
-    i = peer_count;
-    
-    switch (from->type) {
-    case 'U':
-	for (i = 0; i < peer_count; i++)
-	    if (peers[i].type == 'T' && peers[i].sockcl >= 0)
-		break;
-	break;
-    case 'T':
-	for (i = 0; i < peer_count; i++)
-	    if (peers[i].type == 'U')
-		break;
-	break;
-    }
-    if (i == peer_count) {
-	printf("radsrv: ignoring request, don't know where to send it\n");
-	return NULL;
-    }
-
-    to = &peers[i];
-    
-#endif
-		 
     if (!RAND_bytes(newauth, 16)) {
 	printf("radsrv: failed to generate random auth\n");
 	return NULL;
