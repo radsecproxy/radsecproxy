@@ -242,6 +242,7 @@ void tlsconnect(struct peer *peer, struct timeval *when, char *text) {
 	printf("tlsconnect: trying to open TLS connection to %s port %s\n", peer->host, peer->port);
 	gettimeofday(&now, NULL);
 	elapsed = now.tv_sec - peer->lastconnecttry.tv_sec;
+	memcpy(&peer->lastconnecttry, &now, sizeof(struct timeval));
 	if (peer->connectionok) {
 	    peer->connectionok = 0;
 	    sleep(10);
