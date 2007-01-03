@@ -73,6 +73,8 @@ struct peer {
     pthread_t clientth;
     int sockcl;
     struct addrinfo *addrinfo;
+    struct timeval lastconnecttry;
+    uint8_t connectionok;
     /* requests and newrq* are requests passed from servers to clients */
     struct request *requests;
     uint8_t newrq;

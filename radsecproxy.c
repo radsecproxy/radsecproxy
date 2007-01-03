@@ -16,6 +16,7 @@
  * make our server ignore client retrans?
  * tls keep alives
  * routing based on id....
+ * need to also encrypt Tunnel-Password and Message-Authenticator attrs
  * tls certificate validation
 */
 
@@ -44,6 +45,7 @@
 
 #include <netdb.h>
 #include <unistd.h>
+#include <sys/time.h>
 #include <pthread.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
@@ -221,42 +223,48 @@ unsigned char *radudpget(int s, struct peer **peer, struct sockaddr_storage *sa)
     return rad;
 }
 
-void tlsconnect(struct peer *peer, int oldsock, char *text) {
-    unsigned int sleeptime, try = 0;
+void tlsconnect(struct peer *peer, struct timeval *when, char *text) {
+    struct timeval now;
+    time_t elapsed;
+    unsigned long error;
     
     pthread_mutex_lock(&peer->lock);
-    if (peer->sockcl != oldsock) {
+    if (when && memcmp(&peer->lastconnecttry, when, sizeof(struct timeval))) {
 	/* already reconnected, nothing to do */
-	printf("reconnect: seems already reconnected\n");
+	printf("tlsconnect: seems already reconnected\n");
 	pthread_mutex_unlock(&peer->lock);
 	return;
     }
 
-    printf("tlsconnect %d %s\n", oldsock, text);
-    sleep(1);
+    printf("tlsconnect %s\n", text);
+
     for (;;) {
 	printf("tlsconnect: trying to open TLS connection to %s port %s\n", peer->host, peer->port);
-	if ((peer->sockcl = connecttopeer(peer)) >= 0)
+	gettimeofday(&now, NULL);
+	if (when) { // don't wait first time
+	    elapsed = now.tv_sec - peer->lastconnecttry.tv_sec;
+	    if (peer->connectionok) {
+		peer->connectionok = 0;
+		sleep(10);
+	    } else if (elapsed < 5)
+		sleep(10);
+	    else if (elapsed < 600)
+		sleep(elapsed * 2);
+	    else
+		sleep(900);
+	}
+	if (peer->sockcl >= 0)
+	    close(peer->sockcl);
+	if ((peer->sockcl = connecttopeer(peer)) < 0)
+	    continue;
+	SSL_free(peer->sslcl);
+	peer->sslcl = SSL_new(ssl_ctx_cl);
+	SSL_set_fd(peer->sslcl, peer->sockcl);
+	if (SSL_connect(peer->sslcl) > 0)
 	    break;
-	try++;
-	if (try < 6)
-	    sleeptime = 10;
-	else if (try < 20)
-	    sleeptime = 60;
-	else
-	    sleeptime = 900;
-	/* should possibly re-resolve host addresses at some point */
-	printf("tlsconnect: can't connect, retry #%d in %ds\n", try, sleeptime);
-	sleep(sleeptime);
+	while ((error = ERR_get_error()))
+	    err("tlsconnect: TLS: %s", ERR_error_string(error, NULL));
     }
-	
-    SSL_free(peer->sslcl);
-    peer->sslcl = SSL_new(ssl_ctx_cl);
-    SSL_set_fd(peer->sslcl, peer->sockcl);
-    /* must close oldsock after get new socket so that they are always different */
-    if (oldsock >= 0)
-	close(oldsock);
-    SSL_connect(peer->sslcl);
     printf("tlsconnect: TLS connection to %s port %s up\n", peer->host, peer->port);
     pthread_mutex_unlock(&peer->lock);
 }
@@ -303,10 +311,11 @@ unsigned char *radtlsget(SSL *ssl) {
 }
 
 int clientradput(struct peer *peer, unsigned char *rad) {
-    int cnt, s;
+    int cnt;
     size_t len;
     unsigned long error;
-
+    struct timeval lastconnecttry;
+    
     len = RADLEN(rad);
     if (peer->type == 'U') {
 	if (send(peer->sockcl, rad, len, 0) >= 0) {
@@ -317,14 +326,15 @@ int clientradput(struct peer *peer, unsigned char *rad) {
 	return 0;
     }
 
-    s = peer->sockcl;
+    lastconnecttry = peer->lastconnecttry;
     while ((cnt = SSL_write(peer->sslcl, rad, len)) <= 0) {
 	while ((error = ERR_get_error()))
 	    err("clientwr: TLS: %s", ERR_error_string(error, NULL));
-	tlsconnect(peer, s, "clientradput");
-	s = peer->sockcl;
+	tlsconnect(peer, &lastconnecttry, "clientradput");
+	lastconnecttry = peer->lastconnecttry;
     }
-	   
+
+    peer->connectionok = 1;
     printf("clientradput: Sent %d bytes, Radius packet of length %d to TLS peer %s\n",
 	   cnt, len, peer->host);
     return 1;
@@ -572,19 +582,22 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
 
 void *clientrd(void *arg) {
     struct peer *from, *peer = (struct peer *)arg;
-    int i, s;
+    int i;
     unsigned char *buf;
     struct sockaddr_storage fromsa;
+    struct timeval lastconnecttry;
     
     for (;;) {
-	s = peer->sockcl;
-	buf = (peer->type == 'U' ? radudpget(s, &peer, NULL) : radtlsget(peer->sslcl));
+	lastconnecttry = peer->lastconnecttry;
+	buf = (peer->type == 'U' ? radudpget(peer->sockcl, &peer, NULL) : radtlsget(peer->sslcl));
 	if (!buf && peer->type == 'T') {
 	    printf("retry in 60s\n");
 	    sleep(60); /* should have exponential backoff perhaps, better do it inside radtlsget */
-	    tlsconnect(peer, s, "clientrd");
+	    tlsconnect(peer, &lastconnecttry, "clientrd");
 	    continue;
 	}
+
+	peer->connectionok = 1;
 	
 	i = buf[1]; /* i is the id */
 
@@ -637,7 +650,7 @@ void *clientwr(void *arg) {
 	    exit(1);
 	}
     } else
-	tlsconnect(peer, -1, "new client");
+	tlsconnect(peer, NULL, "new client");
     
     if (pthread_create(&clientrdth, NULL, clientrd, (void *)peer))
 	errx("clientwr: pthread_create failed");
@@ -998,8 +1011,6 @@ void getconfig(const char *filename) {
 	    }
 	}
 	peer->sockcl = -1;
-	peer->sslsrv = NULL;
-	peer->sslcl = NULL;
 	pthread_mutex_init(&peer->lock, NULL);
 	if (!resolvepeer(peer)) {
 	    printf("failed to resolve host %s port %s, exiting\n", peer->host, peer->port);
