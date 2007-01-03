@@ -251,7 +251,6 @@ void tlsconnect(struct peer *peer, struct timeval *when, char *text) {
 	    sleep(elapsed * 2);
 	else if (elapsed < 10000) /* no sleep at startup */
 		sleep(900);
-	}
 	if (peer->sockcl >= 0)
 	    close(peer->sockcl);
 	if ((peer->sockcl = connecttopeer(peer)) < 0)
