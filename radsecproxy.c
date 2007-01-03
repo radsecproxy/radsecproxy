@@ -534,6 +534,8 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
 		break;
 	    }
 	}
+	if (*realm)
+	    break;
     }
 #if 0    
     switch (from->type) {
