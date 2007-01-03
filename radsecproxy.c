@@ -529,7 +529,7 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
     for (i = 0; i < peer_count; i++) {
 	for (realm = peers[i].realms; realm; realm++) {
 	    /* assume test@domain */
-	    if (!strcmp(usernameattr + 5, *realm)) {
+	    if (!memcmp(usernameattr + 5, *realm, usernameattr[RAD_Attr_Length] - 5)) {
 		printf("found matching realm: %s, host %s\n", *realm, peers[i].host);
 		break;
 	    }
