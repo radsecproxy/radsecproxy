@@ -478,6 +478,7 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
     int left;
     struct peer *to;
     unsigned char newauth[16];
+    char **realm;
     
     code = *(uint8_t *)buf;
     id = *(uint8_t *)(buf + 1);
@@ -524,6 +525,17 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
        TLS peer if UDP, and first UDP peer if TLS */
     
     i = peer_count;
+    
+    for (i = 0; i < peer_count; i++) {
+	for (realm = peers[i].realms; realm; realm++) {
+	    /* assume test@domain */
+	    if (!strcmp(usernameattr + 5, *realm)) {
+		printf("found matching realm: %s, host %s\n", *realm, peers[i].host);
+		break;
+	    }
+	}
+    }
+#if 0    
     switch (from->type) {
     case 'U':
 	for (i = 0; i < peer_count; i++)
@@ -536,7 +548,8 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
 		break;
 	break;
     }
-
+#endif
+    
     if (i == peer_count) {
 	printf("radsrv: ignoring request, don't know where to send it\n");
 	return NULL;
