@@ -51,6 +51,7 @@
 #include <openssl/rand.h>
 #include <openssl/err.h>
 #include <openssl/md5.h>
+#include <openssl/hmac.h>
 #include "radsecproxy.h"
 
 static struct client clients[MAX_PEERS];
@@ -526,24 +527,23 @@ struct server *id2server(char *id, uint8_t len) {
 int messageauth(char *rad, uint8_t *authattr, uint8_t *newauth, struct peer *from, struct peer *to) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     static unsigned char first = 1;
-    static EVP_MD_CTX mdctx;
+    static HMAC_CTX hmacctx;
     unsigned int md_len;
     uint8_t auth[16], hash[EVP_MAX_MD_SIZE];
     
     pthread_mutex_lock(&lock);
     if (first) {
-	EVP_MD_CTX_init(&mdctx);
+	HMAC_CTX_init(&hmacctx);
 	first = 0;
     }
 
     memcpy(auth, authattr, 16);
     memset(authattr, 0, 16);
-    
-    if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
-	!EVP_DigestUpdate(&mdctx, from->secret, strlen(from->secret)) ||
-	!EVP_DigestUpdate(&mdctx, rad, RADLEN(rad)) ||
-	!EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
-	md_len != 16) {
+    md_len = 0;
+    HMAC_Init_ex(&hmacctx, from->secret, strlen(from->secret), EVP_md5(), NULL);
+    HMAC_Update(&hmacctx, rad, RADLEN(rad));
+    HMAC_Final(&hmacctx, hash, &md_len);
+    if (md_len != 16) {
 	printf("message auth computation failed\n");
 	pthread_mutex_unlock(&lock);
 	return 0;
@@ -554,13 +554,13 @@ int messageauth(char *rad, uint8_t *authattr, uint8_t *newauth, struct peer *fro
 	pthread_mutex_unlock(&lock);
 	return 0;
     }	
-	
-    if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
-	!EVP_DigestUpdate(&mdctx, to->secret, strlen(to->secret)) ||
-	!EVP_DigestUpdate(&mdctx, rad, RADLEN(rad)) ||
-	!EVP_DigestFinal_ex(&mdctx, authattr, &md_len) ||
-	md_len != 16) {
-	printf("message auth recomputation failed\n");
+
+    md_len = 0;
+    HMAC_Init_ex(&hmacctx, to->secret, strlen(to->secret), EVP_md5(), NULL);
+    HMAC_Update(&hmacctx, rad, RADLEN(rad));
+    HMAC_Final(&hmacctx, authattr, &md_len);
+    if (md_len != 16) {
+	printf("message auth re-computation failed\n");
 	pthread_mutex_unlock(&lock);
 	return 0;
     }
