@@ -53,8 +53,11 @@
 #include <openssl/md5.h>
 #include "radsecproxy.h"
 
-static struct peer peers[MAX_PEERS];
-static int peer_count = 0;
+static struct client clients[MAX_PEERS];
+static struct server servers[MAX_PEERS];
+
+static int client_count = 0;
+static int server_count = 0;
 
 static struct replyq udp_server_replyq;
 static int udp_server_sock = -1;
@@ -92,62 +95,63 @@ void ssl_locks_setup() {
     CRYPTO_set_locking_callback(ssl_locking_callback);
 }
 
-int resolvepeer(struct peer *peer) {
-    struct addrinfo hints;
+/* exactly one of the args must be non-NULL */
+int resolvepeer(struct server *server, struct client *client) {
+    char *host, *port;
+    char type;
+    struct addrinfo hints, **addrinfo, *newaddrinfo;
     
-    pthread_mutex_lock(&peer->lock);
-    if (peer->addrinfo) {
-	/* assume we should re-resolve */
-	freeaddrinfo(peer->addrinfo);
-	peer->addrinfo = NULL;
+    if (server) {
+	type = server->type;
+	host = server->host;
+	port = server->port;
+	addrinfo = &server->addrinfo;
+    } else {
+	type = client->type;
+	host = client->host;
+	port = client->port;
+	addrinfo = &client->addrinfo;
     }
-    
+       
     memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype = (peer->type == 'T' ? SOCK_STREAM : SOCK_DGRAM);
+    hints.ai_socktype = (type == 'T' ? SOCK_STREAM : SOCK_DGRAM);
     hints.ai_family = AF_UNSPEC;
-    if (getaddrinfo(peer->host, peer->port, &hints, &peer->addrinfo)) {
-	err("resolvepeer: can't resolve %s port %s", peer->host, peer->port);
-	peer->addrinfo = NULL; /* probably don't need this */
-	pthread_mutex_unlock(&peer->lock);
+    if (getaddrinfo(host, port, &hints, &newaddrinfo)) {
+	err("resolvepeer: can't resolve %s port %s", host, port);
 	return 0;
     }
-    pthread_mutex_unlock(&peer->lock);
+
+    if (*addrinfo)
+	freeaddrinfo(*addrinfo);
+    *addrinfo = newaddrinfo;
     return 1;
 }	  
 
-int connecttopeer(struct peer *peer) {
+int connecttoserver(struct addrinfo *addrinfo) {
     int s;
     struct addrinfo *res;
     
-    if (!peer->addrinfo) {
-	resolvepeer(peer);
-	if (!peer->addrinfo) {
-	    printf("connecttopeer: can't resolve %s into address to connect to\n", peer->host);
-	    return -1;
-	}
-    }
-
-    for (res = peer->addrinfo; res; res = res->ai_next) {
+    for (res = addrinfo; res; res = res->ai_next) {
         s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
         if (s < 0) {
-            err("connecttopeer: socket failed");
+            err("connecttoserver: socket failed");
             continue;
         }
         if (connect(s, res->ai_addr, res->ai_addrlen) == 0)
             break;
-        err("connecttopeer: connect failed");
+        err("connecttoserver: connect failed");
         close(s);
         s = -1;
     }
     return s;
 }	  
 
-/* returns the peer with matching address, or NULL */
-/* if peer argument is not NULL, we only check that one peer */
-struct peer *find_peer(char type, struct sockaddr *addr, struct peer *peer) {
+/* returns the client with matching address, or NULL */
+/* if client argument is not NULL, we only check that one client */
+struct client *find_client(char type, struct sockaddr *addr, struct client *client) {
     struct sockaddr_in6 *sa6;
     struct in_addr *a4 = NULL;
-    struct peer *p;
+    struct client *c;
     int i;
     struct addrinfo *res;
 
@@ -158,27 +162,60 @@ struct peer *find_peer(char type, struct sockaddr *addr, struct peer *peer) {
     } else
 	a4 = &((struct sockaddr_in *)addr)->sin_addr;
 
-    p = (peer ? peer : peers);
-    for (i = 0; i < peer_count; i++) {
-	if (p->type == type)
-	    for (res = p->addrinfo; res; res = res->ai_next)
+    c = (client ? client : clients);
+    for (i = 0; i < client_count; i++) {
+	if (c->type == type)
+	    for (res = c->addrinfo; res; res = res->ai_next)
 		if ((a4 && res->ai_family == AF_INET &&
 		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
 		    (res->ai_family == AF_INET6 &&
 		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
-		    return p;
-	if (peer)
+		    return c;
+	if (client)
 	    break;
-	p++;
+	c++;
     }
     return NULL;
 }
 
+/* returns the server with matching address, or NULL */
+/* if server argument is not NULL, we only check that one server */
+struct server *find_server(char type, struct sockaddr *addr, struct server *server) {
+    struct sockaddr_in6 *sa6;
+    struct in_addr *a4 = NULL;
+    struct server *s;
+    int i;
+    struct addrinfo *res;
+
+    if (addr->sa_family == AF_INET6) {
+        sa6 = (struct sockaddr_in6 *)addr;
+        if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr))
+            a4 = (struct in_addr *)&sa6->sin6_addr.s6_addr[12];
+    } else
+	a4 = &((struct sockaddr_in *)addr)->sin_addr;
+
+    s = (server ? server : servers);
+    for (i = 0; i < server_count; i++) {
+	if (s->type == type)
+	    for (res = s->addrinfo; res; res = res->ai_next)
+		if ((a4 && res->ai_family == AF_INET &&
+		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
+		    (res->ai_family == AF_INET6 &&
+		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
+		    return s;
+	if (server)
+	    break;
+	s++;
+    }
+    return NULL;
+}
+
+/* exactly one of client and server must be non-NULL */
 /* if *peer == NULL we return who we received from, else require it to be from peer */
 /* return from in sa if not NULL */
-unsigned char *radudpget(int s, struct peer **peer, struct sockaddr_storage *sa) {
+unsigned char *radudpget(int s, struct client **client, struct server **server, struct sockaddr_storage *sa) {
     int cnt, len;
-    struct peer *f;
+    void *f;
     unsigned char buf[65536], *rad;
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
@@ -205,7 +242,9 @@ unsigned char *radudpget(int s, struct peer **peer, struct sockaddr_storage *sa)
 	if (cnt > len)
 	    printf("radudpget: packet was padded with %d bytes\n", cnt - len);
 
-	f = find_peer('U', (struct sockaddr *)&from, *peer);
+	f = (client
+	     ? (void *)find_client('U', (struct sockaddr *)&from, *client)
+	     : (void *)find_server('U', (struct sockaddr *)&from, *server));
 	if (!f) {
 	    printf("radudpget: got packet from wrong or unknown UDP peer, ignoring\n");
 	    continue;
@@ -217,34 +256,37 @@ unsigned char *radudpget(int s, struct peer **peer, struct sockaddr_storage *sa)
 	err("radudpget: malloc failed");
     }
     memcpy(rad, buf, len);
-    *peer = f; /* only need this if *peer == NULL, but if not NULL *peer == f here */
+    if (client)
+	*client = (struct client *)f; /* only need this if *client == NULL, but if not NULL *client == f here */
+    else
+	*server = (struct server *)f; /* only need this if *server == NULL, but if not NULL *server == f here */
     if (sa)
 	*sa = from;
     return rad;
 }
 
-void tlsconnect(struct peer *peer, struct timeval *when, char *text) {
+void tlsconnect(struct server *server, struct timeval *when, char *text) {
     struct timeval now;
     time_t elapsed;
     unsigned long error;
 
-    pthread_mutex_lock(&peer->lock);
-    if (when && memcmp(&peer->lastconnecttry, when, sizeof(struct timeval))) {
+    pthread_mutex_lock(&server->lock);
+    if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
 	/* already reconnected, nothing to do */
 	printf("tlsconnect: seems already reconnected\n");
-	pthread_mutex_unlock(&peer->lock);
+	pthread_mutex_unlock(&server->lock);
 	return;
     }
 
     printf("tlsconnect %s\n", text);
 
     for (;;) {
-	printf("tlsconnect: trying to open TLS connection to %s port %s\n", peer->host, peer->port);
+	printf("tlsconnect: trying to open TLS connection to %s port %s\n", server->host, server->port);
 	gettimeofday(&now, NULL);
-	elapsed = now.tv_sec - peer->lastconnecttry.tv_sec;
-	memcpy(&peer->lastconnecttry, &now, sizeof(struct timeval));
-	if (peer->connectionok) {
-	    peer->connectionok = 0;
+	elapsed = now.tv_sec - server->lastconnecttry.tv_sec;
+	memcpy(&server->lastconnecttry, &now, sizeof(struct timeval));
+	if (server->connectionok) {
+	    server->connectionok = 0;
 	    sleep(10);
 	} else if (elapsed < 5)
 	    sleep(10);
@@ -252,20 +294,20 @@ void tlsconnect(struct peer *peer, struct timeval *when, char *text) {
 	    sleep(elapsed * 2);
 	else if (elapsed < 10000) /* no sleep at startup */
 		sleep(900);
-	if (peer->sockcl >= 0)
-	    close(peer->sockcl);
-	if ((peer->sockcl = connecttopeer(peer)) < 0)
+	if (server->sock >= 0)
+	    close(server->sock);
+	if ((server->sock = connecttoserver(server->addrinfo)) < 0)
 	    continue;
-	SSL_free(peer->sslcl);
-	peer->sslcl = SSL_new(ssl_ctx_cl);
-	SSL_set_fd(peer->sslcl, peer->sockcl);
-	if (SSL_connect(peer->sslcl) > 0)
+	SSL_free(server->ssl);
+	server->ssl = SSL_new(ssl_ctx_cl);
+	SSL_set_fd(server->ssl, server->sock);
+	if (SSL_connect(server->ssl) > 0)
 	    break;
 	while ((error = ERR_get_error()))
 	    err("tlsconnect: TLS: %s", ERR_error_string(error, NULL));
     }
-    printf("tlsconnect: TLS connection to %s port %s up\n", peer->host, peer->port);
-    pthread_mutex_unlock(&peer->lock);
+    printf("tlsconnect: TLS connection to %s port %s up\n", server->host, server->port);
+    pthread_mutex_unlock(&server->lock);
 }
 
 unsigned char *radtlsget(SSL *ssl) {
@@ -309,33 +351,33 @@ unsigned char *radtlsget(SSL *ssl) {
     return rad;
 }
 
-int clientradput(struct peer *peer, unsigned char *rad) {
+int clientradput(struct server *server, unsigned char *rad) {
     int cnt;
     size_t len;
     unsigned long error;
     struct timeval lastconnecttry;
     
     len = RADLEN(rad);
-    if (peer->type == 'U') {
-	if (send(peer->sockcl, rad, len, 0) >= 0) {
-	    printf("clienradput: sent UDP of length %d to %s port %s\n", len, peer->host, peer->port);
+    if (server->type == 'U') {
+	if (send(server->sock, rad, len, 0) >= 0) {
+	    printf("clienradput: sent UDP of length %d to %s port %s\n", len, server->host, server->port);
 	    return 1;
 	}
 	err("clientradput: send failed");
 	return 0;
     }
 
-    lastconnecttry = peer->lastconnecttry;
-    while ((cnt = SSL_write(peer->sslcl, rad, len)) <= 0) {
+    lastconnecttry = server->lastconnecttry;
+    while ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
 	while ((error = ERR_get_error()))
 	    err("clientwr: TLS: %s", ERR_error_string(error, NULL));
-	tlsconnect(peer, &lastconnecttry, "clientradput");
-	lastconnecttry = peer->lastconnecttry;
+	tlsconnect(server, &lastconnecttry, "clientradput");
+	lastconnecttry = server->lastconnecttry;
     }
 
-    peer->connectionok = 1;
+    server->connectionok = 1;
     printf("clientradput: Sent %d bytes, Radius packet of length %d to TLS peer %s\n",
-	   cnt, len, peer->host);
+	   cnt, len, server->host);
     return 1;
 }
 
@@ -389,7 +431,7 @@ int validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
     return result;
 }
 	      
-void sendrq(struct peer *to, struct peer *from, struct request *rq) {
+void sendrq(struct server *to, struct client *from, struct request *rq) {
     int i;
 
     pthread_mutex_lock(&to->newrq_mutex);
@@ -413,7 +455,7 @@ void sendrq(struct peer *to, struct peer *from, struct request *rq) {
     pthread_mutex_unlock(&to->newrq_mutex);
 }
 
-void sendreply(struct peer *to, struct peer *from, char *buf, struct sockaddr_storage *tosa) {
+void sendreply(struct client *to, struct server *from, char *buf, struct sockaddr_storage *tosa) {
     struct replyq *replyq = to->replyq;
     
     pthread_mutex_lock(&replyq->count_mutex);
@@ -471,7 +513,7 @@ int pwdcrypt(uint8_t *plain, uint8_t *enc, uint8_t enclen, uint8_t *shared, uint
     return 1;
 }
 
-struct peer *id2peer(char *id, uint8_t len) {
+struct server *id2server(char *id, uint8_t len) {
     int i;
     char **realm, *idrealm;
 
@@ -483,24 +525,24 @@ struct peer *id2peer(char *id, uint8_t len) {
 	idrealm = "-";
 	len = 1;
     }
-    for (i = 0; i < peer_count; i++) {
-	for (realm = peers[i].realms; *realm; realm++) {
+    for (i = 0; i < server_count; i++) {
+	for (realm = servers[i].realms; *realm; realm++) {
 	    if ((strlen(*realm) == 1 && **realm == '*') ||
 		(strlen(*realm) == len && !memcmp(idrealm, *realm, len))) {
-		printf("found matching realm: %s, host %s\n", *realm, peers[i].host);
-		return peers + i;
+		printf("found matching realm: %s, host %s\n", *realm, servers[i].host);
+		return servers + i;
 	    }
 	}
     }
     return NULL;
 }
 
-struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
+struct server *radsrv(struct request *rq, char *buf, struct client *from) {
     uint8_t code, id, *auth, *attr, *usernameattr = NULL, *userpwdattr = NULL, pwd[128], pwdlen;
     int i;
     uint16_t len;
     int left;
-    struct peer *to;
+    struct server *to;
     unsigned char newauth[16];
     
     code = *(uint8_t *)buf;
@@ -544,7 +586,7 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
 	printf("\n");
     }
 
-    to = id2peer(&usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
+    to = id2server(&usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
     if (!to) {
 	printf("radsrv: ignoring request, don't know where to send it\n");
 	return NULL;
@@ -586,51 +628,52 @@ struct peer *radsrv(struct request *rq, char *buf, struct peer *from) {
 }
 
 void *clientrd(void *arg) {
-    struct peer *from, *peer = (struct peer *)arg;
+    struct server *server = (struct server *)arg;
+    struct client *from;
     int i;
     unsigned char *buf;
     struct sockaddr_storage fromsa;
     struct timeval lastconnecttry;
     
     for (;;) {
-	lastconnecttry = peer->lastconnecttry;
-	buf = (peer->type == 'U' ? radudpget(peer->sockcl, &peer, NULL) : radtlsget(peer->sslcl));
-	if (!buf && peer->type == 'T') {
-	    tlsconnect(peer, &lastconnecttry, "clientrd");
+	lastconnecttry = server->lastconnecttry;
+	buf = (server->type == 'U' ? radudpget(server->sock, NULL, &server, NULL) : radtlsget(server->ssl));
+	if (!buf && server->type == 'T') {
+	    tlsconnect(server, &lastconnecttry, "clientrd");
 	    continue;
 	}
-
-	peer->connectionok = 1;
+    
+	server->connectionok = 1;
 	
 	i = buf[1]; /* i is the id */
 
-	pthread_mutex_lock(&peer->newrq_mutex);
-	if (!peer->requests[i].buf || !peer->requests[i].tries) {
-	    pthread_mutex_unlock(&peer->newrq_mutex);
+	pthread_mutex_lock(&server->newrq_mutex);
+	if (!server->requests[i].buf || !server->requests[i].tries) {
+	    pthread_mutex_unlock(&server->newrq_mutex);
 	    printf("clientrd: no matching request sent with this id, ignoring\n");
 	    continue;
 	}
         
-	if (peer->requests[i].received) {
-	    pthread_mutex_unlock(&peer->newrq_mutex);
+	if (server->requests[i].received) {
+	    pthread_mutex_unlock(&server->newrq_mutex);
 	    printf("clientrd: already received, ignoring\n");
 	    continue;
 	}
 
-	if (!validauth(buf, peer->requests[i].buf + 4, peer->secret)) {
-	    pthread_mutex_unlock(&peer->newrq_mutex);
+	if (!validauth(buf, server->requests[i].buf + 4, server->secret)) {
+	    pthread_mutex_unlock(&server->newrq_mutex);
 	    printf("clientrd: invalid auth, ignoring\n");
 	    continue;
 	}
 
 	/* once we set received = 1, requests[i] may be reused */
-	buf[1] = (char)peer->requests[i].origid;
-	memcpy(buf + 4, peer->requests[i].origauth, 16);
-	from = peer->requests[i].from;
+	buf[1] = (char)server->requests[i].origid;
+	memcpy(buf + 4, server->requests[i].origauth, 16);
+	from = server->requests[i].from;
 	if (from->type == 'U')
-	    fromsa = peer->requests[i].fromsa;
-	peer->requests[i].received = 1;
-	pthread_mutex_unlock(&peer->newrq_mutex);
+	    fromsa = server->requests[i].fromsa;
+	server->requests[i].received = 1;
+	pthread_mutex_unlock(&server->newrq_mutex);
 
 	if (!radsign(buf, from->secret)) {
 	    printf("clientrd: failed to sign message\n");
@@ -638,57 +681,57 @@ void *clientrd(void *arg) {
 	}
 	
 	printf("clientrd: giving packet back to where it came from\n");
-	sendreply(from, peer, buf, from->type == 'U' ? &fromsa : NULL);
+	sendreply(from, server, buf, from->type == 'U' ? &fromsa : NULL);
     }
 }
 
 void *clientwr(void *arg) {
-    struct peer *peer = (struct peer *)arg;
+    struct server *server = (struct server *)arg;
     pthread_t clientrdth;
     int i;
 
-    if (peer->type == 'U') {
-	if ((peer->sockcl = connecttopeer(peer)) < 0) {
-	    printf("clientwr: connecttopeer failed\n");
+    if (server->type == 'U') {
+	if ((server->sock = connecttoserver(server->addrinfo)) < 0) {
+	    printf("clientwr: connecttoserver failed\n");
 	    exit(1);
 	}
     } else
-	tlsconnect(peer, NULL, "new client");
+	tlsconnect(server, NULL, "new client");
     
-    if (pthread_create(&clientrdth, NULL, clientrd, (void *)peer))
+    if (pthread_create(&clientrdth, NULL, clientrd, (void *)server))
 	errx("clientwr: pthread_create failed");
 
     for (;;) {
-	pthread_mutex_lock(&peer->newrq_mutex);
-	while (!peer->newrq) {
+	pthread_mutex_lock(&server->newrq_mutex);
+	while (!server->newrq) {
 	    printf("clientwr: waiting for signal\n");
-	    pthread_cond_wait(&peer->newrq_cond, &peer->newrq_mutex);
+	    pthread_cond_wait(&server->newrq_cond, &server->newrq_mutex);
 	    printf("clientwr: got signal\n");
 	}
-	peer->newrq = 0;
-	pthread_mutex_unlock(&peer->newrq_mutex);
+	server->newrq = 0;
+	pthread_mutex_unlock(&server->newrq_mutex);
 	       
 	for (i = 0; i < MAX_REQUESTS; i++) {
-	    pthread_mutex_lock(&peer->newrq_mutex);
-	    while (!peer->requests[i].buf && i < MAX_REQUESTS)
+	    pthread_mutex_lock(&server->newrq_mutex);
+	    while (!server->requests[i].buf && i < MAX_REQUESTS)
 		i++;
 	    if (i == MAX_REQUESTS) {
-		pthread_mutex_unlock(&peer->newrq_mutex);
+		pthread_mutex_unlock(&server->newrq_mutex);
 		break;
 	    }
 
 	    /* already received or too many tries */
-            if (peer->requests[i].received || peer->requests[i].tries > 2) {
-                free(peer->requests[i].buf);
+            if (server->requests[i].received || server->requests[i].tries > 2) {
+                free(server->requests[i].buf);
                 /* setting this to NULL means that it can be reused */
-                peer->requests[i].buf = NULL;
-                pthread_mutex_unlock(&peer->newrq_mutex);
+                server->requests[i].buf = NULL;
+                pthread_mutex_unlock(&server->newrq_mutex);
                 continue;
             }
-            pthread_mutex_unlock(&peer->newrq_mutex);
+            pthread_mutex_unlock(&server->newrq_mutex);
             
-            peer->requests[i].tries++;
-	    clientradput(peer, peer->requests[i].buf);
+            server->requests[i].tries++;
+	    clientradput(server, server->requests[i].buf);
 	}
     }
     /* should do more work to maintain TLS connections, keepalives etc */
@@ -722,7 +765,8 @@ void *udpserverwr(void *arg) {
 void *udpserverrd(void *arg) {
     struct request rq;
     unsigned char *buf;
-    struct peer *to, *fr;
+    struct server *to;
+    struct client *fr;
     pthread_t udpserverwrth;
     
     if ((udp_server_sock = bindport(SOCK_DGRAM, udp_server_port)) < 0) {
@@ -737,7 +781,7 @@ void *udpserverrd(void *arg) {
     for (;;) {
 	fr = NULL;
 	memset(&rq, 0, sizeof(struct request));
-	buf = radudpget(udp_server_sock, &fr, &rq.fromsa);
+	buf = radudpget(udp_server_sock, &fr, NULL, &rq.fromsa);
 	to = radsrv(&rq, buf, fr);
 	if (!to) {
 	    printf("udpserverrd: ignoring request, no place to send it\n");
@@ -750,19 +794,19 @@ void *udpserverrd(void *arg) {
 void *tlsserverwr(void *arg) {
     int cnt;
     unsigned long error;
-    struct peer *peer = (struct peer *)arg;
+    struct client *client = (struct client *)arg;
     struct replyq *replyq;
     
-    pthread_mutex_lock(&peer->replycount_mutex);
+    pthread_mutex_lock(&client->replycount_mutex);
     for (;;) {
-	replyq = peer->replyq;
+	replyq = client->replyq;
 	while (!replyq->count) {
 	    printf("tls server writer, waiting for signal\n");
 	    pthread_cond_wait(&replyq->count_cond, &replyq->count_mutex);
 	    printf("tls server writer, got signal\n");
 	}
 	pthread_mutex_unlock(&replyq->count_mutex);
-	cnt = SSL_write(peer->sslsrv, replyq->replies->buf, RADLEN(replyq->replies->buf));
+	cnt = SSL_write(client->ssl, replyq->replies->buf, RADLEN(replyq->replies->buf));
 	if (cnt > 0)
 	    printf("tlsserverwr: Sent %d bytes, Radius packet of length %d\n",
 		   cnt, RADLEN(replyq->replies->buf));
@@ -781,40 +825,40 @@ void *tlsserverrd(void *arg) {
     struct request rq;
     char unsigned *buf;
     unsigned long error;
-    struct peer *to;
+    struct server *to;
     int s;
-    struct peer *peer = (struct peer *)arg;
+    struct client *client = (struct client *)arg;
     pthread_t tlsserverwrth;
 
     printf("tlsserverrd starting\n");
-    if (SSL_accept(peer->sslsrv) <= 0) {
+    if (SSL_accept(client->ssl) <= 0) {
         while ((error = ERR_get_error()))
             err("tlsserverrd: SSL: %s", ERR_error_string(error, NULL));
         errx("accept failed, child exiting");
     }
 
-    if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)peer))
+    if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client))
 	errx("pthread_create failed");
     
     for (;;) {
-	buf = radtlsget(peer->sslsrv);
+	buf = radtlsget(client->ssl);
 	if (!buf) {
 	    printf("tlsserverrd: connection lost\n");
-	    s = SSL_get_fd(peer->sslsrv);
-	    SSL_free(peer->sslsrv);
-	    peer->sslsrv = NULL;
+	    s = SSL_get_fd(client->ssl);
+	    SSL_free(client->ssl);
+	    client->ssl = NULL;
 	    if (s >= 0)
 		close(s);
 	    pthread_exit(NULL);
 	}
-	printf("tlsserverrd: got Radius message from %s\n", peer->host);
+	printf("tlsserverrd: got Radius message from %s\n", client->host);
 	memset(&rq, 0, sizeof(struct request));
-	to = radsrv(&rq, buf, peer);
+	to = radsrv(&rq, buf, client);
 	if (!to) {
 	    printf("ignoring request, no place to send it\n");
 	    continue;
 	}
-	sendrq(to, peer, &rq);
+	sendrq(to, client, &rq);
     }
 }
 
@@ -823,7 +867,7 @@ int tlslistener(SSL_CTX *ssl_ctx) {
     int s, snew;
     struct sockaddr_storage from;
     size_t fromlen = sizeof(from);
-    struct peer *peer;
+    struct client *client;
 
     if ((s = bindport(SOCK_STREAM, DEFAULT_TLS_PORT)) < 0) {
         printf("tlslistener: socket/bind failed\n");
@@ -839,27 +883,27 @@ int tlslistener(SSL_CTX *ssl_ctx) {
 	    errx("accept failed");
 	printf("incoming TLS connection from %s\n", addr2string((struct sockaddr *)&from, fromlen));
 
-	peer = find_peer('T', (struct sockaddr *)&from, NULL);
-	if (!peer) {
-	    printf("ignoring request, not a known TLS peer\n");
+	client = find_client('T', (struct sockaddr *)&from, NULL);
+	if (!client) {
+	    printf("ignoring request, not a known TLS client\n");
 	    close(snew);
 	    continue;
 	}
 
-	if (peer->sslsrv) {
-	    printf("Ignoring incoming connection, already have one from this peer\n");
+	if (client->ssl) {
+	    printf("Ignoring incoming connection, already have one from this client\n");
 	    close(snew);
 	    continue;
 	}
-	peer->sslsrv = SSL_new(ssl_ctx);
-	SSL_set_fd(peer->sslsrv, snew);
-	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)peer))
+	client->ssl = SSL_new(ssl_ctx);
+	SSL_set_fd(client->ssl, snew);
+	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)client))
 	    errx("pthread_create failed");
     }
     return 0;
 }
 
-char *parsehostport(char *s, struct peer *peer) {
+char *parsehostport(char *s, char **host, char **port) {
     char *p, *field;
     int ipv6 = 0;
 
@@ -882,11 +926,11 @@ char *parsehostport(char *s, struct peer *peer) {
 	printf("missing host/address\n");
 	exit(1);
     }
-    peer->host = malloc(p - field + 1);
-    if (!peer->host)
+    *host = malloc(p - field + 1);
+    if (!*host)
 	errx("malloc failed");
-    memcpy(peer->host, field, p - field);
-    peer->host[p - field] = '\0';
+    memcpy(*host, field, p - field);
+    *host[p - field] = '\0';
     if (ipv6) {
 	p++;
 	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n') {
@@ -902,18 +946,18 @@ char *parsehostport(char *s, struct peer *peer) {
 		printf("syntax error, : but no following port\n");
 		exit(1);
 	    }
-	    peer->port = malloc(p - field + 1);
-	    if (!peer->port)
+	    *port = malloc(p - field + 1);
+	    if (!*port)
 		errx("malloc failed");
-	    memcpy(peer->port, field, p - field);
-	    peer->port[p - field] = '\0';
+	    memcpy(*port, field, p - field);
+	    *port[p - field] = '\0';
     } else
-        peer->port = NULL;
+        *port = NULL;
     return p;
 }
 
 // * is default, else longest match ... ";" used for separator
-char *parserealmlist(char *s, struct peer *peer) {
+char *parserealmlist(char *s, struct server *server) {
     char *p;
     int i, n, l;
 
@@ -922,51 +966,73 @@ char *parserealmlist(char *s, struct peer *peer) {
 	    n++;
     l = p - s;
     if (!l) {
-	peer->realms = NULL;
+	server->realms = NULL;
 	return p;
     }
-    peer->realmdata = malloc(l + 1);
-    if (!peer->realmdata)
+    server->realmdata = malloc(l + 1);
+    if (!server->realmdata)
 	errx("malloc failed");
-    memcpy(peer->realmdata, s, l);
-    peer->realmdata[l] = '\0';
-    peer->realms = malloc((1+n) * sizeof(char *));
-    if (!peer->realms)
+    memcpy(server->realmdata, s, l);
+    server->realmdata[l] = '\0';
+    server->realms = malloc((1+n) * sizeof(char *));
+    if (!server->realms)
 	errx("malloc failed");
-    peer->realms[0] = peer->realmdata;
+    server->realms[0] = server->realmdata;
     for (n = 1, i = 0; i < l; i++)
-	if (peer->realmdata[i] == ';') {
-	    peer->realmdata[i] = '\0';
-	    peer->realms[n++] = peer->realmdata + i + 1;
+	if (server->realmdata[i] == ';') {
+	    server->realmdata[i] = '\0';
+	    server->realms[n++] = server->realmdata + i + 1;
 	}	
-    peer->realms[n] = NULL;
+    server->realms[n] = NULL;
     return p;
 }
 
-void getconfig(const char *filename) {
+/* exactly one argument must be non-NULL */
+void getconfig(const char *serverfile, const char *clientfile) {
     FILE *f;
     char line[1024];
     char *p, *field, **r;
-    struct peer *peer;
+    struct client *client;
+    struct server *server;
+    char *type, **host, **port, **secret;
+    int *count;
     
-    peer_count = 0;
+    if (serverfile) {
+	f = fopen(serverfile, "r");
+	if (!f)
+	    errx("getconfig failed to open %s for reading", serverfile);
+	count = &server_count;
+    } else {
+	f = fopen(clientfile, "r");
+	if (!f)
+	    errx("getconfig failed to open %s for reading", clientfile);
+	udp_server_replyq.replies = malloc(4 * MAX_REQUESTS * sizeof(struct reply));
+	if (!udp_server_replyq.replies)
+	    errx("malloc failed");
+	udp_server_replyq.size = 4 * MAX_REQUESTS;
+	udp_server_replyq.count = 0;
+	pthread_mutex_init(&udp_server_replyq.count_mutex, NULL);
+	pthread_cond_init(&udp_server_replyq.count_cond, NULL);
+	count = &client_count;
+    }    
     
-    udp_server_replyq.replies = malloc(4 * MAX_REQUESTS * sizeof(struct reply));
-    if (!udp_server_replyq.replies)
-	errx("malloc failed");
-    udp_server_replyq.size = 4 * MAX_REQUESTS;
-    udp_server_replyq.count = 0;
-    pthread_mutex_init(&udp_server_replyq.count_mutex, NULL);
-    pthread_cond_init(&udp_server_replyq.count_cond, NULL);
-    
-    f = fopen(filename, "r");
-    if (!f)
-	errx("getconfig failed to open %s for reading", filename);
-
-    while (fgets(line, 1024, f) && peer_count < MAX_PEERS) {
-	peer = &peers[peer_count];
-	memset(peer, 0, sizeof(struct peer));
-
+    *count = 0;
+    while (fgets(line, 1024, f) && *count < MAX_PEERS) {
+	if (serverfile) {
+	    server = &servers[*count];
+	    memset(server, 0, sizeof(struct server));
+	    type = &server->type;
+	    host = &server->host;
+	    port = &server->port;
+	    secret = &server->secret;
+	} else {
+	    client = &clients[*count];
+	    memset(client, 0, sizeof(struct client));
+	    type = &client->type;
+	    host = &client->host;
+	    port = &client->port;
+	    secret = &client->secret;
+	}
 	for (p = line; *p == ' ' || *p == '\t'; p++);
 	if (*p == '#' || *p == '\n')
 	    continue;
@@ -974,33 +1040,35 @@ void getconfig(const char *filename) {
 	    printf("server type must be U or T, got %c\n", *p);
 	    exit(1);
 	}
-	peer->type = *p;
+	*type = *p;
 	for (p++; *p == ' ' || *p == '\t'; p++);
-	p = parsehostport(p, peer);
-	if (!peer->port)
-	    peer->port = (peer->type == 'U' ? DEFAULT_UDP_PORT : DEFAULT_TLS_PORT);
+	p = parsehostport(p, host, port);
+	if (!*port)
+	    *port = (*type == 'U' ? DEFAULT_UDP_PORT : DEFAULT_TLS_PORT);
 	for (; *p == ' ' || *p == '\t'; p++);
-	p = parserealmlist(p, peer);
-	if (!peer->realms) {
-	    printf("realm list must be specified\n");
-	    exit(1);
+	if (serverfile) {
+	    p = parserealmlist(p, server);
+	    if (!server->realms) {
+		printf("realm list must be specified\n");
+		exit(1);
+	    }
+	    for (; *p == ' ' || *p == '\t'; p++);
 	}
-	for (; *p == ' ' || *p == '\t'; p++);
 	field = p;
 	for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
 	if (field == p) {
 	    /* no secret set and end of line, line is complete if TLS */
-	    if (peer->type == 'U') {
+	    if (*type == 'U') {
 		printf("secret must be specified for UDP\n");
 		exit(1);
 	    }
-	    peer->secret = DEFAULT_TLS_SECRET;
+	    *secret = DEFAULT_TLS_SECRET;
 	} else {
-	    peer->secret = malloc(p - field + 1);
-	    if (!peer->secret)
+	    *secret = malloc(p - field + 1);
+	    if (!*secret)
 		errx("malloc failed");
-	    memcpy(peer->secret, field, p - field);
-	    peer->secret[p - field] = '\0';
+	    memcpy(*secret, field, p - field);
+	    (*secret)[p - field] = '\0';
 	    /* check that rest of line only white space */
 	    for (; *p == ' ' || *p == '\t'; p++);
 	    if (*p && *p != '\n') {
@@ -1008,41 +1076,47 @@ void getconfig(const char *filename) {
 		exit(1);
 	    }
 	}
-	peer->sockcl = -1;
-	pthread_mutex_init(&peer->lock, NULL);
-	if (!resolvepeer(peer)) {
-	    printf("failed to resolve host %s port %s, exiting\n", peer->host, peer->port);
+
+	if ((serverfile && !resolvepeer(server, NULL)) ||
+	    (clientfile && !resolvepeer(NULL, client))) {
+	    printf("failed to resolve host %s port %s, exiting\n", *host, *port);
 	    exit(1);
 	}
-	peer->requests = malloc(MAX_REQUESTS * sizeof(struct request));
-	if (!peer->requests)
-	    errx("malloc failed");
-	memset(peer->requests, 0, MAX_REQUESTS * sizeof(struct request));
-	peer->newrq = 0;
-	pthread_mutex_init(&peer->newrq_mutex, NULL);
-	pthread_cond_init(&peer->newrq_cond, NULL);
 
-	if (peer->type == 'U')
-	    peer->replyq = &udp_server_replyq;
-	else {
-	    peer->replyq = malloc(sizeof(struct replyq));
-	    if (!peer->replyq)
+	if (serverfile) {
+	    pthread_mutex_init(&server->lock, NULL);
+	    server->sock = -1;
+	    server->requests = malloc(MAX_REQUESTS * sizeof(struct request));
+	    if (!server->requests)
 		errx("malloc failed");
-	    peer->replyq->replies = malloc(MAX_REQUESTS * sizeof(struct reply));
-	    if (!peer->replyq->replies)
-		errx("malloc failed");
-	    peer->replyq->size = MAX_REQUESTS;
-	    peer->replyq->count = 0;
-	    pthread_mutex_init(&peer->replyq->count_mutex, NULL);
-	    pthread_cond_init(&peer->replyq->count_cond, NULL);
+	    memset(server->requests, 0, MAX_REQUESTS * sizeof(struct request));
+	    server->newrq = 0;
+	    pthread_mutex_init(&server->newrq_mutex, NULL);
+	    pthread_cond_init(&server->newrq_cond, NULL);
+	} else {
+	    if (*type == 'U')
+		client->replyq = &udp_server_replyq;
+	    else {
+		client->replyq = malloc(sizeof(struct replyq));
+		if (!client->replyq)
+		    errx("malloc failed");
+		client->replyq->replies = malloc(MAX_REQUESTS * sizeof(struct reply));
+		if (!client->replyq->replies)
+		    errx("malloc failed");
+		client->replyq->size = MAX_REQUESTS;
+		client->replyq->count = 0;
+		pthread_mutex_init(&client->replyq->count_mutex, NULL);
+		pthread_cond_init(&client->replyq->count_cond, NULL);
+	    }
 	}
-	printf("got type %c, host %s, port %s, secret %s\n", peers[peer_count].type,
-	       peers[peer_count].host, peers[peer_count].port, peers[peer_count].secret);
-	printf("    with realms:");
-	for (r = peer->realms; *r; r++)
-	    printf(" %s", *r);
-	printf("\n");
-	peer_count++;
+	printf("got type %c, host %s, port %s, secret %s\n", *type, *host, *port, *secret);
+	if (serverfile) {
+	    printf("    with realms:");
+	    for (r = server->realms; *r; r++)
+		printf(" %s", *r);
+	    printf("\n");
+	}
+	*count++;
     }
     fclose(f);
 }
@@ -1075,32 +1149,22 @@ int main(int argc, char **argv) {
     int i;
     
     parseargs(argc, argv);
-    getconfig("radsecproxy.conf");
+    getconfig("servers.conf", NULL);
+    getconfig(NULL, "clients.conf");
     
     ssl_locks_setup();
 
     pthread_attr_init(&joinable);
     pthread_attr_setdetachstate(&joinable, PTHREAD_CREATE_JOINABLE);
    
-    /* listen on UDP if at least one UDP peer */
+    /* listen on UDP if at least one UDP client */
     
-    for (i = 0; i < peer_count; i++)
-	if (peers[i].type == 'U') {
+    for (i = 0; i < client_count; i++)
+	if (clients[i].type == 'U') {
 	    if (pthread_create(&udpserverth, &joinable, udpserverrd, NULL))
 		errx("pthread_create failed");
 	    break;
 	}
-    
-    for (i = 0; i < peer_count; i++)
-	if (peers[i].type == 'T')
-	    break;
-
-    if (i == peer_count) {
-	printf("No TLS peers defined, just doing UDP proxying\n");
-	/* just hang around doing nothing, anything to do here? */
-	pthread_join(udpserverth, NULL);
-	return 0;
-    }
     
     /* SSL setup */
     SSL_load_error_strings();
@@ -1118,11 +1182,22 @@ int main(int argc, char **argv) {
     if (!ssl_ctx_cl)
 	errx("no ssl ctx");
     
-    for (i = 0; i < peer_count; i++) {
-	if (pthread_create(&peers[i].clientth, NULL, clientwr, (void *)&peers[i]))
+    for (i = 0; i < server_count; i++) {
+	if (pthread_create(&servers[i].clientth, NULL, clientwr, (void *)&servers[i]))
 	    errx("pthread_create failed");
     }
 
+    for (i = 0; i < client_count; i++)
+	if (clients[i].type == 'T')
+	    break;
+
+    if (i == client_count) {
+	printf("No TLS clients defined, not starting TLS listener\n");
+	/* just hang around doing nothing, anything to do here? */
+	pthread_join(udpserverth, NULL);
+	return 0;
+    }
+    
     /* setting up server/daemon part */
     ssl_ctx_srv = SSL_CTX_new(TLSv1_server_method());
     if (!ssl_ctx_srv)
@@ -1137,5 +1212,6 @@ int main(int argc, char **argv) {
 	    err("SSL: %s", ERR_error_string(error, NULL));
 	errx("Failed to load private key");
     }
+
     return tlslistener(ssl_ctx_srv);
 }

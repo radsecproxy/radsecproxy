@@ -41,7 +41,7 @@ struct request {
     uint8_t tries;
     uint8_t received;
     struct timeval timeout;
-    struct peer *from;
+    struct client *from;
     uint8_t origid; /* used by servwr */
     char origauth[16]; /* used by servwr */
     struct sockaddr_storage fromsa; /* used by udpservwr */
@@ -61,30 +61,37 @@ struct replyq {
     pthread_cond_t count_cond;
 };
 
-struct peer {
+struct client {
     char type; /* U for UDP, T for TLS */
     char *host;
     char *port;
-    char *realmdata;
-    char **realms;
     char *secret;
-    SSL *sslcl, *sslsrv;
-    pthread_mutex_t lock;
-    pthread_t clientth;
-    int sockcl;
+    SSL *ssl;
     struct addrinfo *addrinfo;
-    struct timeval lastconnecttry;
-    uint8_t connectionok;
-    /* requests and newrq* are requests passed from servers to clients */
-    struct request *requests;
-    uint8_t newrq;
-    pthread_mutex_t newrq_mutex;
-    pthread_cond_t newrq_cond;
-    /* repl* are replies passed from clients to tls servers */
     struct replyq *replyq;
     int replycount;
     pthread_mutex_t replycount_mutex;
     pthread_cond_t replycount_cond;
+};
+
+struct server {
+    char type; /* U for UDP, T for TLS */
+    char *host;
+    char *port;
+    char *secret;
+    SSL *ssl;
+    struct addrinfo *addrinfo;
+    char *realmdata;
+    char **realms;
+    int sock;
+    pthread_mutex_t lock;
+    pthread_t clientth;
+    struct timeval lastconnecttry;
+    uint8_t connectionok;
+    struct request *requests;
+    uint8_t newrq;
+    pthread_mutex_t newrq_mutex;
+    pthread_cond_t newrq_cond;
 };
 
 void errx(char *format, ...);
