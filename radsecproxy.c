@@ -930,7 +930,7 @@ char *parsehostport(char *s, char **host, char **port) {
     if (!*host)
 	errx("malloc failed");
     memcpy(*host, field, p - field);
-    *host[p - field] = '\0';
+    (*host)[p - field] = '\0';
     if (ipv6) {
 	p++;
 	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n') {
@@ -950,7 +950,7 @@ char *parsehostport(char *s, char **host, char **port) {
 	    if (!*port)
 		errx("malloc failed");
 	    memcpy(*port, field, p - field);
-	    *port[p - field] = '\0';
+	    (*port)[p - field] = '\0';
     } else
         *port = NULL;
     return p;
@@ -1116,7 +1116,7 @@ void getconfig(const char *serverfile, const char *clientfile) {
 		printf(" %s", *r);
 	    printf("\n");
 	}
-	*count++;
+	(*count)++;
     }
     fclose(f);
 }
@@ -1194,8 +1194,8 @@ int main(int argc, char **argv) {
     if (i == client_count) {
 	printf("No TLS clients defined, not starting TLS listener\n");
 	/* just hang around doing nothing, anything to do here? */
-	pthread_join(udpserverth, NULL);
-	return 0;
+	for (;;)
+	    sleep(1000);
     }
     
     /* setting up server/daemon part */
