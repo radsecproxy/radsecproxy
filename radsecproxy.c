@@ -285,7 +285,6 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	printf("tlsconnect: trying to open TLS connection to %s port %s\n", server->host, server->port);
 	gettimeofday(&now, NULL);
 	elapsed = now.tv_sec - server->lastconnecttry.tv_sec;
-	memcpy(&server->lastconnecttry, &now, sizeof(struct timeval));
 	if (server->connectionok) {
 	    server->connectionok = 0;
 	    sleep(10);
@@ -308,6 +307,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	    err("tlsconnect: TLS: %s", ERR_error_string(error, NULL));
     }
     printf("tlsconnect: TLS connection to %s port %s up\n", server->host, server->port);
+    gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
 }
 
