@@ -71,7 +71,7 @@ char *addr2string(struct sockaddr *addr, socklen_t len) {
 
 int bindport(int type, char *port) {
     struct addrinfo hints, *res0, *res;
-    int s;
+    int s, one = 1;
     
     memset(&hints, 0, sizeof(hints));
     hints.ai_socktype = type;
@@ -85,6 +85,7 @@ int bindport(int type, char *port) {
     for (res = res0; res; res = res->ai_next) {
         s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
         if (s >= 0) {
+	    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
             if (bind(s, res->ai_addr, res->ai_addrlen) == 0)
                 break;
             close(s);

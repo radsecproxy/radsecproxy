@@ -61,13 +61,17 @@ struct replyq {
     pthread_cond_t count_cond;
 };
 
-struct client {
+struct peer {
     char type; /* U for UDP, T for TLS */
     char *host;
     char *port;
     char *secret;
     SSL *ssl;
     struct addrinfo *addrinfo;
+};
+
+struct client {
+    struct peer peer;
     struct replyq *replyq;
     int replycount;
     pthread_mutex_t replycount_mutex;
@@ -75,12 +79,7 @@ struct client {
 };
 
 struct server {
-    char type; /* U for UDP, T for TLS */
-    char *host;
-    char *port;
-    char *secret;
-    SSL *ssl;
-    struct addrinfo *addrinfo;
+    struct peer peer;
     char *realmdata;
     char **realms;
     int sock;
