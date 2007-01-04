@@ -270,6 +270,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
     time_t elapsed;
     unsigned long error;
 
+    printf("tlsconnect called from %s\n", text);
     pthread_mutex_lock(&server->lock);
     if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
 	/* already reconnected, nothing to do */
@@ -998,11 +999,13 @@ void getconfig(const char *serverfile, const char *clientfile) {
     int *count;
     
     if (serverfile) {
+	printf("opening file %s for reading\n", serverfile);
 	f = fopen(serverfile, "r");
 	if (!f)
 	    errx("getconfig failed to open %s for reading", serverfile);
 	count = &server_count;
     } else {
+	printf("opening file %s for reading\n", clientfile);
 	f = fopen(clientfile, "r");
 	if (!f)
 	    errx("getconfig failed to open %s for reading", clientfile);
