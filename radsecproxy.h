@@ -30,6 +30,8 @@
 
 #define RAD_Attr_User_Name 1
 #define RAD_Attr_User_Password 2
+#define RAD_Attr_Tunnel_Password 69
+#define RAD_Attr_Message_Authenticator 80
 
 #define RAD_Attr_Type 0
 #define RAD_Attr_Length 1

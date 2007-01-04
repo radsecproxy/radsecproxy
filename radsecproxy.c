@@ -523,8 +523,55 @@ struct server *id2server(char *id, uint8_t len) {
     return NULL;
 }
 
+int messageauth(char *rad, uint8_t *authattr, uint8_t *newauth, struct peer *from, struct peer *to) {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned char first = 1;
+    static EVP_MD_CTX mdctx;
+    unsigned int md_len;
+    uint8_t auth[16], hash[EVP_MAX_MD_SIZE];
+    
+    pthread_mutex_lock(&lock);
+    if (first) {
+	EVP_MD_CTX_init(&mdctx);
+	first = 0;
+    }
+
+    memcpy(auth, authattr, 16);
+    memset(authattr, 0, 16);
+    
+    if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
+	!EVP_DigestUpdate(&mdctx, from->secret, strlen(from->secret)) ||
+	!EVP_DigestUpdate(&mdctx, rad, RADLEN(rad)) ||
+	!EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
+	md_len != 16) {
+	printf("message auth computation failed\n");
+	pthread_mutex_unlock(&lock);
+	return 0;
+    }
+
+    if (memcmp(auth, hash, 16)) {
+	printf("message authenticator, wrong value\n");
+	pthread_mutex_unlock(&lock);
+	return 0;
+    }	
+	
+    if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
+	!EVP_DigestUpdate(&mdctx, to->secret, strlen(to->secret)) ||
+	!EVP_DigestUpdate(&mdctx, rad, RADLEN(rad)) ||
+	!EVP_DigestFinal_ex(&mdctx, authattr, &md_len) ||
+	md_len != 16) {
+	printf("message auth recomputation failed\n");
+	pthread_mutex_unlock(&lock);
+	return 0;
+    }
+	
+    pthread_mutex_unlock(&lock);
+    return 1;
+}
+
 struct server *radsrv(struct request *rq, char *buf, struct client *from) {
-    uint8_t code, id, *auth, *attr, *usernameattr = NULL, *userpwdattr = NULL, pwd[128], pwdlen;
+    uint8_t code, id, *auth, *attr, pwd[128], attrvallen;
+    uint8_t *usernameattr = NULL, *userpwdattr = NULL, *tunnelpwdattr = NULL, *messageauthattr = NULL;
     int i;
     uint16_t len;
     int left;
@@ -559,6 +606,12 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 	case RAD_Attr_User_Password:
 	    userpwdattr = attr;
 	    break;
+	case RAD_Attr_Tunnel_Password:
+	    tunnelpwdattr = attr;
+	    break;
+	case RAD_Attr_Message_Authenticator:
+	    messageauthattr = attr;
+	    break;
 	}
 	attr += attr[RAD_Attr_Length];
     }
@@ -583,23 +636,51 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 	return NULL;
     }
 
+    if (messageauthattr && (messageauthattr[RAD_Attr_Length] != 18 ||
+			    !messageauth(buf, &messageauthattr[RAD_Attr_Value], newauth, &from->peer, &to->peer))) {
+	printf("radsrv: message authentication failed\n");
+	return NULL;
+    }
+
     if (userpwdattr) {
 	printf("radsrv: found userpwdattr of length %d\n", userpwdattr[RAD_Attr_Length]);
-	pwdlen = userpwdattr[RAD_Attr_Length] - 2;
-	if (pwdlen < 16 || pwdlen > 128 || pwdlen % 16) {
+	attrvallen = userpwdattr[RAD_Attr_Length] - 2;
+	if (attrvallen < 16 || attrvallen > 128 || attrvallen % 16) {
 	    printf("radsrv: invalid user password length\n");
 	    return NULL;
 	}
 	
-	if (!pwdcrypt(pwd, &userpwdattr[RAD_Attr_Value], pwdlen, from->peer.secret, strlen(from->peer.secret), auth)) {
+	if (!pwdcrypt(pwd, &userpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
 	    printf("radsrv: cannot decrypt password\n");
 	    return NULL;
 	}
 	printf("radsrv: password: ");
-	for (i = 0; i < pwdlen; i++)
+	for (i = 0; i < attrvallen; i++)
 	    printf("%02x ", pwd[i]);
 	printf("\n");
-	if (!pwdcrypt(&userpwdattr[RAD_Attr_Value], pwd, pwdlen, to->peer.secret, strlen(to->peer.secret), newauth)) {
+	if (!pwdcrypt(&userpwdattr[RAD_Attr_Value], pwd, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
+	    printf("radsrv: cannot encrypt password\n");
+	    return NULL;
+	}
+    }
+
+    if (tunnelpwdattr) {
+	printf("radsrv: found tunnelpwdattr of length %d\n", tunnelpwdattr[RAD_Attr_Length]);
+	attrvallen = tunnelpwdattr[RAD_Attr_Length] - 2;
+	if (attrvallen < 16 || attrvallen > 128 || attrvallen % 16) {
+	    printf("radsrv: invalid user password length\n");
+	    return NULL;
+	}
+	
+	if (!pwdcrypt(pwd, &tunnelpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
+	    printf("radsrv: cannot decrypt password\n");
+	    return NULL;
+	}
+	printf("radsrv: password: ");
+	for (i = 0; i < attrvallen; i++)
+	    printf("%02x ", pwd[i]);
+	printf("\n");
+	if (!pwdcrypt(&tunnelpwdattr[RAD_Attr_Value], pwd, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
 	    printf("radsrv: cannot encrypt password\n");
 	    return NULL;
 	}
