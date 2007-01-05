@@ -11,12 +11,8 @@
  */
 
 /* TODO:
- * Among other things:
- * timer based client retrans or maybe no retrans and just a timer...
- * make our server ignore client retrans?
- * tls keep alives
- * routing based on id....
- * need to also encrypt Tunnel-Password and Message-Authenticator attrs
+ * make our server ignore client retrans and do its own instead?
+ * tls keep alives (server status)
  * tls certificate validation
 */
 
@@ -418,10 +414,77 @@ int validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
     return result;
 }
 	      
+int checkmessageauth(char *rad, uint8_t *authattr, char *secret) {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned char first = 1;
+    static HMAC_CTX hmacctx;
+    unsigned int md_len;
+    uint8_t auth[16], hash[EVP_MAX_MD_SIZE];
+    
+    pthread_mutex_lock(&lock);
+    if (first) {
+	HMAC_CTX_init(&hmacctx);
+	first = 0;
+    }
+
+    memcpy(auth, authattr, 16);
+    memset(authattr, 0, 16);
+    md_len = 0;
+    HMAC_Init_ex(&hmacctx, secret, strlen(secret), EVP_md5(), NULL);
+    HMAC_Update(&hmacctx, rad, RADLEN(rad));
+    HMAC_Final(&hmacctx, hash, &md_len);
+    if (md_len != 16) {
+	printf("message auth computation failed\n");
+	pthread_mutex_unlock(&lock);
+	return 0;
+    }
+
+    if (memcmp(auth, hash, 16)) {
+	printf("message authenticator, wrong value\n");
+	pthread_mutex_unlock(&lock);
+	return 0;
+    }	
+	
+    pthread_mutex_unlock(&lock);
+    return 1;
+}
+
+int createmessageauth(char *rad, char *authattrval, char *secret) {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned char first = 1;
+    static HMAC_CTX hmacctx;
+    unsigned int md_len;
+
+    if (!authattrval)
+	return 1;
+    
+    pthread_mutex_lock(&lock);
+    if (first) {
+	HMAC_CTX_init(&hmacctx);
+	first = 0;
+    }
+
+    memset(authattrval, 0, 16);
+    md_len = 0;
+    HMAC_Init_ex(&hmacctx, secret, strlen(secret), EVP_md5(), NULL);
+    HMAC_Update(&hmacctx, rad, RADLEN(rad));
+    HMAC_Final(&hmacctx, authattrval, &md_len);
+    if (md_len != 16) {
+	printf("message auth computation failed\n");
+	pthread_mutex_unlock(&lock);
+	return 0;
+    }
+
+    pthread_mutex_unlock(&lock);
+    return 1;
+}
+
 void sendrq(struct server *to, struct client *from, struct request *rq) {
     int i;
-
+    
     pthread_mutex_lock(&to->newrq_mutex);
+#if 0    
+    /* temporary hack */
     for (i = 0; i < MAX_REQUESTS; i++)
 	if (!to->requests[i].buf)
 	    break;
@@ -430,8 +493,13 @@ void sendrq(struct server *to, struct client *from, struct request *rq) {
 	pthread_mutex_unlock(&to->newrq_mutex);
 	return;
     }
-    
     rq->buf[1] = (char)i;
+#endif
+    i = rq->buf[1];
+    if (!createmessageauth(rq->buf, rq->messageauthattrval, to->peer.secret))
+	return;
+    gettimeofday(&rq->expiry, NULL);
+    rq->expiry.tv_sec += 30;
     to->requests[i] = *rq;
 
     if (!to->newrq) {
@@ -524,51 +592,6 @@ struct server *id2server(char *id, uint8_t len) {
     return NULL;
 }
 
-int messageauth(char *rad, uint8_t *authattr, uint8_t *newauth, struct peer *from, struct peer *to) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static HMAC_CTX hmacctx;
-    unsigned int md_len;
-    uint8_t auth[16], hash[EVP_MAX_MD_SIZE];
-    
-    pthread_mutex_lock(&lock);
-    if (first) {
-	HMAC_CTX_init(&hmacctx);
-	first = 0;
-    }
-
-    memcpy(auth, authattr, 16);
-    memset(authattr, 0, 16);
-    md_len = 0;
-    HMAC_Init_ex(&hmacctx, from->secret, strlen(from->secret), EVP_md5(), NULL);
-    HMAC_Update(&hmacctx, rad, RADLEN(rad));
-    HMAC_Final(&hmacctx, hash, &md_len);
-    if (md_len != 16) {
-	printf("message auth computation failed\n");
-	pthread_mutex_unlock(&lock);
-	return 0;
-    }
-
-    if (memcmp(auth, hash, 16)) {
-	printf("message authenticator, wrong value\n");
-	pthread_mutex_unlock(&lock);
-	return 0;
-    }	
-
-    md_len = 0;
-    HMAC_Init_ex(&hmacctx, to->secret, strlen(to->secret), EVP_md5(), NULL);
-    HMAC_Update(&hmacctx, rad, RADLEN(rad));
-    HMAC_Final(&hmacctx, authattr, &md_len);
-    if (md_len != 16) {
-	printf("message auth re-computation failed\n");
-	pthread_mutex_unlock(&lock);
-	return 0;
-    }
-	
-    pthread_mutex_unlock(&lock);
-    return 1;
-}
-
 struct server *radsrv(struct request *rq, char *buf, struct client *from) {
     uint8_t code, id, *auth, *attr, pwd[128], attrvallen;
     uint8_t *usernameattr = NULL, *userpwdattr = NULL, *tunnelpwdattr = NULL, *messageauthattr = NULL;
@@ -637,7 +660,7 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
     }
 
     if (messageauthattr && (messageauthattr[RAD_Attr_Length] != 18 ||
-			    !messageauth(buf, &messageauthattr[RAD_Attr_Value], newauth, &from->peer, &to->peer))) {
+			    !checkmessageauth(buf, &messageauthattr[RAD_Attr_Value], from->peer.secret))) {
 	printf("radsrv: message authentication failed\n");
 	return NULL;
     }
@@ -689,6 +712,7 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
     rq->buf = buf;
     rq->from = from;
     rq->origid = id;
+    rq->messageauthattrval = (messageauthattr ? &messageauthattr[RAD_Attr_Value] : NULL);
     memcpy(rq->origauth, auth, 16);
     memcpy(rq->buf + 4, newauth, 16);
     return to;
@@ -697,8 +721,8 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 void *clientrd(void *arg) {
     struct server *server = (struct server *)arg;
     struct client *from;
-    int i;
-    unsigned char *buf;
+    int i, left;
+    unsigned char *buf, *messageauthattr, *attr;
     struct sockaddr_storage fromsa;
     struct timeval lastconnecttry;
     
@@ -711,6 +735,11 @@ void *clientrd(void *arg) {
 	}
     
 	server->connectionok = 1;
+
+	if (*buf != RAD_Access_Accept && *buf != RAD_Access_Reject && *buf != RAD_Access_Challenge) {
+	    printf("clientrd: discarding, only accept access accept, access reject and access challenge messages\n");
+	    continue;
+	}
 	
 	i = buf[1]; /* i is the id */
 
@@ -720,23 +749,59 @@ void *clientrd(void *arg) {
 	    printf("clientrd: no matching request sent with this id, ignoring\n");
 	    continue;
 	}
-        
+
 	if (server->requests[i].received) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
 	    printf("clientrd: already received, ignoring\n");
 	    continue;
 	}
-
+	
 	if (!validauth(buf, server->requests[i].buf + 4, server->peer.secret)) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
 	    printf("clientrd: invalid auth, ignoring\n");
 	    continue;
 	}
+	
+	from = server->requests[i].from;
 
+	/* messageauthattr present? */
+	messageauthattr = NULL;
+	left = RADLEN(buf) - 20;
+	attr = buf + 20;
+	while (left > 1) {
+	    left -= attr[RAD_Attr_Length];
+	    if (left < 0) {
+		printf("radsrv: attribute length exceeds packet length, ignoring packet\n");
+		continue;
+	    }
+	    if (attr[RAD_Attr_Type] == RAD_Attr_Message_Authenticator) {
+		messageauthattr = attr;
+		break;
+	    }
+	    attr += attr[RAD_Attr_Length];
+	}
+
+	if (messageauthattr) {
+	    if (messageauthattr[RAD_Attr_Length] != 18)
+		continue;
+	    memcpy(buf + 4, server->requests[i].buf + 4, 16);
+	    if (!checkmessageauth(buf, &messageauthattr[RAD_Attr_Value], server->peer.secret)) {
+		printf("clientrd: message authentication failed\n");
+		continue;
+	    }
+	    printf("clientrd: message auth ok\n");
+	}
+	    
 	/* once we set received = 1, requests[i] may be reused */
 	buf[1] = (char)server->requests[i].origid;
 	memcpy(buf + 4, server->requests[i].origauth, 16);
-	from = server->requests[i].from;
+
+	if (messageauthattr) {
+	    if (!createmessageauth(buf, &messageauthattr[RAD_Attr_Value], from->peer.secret))
+		continue;
+	    printf("clientrd: computed messageauthattr\n");
+	}
+	
 	if (from->peer.type == 'U')
 	    fromsa = server->requests[i].fromsa;
 	server->requests[i].received = 1;
@@ -746,7 +811,7 @@ void *clientrd(void *arg) {
 	    printf("clientrd: failed to sign message\n");
 	    continue;
 	}
-	
+		
 	printf("clientrd: giving packet back to where it came from\n");
 	sendreply(from, server, buf, from->peer.type == 'U' ? &fromsa : NULL);
     }
@@ -754,9 +819,11 @@ void *clientrd(void *arg) {
 
 void *clientwr(void *arg) {
     struct server *server = (struct server *)arg;
+    struct request *rq;
     pthread_t clientrdth;
     int i;
-
+    struct timeval now;
+    
     if (server->peer.type == 'U') {
 	if ((server->sock = connecttoserver(server->peer.addrinfo)) < 0) {
 	    printf("clientwr: connecttoserver failed\n");
@@ -787,17 +854,32 @@ void *clientwr(void *arg) {
 		break;
 	    }
 
-	    /* already received or too many tries */
-            if (server->requests[i].received || server->requests[i].tries > 2) {
-                free(server->requests[i].buf);
+	    gettimeofday(&now, NULL);
+	    rq = server->requests + i;
+
+            if (rq->received) {
+		printf("clientwr: removing received packet from queue\n");
+                free(rq->buf);
                 /* setting this to NULL means that it can be reused */
-                server->requests[i].buf = NULL;
+                rq->buf = NULL;
                 pthread_mutex_unlock(&server->newrq_mutex);
                 continue;
             }
+            if (now.tv_sec > rq->expiry.tv_sec) {
+		printf("clientwr: removing expired packet from queue\n");
+                free(rq->buf);
+                /* setting this to NULL means that it can be reused */
+                rq->buf = NULL;
+                pthread_mutex_unlock(&server->newrq_mutex);
+                continue;
+            }
+
+	    if (rq->tries)
+		continue; // not re-sending (yet)
+	    
+	    rq->tries++;
             pthread_mutex_unlock(&server->newrq_mutex);
             
-            server->requests[i].tries++;
 	    clientradput(server, server->requests[i].buf);
 	}
     }

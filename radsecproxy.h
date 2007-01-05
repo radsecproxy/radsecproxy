@@ -18,6 +18,7 @@
 #define DEFAULT_TLS_SECRET "mysecret"
 #define DEFAULT_UDP_PORT "1812"
 #define DEFAULT_TLS_PORT "2083"
+#define REQUEST_TIMEOUT 5
 
 #define RAD_Access_Request 1
 #define RAD_Access_Accept 2
@@ -42,8 +43,9 @@ struct request {
     unsigned char *buf;
     uint8_t tries;
     uint8_t received;
-    struct timeval timeout;
+    struct timeval expiry;
     struct client *from;
+    char *messageauthattrval;
     uint8_t origid; /* used by servwr */
     char origauth[16]; /* used by servwr */
     struct sockaddr_storage fromsa; /* used by udpservwr */
