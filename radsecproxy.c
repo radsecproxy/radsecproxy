@@ -494,17 +494,24 @@ void sendrq(struct server *to, struct client *from, struct request *rq) {
     int i;
     
     pthread_mutex_lock(&to->newrq_mutex);
-
-    /* should search from where inserted last */
-    for (i = 0; i < MAX_REQUESTS; i++)
+    /* might simplify if only try nextid, might be ok */
+    for (i = to->nextid; i < MAX_REQUESTS; i++)
 	if (!to->requests[i].buf)
 	    break;
     if (i == MAX_REQUESTS) {
-	printf("No room in queue, dropping request\n");
-	pthread_mutex_unlock(&to->newrq_mutex);
-	return;
+	for (i = 0; i < to->nextid; i++)
+	    if (!to->requests[i].buf)
+		break;
+	if (i == to->nextid) {
+	    printf("No room in queue, dropping request\n");
+	    pthread_mutex_unlock(&to->newrq_mutex);
+	    return;
+	}
     }
+    
+    to->nextid = i + 1;
     rq->buf[1] = (char)i;
+    printf("sendrq: inserting packet with id %d in queue for %s\n", i, to->peer.host);
     
     if (!createmessageauth(rq->buf, rq->messageauthattrval, to->peer.secret))
 	return;

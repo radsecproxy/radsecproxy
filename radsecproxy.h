@@ -95,6 +95,7 @@ struct server {
     pthread_t clientth;
     struct timeval lastconnecttry;
     uint8_t connectionok;
+    int nextid;
     struct request *requests;
     uint8_t newrq;
     pthread_mutex_t newrq_mutex;
