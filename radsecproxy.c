@@ -92,6 +92,14 @@ void ssl_locks_setup() {
     CRYPTO_set_locking_callback(ssl_locking_callback);
 }
 
+void printauth(char *s, unsigned char *t) {
+    int i;
+    printf("%s:", s);
+    for (i = 0; i < 16; i++)
+	    printf("%02x ", t[i]);
+    printf("\n");
+}
+
 int resolvepeer(struct peer *peer) {
     struct addrinfo hints, *addrinfo;
     
@@ -433,6 +441,7 @@ int checkmessageauth(char *rad, uint8_t *authattr, char *secret) {
     HMAC_Init_ex(&hmacctx, secret, strlen(secret), EVP_md5(), NULL);
     HMAC_Update(&hmacctx, rad, RADLEN(rad));
     HMAC_Final(&hmacctx, hash, &md_len);
+    memcpy(authattr, auth, 16);
     if (md_len != 16) {
 	printf("message auth computation failed\n");
 	pthread_mutex_unlock(&lock);
@@ -483,8 +492,8 @@ void sendrq(struct server *to, struct client *from, struct request *rq) {
     int i;
     
     pthread_mutex_lock(&to->newrq_mutex);
-#if 0    
-    /* temporary hack */
+
+    /* should search from where inserted last */
     for (i = 0; i < MAX_REQUESTS; i++)
 	if (!to->requests[i].buf)
 	    break;
@@ -494,10 +503,10 @@ void sendrq(struct server *to, struct client *from, struct request *rq) {
 	return;
     }
     rq->buf[1] = (char)i;
-#endif
-    i = rq->buf[1];
+    
     if (!createmessageauth(rq->buf, rq->messageauthattrval, to->peer.secret))
 	return;
+
     gettimeofday(&rq->expiry, NULL);
     rq->expiry.tv_sec += 30;
     to->requests[i] = *rq;
@@ -532,7 +541,7 @@ void sendreply(struct client *to, struct server *from, char *buf, struct sockadd
     pthread_mutex_unlock(&replyq->count_mutex);
 }
 
-int pwdcrypt(uint8_t *plain, uint8_t *enc, uint8_t enclen, uint8_t *shared, uint8_t sharedlen,
+int pwdencrypt(uint8_t *out, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 		uint8_t *auth) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     static unsigned char first = 1;
@@ -558,12 +567,223 @@ int pwdcrypt(uint8_t *plain, uint8_t *enc, uint8_t enclen, uint8_t *shared, uint
 	    return 0;
 	}
 	for (i = 0; i < 16; i++)
-	    plain[offset + i] = hash[i] ^ enc[offset + i];
+	    out[offset + i] = hash[i] ^ in[offset + i];
+	input = out + offset - 16;
 	offset += 16;
-	if (offset == enclen)
+	if (offset == len)
 	    break;
-	input = enc + offset - 16;
     }
+    pthread_mutex_unlock(&lock);
+    return 1;
+}
+
+int pwddecrypt(uint8_t *out, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen,
+		uint8_t *auth) {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned char first = 1;
+    static EVP_MD_CTX mdctx;
+    unsigned char hash[EVP_MAX_MD_SIZE], *input;
+    unsigned int md_len;
+    uint8_t i, offset = 0;
+    
+    pthread_mutex_lock(&lock);
+    if (first) {
+	EVP_MD_CTX_init(&mdctx);
+	first = 0;
+    }
+
+    input = auth;
+    for (;;) {
+	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
+	    !EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
+	    !EVP_DigestUpdate(&mdctx, input, 16) ||
+	    !EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
+	    md_len != 16) {
+	    pthread_mutex_unlock(&lock);
+	    return 0;
+	}
+	for (i = 0; i < 16; i++)
+	    out[offset + i] = hash[i] ^ in[offset + i];
+	input = in + offset;
+	offset += 16;
+	if (offset == len)
+	    break;
+    }
+    pthread_mutex_unlock(&lock);
+    return 1;
+}
+
+int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned char first = 1;
+    static EVP_MD_CTX mdctx;
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int md_len;
+    uint8_t i, offset;
+    
+    pthread_mutex_lock(&lock);
+    if (first) {
+	EVP_MD_CTX_init(&mdctx);
+	first = 0;
+    }
+
+#if 0    
+    printf("msppencrypt auth in: ");
+    for (i = 0; i < 16; i++)
+	printf("%02x ", auth[i]);
+    printf("\n");
+    
+    printf("msppencrypt salt in: ");
+    for (i = 0; i < 2; i++)
+	printf("%02x ", salt[i]);
+    printf("\n");
+    
+    printf("msppencrypt in: ");
+    for (i = 0; i < len; i++)
+	printf("%02x ", text[i]);
+    printf("\n");
+#endif
+    
+    if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
+	!EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
+	!EVP_DigestUpdate(&mdctx, auth, 16) ||
+	!EVP_DigestUpdate(&mdctx, salt, 2) ||
+	!EVP_DigestFinal_ex(&mdctx, hash, &md_len)) {
+	pthread_mutex_unlock(&lock);
+	return 0;
+    }
+
+#if 0    
+    printf("msppencrypt hash: ");
+    for (i = 0; i < 16; i++)
+	printf("%02x ", hash[i]);
+    printf("\n");
+#endif
+    
+    for (i = 0; i < 16; i++)
+	text[i] ^= hash[i];
+    
+    for (offset = 16; offset < len; offset += 16) {
+	printf("text + offset - 16 c(%d): ", offset / 16);
+	for (i = 0; i < 16; i++)
+	    printf("%02x ", (text + offset - 16)[i]);
+	printf("\n");
+
+	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
+	    !EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
+	    !EVP_DigestUpdate(&mdctx, text + offset - 16, 16) ||
+	    !EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
+	    md_len != 16) {
+	    pthread_mutex_unlock(&lock);
+	    return 0;
+	}
+#if 0	
+	printf("msppencrypt hash: ");
+	for (i = 0; i < 16; i++)
+	    printf("%02x ", hash[i]);
+	printf("\n");
+#endif    
+	
+	for (i = 0; i < 16; i++)
+	    text[offset + i] ^= hash[i];
+    }
+    
+#if 0
+    printf("msppencrypt out: ");
+    for (i = 0; i < len; i++)
+	printf("%02x ", text[i]);
+    printf("\n");
+#endif
+
+    pthread_mutex_unlock(&lock);
+    return 1;
+}
+
+int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned char first = 1;
+    static EVP_MD_CTX mdctx;
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int md_len;
+    uint8_t i, offset;
+    char plain[255];
+    
+    pthread_mutex_lock(&lock);
+    if (first) {
+	EVP_MD_CTX_init(&mdctx);
+	first = 0;
+    }
+
+#if 0    
+    printf("msppdecrypt auth in: ");
+    for (i = 0; i < 16; i++)
+	printf("%02x ", auth[i]);
+    printf("\n");
+    
+    printf("msppedecrypt salt in: ");
+    for (i = 0; i < 2; i++)
+	printf("%02x ", salt[i]);
+    printf("\n");
+    
+    printf("msppedecrypt in: ");
+    for (i = 0; i < len; i++)
+	printf("%02x ", text[i]);
+    printf("\n");
+#endif
+    
+    if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
+	!EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
+	!EVP_DigestUpdate(&mdctx, auth, 16) ||
+	!EVP_DigestUpdate(&mdctx, salt, 2) ||
+	!EVP_DigestFinal_ex(&mdctx, hash, &md_len)) {
+	pthread_mutex_unlock(&lock);
+	return 0;
+    }
+
+#if 0    
+    printf("msppedecrypt hash: ");
+    for (i = 0; i < 16; i++)
+	printf("%02x ", hash[i]);
+    printf("\n");
+#endif
+    
+    for (i = 0; i < 16; i++)
+	plain[i] = text[i] ^ hash[i];
+    
+    for (offset = 16; offset < len; offset += 16) {
+#if 0 	
+	printf("text + offset - 16 c(%d): ", offset / 16);
+	for (i = 0; i < 16; i++)
+	    printf("%02x ", (text + offset - 16)[i]);
+	printf("\n");
+#endif
+	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
+	    !EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
+	    !EVP_DigestUpdate(&mdctx, text + offset - 16, 16) ||
+	    !EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
+	    md_len != 16) {
+	    pthread_mutex_unlock(&lock);
+	    return 0;
+	}
+#if 0	
+    printf("msppedecrypt hash: ");
+    for (i = 0; i < 16; i++)
+	printf("%02x ", hash[i]);
+    printf("\n");
+#endif    
+
+    for (i = 0; i < 16; i++)
+	plain[offset + i] = text[offset + i] ^ hash[i];
+    }
+
+    memcpy(text, plain, len);
+#if 0
+    printf("msppedecrypt out: ");
+    for (i = 0; i < len; i++)
+	printf("%02x ", text[i]);
+    printf("\n");
+#endif
+
     pthread_mutex_unlock(&lock);
     return 1;
 }
@@ -653,18 +873,21 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 	printf("radsrv: ignoring request, don't know where to send it\n");
 	return NULL;
     }
-
-    if (!RAND_bytes(newauth, 16)) {
-	printf("radsrv: failed to generate random auth\n");
-	return NULL;
-    }
-
+    
     if (messageauthattr && (messageauthattr[RAD_Attr_Length] != 18 ||
 			    !checkmessageauth(buf, &messageauthattr[RAD_Attr_Value], from->peer.secret))) {
 	printf("radsrv: message authentication failed\n");
 	return NULL;
     }
 
+    if (!RAND_bytes(newauth, 16)) {
+	printf("radsrv: failed to generate random auth\n");
+	return NULL;
+    }
+
+    printauth("auth", auth);
+    printauth("newauth", newauth);
+    
     if (userpwdattr) {
 	printf("radsrv: found userpwdattr of length %d\n", userpwdattr[RAD_Attr_Length]);
 	attrvallen = userpwdattr[RAD_Attr_Length] - 2;
@@ -673,7 +896,7 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 	    return NULL;
 	}
 	
-	if (!pwdcrypt(pwd, &userpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
+	if (!pwddecrypt(pwd, &userpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
 	    printf("radsrv: cannot decrypt password\n");
 	    return NULL;
 	}
@@ -681,7 +904,7 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 	for (i = 0; i < attrvallen; i++)
 	    printf("%02x ", pwd[i]);
 	printf("\n");
-	if (!pwdcrypt(&userpwdattr[RAD_Attr_Value], pwd, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
+	if (!pwdencrypt(&userpwdattr[RAD_Attr_Value], pwd, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
 	    printf("radsrv: cannot encrypt password\n");
 	    return NULL;
 	}
@@ -714,19 +937,23 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
     rq->origid = id;
     rq->messageauthattrval = (messageauthattr ? &messageauthattr[RAD_Attr_Value] : NULL);
     memcpy(rq->origauth, auth, 16);
-    memcpy(rq->buf + 4, newauth, 16);
+    memcpy(auth, newauth, 16);
+    printauth("rq->origauth", rq->origauth);
+    printauth("auth", auth);
     return to;
 }
 
 void *clientrd(void *arg) {
     struct server *server = (struct server *)arg;
     struct client *from;
-    int i, left;
-    unsigned char *buf, *messageauthattr, *attr;
+    int i, left, subleft;
+    unsigned char *buf, *messageauthattr, *subattr, *attr;
     struct sockaddr_storage fromsa;
     struct timeval lastconnecttry;
+    char tmp[255];
     
     for (;;) {
+    getnext:
 	lastconnecttry = server->lastconnecttry;
 	buf = (server->peer.type == 'U' ? radudpget(server->sock, NULL, &server, NULL) : radtlsget(server->peer.ssl));
 	if (!buf && server->peer.type == 'T') {
@@ -764,6 +991,7 @@ void *clientrd(void *arg) {
 	
 	from = server->requests[i].from;
 
+
 	/* messageauthattr present? */
 	messageauthattr = NULL;
 	left = RADLEN(buf) - 20;
@@ -771,37 +999,82 @@ void *clientrd(void *arg) {
 	while (left > 1) {
 	    left -= attr[RAD_Attr_Length];
 	    if (left < 0) {
-		printf("radsrv: attribute length exceeds packet length, ignoring packet\n");
-		continue;
+		printf("clientrd: attribute length exceeds packet length, ignoring packet\n");
+		goto getnext;
 	    }
 	    if (attr[RAD_Attr_Type] == RAD_Attr_Message_Authenticator) {
+		if (attr[RAD_Attr_Length] != 18) {
+		    printf("clientrd: illegal message auth attribute length, ignoring packet\n");
+		    goto getnext;
+		}
+		memcpy(tmp, buf + 4, 16);
+		memcpy(buf + 4, server->requests[i].buf + 4, 16);
+		if (!checkmessageauth(buf, &attr[RAD_Attr_Value], server->peer.secret)) {
+		    printf("clientrd: message authentication failed\n");
+		    goto getnext;
+		}
+		memcpy(buf + 4, tmp, 16);
+		printf("clientrd: message auth ok\n");
 		messageauthattr = attr;
 		break;
 	    }
 	    attr += attr[RAD_Attr_Length];
 	}
 
-	if (messageauthattr) {
-	    if (messageauthattr[RAD_Attr_Length] != 18)
-		continue;
-	    memcpy(buf + 4, server->requests[i].buf + 4, 16);
-	    if (!checkmessageauth(buf, &messageauthattr[RAD_Attr_Value], server->peer.secret)) {
-		printf("clientrd: message authentication failed\n");
-		continue;
+	/* handle MS MPPE */
+	left = RADLEN(buf) - 20;
+	attr = buf + 20;
+	while (left > 1) {
+	    left -= attr[RAD_Attr_Length];
+	    if (left < 0) {
+		printf("clientrd: attribute length exceeds packet length, ignoring packet\n");
+		goto getnext;
 	    }
-	    printf("clientrd: message auth ok\n");
+	    if (attr[RAD_Attr_Type] == RAD_Attr_Vendor_Specific &&
+		((uint16_t *)attr)[1] == 0 && ntohs(((uint16_t *)attr)[2]) == 311) { // 311 == MS
+		subleft = attr[RAD_Attr_Length] - 6;
+		subattr = attr + 6;
+		while (subleft > 1) {
+		    subleft -= subattr[RAD_Attr_Length];
+		    if (subleft < 0)
+			break;
+		    if (subattr[RAD_Attr_Type] != RAD_VS_ATTR_MS_MPPE_Send_Key &&
+			subattr[RAD_Attr_Type] != RAD_VS_ATTR_MS_MPPE_Recv_Key)
+			continue;
+		    printf("clientrd: Got MS MPPE\n");
+		    if (subattr[RAD_Attr_Length] < 20)
+			continue;
+
+		    if (!msmppdecrypt(subattr + 4, subattr[RAD_Attr_Length] - 4,
+			    server->peer.secret, strlen(server->peer.secret), server->requests[i].buf + 4, subattr + 2)) {
+			printf("clientrd: failed to decrypt msppe key\n");
+			continue;
+		    }
+
+		    if (!msmppencrypt(subattr + 4, subattr[RAD_Attr_Length] - 4,
+			    from->peer.secret, strlen(from->peer.secret), server->requests[i].origauth, subattr + 2)) {
+			printf("clientrd: failed to encrypt msppe key\n");
+			continue;
+		    }
+		}
+		if (subleft < 0) {
+		    printf("clientrd: bad vendor specific attr or subattr length, ignoring packet\n");
+		    goto getnext;
+		}
+	    }
+	    attr += attr[RAD_Attr_Length];
 	}
-	    
+
 	/* once we set received = 1, requests[i] may be reused */
 	buf[1] = (char)server->requests[i].origid;
 	memcpy(buf + 4, server->requests[i].origauth, 16);
-
+	printauth("origauth/buf+4", buf + 4);
 	if (messageauthattr) {
 	    if (!createmessageauth(buf, &messageauthattr[RAD_Attr_Value], from->peer.secret))
 		continue;
 	    printf("clientrd: computed messageauthattr\n");
 	}
-	
+
 	if (from->peer.type == 'U')
 	    fromsa = server->requests[i].fromsa;
 	server->requests[i].received = 1;
@@ -811,7 +1084,7 @@ void *clientrd(void *arg) {
 	    printf("clientrd: failed to sign message\n");
 	    continue;
 	}
-		
+	printauth("signedorigauth/buf+4", buf + 4);		
 	printf("clientrd: giving packet back to where it came from\n");
 	sendreply(from, server, buf, from->peer.type == 'U' ? &fromsa : NULL);
     }
