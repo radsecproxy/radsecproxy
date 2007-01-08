@@ -918,7 +918,7 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 	    return NULL;
 	}
 	
-	if (!pwdcrypt(pwd, &tunnelpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
+	if (!pwddecrypt(pwd, &tunnelpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
 	    printf("radsrv: cannot decrypt password\n");
 	    return NULL;
 	}
@@ -926,7 +926,7 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 	for (i = 0; i < attrvallen; i++)
 	    printf("%02x ", pwd[i]);
 	printf("\n");
-	if (!pwdcrypt(&tunnelpwdattr[RAD_Attr_Value], pwd, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
+	if (!pwdencrypt(&tunnelpwdattr[RAD_Attr_Value], pwd, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
 	    printf("radsrv: cannot encrypt password\n");
 	    return NULL;
 	}
