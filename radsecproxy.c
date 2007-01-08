@@ -281,8 +281,10 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	    sleep(10);
 	else if (elapsed < 600)
 	    sleep(elapsed * 2);
-	else if (elapsed < 10000) /* no sleep at startup */
+	else if (elapsed < 10000)
 		sleep(900);
+	else
+	    server->lastconnecttry.tv_sec = now.tv_sec;  // no sleep at startup
 	printf("tlsconnect: trying to open TLS connection to %s port %s\n", server->peer.host, server->peer.port);
 	if (server->sock >= 0)
 	    close(server->sock);
@@ -541,14 +543,13 @@ void sendreply(struct client *to, struct server *from, char *buf, struct sockadd
     pthread_mutex_unlock(&replyq->count_mutex);
 }
 
-int pwdencrypt(uint8_t *out, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen,
-		uint8_t *auth) {
+int pwdencrypt(uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     static unsigned char first = 1;
     static EVP_MD_CTX mdctx;
     unsigned char hash[EVP_MAX_MD_SIZE], *input;
     unsigned int md_len;
-    uint8_t i, offset = 0;
+    uint8_t i, offset = 0, out[128];
     
     pthread_mutex_lock(&lock);
     if (first) {
@@ -573,18 +574,18 @@ int pwdencrypt(uint8_t *out, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t 
 	if (offset == len)
 	    break;
     }
+    memcpy(in, out, len);
     pthread_mutex_unlock(&lock);
     return 1;
 }
 
-int pwddecrypt(uint8_t *out, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen,
-		uint8_t *auth) {
+int pwddecrypt(uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     static unsigned char first = 1;
     static EVP_MD_CTX mdctx;
     unsigned char hash[EVP_MAX_MD_SIZE], *input;
     unsigned int md_len;
-    uint8_t i, offset = 0;
+    uint8_t i, offset = 0, out[128];
     
     pthread_mutex_lock(&lock);
     if (first) {
@@ -609,6 +610,7 @@ int pwddecrypt(uint8_t *out, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t 
 	if (offset == len)
 	    break;
     }
+    memcpy(in, out, len);
     pthread_mutex_unlock(&lock);
     return 1;
 }
@@ -664,11 +666,12 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	text[i] ^= hash[i];
     
     for (offset = 16; offset < len; offset += 16) {
+#if 0	
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	for (i = 0; i < 16; i++)
 	    printf("%02x ", (text + offset - 16)[i]);
 	printf("\n");
-
+#endif
 	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
 	    !EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
 	    !EVP_DigestUpdate(&mdctx, text + offset - 16, 16) ||
@@ -813,7 +816,7 @@ struct server *id2server(char *id, uint8_t len) {
 }
 
 struct server *radsrv(struct request *rq, char *buf, struct client *from) {
-    uint8_t code, id, *auth, *attr, pwd[128], attrvallen;
+    uint8_t code, id, *auth, *attr, attrvallen;
     uint8_t *usernameattr = NULL, *userpwdattr = NULL, *tunnelpwdattr = NULL, *messageauthattr = NULL;
     int i;
     uint16_t len;
@@ -896,15 +899,15 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 	    return NULL;
 	}
 	
-	if (!pwddecrypt(pwd, &userpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
+	if (!pwddecrypt(&userpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
 	    printf("radsrv: cannot decrypt password\n");
 	    return NULL;
 	}
 	printf("radsrv: password: ");
 	for (i = 0; i < attrvallen; i++)
-	    printf("%02x ", pwd[i]);
+	    printf("%02x ", userpwdattr[RAD_Attr_Value + i]);
 	printf("\n");
-	if (!pwdencrypt(&userpwdattr[RAD_Attr_Value], pwd, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
+	if (!pwdencrypt(&userpwdattr[RAD_Attr_Value], attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
 	    printf("radsrv: cannot encrypt password\n");
 	    return NULL;
 	}
@@ -918,15 +921,15 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 	    return NULL;
 	}
 	
-	if (!pwddecrypt(pwd, &tunnelpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
+	if (!pwddecrypt(&tunnelpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
 	    printf("radsrv: cannot decrypt password\n");
 	    return NULL;
 	}
 	printf("radsrv: password: ");
 	for (i = 0; i < attrvallen; i++)
-	    printf("%02x ", pwd[i]);
+	    printf("%02x ", tunnelpwdattr[RAD_Attr_Value + i]);
 	printf("\n");
-	if (!pwdencrypt(&tunnelpwdattr[RAD_Attr_Value], pwd, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
+	if (!pwdencrypt(&tunnelpwdattr[RAD_Attr_Value], attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
 	    printf("radsrv: cannot encrypt password\n");
 	    return NULL;
 	}
