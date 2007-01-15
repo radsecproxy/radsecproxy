@@ -1359,6 +1359,7 @@ int tlslistener(SSL_CTX *ssl_ctx) {
 
 	if (client->peer.ssl) {
 	    printf("Ignoring incoming connection, already have one from this client\n");
+	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
 	    continue;
 	}
