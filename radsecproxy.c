@@ -12,8 +12,16 @@
 
 /* TODO:
  * make our server ignore client retrans and do its own instead?
- * tls keep alives (server status)
- * tls certificate validation
+ * accounting
+ * radius keep alives (server status)
+ * tls certificate validation, see below urls
+ * clean tls shutdown, see http://www.linuxjournal.com/article/4822
+ *     and http://www.linuxjournal.com/article/5487
+ *     SSL_shutdown() and shutdown()
+ *     If shutdown() we may not need REUSEADDR
+ * when tls client goes away, ensure that all related threads and state
+ *          are removed
+ * setsockopt(keepalive...), check if openssl has some keepalive feature
 */
 
 /* For UDP there is one server instance consisting of udpserverrd and udpserverth
