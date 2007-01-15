@@ -81,9 +81,6 @@ struct peer {
 struct client {
     struct peer peer;
     struct replyq *replyq;
-    int replycount;
-    pthread_mutex_t replycount_mutex;
-    pthread_cond_t replycount_cond;
 };
 
 struct server {

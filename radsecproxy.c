@@ -320,6 +320,10 @@ unsigned char *radtlsget(SSL *ssl) {
 	    cnt = SSL_read(ssl, buf + total, 4 - total);
 	    if (cnt <= 0) {
 		printf("radtlsget: connection lost\n");
+		if (SSL_get_error(ssl, cnt) == SSL_ERROR_ZERO_RETURN) {
+		    //remote end sent close_notify, send one back
+		    SSL_shutdown(ssl);
+		}
 		return NULL;
 	    }
 	}
@@ -336,6 +340,10 @@ unsigned char *radtlsget(SSL *ssl) {
 	    cnt = SSL_read(ssl, rad + total, len - total);
 	    if (cnt <= 0) {
 		printf("radtlsget: connection lost\n");
+		if (SSL_get_error(ssl, cnt) == SSL_ERROR_ZERO_RETURN) {
+		    //remote end sent close_notify, send one back
+		    SSL_shutdown(ssl);
+		}
 		free(rad);
 		return NULL;
 	    }
@@ -1237,13 +1245,22 @@ void *tlsserverwr(void *arg) {
     struct client *client = (struct client *)arg;
     struct replyq *replyq;
     
-    pthread_mutex_lock(&client->replycount_mutex);
+    printf("tlsserverwr starting for %s\n", client->peer.host);
+    replyq = client->replyq;
+    pthread_mutex_lock(&replyq->count_mutex);
     for (;;) {
-	replyq = client->replyq;
 	while (!replyq->count) {
-	    printf("tls server writer, waiting for signal\n");
-	    pthread_cond_wait(&replyq->count_cond, &replyq->count_mutex);
-	    printf("tls server writer, got signal\n");
+	    if (client->peer.ssl) {	    
+		printf("tls server writer, waiting for signal\n");
+		pthread_cond_wait(&replyq->count_cond, &replyq->count_mutex);
+		printf("tls server writer, got signal\n");
+	    }
+	    if (!client->peer.ssl) {
+		//ssl might have changed while waiting
+		pthread_mutex_unlock(&replyq->count_mutex);
+		printf("tlsserverwr: exiting as requested\n");
+		pthread_exit(NULL);
+	    }
 	}
 	pthread_mutex_unlock(&replyq->count_mutex);
 	cnt = SSL_write(client->peer.ssl, replyq->replies->buf, RADLEN(replyq->replies->buf));
@@ -1269,9 +1286,12 @@ void *tlsserverrd(void *arg) {
     int s;
     struct client *client = (struct client *)arg;
     pthread_t tlsserverwrth;
+    SSL *ssl;
+    
+    printf("tlsserverrd starting for %s\n", client->peer.host);
+    ssl = client->peer.ssl;
 
-    printf("tlsserverrd starting\n");
-    if (SSL_accept(client->peer.ssl) <= 0) {
+    if (SSL_accept(ssl) <= 0) {
         while ((error = ERR_get_error()))
             err("tlsserverrd: SSL: %s", ERR_error_string(error, NULL));
         errx("accept failed, child exiting");
@@ -1282,15 +1302,8 @@ void *tlsserverrd(void *arg) {
     
     for (;;) {
 	buf = radtlsget(client->peer.ssl);
-	if (!buf) {
-	    printf("tlsserverrd: connection lost\n");
-	    s = SSL_get_fd(client->peer.ssl);
-	    SSL_free(client->peer.ssl);
-	    client->peer.ssl = NULL;
-	    if (s >= 0)
-		close(s);
-	    pthread_exit(NULL);
-	}
+	if (!buf)
+	    break;
 	printf("tlsserverrd: got Radius message from %s\n", client->peer.host);
 	memset(&rq, 0, sizeof(struct request));
 	to = radsrv(&rq, buf, client);
@@ -1300,6 +1313,19 @@ void *tlsserverrd(void *arg) {
 	}
 	sendrq(to, client, &rq);
     }
+    printf("tlsserverrd: connection lost\n");
+    // stop writer by setting peer.ssl to NULL and give signal in case waiting for data
+    client->peer.ssl = NULL;
+    pthread_mutex_lock(&client->replyq->count_mutex);
+    pthread_cond_signal(&client->replyq->count_cond);
+    pthread_mutex_unlock(&client->replyq->count_mutex);
+    printf("tlsserverrd: waiting for writer to end\n");
+    pthread_join(tlsserverwrth, NULL);
+    s = SSL_get_fd(ssl);
+    SSL_free(ssl);
+    close(s);
+    printf("tlsserverrd thread for %s exiting\n", client->peer.host);
+    pthread_exit(NULL);
 }
 
 int tlslistener(SSL_CTX *ssl_ctx) {
@@ -1339,6 +1365,7 @@ int tlslistener(SSL_CTX *ssl_ctx) {
 	SSL_set_fd(client->peer.ssl, snew);
 	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)client))
 	    errx("pthread_create failed");
+	pthread_detach(tlsserverth);
     }
     return 0;
 }
@@ -1581,7 +1608,7 @@ int main(int argc, char **argv) {
     SSL_CTX *ssl_ctx_srv;
     unsigned long error;
     pthread_t udpserverth;
-    pthread_attr_t joinable;
+    //    pthread_attr_t joinable;
     int i;
     
     parseargs(argc, argv);
@@ -1590,14 +1617,14 @@ int main(int argc, char **argv) {
     
     ssl_locks_setup();
 
-    pthread_attr_init(&joinable);
-    pthread_attr_setdetachstate(&joinable, PTHREAD_CREATE_JOINABLE);
+    //    pthread_attr_init(&joinable);
+    //    pthread_attr_setdetachstate(&joinable, PTHREAD_CREATE_JOINABLE);
    
     /* listen on UDP if at least one UDP client */
     
     for (i = 0; i < client_count; i++)
 	if (clients[i].peer.type == 'U') {
-	    if (pthread_create(&udpserverth, &joinable, udpserverrd, NULL))
+	    if (pthread_create(&udpserverth, NULL /*&joinable*/, udpserverrd, NULL))
 		errx("pthread_create failed");
 	    break;
 	}
