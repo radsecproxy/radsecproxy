@@ -1352,6 +1352,7 @@ int tlslistener(SSL_CTX *ssl_ctx) {
 	client = find_client('T', (struct sockaddr *)&from, NULL);
 	if (!client) {
 	    printf("ignoring request, not a known TLS client\n");
+	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
 	    continue;
 	}
