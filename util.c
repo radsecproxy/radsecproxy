@@ -45,6 +45,18 @@ void err(char *format, ...) {
         fprintf(stderr, "\n");
 }
 
+char *stringcopy(char *s, int len) {
+    char *r;
+    if (!len)
+	len = strlen(s);
+    r = malloc(len + 1);
+    if (!r)
+	errx("stringcopy: malloc failed");
+    memcpy(r, s, len);
+    r[len] = '\0';
+    return r;
+}
+		
 char *addr2string(struct sockaddr *addr, socklen_t len) {
     struct sockaddr_in6 *sa6;
     struct sockaddr_in sa4;

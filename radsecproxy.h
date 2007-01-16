@@ -42,6 +42,12 @@
 #define RAD_Attr_Length 1
 #define RAD_Attr_Value 2
 
+struct options {
+    char *tlscertificatefile;
+    char *tlscertificatekeyfile;
+    char *udpserverport;
+};
+    
 /* requests that a client will send */
 struct request {
     unsigned char *buf;
@@ -101,6 +107,7 @@ struct server {
 
 void errx(char *format, ...);
 void err(char *format, ...);
+char *stringcopy(char *s, int len);
 char *addr2string(struct sockaddr *addr, socklen_t len);
 int bindport(int type, char *port);
 int connectport(int type, char *host, char *port);

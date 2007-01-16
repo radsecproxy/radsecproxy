@@ -58,6 +58,7 @@
 #include <openssl/hmac.h>
 #include "radsecproxy.h"
 
+static struct options options;
 static struct client clients[MAX_PEERS];
 static struct server servers[MAX_PEERS];
 
@@ -66,10 +67,9 @@ static int server_count = 0;
 
 static struct replyq udp_server_replyq;
 static int udp_server_sock = -1;
-static char *udp_server_port = DEFAULT_UDP_PORT;
 static pthread_mutex_t *ssl_locks;
 static long *ssl_lock_count;
-static SSL_CTX *ssl_ctx_cl;
+static SSL_CTX *ssl_ctx = NULL;
 extern int optind;
 extern char *optarg;
 
@@ -86,8 +86,14 @@ void ssl_locking_callback(int mode, int type, const char *file, int line) {
 	pthread_mutex_unlock(&ssl_locks[type]);
 }
 
-void ssl_locks_setup() {
+void ssl_init() {
     int i;
+    unsigned long error;
+    
+    if (!options.tlscertificatefile || !options.tlscertificatekeyfile) {
+	printf("TLSCertificateFile and TLSCertificateKeyFile must be specified for TLS\n");
+	exit(1);
+    }
 
     ssl_locks = malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
     ssl_lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
@@ -95,10 +101,36 @@ void ssl_locks_setup() {
 	ssl_lock_count[i] = 0;
 	pthread_mutex_init(&ssl_locks[i], NULL);
     }
-
     CRYPTO_set_id_callback(ssl_thread_id);
     CRYPTO_set_locking_callback(ssl_locking_callback);
-}
+
+    SSL_load_error_strings();
+    SSL_library_init();
+
+    while (!RAND_status()) {
+	time_t t = time(NULL);
+	pid_t pid = getpid();
+	RAND_seed((unsigned char *)&t, sizeof(time_t));
+        RAND_seed((unsigned char *)&pid, sizeof(pid));
+    }
+
+    ssl_ctx = SSL_CTX_new(TLSv1_method());
+    if (!ssl_ctx) {
+	printf("failed to initialise ssl");
+	exit(1);
+    }
+
+    if (!SSL_CTX_use_certificate_file(ssl_ctx, options.tlscertificatefile, SSL_FILETYPE_PEM)) {
+        while ((error = ERR_get_error()))
+            err("SSL: %s", ERR_error_string(error, NULL));
+        errx("Failed to load certificate");
+    }
+    if (!SSL_CTX_use_PrivateKey_file(ssl_ctx, options.tlscertificatekeyfile, SSL_FILETYPE_PEM)) {
+	while ((error = ERR_get_error()))
+	    err("SSL: %s", ERR_error_string(error, NULL));
+	errx("Failed to load private key");
+    }
+}    
 
 void printauth(char *s, unsigned char *t) {
     int i;
@@ -299,7 +331,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	if ((server->sock = connecttoserver(server->peer.addrinfo)) < 0)
 	    continue;
 	SSL_free(server->peer.ssl);
-	server->peer.ssl = SSL_new(ssl_ctx_cl);
+	server->peer.ssl = SSL_new(ssl_ctx);
 	SSL_set_fd(server->peer.ssl, server->sock);
 	if (SSL_connect(server->peer.ssl) > 0)
 	    break;
@@ -1217,11 +1249,11 @@ void *udpserverrd(void *arg) {
     struct client *fr;
     pthread_t udpserverwrth;
     
-    if ((udp_server_sock = bindport(SOCK_DGRAM, udp_server_port)) < 0) {
+    if ((udp_server_sock = bindport(SOCK_DGRAM, options.udpserverport)) < 0) {
         printf("udpserverrd: socket/bind failed\n");
 	exit(1);
     }
-    printf("udpserverrd: listening on UDP port %s\n", udp_server_port);
+    printf("udpserverrd: listening on UDP port %s\n", options.udpserverport);
 
     if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	errx("pthread_create failed");
@@ -1328,7 +1360,7 @@ void *tlsserverrd(void *arg) {
     pthread_exit(NULL);
 }
 
-int tlslistener(SSL_CTX *ssl_ctx) {
+int tlslistener() {
     pthread_t tlsserverth;
     int s, snew;
     struct sockaddr_storage from;
@@ -1395,11 +1427,7 @@ char *parsehostport(char *s, struct peer *peer) {
 	printf("missing host/address\n");
 	exit(1);
     }
-    peer->host = malloc(p - field + 1);
-    if (!peer->host)
-	errx("malloc failed");
-    memcpy(peer->host, field, p - field);
-    peer->host[p - field] = '\0';
+    peer->host = stringcopy(field, p - field);
     if (ipv6) {
 	p++;
 	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n') {
@@ -1415,13 +1443,9 @@ char *parsehostport(char *s, struct peer *peer) {
 		printf("syntax error, : but no following port\n");
 		exit(1);
 	    }
-	    peer->port = malloc(p - field + 1);
-	    if (!peer->port)
-		errx("malloc failed");
-	    memcpy(peer->port, field, p - field);
-	    peer->port[p - field] = '\0';
+	    peer->port = stringcopy(field, p - field);
     } else
-        peer->port = NULL;
+	peer->port = stringcopy(peer->type == 'U' ? DEFAULT_UDP_PORT : DEFAULT_TLS_PORT, 0);
     return p;
 }
 
@@ -1435,14 +1459,10 @@ char *parserealmlist(char *s, struct server *server) {
 	    n++;
     l = p - s;
     if (!l) {
-	server->realms = NULL;
-	return p;
+	printf("realm list must be specified\n");
+	exit(1);
     }
-    server->realmdata = malloc(l + 1);
-    if (!server->realmdata)
-	errx("malloc failed");
-    memcpy(server->realmdata, s, l);
-    server->realmdata[l] = '\0';
+    server->realmdata = stringcopy(s, l);
     server->realms = malloc((1+n) * sizeof(char *));
     if (!server->realms)
 	errx("malloc failed");
@@ -1508,15 +1528,9 @@ void getconfig(const char *serverfile, const char *clientfile) {
 	peer->type = *p;
 	for (p++; *p == ' ' || *p == '\t'; p++);
 	p = parsehostport(p, peer);
-	if (!peer->port)
-	    peer->port = (peer->type == 'U' ? DEFAULT_UDP_PORT : DEFAULT_TLS_PORT);
 	for (; *p == ' ' || *p == '\t'; p++);
 	if (serverfile) {
 	    p = parserealmlist(p, server);
-	    if (!server->realms) {
-		printf("realm list must be specified\n");
-		exit(1);
-	    }
 	    for (; *p == ' ' || *p == '\t'; p++);
 	}
 	field = p;
@@ -1527,13 +1541,9 @@ void getconfig(const char *serverfile, const char *clientfile) {
 		printf("secret must be specified for UDP\n");
 		exit(1);
 	    }
-	    peer->secret = DEFAULT_TLS_SECRET;
+	    peer->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
 	} else {
-	    peer->secret = malloc(p - field + 1);
-	    if (!peer->secret)
-		errx("malloc failed");
-	    memcpy(peer->secret, field, p - field);
-	    peer->secret[p - field] = '\0';
+	    peer->secret = stringcopy(field, p - field);
 	    /* check that rest of line only white space */
 	    for (; *p == ' ' || *p == '\t'; p++);
 	    if (*p && *p != '\n') {
@@ -1586,6 +1596,62 @@ void getconfig(const char *serverfile, const char *clientfile) {
     fclose(f);
 }
 
+void getmainconfig(const char *configfile) {
+    FILE *f;
+    char line[1024];
+    char *p, *opt, *endopt, *val, *endval;
+    
+    printf("opening file %s for reading\n", configfile);
+    f = fopen(configfile, "r");
+    if (!f)
+	errx("getmainconfig failed to open %s for reading", configfile);
+
+    memset(&options, 0, sizeof(options));
+
+    while (fgets(line, 1024, f)) {
+	for (p = line; *p == ' ' || *p == '\t'; p++);
+	if (!*p || *p == '#' || *p == '\n')
+	    continue;
+	opt = p++;
+	for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
+	endopt = p - 1;
+	for (; *p == ' ' || *p == '\t'; p++);
+	if (!*p || *p == '\n') {
+	    endopt[1] = '\0';
+	    printf("error in %s, option %s has no value\n", configfile, opt);
+	    exit(1);
+	}
+	val = p;
+	for (; *p && *p != '\n'; p++)
+	    if (*p != ' ' && *p != '\t')
+		endval = p;
+	endopt[1] = '\0';
+	endval[1] = '\0';
+	printf("getmainconfig: %s = %s\n", opt, val);
+	
+	if (!strcasecmp(opt, "TLSCertificateFile")) {
+	    options.tlscertificatefile = stringcopy(val, 0);
+	    continue;
+	}
+	if (!strcasecmp(opt, "TLSCertificateKeyFile")) {
+	    options.tlscertificatekeyfile = stringcopy(val, 0);
+	    continue;
+	}
+	if (!strcasecmp(opt, "UDPServerPort")) {
+	    options.udpserverport = stringcopy(val, 0);
+	    continue;
+	}
+
+	printf("error in %s, unknown option %s\n", configfile, opt);
+	exit(1);
+    }
+    fclose(f);
+
+    if (!options.udpserverport)
+	options.udpserverport = stringcopy(DEFAULT_UDP_PORT, 0);
+}
+
+#if 0
 void parseargs(int argc, char **argv) {
     int c;
 
@@ -1605,20 +1671,18 @@ void parseargs(int argc, char **argv) {
     printf("radsecproxy [ -p UDP-port ]\n");
     exit(1);
 }
-	       
+#endif
+
 int main(int argc, char **argv) {
-    SSL_CTX *ssl_ctx_srv;
-    unsigned long error;
     pthread_t udpserverth;
     //    pthread_attr_t joinable;
     int i;
     
-    parseargs(argc, argv);
+    //    parseargs(argc, argv);
+    getmainconfig("radsecproxy.conf");
     getconfig("servers.conf", NULL);
     getconfig(NULL, "clients.conf");
     
-    ssl_locks_setup();
-
     //    pthread_attr_init(&joinable);
     //    pthread_attr_setdetachstate(&joinable, PTHREAD_CREATE_JOINABLE);
    
@@ -1630,53 +1694,27 @@ int main(int argc, char **argv) {
 		errx("pthread_create failed");
 	    break;
 	}
-    
-    /* SSL setup */
-    SSL_load_error_strings();
-    SSL_library_init();
 
-    while (!RAND_status()) {
-	time_t t = time(NULL);
-	pid_t pid = getpid();
-	RAND_seed((unsigned char *)&t, sizeof(time_t));
-        RAND_seed((unsigned char *)&pid, sizeof(pid));
-    }
-    
-    /* initialise client part and start clients */
-    ssl_ctx_cl = SSL_CTX_new(TLSv1_client_method());
-    if (!ssl_ctx_cl)
-	errx("no ssl ctx");
-    
-    for (i = 0; i < server_count; i++) {
+    /* only initialise ssl here if at least one TLS server defined */
+    for (i = 0; i < server_count; i++)
+	if (servers[i].peer.type == 'T') {
+	    ssl_init();
+	    break;
+	}
+
+    for (i = 0; i < server_count; i++)
 	if (pthread_create(&servers[i].clientth, NULL, clientwr, (void *)&servers[i]))
 	    errx("pthread_create failed");
-    }
 
+    /* start listener if at least one TLS client defined */
     for (i = 0; i < client_count; i++)
-	if (clients[i].peer.type == 'T')
-	    break;
+	if (clients[i].peer.type == 'T') {
+	    if (!ssl_ctx)
+		ssl_init();
+	    return tlslistener();
+	}
 
-    if (i == client_count) {
-	printf("No TLS clients defined, not starting TLS listener\n");
-	/* just hang around doing nothing, anything to do here? */
-	for (;;)
-	    sleep(1000);
-    }
-    
-    /* setting up server/daemon part */
-    ssl_ctx_srv = SSL_CTX_new(TLSv1_server_method());
-    if (!ssl_ctx_srv)
-	errx("no ssl ctx");
-    if (!SSL_CTX_use_certificate_file(ssl_ctx_srv, "/tmp/server.pem", SSL_FILETYPE_PEM)) {
-        while ((error = ERR_get_error()))
-            err("SSL: %s", ERR_error_string(error, NULL));
-        errx("Failed to load certificate");
-    }
-    if (!SSL_CTX_use_PrivateKey_file(ssl_ctx_srv, "/tmp/server.key", SSL_FILETYPE_PEM)) {
-	while ((error = ERR_get_error()))
-	    err("SSL: %s", ERR_error_string(error, NULL));
-	errx("Failed to load private key");
-    }
-
-    return tlslistener(ssl_ctx_srv);
+    /* just hang around doing nothing, anything to do here? */
+    for (;;)
+	sleep(1000);
 }
