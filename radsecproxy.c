@@ -6,10 +6,6 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
-/* BUGS:
- * peers can not yet be specified with literal IPv6 addresses due to port syntax
- */
-
 /* TODO:
  * make our server ignore client retrans and do its own instead?
  * accounting
@@ -69,7 +65,8 @@ static struct replyq udp_server_replyq;
 static int udp_server_sock = -1;
 static pthread_mutex_t *ssl_locks;
 static long *ssl_lock_count;
-static SSL_CTX *ssl_ctx = NULL;
+static SSL_CTX *ssl_ctx_cl = NULL;
+static SSL_CTX *ssl_ctx_srv = NULL;
 extern int optind;
 extern char *optarg;
 
@@ -86,9 +83,50 @@ void ssl_locking_callback(int mode, int type, const char *file, int line) {
 	pthread_mutex_unlock(&ssl_locks[type]);
 }
 
-void ssl_init() {
+static int verify_cb(int ok, X509_STORE_CTX *ctx) {
+  char buf[256];
+  X509 *err_cert;
+  int err, depth;
+
+  err_cert = X509_STORE_CTX_get_current_cert(ctx);
+  err = X509_STORE_CTX_get_error(ctx);
+  depth = X509_STORE_CTX_get_error_depth(ctx);
+
+  if (depth > MAX_CERT_DEPTH) {
+      ok = 0;
+      err = X509_V_ERR_CERT_CHAIN_TOO_LONG;
+      X509_STORE_CTX_set_error(ctx, err);
+  }
+
+  if (!ok) {
+      X509_NAME_oneline(X509_get_subject_name(err_cert), buf, 256);
+      printf("verify error: num=%d:%s:depth=%d:%s\n", err, X509_verify_cert_error_string(err), depth, buf);
+
+      switch (err) {
+      case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
+	  X509_NAME_oneline(X509_get_issuer_name(ctx->current_cert), buf, 256);
+	  printf("issuer=%s\n", buf);
+	  break;
+      case X509_V_ERR_CERT_NOT_YET_VALID:
+      case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
+	  printf("Certificate not yet valid\n");
+	  break;
+      case X509_V_ERR_CERT_HAS_EXPIRED:
+	  printf("Certificate has expired\n");
+	  break;
+      case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
+	  printf("Certificate no longer valid (after notAfter)\n");
+	  break;
+      }
+  }
+  printf("certificate verify returns %d\n", ok);
+  return ok;
+}
+
+void ssl_init(SSL_CTX **ctx_srv, SSL_CTX **ctx_cl) {
     int i;
     unsigned long error;
+    STACK_OF(X509_NAME) *calist;
     
     if (!options.tlscertificatefile || !options.tlscertificatekeyfile) {
 	printf("TLSCertificateFile and TLSCertificateKeyFile must be specified for TLS\n");
@@ -114,22 +152,88 @@ void ssl_init() {
         RAND_seed((unsigned char *)&pid, sizeof(pid));
     }
 
-    ssl_ctx = SSL_CTX_new(TLSv1_method());
-    if (!ssl_ctx) {
-	printf("failed to initialise ssl");
-	exit(1);
+#if 0    
+    if (ctx_srv) {
+	*ctx_srv = SSL_CTX_new(TLSv1_server_method());
+	if (!SSL_CTX_use_certificate_chain_file(*ctx_srv, options.tlscertificatefile) ||
+	    !SSL_CTX_use_PrivateKey_file(*ctx_srv, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
+	    !SSL_CTX_check_private_key(*ctx_srv))
+	    goto errexit;
+#if 1	
+#if 1
+	calist = (options.tlscacertificatefile
+		  ? SSL_load_client_CA_file(options.tlscacertificatefile)
+		  : sk_X509_NAME_new_null());
+	if (!calist || (options.tlscacertificatepath &&
+			 !SSL_add_dir_cert_subjects_to_stack(calist, options.tlscacertificatepath)))
+	    goto errexit;
+	SSL_CTX_set_client_CA_list(*ctx_srv, calist);
+#endif	
+	if (!options.tlscacertificatefile && !options.tlscacertificatepath) {
+	    printf("CA Certificate file/path need to be configured\n");
+	    exit(1);
+	}
+	if (!SSL_CTX_load_verify_locations(*ctx_srv, options.tlscacertificatefile, options.tlscacertificatepath))
+	    goto errexit;
+	SSL_CTX_set_verify(*ctx_srv, SSL_VERIFY_PEER, verify_cb);
+	SSL_CTX_set_verify_depth(*ctx_srv, MAX_CERT_DEPTH + 1);
+#endif	
     }
-
-    if (!SSL_CTX_use_certificate_file(ssl_ctx, options.tlscertificatefile, SSL_FILETYPE_PEM)) {
-        while ((error = ERR_get_error()))
-            err("SSL: %s", ERR_error_string(error, NULL));
-        errx("Failed to load certificate");
+    if (ctx_cl) {
+	*ctx_cl = SSL_CTX_new(TLSv1_client_method());
+	if (!SSL_CTX_use_certificate_chain_file(*ctx_cl, options.tlscertificatefile) ||
+	    !SSL_CTX_use_PrivateKey_file(*ctx_cl, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
+	    !SSL_CTX_check_private_key(*ctx_cl))
+	    goto errexit;
+	if (!options.tlscacertificatefile && !options.tlscacertificatepath) {
+	    printf("CA Certificate file/path need to be configured\n");
+	    exit(1);
+	}
+	if (!SSL_CTX_load_verify_locations(*ctx_cl, options.tlscacertificatefile, options.tlscacertificatepath))
+	    goto errexit;
+	SSL_CTX_set_verify(*ctx_cl, SSL_VERIFY_PEER, verify_cb);
+	SSL_CTX_set_verify_depth(*ctx_cl, MAX_CERT_DEPTH + 1);
     }
-    if (!SSL_CTX_use_PrivateKey_file(ssl_ctx, options.tlscertificatekeyfile, SSL_FILETYPE_PEM)) {
-	while ((error = ERR_get_error()))
-	    err("SSL: %s", ERR_error_string(error, NULL));
-	errx("Failed to load private key");
+#else
+    if (ctx_srv) {
+	*ctx_srv = SSL_CTX_new(TLSv1_server_method());
+	if (!SSL_CTX_use_certificate_chain_file(*ctx_srv, options.tlscertificatefile) ||
+	    !SSL_CTX_use_PrivateKey_file(*ctx_srv, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
+	    !SSL_CTX_check_private_key(*ctx_srv))
+	    goto errexit;
+#if 0	
+	calist = (SSL_load_client_CA_file(options.tlscacertificatefile));
+	SSL_CTX_set_client_CA_list(*ctx_srv, calist);
+#endif	
+	if (!SSL_CTX_load_verify_locations(*ctx_srv, options.tlscacertificatefile, NULL/*options.tlscacertificatepath*/))
+	    goto errexit;
+	
+	SSL_CTX_set_verify(*ctx_srv, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
+	SSL_CTX_set_verify_depth(*ctx_srv, MAX_CERT_DEPTH + 1);
     }
+    if (ctx_cl) {
+	*ctx_cl = SSL_CTX_new(TLSv1_client_method());
+	if (!SSL_CTX_use_certificate_chain_file(*ctx_cl, options.tlscertificatefile) ||
+	    !SSL_CTX_use_PrivateKey_file(*ctx_cl, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
+	    !SSL_CTX_check_private_key(*ctx_cl))
+	    goto errexit;
+	if (!SSL_CTX_load_verify_locations(*ctx_cl,options.tlscacertificatefile, NULL/*options.tlscacertificatepath*/))
+	    goto errexit;
+	
+	SSL_CTX_set_verify(*ctx_cl, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
+	SSL_CTX_set_verify_depth(*ctx_cl, MAX_CERT_DEPTH + 1);
+#if 0	
+	calist = (SSL_load_client_CA_file(options.tlscacertificatefile));
+	SSL_CTX_set_client_CA_list(*ctx_cl, calist);
+#endif	
+    }
+#endif    
+    return;
+    
+ errexit:
+    while ((error = ERR_get_error()))
+	err("SSL: %s", ERR_error_string(error, NULL));
+    exit(1);
 }    
 
 void printauth(char *s, unsigned char *t) {
@@ -295,10 +399,54 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     return rad;
 }
 
+int tlsverifycert(struct peer *peer) {
+    int i, l, loc;
+    X509 *cert;
+    X509_NAME *nm;
+    X509_NAME_ENTRY *e;
+    unsigned char *v;
+    unsigned long error;
+
+#if 1
+    if (SSL_get_verify_result(peer->ssl) != X509_V_OK) {
+	printf("tlsverifycert: basic validation failed\n");
+	while ((error = ERR_get_error()))
+	    err("clientwr: TLS: %s", ERR_error_string(error, NULL));
+	return 0;
+    }
+#endif    
+    cert = SSL_get_peer_certificate(peer->ssl);
+    if (!cert) {
+	printf("tlsverifycert: failed to obtain certificate\n");
+	return 0;
+    }
+    nm = X509_get_subject_name(cert);
+    loc = -1;
+    for (;;) {
+	loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
+	if (loc == -1)
+	    break;
+	e = X509_NAME_get_entry(nm, loc);
+	l = ASN1_STRING_to_UTF8(&v, X509_NAME_ENTRY_get_data(e));
+	if (l < 0)
+	    continue;
+	printf("cn: ");
+	for (i = 0; i < l; i++)
+	    printf("%c", v[i]);
+	printf("\n");
+	if (l == strlen(peer->host) && !strncasecmp(peer->host, v, l)) {
+	    printf("tlsverifycert: Found cn matching host %s, All OK\n", peer->host);
+	    return 1;
+	}
+	printf("tlsverifycert: cn not matching host %s\n", peer->host);
+    }
+    X509_free(cert);
+    return 0;
+}
+
 void tlsconnect(struct server *server, struct timeval *when, char *text) {
     struct timeval now;
     time_t elapsed;
-    unsigned long error;
 
     printf("tlsconnect called from %s\n", text);
     pthread_mutex_lock(&server->lock);
@@ -331,12 +479,10 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	if ((server->sock = connecttoserver(server->peer.addrinfo)) < 0)
 	    continue;
 	SSL_free(server->peer.ssl);
-	server->peer.ssl = SSL_new(ssl_ctx);
+	server->peer.ssl = SSL_new(ssl_ctx_cl);
 	SSL_set_fd(server->peer.ssl, server->sock);
-	if (SSL_connect(server->peer.ssl) > 0)
+	if (SSL_connect(server->peer.ssl) > 0 && tlsverifycert(&server->peer))
 	    break;
-	while ((error = ERR_get_error()))
-	    err("tlsconnect: TLS: %s", ERR_error_string(error, NULL));
     }
     printf("tlsconnect: TLS connection to %s port %s up\n", server->peer.host, server->peer.port);
     gettimeofday(&server->lastconnecttry, NULL);
@@ -1329,30 +1475,32 @@ void *tlsserverrd(void *arg) {
         errx("accept failed, child exiting");
     }
 
-    if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client))
-	errx("pthread_create failed");
+    if (1 /*tlsverifycert(&client->peer)*/) {
+	if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client))
+	    errx("pthread_create failed");
     
-    for (;;) {
-	buf = radtlsget(client->peer.ssl);
-	if (!buf)
-	    break;
-	printf("tlsserverrd: got Radius message from %s\n", client->peer.host);
-	memset(&rq, 0, sizeof(struct request));
-	to = radsrv(&rq, buf, client);
-	if (!to) {
-	    printf("ignoring request, no place to send it\n");
-	    continue;
+	for (;;) {
+	    buf = radtlsget(client->peer.ssl);
+	    if (!buf)
+		break;
+	    printf("tlsserverrd: got Radius message from %s\n", client->peer.host);
+	    memset(&rq, 0, sizeof(struct request));
+	    to = radsrv(&rq, buf, client);
+	    if (!to) {
+		printf("ignoring request, no place to send it\n");
+		continue;
+	    }
+	    sendrq(to, client, &rq);
 	}
-	sendrq(to, client, &rq);
+	printf("tlsserverrd: connection lost\n");
+	// stop writer by setting peer.ssl to NULL and give signal in case waiting for data
+	client->peer.ssl = NULL;
+	pthread_mutex_lock(&client->replyq->count_mutex);
+	pthread_cond_signal(&client->replyq->count_cond);
+	pthread_mutex_unlock(&client->replyq->count_mutex);
+	printf("tlsserverrd: waiting for writer to end\n");
+	pthread_join(tlsserverwrth, NULL);
     }
-    printf("tlsserverrd: connection lost\n");
-    // stop writer by setting peer.ssl to NULL and give signal in case waiting for data
-    client->peer.ssl = NULL;
-    pthread_mutex_lock(&client->replyq->count_mutex);
-    pthread_cond_signal(&client->replyq->count_cond);
-    pthread_mutex_unlock(&client->replyq->count_mutex);
-    printf("tlsserverrd: waiting for writer to end\n");
-    pthread_join(tlsserverwrth, NULL);
     s = SSL_get_fd(ssl);
     SSL_free(ssl);
     close(s);
@@ -1395,7 +1543,7 @@ int tlslistener() {
 	    close(snew);
 	    continue;
 	}
-	client->peer.ssl = SSL_new(ssl_ctx);
+	client->peer.ssl = SSL_new(ssl_ctx_srv);
 	SSL_set_fd(client->peer.ssl, snew);
 	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)client))
 	    errx("pthread_create failed");
@@ -1629,6 +1777,14 @@ void getmainconfig(const char *configfile) {
 	endval[1] = '\0';
 	printf("getmainconfig: %s = %s\n", opt, val);
 	
+	if (!strcasecmp(opt, "TLSCACertificateFile")) {
+	    options.tlscacertificatefile = stringcopy(val, 0);
+	    continue;
+	}
+	if (!strcasecmp(opt, "TLSCACertificatePath")) {
+	    options.tlscacertificatepath = stringcopy(val, 0);
+	    continue;
+	}
 	if (!strcasecmp(opt, "TLSCertificateFile")) {
 	    options.tlscertificatefile = stringcopy(val, 0);
 	    continue;
@@ -1676,7 +1832,7 @@ void parseargs(int argc, char **argv) {
 int main(int argc, char **argv) {
     pthread_t udpserverth;
     //    pthread_attr_t joinable;
-    int i;
+    int i, tlsclients = 0, tlsservers = 0;
     
     //    parseargs(argc, argv);
     getmainconfig("radsecproxy.conf");
@@ -1687,32 +1843,31 @@ int main(int argc, char **argv) {
     //    pthread_attr_setdetachstate(&joinable, PTHREAD_CREATE_JOINABLE);
    
     /* listen on UDP if at least one UDP client */
-    
     for (i = 0; i < client_count; i++)
 	if (clients[i].peer.type == 'U') {
 	    if (pthread_create(&udpserverth, NULL /*&joinable*/, udpserverrd, NULL))
 		errx("pthread_create failed");
 	    break;
 	}
-
-    /* only initialise ssl here if at least one TLS server defined */
-    for (i = 0; i < server_count; i++)
-	if (servers[i].peer.type == 'T') {
-	    ssl_init();
+    
+    for (i = 0; i < client_count; i++)
+	if (clients[i].peer.type == 'T') {
+	    tlsclients = 1;
 	    break;
 	}
-
+    for (i = 0; i < server_count; i++)
+	if (servers[i].peer.type == 'T') {
+	    tlsservers = 1;
+	    break;
+	}
+    ssl_init(tlsclients ? &ssl_ctx_srv : NULL, tlsservers ? &ssl_ctx_cl : NULL);
+    
     for (i = 0; i < server_count; i++)
 	if (pthread_create(&servers[i].clientth, NULL, clientwr, (void *)&servers[i]))
 	    errx("pthread_create failed");
 
-    /* start listener if at least one TLS client defined */
-    for (i = 0; i < client_count; i++)
-	if (clients[i].peer.type == 'T') {
-	    if (!ssl_ctx)
-		ssl_init();
-	    return tlslistener();
-	}
+    if (tlsclients)
+	return tlslistener();
 
     /* just hang around doing nothing, anything to do here? */
     for (;;)

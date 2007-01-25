@@ -19,6 +19,7 @@
 #define DEFAULT_UDP_PORT "1812"
 #define DEFAULT_TLS_PORT "2083"
 #define REQUEST_TIMEOUT 5
+#define MAX_CERT_DEPTH 5
 
 #define RAD_Access_Request 1
 #define RAD_Access_Accept 2
@@ -43,6 +44,8 @@
 #define RAD_Attr_Value 2
 
 struct options {
+    char *tlscacertificatefile;
+    char *tlscacertificatepath;
     char *tlscertificatefile;
     char *tlscertificatekeyfile;
     char *udpserverport;
