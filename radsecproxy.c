@@ -1315,6 +1315,8 @@ void *clientwr(void *arg) {
     int i;
     struct timeval now;
     struct timespec timeout;
+
+    memset(&timeout, 0, sizeof(struct timespec));
     
     if (server->peer.type == 'U') {
 	if ((server->sock = connecttoserver(server->peer.addrinfo)) < 0) {
@@ -1330,18 +1332,21 @@ void *clientwr(void *arg) {
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->newrq) {
-	    gettimeofday(&now, NULL);
-	    timeout.tv_sec = now.tv_sec + 1;
-	    timeout.tv_nsec = 0;
-	    printf("clientwr: waiting up to 1 sec for new request\n");
-	    pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
+	    if (timeout.tv_nsec) {
+		printf("clientwr: waiting up to %ld secs for new request\n", timeout.tv_nsec);
+		pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
+		timeout.tv_nsec = 0;
+	    } else {
+		printf("clientwr: waiting for new request\n");
+		pthread_cond_wait(&server->newrq_cond, &server->newrq_mutex);
+	    }
 	    if (server->newrq) {
 		printf("clientwr: got new request\n");
 		server->newrq = 0;
 	    }
 	}
 	pthread_mutex_unlock(&server->newrq_mutex);
-	       
+	
 	for (i = 0; i < MAX_REQUESTS; i++) {
 	    pthread_mutex_lock(&server->newrq_mutex);
 	    while (!server->requests[i].buf && i < MAX_REQUESTS)
@@ -1363,6 +1368,8 @@ void *clientwr(void *arg) {
 	    
 	    gettimeofday(&now, NULL);
             if (now.tv_sec <= rq->expiry.tv_sec) {
+		if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
+		    timeout.tv_sec = rq->expiry.tv_sec;
 		pthread_mutex_unlock(&server->newrq_mutex);
 		continue;
 	    }
@@ -1377,6 +1384,10 @@ void *clientwr(void *arg) {
 	    }
             pthread_mutex_unlock(&server->newrq_mutex);
 
+	    rq->expiry.tv_sec = now.tv_sec +
+		(server->peer.type == 'T' ? REQUEST_EXPIRY : REQUEST_EXPIRY / REQUEST_RETRIES);
+	    if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
+		timeout.tv_sec = rq->expiry.tv_sec;
 	    rq->tries++;
 	    clientradput(server, server->requests[i].buf);
 	    usleep(200000);
