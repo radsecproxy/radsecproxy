@@ -13,12 +13,13 @@
                             sizeof(struct sockaddr_in6))
 
 #define MAX_PEERS 256
-/* MAX_REQUESTS is 256 due to Radius' 8 bit ID field */
+/* MAX_REQUESTS must be 256 due to Radius' 8 bit ID field */
 #define MAX_REQUESTS 256
 #define DEFAULT_TLS_SECRET "mysecret"
 #define DEFAULT_UDP_PORT "1812"
 #define DEFAULT_TLS_PORT "2083"
-#define REQUEST_TIMEOUT 5
+#define REQUEST_EXPIRY 20
+#define REQUEST_RETRIES 3
 #define MAX_CERT_DEPTH 5
 
 #define RAD_Access_Request 1
@@ -51,7 +52,7 @@ struct options {
     char *udpserverport;
 };
     
-/* requests that a client will send */
+/* requests that our client will send */
 struct request {
     unsigned char *buf;
     uint8_t tries;

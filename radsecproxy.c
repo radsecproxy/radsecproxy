@@ -7,7 +7,6 @@
  */
 
 /* TODO:
- * make our server ignore client retrans and do its own instead?
  * accounting
  * radius keep alives (server status)
  * tls certificate validation, see below urls
@@ -710,8 +709,6 @@ void sendrq(struct server *to, struct client *from, struct request *rq) {
     if (!createmessageauth(rq->buf, rq->messageauthattrval, to->peer.secret))
 	return;
 
-    gettimeofday(&rq->expiry, NULL);
-    rq->expiry.tv_sec += 30;
     to->requests[i] = *rq;
 
     if (!to->newrq) {
@@ -1016,6 +1013,18 @@ struct server *id2server(char *id, uint8_t len) {
     return NULL;
 }
 
+int rqinqueue(struct server *to, struct client *from, uint8_t id) {
+    int i;
+    
+    pthread_mutex_lock(&to->newrq_mutex);
+    for (i = 0; i < MAX_REQUESTS; i++)
+	if (to->requests[i].buf && to->requests[i].origid == id && to->requests[i].from == from)
+	    break;
+    pthread_mutex_unlock(&to->newrq_mutex);
+    
+    return i < MAX_REQUESTS;
+}
+	
 struct server *radsrv(struct request *rq, char *buf, struct client *from) {
     uint8_t code, id, *auth, *attr, attrvallen;
     uint8_t *usernameattr = NULL, *userpwdattr = NULL, *tunnelpwdattr = NULL, *messageauthattr = NULL;
@@ -1075,6 +1084,11 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
     to = id2server(&usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
     if (!to) {
 	printf("radsrv: ignoring request, don't know where to send it\n");
+	return NULL;
+    }
+
+    if (rqinqueue(to, from, id)) {
+	printf("radsrv: ignoring request from host %s with id %d, already got one\n", from->peer.host, id);
 	return NULL;
     }
     
@@ -1300,6 +1314,7 @@ void *clientwr(void *arg) {
     pthread_t clientrdth;
     int i;
     struct timeval now;
+    struct timespec timeout;
     
     if (server->peer.type == 'U') {
 	if ((server->sock = connecttoserver(server->peer.addrinfo)) < 0) {
@@ -1314,12 +1329,17 @@ void *clientwr(void *arg) {
 
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
-	while (!server->newrq) {
-	    printf("clientwr: waiting for signal\n");
-	    pthread_cond_wait(&server->newrq_cond, &server->newrq_mutex);
-	    printf("clientwr: got signal\n");
+	if (!server->newrq) {
+	    gettimeofday(&now, NULL);
+	    timeout.tv_sec = now.tv_sec + 1;
+	    timeout.tv_nsec = 0;
+	    printf("clientwr: waiting up to 1 sec for new request\n");
+	    pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
+	    if (server->newrq) {
+		printf("clientwr: got new request\n");
+		server->newrq = 0;
+	    }
 	}
-	server->newrq = 0;
 	pthread_mutex_unlock(&server->newrq_mutex);
 	       
 	for (i = 0; i < MAX_REQUESTS; i++) {
@@ -1330,8 +1350,6 @@ void *clientwr(void *arg) {
 		pthread_mutex_unlock(&server->newrq_mutex);
 		break;
 	    }
-
-	    gettimeofday(&now, NULL);
 	    rq = server->requests + i;
 
             if (rq->received) {
@@ -1342,22 +1360,26 @@ void *clientwr(void *arg) {
                 pthread_mutex_unlock(&server->newrq_mutex);
                 continue;
             }
-            if (now.tv_sec > rq->expiry.tv_sec) {
-		printf("clientwr: removing expired packet from queue\n");
-                free(rq->buf);
-                /* setting this to NULL means that it can be reused */
-                rq->buf = NULL;
-                pthread_mutex_unlock(&server->newrq_mutex);
-                continue;
-            }
-
-	    if (rq->tries)
-		continue; // not re-sending (yet)
 	    
-	    rq->tries++;
+	    gettimeofday(&now, NULL);
+            if (now.tv_sec <= rq->expiry.tv_sec) {
+		pthread_mutex_unlock(&server->newrq_mutex);
+		continue;
+	    }
+
+	    if (rq->tries == (server->peer.type == 'T' ? 1 : REQUEST_RETRIES)) {
+		printf("clientwr: removing expired packet from queue\n");
+		free(rq->buf);
+		/* setting this to NULL means that it can be reused */
+		rq->buf = NULL;
+		pthread_mutex_unlock(&server->newrq_mutex);
+		continue;
+	    }
             pthread_mutex_unlock(&server->newrq_mutex);
-            
+
+	    rq->tries++;
 	    clientradput(server, server->requests[i].buf);
+	    usleep(200000);
 	}
     }
     /* should do more work to maintain TLS connections, keepalives etc */
