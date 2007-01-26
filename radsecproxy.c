@@ -54,10 +54,14 @@
 #include "radsecproxy.h"
 
 static struct options options;
-static struct client clients[MAX_PEERS];
-static struct server servers[MAX_PEERS];
+static struct client *clients;
+static struct server *servers;
 
+static int client_udp_count = 0;
+static int client_tls_count = 0;
 static int client_count = 0;
+static int server_udp_count = 0;
+static int server_tls_count = 0;
 static int server_count = 0;
 
 static struct replyq udp_server_replyq;
@@ -1662,51 +1666,77 @@ void getconfig(const char *serverfile, const char *clientfile) {
     FILE *f;
     char line[1024];
     char *p, *field, **r;
+    const char *file;
     struct client *client;
     struct server *server;
     struct peer *peer;
-    int *count;
-    
+    int i, count, *ucount, *tcount;
+ 
+    file = serverfile ? serverfile : clientfile;
+    f = fopen(file, "r");
+    if (!f)
+	errx("getconfig failed to open %s for reading", file);
+    printf("opening file %s for reading\n", file);
     if (serverfile) {
-	printf("opening file %s for reading\n", serverfile);
-	f = fopen(serverfile, "r");
-	if (!f)
-	    errx("getconfig failed to open %s for reading", serverfile);
-	count = &server_count;
+	ucount = &server_udp_count;
+	tcount = &server_tls_count;
     } else {
-	printf("opening file %s for reading\n", clientfile);
-	f = fopen(clientfile, "r");
-	if (!f)
-	    errx("getconfig failed to open %s for reading", clientfile);
-	udp_server_replyq.replies = malloc(4 * MAX_REQUESTS * sizeof(struct reply));
+	ucount = &client_udp_count;
+	tcount = &client_tls_count;
+    }
+    while (fgets(line, 1024, f)) {
+	for (p = line; *p == ' ' || *p == '\t'; p++);
+	switch (*p) {
+	case '#':
+	case '\n':
+	    break;
+	case 'T':
+	    (*tcount)++;
+	    break;
+	case 'U':
+	    (*ucount)++;
+	    break;
+	default:
+	    printf("type must be U or T, got %c\n", *p);
+	    exit(1);
+	}
+    }
+
+    if (serverfile) {
+	count = server_count = server_udp_count + server_tls_count;
+	servers = calloc(count, sizeof(struct server));
+	if (!servers)
+	    errx("malloc failed");
+    } else {
+	count = client_count = client_udp_count + client_tls_count;
+	clients = calloc(count, sizeof(struct client));
+	if (!clients)
+	    errx("malloc failed");
+    }
+    
+    if (client_udp_count) {
+	udp_server_replyq.replies = malloc(client_udp_count * MAX_REQUESTS * sizeof(struct reply));
 	if (!udp_server_replyq.replies)
 	    errx("malloc failed");
-	udp_server_replyq.size = 4 * MAX_REQUESTS;
+	udp_server_replyq.size = client_udp_count * MAX_REQUESTS;
 	udp_server_replyq.count = 0;
 	pthread_mutex_init(&udp_server_replyq.count_mutex, NULL);
 	pthread_cond_init(&udp_server_replyq.count_cond, NULL);
-	count = &client_count;
     }    
     
-    *count = 0;
-    while (fgets(line, 1024, f) && *count < MAX_PEERS) {
+    rewind(f);
+    for (i = 0; fgets(line, 1024, f) && i < count; i++) {
 	if (serverfile) {
-	    server = &servers[*count];
-	    memset(server, 0, sizeof(struct server));
+	    server = &servers[i];
 	    peer = &server->peer;
 	} else {
-	    client = &clients[*count];
-	    memset(client, 0, sizeof(struct client));
+	    client = &clients[i];
 	    peer = &client->peer;
 	}
 	for (p = line; *p == ' ' || *p == '\t'; p++);
 	if (*p == '#' || *p == '\n')
 	    continue;
-	if (*p != 'U' && *p != 'T') {
-	    printf("server type must be U or T, got %c\n", *p);
-	    exit(1);
-	}
-	peer->type = *p;
+	peer->type = *p;	// we already know it must be U or T
 	for (p++; *p == ' ' || *p == '\t'; p++);
 	p = parsehostport(p, peer);
 	for (; *p == ' ' || *p == '\t'; p++);
@@ -1742,10 +1772,9 @@ void getconfig(const char *serverfile, const char *clientfile) {
 	if (serverfile) {
 	    pthread_mutex_init(&server->lock, NULL);
 	    server->sock = -1;
-	    server->requests = malloc(MAX_REQUESTS * sizeof(struct request));
+	    server->requests = calloc(MAX_REQUESTS, sizeof(struct request));
 	    if (!server->requests)
 		errx("malloc failed");
-	    memset(server->requests, 0, MAX_REQUESTS * sizeof(struct request));
 	    server->newrq = 0;
 	    pthread_mutex_init(&server->newrq_mutex, NULL);
 	    pthread_cond_init(&server->newrq_cond, NULL);
@@ -1756,7 +1785,7 @@ void getconfig(const char *serverfile, const char *clientfile) {
 		client->replyq = malloc(sizeof(struct replyq));
 		if (!client->replyq)
 		    errx("malloc failed");
-		client->replyq->replies = malloc(MAX_REQUESTS * sizeof(struct reply));
+		client->replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
 		if (!client->replyq->replies)
 		    errx("malloc failed");
 		client->replyq->size = MAX_REQUESTS;
@@ -1772,7 +1801,6 @@ void getconfig(const char *serverfile, const char *clientfile) {
 		printf(" %s", *r);
 	    printf("\n");
 	}
-	(*count)++;
     }
     fclose(f);
 }
@@ -1865,41 +1893,27 @@ void parseargs(int argc, char **argv) {
 int main(int argc, char **argv) {
     pthread_t udpserverth;
     //    pthread_attr_t joinable;
-    int i, tlsclients = 0, tlsservers = 0;
+    int i;
     
     //    parseargs(argc, argv);
     getmainconfig("radsecproxy.conf");
     getconfig("servers.conf", NULL);
     getconfig(NULL, "clients.conf");
-    
+
     //    pthread_attr_init(&joinable);
     //    pthread_attr_setdetachstate(&joinable, PTHREAD_CREATE_JOINABLE);
    
-    /* listen on UDP if at least one UDP client */
-    for (i = 0; i < client_count; i++)
-	if (clients[i].peer.type == 'U') {
-	    if (pthread_create(&udpserverth, NULL /*&joinable*/, udpserverrd, NULL))
-		errx("pthread_create failed");
-	    break;
-	}
-    
-    for (i = 0; i < client_count; i++)
-	if (clients[i].peer.type == 'T') {
-	    tlsclients = 1;
-	    break;
-	}
-    for (i = 0; i < server_count; i++)
-	if (servers[i].peer.type == 'T') {
-	    tlsservers = 1;
-	    break;
-	}
-    ssl_init(tlsclients ? &ssl_ctx_srv : NULL, tlsservers ? &ssl_ctx_cl : NULL);
+    if (client_udp_count)
+	if (pthread_create(&udpserverth, NULL /*&joinable*/, udpserverrd, NULL))
+	    errx("pthread_create failed");
+
+    ssl_init(client_tls_count ? &ssl_ctx_srv : NULL, server_tls_count ? &ssl_ctx_cl : NULL);
     
     for (i = 0; i < server_count; i++)
 	if (pthread_create(&servers[i].clientth, NULL, clientwr, (void *)&servers[i]))
 	    errx("pthread_create failed");
 
-    if (tlsclients)
+    if (client_tls_count)
 	return tlslistener();
 
     /* just hang around doing nothing, anything to do here? */

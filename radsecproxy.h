@@ -12,7 +12,6 @@
                             sizeof(struct sockaddr_in) : \
                             sizeof(struct sockaddr_in6))
 
-#define MAX_PEERS 256
 /* MAX_REQUESTS must be 256 due to Radius' 8 bit ID field */
 #define MAX_REQUESTS 256
 #define DEFAULT_TLS_SECRET "mysecret"
