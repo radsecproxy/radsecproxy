@@ -1725,7 +1725,7 @@ void getconfig(const char *serverfile, const char *clientfile) {
     }    
     
     rewind(f);
-    for (i = 0; fgets(line, 1024, f) && i < count; i++) {
+    for (i = 0; i < count && fgets(line, 1024, f); i++) {
 	if (serverfile) {
 	    server = &servers[i];
 	    peer = &server->peer;
