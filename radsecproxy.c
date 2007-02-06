@@ -122,17 +122,20 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
 	  break;
       }
   }
-  printf("certificate verify returns %d\n", ok);
+  //  printf("certificate verify returns %d\n", ok);
   return ok;
 }
 
 void ssl_init(SSL_CTX **ctx_srv, SSL_CTX **ctx_cl) {
     int i;
     unsigned long error;
-    STACK_OF(X509_NAME) *calist;
     
     if (!options.tlscertificatefile || !options.tlscertificatekeyfile) {
 	printf("TLSCertificateFile and TLSCertificateKeyFile must be specified for TLS\n");
+	exit(1);
+    }
+    if (!options.tlscacertificatefile && !options.tlscacertificatepath) {
+	printf("CA Certificate file/path need to be configured\n");
 	exit(1);
     }
 
@@ -155,62 +158,14 @@ void ssl_init(SSL_CTX **ctx_srv, SSL_CTX **ctx_cl) {
         RAND_seed((unsigned char *)&pid, sizeof(pid));
     }
 
-#if 0    
     if (ctx_srv) {
 	*ctx_srv = SSL_CTX_new(TLSv1_server_method());
 	if (!SSL_CTX_use_certificate_chain_file(*ctx_srv, options.tlscertificatefile) ||
 	    !SSL_CTX_use_PrivateKey_file(*ctx_srv, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
 	    !SSL_CTX_check_private_key(*ctx_srv))
 	    goto errexit;
-#if 1	
-#if 1
-	calist = (options.tlscacertificatefile
-		  ? SSL_load_client_CA_file(options.tlscacertificatefile)
-		  : sk_X509_NAME_new_null());
-	if (!calist || (options.tlscacertificatepath &&
-			 !SSL_add_dir_cert_subjects_to_stack(calist, options.tlscacertificatepath)))
-	    goto errexit;
-	SSL_CTX_set_client_CA_list(*ctx_srv, calist);
-#endif	
-	if (!options.tlscacertificatefile && !options.tlscacertificatepath) {
-	    printf("CA Certificate file/path need to be configured\n");
-	    exit(1);
-	}
 	if (!SSL_CTX_load_verify_locations(*ctx_srv, options.tlscacertificatefile, options.tlscacertificatepath))
 	    goto errexit;
-	SSL_CTX_set_verify(*ctx_srv, SSL_VERIFY_PEER, verify_cb);
-	SSL_CTX_set_verify_depth(*ctx_srv, MAX_CERT_DEPTH + 1);
-#endif	
-    }
-    if (ctx_cl) {
-	*ctx_cl = SSL_CTX_new(TLSv1_client_method());
-	if (!SSL_CTX_use_certificate_chain_file(*ctx_cl, options.tlscertificatefile) ||
-	    !SSL_CTX_use_PrivateKey_file(*ctx_cl, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
-	    !SSL_CTX_check_private_key(*ctx_cl))
-	    goto errexit;
-	if (!options.tlscacertificatefile && !options.tlscacertificatepath) {
-	    printf("CA Certificate file/path need to be configured\n");
-	    exit(1);
-	}
-	if (!SSL_CTX_load_verify_locations(*ctx_cl, options.tlscacertificatefile, options.tlscacertificatepath))
-	    goto errexit;
-	SSL_CTX_set_verify(*ctx_cl, SSL_VERIFY_PEER, verify_cb);
-	SSL_CTX_set_verify_depth(*ctx_cl, MAX_CERT_DEPTH + 1);
-    }
-#else
-    if (ctx_srv) {
-	*ctx_srv = SSL_CTX_new(TLSv1_server_method());
-	if (!SSL_CTX_use_certificate_chain_file(*ctx_srv, options.tlscertificatefile) ||
-	    !SSL_CTX_use_PrivateKey_file(*ctx_srv, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
-	    !SSL_CTX_check_private_key(*ctx_srv))
-	    goto errexit;
-#if 0	
-	calist = (SSL_load_client_CA_file(options.tlscacertificatefile));
-	SSL_CTX_set_client_CA_list(*ctx_srv, calist);
-#endif	
-	if (!SSL_CTX_load_verify_locations(*ctx_srv, options.tlscacertificatefile, NULL/*options.tlscacertificatepath*/))
-	    goto errexit;
-	
 	SSL_CTX_set_verify(*ctx_srv, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
 	SSL_CTX_set_verify_depth(*ctx_srv, MAX_CERT_DEPTH + 1);
     }
@@ -220,17 +175,11 @@ void ssl_init(SSL_CTX **ctx_srv, SSL_CTX **ctx_cl) {
 	    !SSL_CTX_use_PrivateKey_file(*ctx_cl, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
 	    !SSL_CTX_check_private_key(*ctx_cl))
 	    goto errexit;
-	if (!SSL_CTX_load_verify_locations(*ctx_cl,options.tlscacertificatefile, NULL/*options.tlscacertificatepath*/))
+	if (!SSL_CTX_load_verify_locations(*ctx_cl, options.tlscacertificatefile, options.tlscacertificatepath))
 	    goto errexit;
-	
 	SSL_CTX_set_verify(*ctx_cl, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
 	SSL_CTX_set_verify_depth(*ctx_cl, MAX_CERT_DEPTH + 1);
-#if 0	
-	calist = (SSL_load_client_CA_file(options.tlscacertificatefile));
-	SSL_CTX_set_client_CA_list(*ctx_cl, calist);
-#endif	
     }
-#endif    
     return;
     
  errexit:
@@ -1512,7 +1461,7 @@ void *tlsserverrd(void *arg) {
         errx("accept failed, child exiting");
     }
 
-    if (1 /*tlsverifycert(&client->peer)*/) {
+    if (tlsverifycert(&client->peer)) {
 	if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client))
 	    errx("pthread_create failed");
     
