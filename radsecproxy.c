@@ -68,8 +68,7 @@ static struct replyq udp_server_replyq;
 static int udp_server_sock = -1;
 static pthread_mutex_t *ssl_locks;
 static long *ssl_lock_count;
-static SSL_CTX *ssl_ctx_cl = NULL;
-static SSL_CTX *ssl_ctx_srv = NULL;
+static SSL_CTX *ssl_ctx = NULL;
 extern int optind;
 extern char *optarg;
 
@@ -126,7 +125,8 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
   return ok;
 }
 
-void ssl_init(SSL_CTX **ctx_srv, SSL_CTX **ctx_cl) {
+SSL_CTX *ssl_init() {
+    SSL_CTX *ctx;
     int i;
     unsigned long error;
     
@@ -158,29 +158,16 @@ void ssl_init(SSL_CTX **ctx_srv, SSL_CTX **ctx_cl) {
         RAND_seed((unsigned char *)&pid, sizeof(pid));
     }
 
-    if (ctx_srv) {
-	*ctx_srv = SSL_CTX_new(TLSv1_server_method());
-	if (!SSL_CTX_use_certificate_chain_file(*ctx_srv, options.tlscertificatefile) ||
-	    !SSL_CTX_use_PrivateKey_file(*ctx_srv, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
-	    !SSL_CTX_check_private_key(*ctx_srv))
-	    goto errexit;
-	if (!SSL_CTX_load_verify_locations(*ctx_srv, options.tlscacertificatefile, options.tlscacertificatepath))
-	    goto errexit;
-	SSL_CTX_set_verify(*ctx_srv, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
-	SSL_CTX_set_verify_depth(*ctx_srv, MAX_CERT_DEPTH + 1);
-    }
-    if (ctx_cl) {
-	*ctx_cl = SSL_CTX_new(TLSv1_client_method());
-	if (!SSL_CTX_use_certificate_chain_file(*ctx_cl, options.tlscertificatefile) ||
-	    !SSL_CTX_use_PrivateKey_file(*ctx_cl, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
-	    !SSL_CTX_check_private_key(*ctx_cl))
-	    goto errexit;
-	if (!SSL_CTX_load_verify_locations(*ctx_cl, options.tlscacertificatefile, options.tlscacertificatepath))
-	    goto errexit;
-	SSL_CTX_set_verify(*ctx_cl, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
-	SSL_CTX_set_verify_depth(*ctx_cl, MAX_CERT_DEPTH + 1);
-    }
-    return;
+    ctx = SSL_CTX_new(TLSv1_method());
+    if (!SSL_CTX_use_certificate_chain_file(ctx, options.tlscertificatefile) ||
+	!SSL_CTX_use_PrivateKey_file(ctx, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
+	!SSL_CTX_check_private_key(ctx))
+	goto errexit;
+    if (!SSL_CTX_load_verify_locations(ctx, options.tlscacertificatefile, options.tlscacertificatepath))
+	goto errexit;
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
+    SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
+    return ctx;
     
  errexit:
     while ((error = ERR_get_error()))
@@ -431,7 +418,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	if ((server->sock = connecttoserver(server->peer.addrinfo)) < 0)
 	    continue;
 	SSL_free(server->peer.ssl);
-	server->peer.ssl = SSL_new(ssl_ctx_cl);
+	server->peer.ssl = SSL_new(ssl_ctx);
 	SSL_set_fd(server->peer.ssl, server->sock);
 	if (SSL_connect(server->peer.ssl) > 0 && tlsverifycert(&server->peer))
 	    break;
@@ -1491,6 +1478,7 @@ void *tlsserverrd(void *arg) {
     SSL_free(ssl);
     close(s);
     printf("tlsserverrd thread for %s exiting\n", client->peer.host);
+    client->peer.ssl = NULL;
     pthread_exit(NULL);
 }
 
@@ -1529,7 +1517,7 @@ int tlslistener() {
 	    close(snew);
 	    continue;
 	}
-	client->peer.ssl = SSL_new(ssl_ctx_srv);
+	client->peer.ssl = SSL_new(ssl_ctx);
 	SSL_set_fd(client->peer.ssl, snew);
 	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)client))
 	    errx("pthread_create failed");
@@ -1857,7 +1845,8 @@ int main(int argc, char **argv) {
 	if (pthread_create(&udpserverth, NULL /*&joinable*/, udpserverrd, NULL))
 	    errx("pthread_create failed");
 
-    ssl_init(client_tls_count ? &ssl_ctx_srv : NULL, server_tls_count ? &ssl_ctx_cl : NULL);
+    if (client_tls_count || server_tls_count)
+	ssl_ctx = ssl_init();
     
     for (i = 0; i < server_count; i++)
 	if (pthread_create(&servers[i].clientth, NULL, clientwr, (void *)&servers[i]))
