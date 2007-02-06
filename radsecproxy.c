@@ -159,17 +159,15 @@ SSL_CTX *ssl_init() {
     }
 
     ctx = SSL_CTX_new(TLSv1_method());
-    if (!SSL_CTX_use_certificate_chain_file(ctx, options.tlscertificatefile) ||
-	!SSL_CTX_use_PrivateKey_file(ctx, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) ||
-	!SSL_CTX_check_private_key(ctx))
-	goto errexit;
-    if (!SSL_CTX_load_verify_locations(ctx, options.tlscacertificatefile, options.tlscacertificatepath))
-	goto errexit;
-    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
-    SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
-    return ctx;
-    
- errexit:
+    if (SSL_CTX_use_certificate_chain_file(ctx, options.tlscertificatefile) &&
+	SSL_CTX_use_PrivateKey_file(ctx, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) &&
+	SSL_CTX_check_private_key(ctx) &&
+	SSL_CTX_load_verify_locations(ctx, options.tlscacertificatefile, options.tlscacertificatepath)) {
+	SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
+	SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
+	return ctx;
+    }
+
     while ((error = ERR_get_error()))
 	err("SSL: %s", ERR_error_string(error, NULL));
     exit(1);
