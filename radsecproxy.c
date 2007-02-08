@@ -9,13 +9,6 @@
 /* TODO:
  * accounting
  * radius keep alives (server status)
- * tls certificate validation, see below urls
- * clean tls shutdown, see http://www.linuxjournal.com/article/4822
- *     and http://www.linuxjournal.com/article/5487
- *     SSL_shutdown() and shutdown()
- *     If shutdown() we may not need REUSEADDR
- * when tls client goes away, ensure that all related threads and state
- *          are removed
  * setsockopt(keepalive...), check if openssl has some keepalive feature
 */
 
@@ -404,11 +397,13 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	    sleep(10);
 	} else if (elapsed < 5)
 	    sleep(10);
-	else if (elapsed < 600)
-	    sleep(elapsed * 2);
-	else if (elapsed < 10000)
-		sleep(900);
-	else
+	else if (elapsed < 600) {
+	    printf("tlsconnect: sleeping %lds\n", elapsed);
+	    sleep(elapsed);
+	} else if (elapsed < 1000) {
+	    printf("tlsconnect: sleeping %ds\n", 900);
+	    sleep(900);
+	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  // no sleep at startup
 	printf("tlsconnect: trying to open TLS connection to %s port %s\n", server->peer.host, server->peer.port);
 	if (server->sock >= 0)
@@ -1123,6 +1118,8 @@ void *clientrd(void *arg) {
 	    printf("clientrd: discarding, only accept access accept, access reject and access challenge messages\n");
 	    continue;
 	}
+
+	printf("got message type: %d, id: %d\n", buf[0], buf[1]);
 	
 	i = buf[1]; /* i is the id */
 
@@ -1146,7 +1143,6 @@ void *clientrd(void *arg) {
 	}
 	
 	from = server->requests[i].from;
-
 
 	/* messageauthattr present? */
 	messageauthattr = NULL;
