@@ -1,0 +1,16 @@
+This is the very first experimental version of a generic RADIUS proxy
+that can support various RADIUS clients over UDP or TLS (RadSec).
+
+It should build on most Linux platforms by simply typing "make".
+To use it you need to create three config files. These are the
+main config file "radsecproxy.conf" and server and client files
+"servers.conf" and "clients.conf". See the enclosed example files
+for further instructions.
+
+The config files must be in either "/etc/radsecproxy" or the
+proxy's current work directory. You may alter the path near
+the top of radsecproxy.h if necessary.
+
+For more information, feedback etc. contact <venaas@uninett.no>.
+
+Stig Venaas, 2007.01.08
