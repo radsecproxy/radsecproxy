@@ -12,6 +12,10 @@
                             sizeof(struct sockaddr_in) : \
                             sizeof(struct sockaddr_in6))
 
+#define CONFIG_MAIN "/etc/radsecproxy/radsecproxy.conf"
+#define CONFIG_SERVERS "/etc/radsecproxy/servers.conf"
+#define CONFIG_CLIENTS "/etc/radsecproxy/clients.conf"
+
 /* MAX_REQUESTS must be 256 due to Radius' 8 bit ID field */
 #define MAX_REQUESTS 256
 #define DEFAULT_TLS_SECRET "mysecret"

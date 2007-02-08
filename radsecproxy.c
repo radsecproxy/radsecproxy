@@ -38,6 +38,7 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <libgen.h>
 #include <pthread.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
@@ -1592,22 +1593,41 @@ char *parserealmlist(char *s, struct server *server) {
     return p;
 }
 
+FILE *openconfigfile(const char *filename) {
+    FILE *f;
+    char pathname[100], *base;
+    
+    f = fopen(filename, "r");
+    if (f) {
+	printf("reading config file %s\n", filename);
+	return f;
+    }
+
+    if (strlen(filename) + 1 <= sizeof(pathname)) {
+	// basename() might modify the string
+	strcpy(pathname, filename);
+	base = basename(pathname);
+	f = fopen(base, "r");
+    }
+
+    if (!f)
+	err("could not read config file %s nor %s\n", filename, base);
+
+    printf("reading config file %s\n", base);
+    return f;
+}
+
 /* exactly one argument must be non-NULL */
 void getconfig(const char *serverfile, const char *clientfile) {
     FILE *f;
     char line[1024];
     char *p, *field, **r;
-    const char *file;
     struct client *client;
     struct server *server;
     struct peer *peer;
     int i, count, *ucount, *tcount;
  
-    file = serverfile ? serverfile : clientfile;
-    f = fopen(file, "r");
-    if (!f)
-	errx("getconfig failed to open %s for reading", file);
-    printf("opening file %s for reading\n", file);
+    f = openconfigfile(serverfile ? serverfile : clientfile);
     if (serverfile) {
 	ucount = &server_udp_count;
 	tcount = &server_tls_count;
@@ -1742,11 +1762,7 @@ void getmainconfig(const char *configfile) {
     char line[1024];
     char *p, *opt, *endopt, *val, *endval;
     
-    printf("opening file %s for reading\n", configfile);
-    f = fopen(configfile, "r");
-    if (!f)
-	errx("getmainconfig failed to open %s for reading", configfile);
-
+    f = openconfigfile(configfile);
     memset(&options, 0, sizeof(options));
 
     while (fgets(line, 1024, f)) {
@@ -1828,9 +1844,9 @@ int main(int argc, char **argv) {
     int i;
     
     //    parseargs(argc, argv);
-    getmainconfig("radsecproxy.conf");
-    getconfig("servers.conf", NULL);
-    getconfig(NULL, "clients.conf");
+    getmainconfig(CONFIG_MAIN);
+    getconfig(CONFIG_SERVERS, NULL);
+    getconfig(NULL, CONFIG_CLIENTS);
 
     //    pthread_attr_init(&joinable);
     //    pthread_attr_setdetachstate(&joinable, PTHREAD_CREATE_JOINABLE);
