@@ -1,0 +1,13 @@
+#Here we list RADIUS servers we will use for different realms
+#
+#First field is T or U for TLS or UDP
+#Second is address or fqdn and optional port, must match certificate cn for TLS
+#       port is specified using addr:port or domain:port
+#Third field is ";" separated list of realms
+#	* can be used for matching anything (default route)
+#       realms will be matched in the order specified, using first match
+#Fourth field is the secret and is optional for TLS
+
+T [2001:db8::1]:2283 example.com;com
+U 127.0.0.1 eduroam.cc secret
+T radius.example.com * verysecret

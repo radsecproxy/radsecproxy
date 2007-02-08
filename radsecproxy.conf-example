@@ -1,0 +1,13 @@
+#All possible config options are listed below
+#
+# You must specify at least one of TLSCACertificateFile or TLSCACertificatePath
+# for TLS to work. We always verify peer certificate (both client and server)
+#TLSCACertificateFile    /etc/cacerts/CA.pem
+TLSCACertificatePath	/etc/cacerts
+
+# You must specify the below for TLS, we will always present our certificate
+TLSCertificateFile	/etc/hostcertkey/host.example.com.pem
+TLSCertificateKeyFile	/etc/hostcertkey/host.example.com.key.pem
+
+# You can optionally specify a non-standard UDP port to listen
+#UDPServerPort		1814
