@@ -1,4 +1,5 @@
 #Here we list RADIUS clients that we are willing to serve
+#       this file must be in /etc/radsecproxy or proxy's current directory
 #
 #First field is T or U for TLS or UDP
 #Second is address or fqdn, and must match certificate cn for TLS

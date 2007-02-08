@@ -1,4 +1,5 @@
 #Here we list RADIUS servers we will use for different realms
+#	this file must be in /etc/radsecproxy or proxy's current directory
 #
 #First field is T or U for TLS or UDP
 #Second is address or fqdn and optional port, must match certificate cn for TLS

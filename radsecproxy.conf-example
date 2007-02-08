@@ -1,4 +1,5 @@
-#All possible config options are listed below
+#Master config file, must be in /etc/radsecproxy or proxy's current directory
+#	All possible config options are listed below
 #
 # You must specify at least one of TLSCACertificateFile or TLSCACertificatePath
 # for TLS to work. We always verify peer certificate (both client and server)
