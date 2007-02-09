@@ -35,7 +35,10 @@
  *          1 + (2 + 2 * 3) + (2 * 30) + (2 * 30) = 129 threads
 */
 
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include <netdb.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/time.h>
 #include <libgen.h>

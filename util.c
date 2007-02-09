@@ -6,6 +6,8 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
