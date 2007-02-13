@@ -72,7 +72,7 @@ extern char *optarg;
 /* callbacks for making OpenSSL thread safe */
 unsigned long ssl_thread_id() {
         return (unsigned long)pthread_self();
-};
+}
 
 void ssl_locking_callback(int mode, int type, const char *file, int line) {
     if (mode & CRYPTO_LOCK) {
@@ -118,7 +118,7 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
 	  break;
       }
   }
-  //  printf("certificate verify returns %d\n", ok);
+  /* printf("certificate verify returns %d\n", ok); */
   return ok;
 }
 
@@ -368,7 +368,7 @@ int tlsverifycert(struct peer *peer) {
 	for (i = 0; i < l; i++)
 	    printf("%c", v[i]);
 	printf("\n");
-	if (l == strlen(peer->host) && !strncasecmp(peer->host, v, l)) {
+	if (l == strlen(peer->host) && !strncasecmp(peer->host, (char *)v, l)) {
 	    printf("tlsverifycert: Found cn matching host %s, All OK\n", peer->host);
 	    return 1;
 	}
@@ -408,7 +408,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	    printf("tlsconnect: sleeping %ds\n", 900);
 	    sleep(900);
 	} else
-	    server->lastconnecttry.tv_sec = now.tv_sec;  // no sleep at startup
+	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
 	printf("tlsconnect: trying to open TLS connection to %s port %s\n", server->peer.host, server->peer.port);
 	if (server->sock >= 0)
 	    close(server->sock);
@@ -435,7 +435,7 @@ unsigned char *radtlsget(SSL *ssl) {
 	    if (cnt <= 0) {
 		printf("radtlsget: connection lost\n");
 		if (SSL_get_error(ssl, cnt) == SSL_ERROR_ZERO_RETURN) {
-		    //remote end sent close_notify, send one back
+		    /* remote end sent close_notify, send one back */
 		    SSL_shutdown(ssl);
 		}
 		return NULL;
@@ -455,7 +455,7 @@ unsigned char *radtlsget(SSL *ssl) {
 	    if (cnt <= 0) {
 		printf("radtlsget: connection lost\n");
 		if (SSL_get_error(ssl, cnt) == SSL_ERROR_ZERO_RETURN) {
-		    //remote end sent close_notify, send one back
+		    /* remote end sent close_notify, send one back */
 		    SSL_shutdown(ssl);
 		}
 		free(rad);
@@ -519,7 +519,7 @@ int radsign(unsigned char *rad, unsigned char *sec) {
 
     result = (EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) &&
 	EVP_DigestUpdate(&mdctx, rad, RADLEN(rad)) &&
-	EVP_DigestUpdate(&mdctx, sec, strlen(sec)) &&
+	EVP_DigestUpdate(&mdctx, sec, strlen((char *)sec)) &&
 	EVP_DigestFinal_ex(&mdctx, rad + 4, &md_len) &&
 	md_len == 16);
     pthread_mutex_unlock(&lock);
@@ -546,7 +546,7 @@ int validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
 	      EVP_DigestUpdate(&mdctx, rad, 4) &&
 	      EVP_DigestUpdate(&mdctx, reqauth, 16) &&
 	      (len <= 20 || EVP_DigestUpdate(&mdctx, rad + 20, len - 20)) &&
-	      EVP_DigestUpdate(&mdctx, sec, strlen(sec)) &&
+	      EVP_DigestUpdate(&mdctx, sec, strlen((char *)sec)) &&
 	      EVP_DigestFinal_ex(&mdctx, hash, &len) &&
 	      len == 16 &&
 	      !memcmp(hash, rad + 4, 16));
@@ -554,7 +554,7 @@ int validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
     return result;
 }
 	      
-int checkmessageauth(char *rad, uint8_t *authattr, char *secret) {
+int checkmessageauth(unsigned char *rad, uint8_t *authattr, char *secret) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     static unsigned char first = 1;
     static HMAC_CTX hmacctx;
@@ -590,7 +590,7 @@ int checkmessageauth(char *rad, uint8_t *authattr, char *secret) {
     return 1;
 }
 
-int createmessageauth(char *rad, char *authattrval, char *secret) {
+int createmessageauth(unsigned char *rad, unsigned char *authattrval, char *secret) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     static unsigned char first = 1;
     static HMAC_CTX hmacctx;
@@ -656,7 +656,7 @@ void sendrq(struct server *to, struct client *from, struct request *rq) {
     pthread_mutex_unlock(&to->newrq_mutex);
 }
 
-void sendreply(struct client *to, struct server *from, char *buf, struct sockaddr_storage *tosa) {
+void sendreply(struct client *to, struct server *from, unsigned char *buf, struct sockaddr_storage *tosa) {
     struct replyq *replyq = to->replyq;
     
     pthread_mutex_lock(&replyq->count_mutex);
@@ -678,7 +678,7 @@ void sendreply(struct client *to, struct server *from, char *buf, struct sockadd
     pthread_mutex_unlock(&replyq->count_mutex);
 }
 
-int pwdencrypt(uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth) {
+int pwdencrypt(uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_t *auth) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     static unsigned char first = 1;
     static EVP_MD_CTX mdctx;
@@ -695,7 +695,7 @@ int pwdencrypt(uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uin
     input = auth;
     for (;;) {
 	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
-	    !EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
+	    !EVP_DigestUpdate(&mdctx, (uint8_t *)shared, sharedlen) ||
 	    !EVP_DigestUpdate(&mdctx, input, 16) ||
 	    !EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
 	    md_len != 16) {
@@ -714,7 +714,7 @@ int pwdencrypt(uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uin
     return 1;
 }
 
-int pwddecrypt(uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth) {
+int pwddecrypt(uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_t *auth) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     static unsigned char first = 1;
     static EVP_MD_CTX mdctx;
@@ -731,7 +731,7 @@ int pwddecrypt(uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uin
     input = auth;
     for (;;) {
 	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
-	    !EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
+	    !EVP_DigestUpdate(&mdctx, (uint8_t *)shared, sharedlen) ||
 	    !EVP_DigestUpdate(&mdctx, input, 16) ||
 	    !EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
 	    md_len != 16) {
@@ -962,7 +962,7 @@ int rqinqueue(struct server *to, struct client *from, uint8_t id) {
     return i < MAX_REQUESTS;
 }
 	
-struct server *radsrv(struct request *rq, char *buf, struct client *from) {
+struct server *radsrv(struct request *rq, unsigned char *buf, struct client *from) {
     uint8_t code, id, *auth, *attr, attrvallen;
     uint8_t *usernameattr = NULL, *userpwdattr = NULL, *tunnelpwdattr = NULL, *messageauthattr = NULL;
     int i;
@@ -1018,7 +1018,7 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
 	printf("\n");
     }
 
-    to = id2server(&usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
+    to = id2server((char *)&usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
     if (!to) {
 	printf("radsrv: ignoring request, don't know where to send it\n");
 	return NULL;
@@ -1093,7 +1093,7 @@ struct server *radsrv(struct request *rq, char *buf, struct client *from) {
     rq->messageauthattrval = (messageauthattr ? &messageauthattr[RAD_Attr_Value] : NULL);
     memcpy(rq->origauth, auth, 16);
     memcpy(auth, newauth, 16);
-    printauth("rq->origauth", rq->origauth);
+    printauth("rq->origauth", (unsigned char *)rq->origauth);
     printauth("auth", auth);
     return to;
 }
@@ -1140,7 +1140,7 @@ void *clientrd(void *arg) {
 	    continue;
 	}
 	
-	if (!validauth(buf, server->requests[i].buf + 4, server->peer.secret)) {
+	if (!validauth(buf, server->requests[i].buf + 4, (unsigned char *)server->peer.secret)) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
 	    printf("clientrd: invalid auth, ignoring\n");
 	    continue;
@@ -1187,7 +1187,7 @@ void *clientrd(void *arg) {
 		goto getnext;
 	    }
 	    if (attr[RAD_Attr_Type] == RAD_Attr_Vendor_Specific &&
-		((uint16_t *)attr)[1] == 0 && ntohs(((uint16_t *)attr)[2]) == 311) { // 311 == MS
+		((uint16_t *)attr)[1] == 0 && ntohs(((uint16_t *)attr)[2]) == 311) { /* 311 == MS */
 		subleft = attr[RAD_Attr_Length] - 6;
 		subattr = attr + 6;
 		while (subleft > 1) {
@@ -1201,14 +1201,14 @@ void *clientrd(void *arg) {
 		    if (subattr[RAD_Attr_Length] < 20)
 			continue;
 
-		    if (!msmppdecrypt(subattr + 4, subattr[RAD_Attr_Length] - 4,
-			    server->peer.secret, strlen(server->peer.secret), server->requests[i].buf + 4, subattr + 2)) {
+		    if (!msmppdecrypt(subattr + 4, subattr[RAD_Attr_Length] - 4, (unsigned char *)server->peer.secret,
+				      strlen(server->peer.secret), server->requests[i].buf + 4, subattr + 2)) {
 			printf("clientrd: failed to decrypt msppe key\n");
 			continue;
 		    }
 
-		    if (!msmppencrypt(subattr + 4, subattr[RAD_Attr_Length] - 4,
-			    from->peer.secret, strlen(from->peer.secret), server->requests[i].origauth, subattr + 2)) {
+		    if (!msmppencrypt(subattr + 4, subattr[RAD_Attr_Length] - 4, (unsigned char *)from->peer.secret,
+				      strlen(from->peer.secret), (unsigned char *)server->requests[i].origauth, subattr + 2)) {
 			printf("clientrd: failed to encrypt msppe key\n");
 			continue;
 		    }
@@ -1236,7 +1236,7 @@ void *clientrd(void *arg) {
 	server->requests[i].received = 1;
 	pthread_mutex_unlock(&server->newrq_mutex);
 
-	if (!radsign(buf, from->peer.secret)) {
+	if (!radsign(buf, (unsigned char *)from->peer.secret)) {
 	    printf("clientrd: failed to sign message\n");
 	    continue;
 	}
@@ -1405,7 +1405,7 @@ void *tlsserverwr(void *arg) {
 		printf("tls server writer, got signal\n");
 	    }
 	    if (!client->peer.ssl) {
-		//ssl might have changed while waiting
+		/* ssl might have changed while waiting */
 		pthread_mutex_unlock(&replyq->count_mutex);
 		printf("tlsserverwr: exiting as requested\n");
 		pthread_exit(NULL);
@@ -1464,7 +1464,7 @@ void *tlsserverrd(void *arg) {
 	    sendrq(to, client, &rq);
 	}
 	printf("tlsserverrd: connection lost\n");
-	// stop writer by setting peer.ssl to NULL and give signal in case waiting for data
+	/* stop writer by setting peer.ssl to NULL and give signal in case waiting for data */
 	client->peer.ssl = NULL;
 	pthread_mutex_lock(&client->replyq->count_mutex);
 	pthread_cond_signal(&client->replyq->count_cond);
@@ -1529,7 +1529,7 @@ char *parsehostport(char *s, struct peer *peer) {
     int ipv6 = 0;
 
     p = s;
-    // allow literal addresses and port, e.g. [2001:db8::1]:1812
+    /* allow literal addresses and port, e.g. [2001:db8::1]:1812 */
     if (*p == '[') {
 	p++;
 	field = p;
@@ -1569,7 +1569,7 @@ char *parsehostport(char *s, struct peer *peer) {
     return p;
 }
 
-// * is default, else longest match ... ";" used for separator
+/* * is default, else longest match ... ";" used for separator */
 char *parserealmlist(char *s, struct server *server) {
     char *p;
     int i, n, l;
@@ -1607,7 +1607,7 @@ FILE *openconfigfile(const char *filename) {
     }
 
     if (strlen(filename) + 1 <= sizeof(pathname)) {
-	// basename() might modify the string
+	/* basename() might modify the string */
 	strcpy(pathname, filename);
 	base = basename(pathname);
 	f = fopen(base, "r");
@@ -1690,7 +1690,7 @@ void getconfig(const char *serverfile, const char *clientfile) {
 	for (p = line; *p == ' ' || *p == '\t'; p++);
 	if (*p == '#' || *p == '\n')
 	    continue;
-	peer->type = *p;	// we already know it must be U or T
+	peer->type = *p;	/* we already know it must be U or T */
 	for (p++; *p == ' ' || *p == '\t'; p++);
 	p = parsehostport(p, peer);
 	for (; *p == ' ' || *p == '\t'; p++);
@@ -1843,16 +1843,16 @@ void parseargs(int argc, char **argv) {
 
 int main(int argc, char **argv) {
     pthread_t udpserverth;
-    //    pthread_attr_t joinable;
+    /*    pthread_attr_t joinable; */
     int i;
     
-    //    parseargs(argc, argv);
+    /*    parseargs(argc, argv); */
     getmainconfig(CONFIG_MAIN);
     getconfig(CONFIG_SERVERS, NULL);
     getconfig(NULL, CONFIG_CLIENTS);
 
-    //    pthread_attr_init(&joinable);
-    //    pthread_attr_setdetachstate(&joinable, PTHREAD_CREATE_JOINABLE);
+    /*    pthread_attr_init(&joinable); */
+    /*    pthread_attr_setdetachstate(&joinable, PTHREAD_CREATE_JOINABLE); */
    
     if (client_udp_count)
 	if (pthread_create(&udpserverth, NULL /*&joinable*/, udpserverrd, NULL))

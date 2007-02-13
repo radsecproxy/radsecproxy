@@ -1,4 +1,4 @@
-CFLAGS = -g -Wall -pthread
+CFLAGS = -g -Wall -pedantic -pthread
 LDFLAGS = -lssl
 OBJ = util.o
 
