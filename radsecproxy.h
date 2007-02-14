@@ -52,9 +52,10 @@ struct options {
     char *tlscacertificatepath;
     char *tlscertificatefile;
     char *tlscertificatekeyfile;
+    char *tlscertificatekeypassword;
     char *udpserverport;
 };
-    
+
 /* requests that our client will send */
 struct request {
     unsigned char *buf;

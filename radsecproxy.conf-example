@@ -9,6 +9,8 @@ TLSCACertificatePath	/etc/cacerts
 # You must specify the below for TLS, we will always present our certificate
 TLSCertificateFile	/etc/hostcertkey/host.example.com.pem
 TLSCertificateKeyFile	/etc/hostcertkey/host.example.com.key.pem
+# Optionally specify password if key is encrypted (not very secure)
+TLSCertificateKeyPassword	follow the white rabbit
 
 # You can optionally specify a non-standard UDP port to listen
 #UDPServerPort		1814

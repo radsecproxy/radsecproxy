@@ -82,6 +82,14 @@ void ssl_locking_callback(int mode, int type, const char *file, int line) {
 	pthread_mutex_unlock(&ssl_locks[type]);
 }
 
+static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
+    int pwdlen = strlen(userdata);
+    if (rwflag != 0 || pwdlen > size) /* not for decryption or too large */
+	return 0;
+    memcpy(buf, userdata, pwdlen);
+    return pwdlen;
+}
+
 static int verify_cb(int ok, X509_STORE_CTX *ctx) {
   char buf[256];
   X509 *err_cert;
@@ -156,6 +164,10 @@ SSL_CTX *ssl_init() {
     }
 
     ctx = SSL_CTX_new(TLSv1_method());
+    if (options.tlscertificatekeypassword) {
+	SSL_CTX_set_default_passwd_cb_userdata(ctx, options.tlscertificatekeypassword);
+	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
+    }
     if (SSL_CTX_use_certificate_chain_file(ctx, options.tlscertificatefile) &&
 	SSL_CTX_use_PrivateKey_file(ctx, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) &&
 	SSL_CTX_check_private_key(ctx) &&
@@ -1803,6 +1815,10 @@ void getmainconfig(const char *configfile) {
 	}
 	if (!strcasecmp(opt, "TLSCertificateKeyFile")) {
 	    options.tlscertificatekeyfile = stringcopy(val, 0);
+	    continue;
+	}
+	if (!strcasecmp(opt, "TLSCertificateKeyPassword")) {
+	    options.tlscertificatekeypassword = stringcopy(val, 0);
 	    continue;
 	}
 	if (!strcasecmp(opt, "UDPServerPort")) {
