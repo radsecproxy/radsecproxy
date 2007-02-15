@@ -1290,15 +1290,14 @@ void *clientwr(void *arg) {
 		printf("clientwr: waiting for new request\n");
 		pthread_cond_wait(&server->newrq_cond, &server->newrq_mutex);
 	    }
-	    if (server->newrq) {
-		printf("clientwr: got new request\n");
-		server->newrq = 0;
-	    }
-	} else
+	}
+	if (server->newrq) {
+	    printf("clientwr: got new request\n");
 	    server->newrq = 0;
+	} else
+	    printf("clientwr: request timer expired, processing request queue\n");
 	pthread_mutex_unlock(&server->newrq_mutex);
 
-	printf("clientwr: processing request queue\n");
 	for (i = 0; i < MAX_REQUESTS; i++) {
 	    pthread_mutex_lock(&server->newrq_mutex);
 	    while (!server->requests[i].buf && i < MAX_REQUESTS)
