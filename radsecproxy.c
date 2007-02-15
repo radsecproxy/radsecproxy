@@ -1569,7 +1569,7 @@ char *parsehostport(char *s, struct peer *peer) {
     }
     if (*p == ':') {
 	    /* port number or service name is specified */;
-	    field = p++;
+	    field = ++p;
 	    for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
 	    if (field == p) {
 		printf("syntax error, : but no following port\n");
