@@ -1,10 +1,10 @@
 CFLAGS = -g -Wall -pedantic -pthread
 LDFLAGS = -lssl
-OBJ = util.o
+OBJ = util.o radsecproxy.o
 
 all: radsecproxy
 
-radsecproxy: $(OBJ)
-	$(CC) $(CFLAGS) $(OBJ) $(LDFLAGS) -o radsecproxy radsecproxy.c
+radsecproxy: $(OBJ) radsecproxy.o
+	$(CC) $(CFLAGS) $(OBJ) $(LDFLAGS) -o radsecproxy
 clean:
 	rm -f $(OBJ) radsecproxy

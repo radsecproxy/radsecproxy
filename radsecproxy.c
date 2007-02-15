@@ -1294,9 +1294,11 @@ void *clientwr(void *arg) {
 		printf("clientwr: got new request\n");
 		server->newrq = 0;
 	    }
-	}
+	} else
+	    server->newrq = 0;
 	pthread_mutex_unlock(&server->newrq_mutex);
-	
+
+	printf("clientwr: processing request queue\n");
 	for (i = 0; i < MAX_REQUESTS; i++) {
 	    pthread_mutex_lock(&server->newrq_mutex);
 	    while (!server->requests[i].buf && i < MAX_REQUESTS)
