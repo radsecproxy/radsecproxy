@@ -527,7 +527,7 @@ int clientradput(struct server *server, unsigned char *rad) {
     lastconnecttry = server->lastconnecttry;
     while ((cnt = SSL_write(server->peer.ssl, rad, len)) <= 0) {
 	while ((error = ERR_get_error()))
-	    err("clientwr: TLS: %s", ERR_error_string(error, NULL));
+	    err("clientradput: TLS: %s", ERR_error_string(error, NULL));
 	tlsconnect(server, &lastconnecttry, "clientradput");
 	lastconnecttry = server->lastconnecttry;
     }
@@ -1285,11 +1285,13 @@ void *clientwr(void *arg) {
     struct request *rq;
     pthread_t clientrdth;
     int i;
-    struct timeval now;
+    uint8_t rnd;
+    struct timeval now, lastsend;
     struct timespec timeout;
 
+    memset(&lastsend, 0, sizeof(struct timeval));
     memset(&timeout, 0, sizeof(struct timespec));
-    
+
     if (server->peer.type == 'U') {
 	if ((server->sock = connecttoserver(server->peer.addrinfo)) < 0) {
 	    printf("clientwr: connecttoserver failed\n");
@@ -1304,10 +1306,18 @@ void *clientwr(void *arg) {
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->newrq) {
-	    if (timeout.tv_nsec) {
-		printf("clientwr: waiting up to %ld secs for new request\n", timeout.tv_nsec);
+	    gettimeofday(&now, NULL);
+	    if (timeout.tv_sec) {
+		printf("clientwr: waiting up to %ld secs for new request\n", timeout.tv_sec - now.tv_sec);
 		pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
-		timeout.tv_nsec = 0;
+		timeout.tv_sec = 0;
+	    } else if (options.statusserver) {
+		timeout.tv_sec = now.tv_sec + STATUS_SERVER_PERIOD;
+		/* add random 0-7 seconds to timeout */
+		RAND_bytes(&rnd, 1);
+		timeout.tv_sec += rnd / 32;
+		pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
+		timeout.tv_sec = 0;
 	    } else {
 		printf("clientwr: waiting for new request\n");
 		pthread_cond_wait(&server->newrq_cond, &server->newrq_mutex);
@@ -1363,10 +1373,17 @@ void *clientwr(void *arg) {
 		timeout.tv_sec = rq->expiry.tv_sec;
 	    rq->tries++;
 	    clientradput(server, server->requests[i].buf);
+	    gettimeofday(&lastsend, NULL);
 	    usleep(200000);
 	}
+	if (options.statusserver) {
+	    gettimeofday(&now, NULL);
+	    if (now.tv_sec - lastsend.tv_sec >= STATUS_SERVER_PERIOD) {
+		lastsend.tv_sec = now.tv_sec;
+		printf("clientwr: should send status to %s here\n", server->peer.host);
+	    }
+	}
     }
-    /* should do more work to maintain TLS connections, keepalives etc */
 }
 
 void *udpserverwr(void *arg) {
@@ -1889,6 +1906,15 @@ void getmainconfig(const char *configfile) {
 	}
 	if (!strcasecmp(opt, "ListenTCP")) {
 	    options.listentcp = stringcopy(val, 0);
+	    continue;
+	}
+	if (!strcasecmp(opt, "StatusServer")) {
+	    if (!strcasecmp(val, "on"))
+		options.statusserver = 1;
+	    else if (strcasecmp(val, "off")) {
+		printf("error in %s, value of option %s is %s, must be on or off\n", configfile, opt, val);
+		exit(1);
+	    }
 	    continue;
 	}
 	printf("error in %s, unknown option %s\n", configfile, opt);

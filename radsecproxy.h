@@ -24,7 +24,7 @@
 #define REQUEST_EXPIRY 20
 #define REQUEST_RETRIES 3
 #define MAX_CERT_DEPTH 5
-
+#define STATUS_SERVER_PERIOD 25
 #define RAD_Access_Request 1
 #define RAD_Access_Accept 2
 #define RAD_Access_Reject 3
@@ -55,6 +55,7 @@ struct options {
     char *tlscertificatekeypassword;
     char *listenudp;
     char *listentcp;
+    uint8_t statusserver;
 };
 
 /* requests that our client will send */
