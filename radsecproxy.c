@@ -1513,6 +1513,7 @@ void *tlsserverrd(void *arg) {
  errexit:
     s = SSL_get_fd(ssl);
     SSL_free(ssl);
+    shutdown(s, SHUT_RDWR);
     close(s);
     printf("tlsserverrd thread for %s exiting\n", client->peer.host);
     client->peer.ssl = NULL;
@@ -1559,8 +1560,14 @@ int tlslistener() {
 	}
 	client->peer.ssl = SSL_new(ssl_ctx);
 	SSL_set_fd(client->peer.ssl, snew);
-	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)client))
-	    errx("pthread_create failed");
+	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)client)) {
+	    err("pthread_create failed");
+	    SSL_free(client->peer.ssl);
+	    shutdown(snew, SHUT_RDWR);
+	    close(snew);
+	    client->peer.ssl = NULL;
+	    continue;
+	}
 	pthread_detach(tlsserverth);
     }
     return 0;
