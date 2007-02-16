@@ -54,6 +54,8 @@ struct options {
     char *tlscertificatekeyfile;
     char *tlscertificatekeypassword;
     char *udpserverport;
+    char *listenudp;
+    char *listentcp;
 };
 
 /* requests that our client will send */

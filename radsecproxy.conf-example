@@ -12,5 +12,9 @@ TLSCertificateKeyFile	/etc/hostcertkey/host.example.com.key.pem
 # Optionally specify password if key is encrypted (not very secure)
 TLSCertificateKeyPassword	follow the white rabbit
 
-# You can optionally specify a non-standard UDP port to listen
-#UDPServerPort		1814
+# You can optionally specify addresses and ports to listen on
+#	Max one of each, below are just multiple examples
+#ListenUDP		*:1814
+#listenUDP		localhost
+#listenTCP		10.10.10.10:2084
+#ListenTCP		[2001:700:1:7:215:f2ff:fe35:307d]:2084
