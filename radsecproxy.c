@@ -1479,13 +1479,14 @@ void *tlsserverrd(void *arg) {
     if (SSL_accept(ssl) <= 0) {
         while ((error = ERR_get_error()))
             err("tlsserverrd: SSL: %s", ERR_error_string(error, NULL));
-        errx("accept failed, child exiting");
+        printf("SSL_accept failed\n");
+	goto errexit;
     }
-
     if (tlsverifycert(&client->peer)) {
-	if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client))
-	    errx("pthread_create failed");
-    
+	if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client)) {
+	    err("pthread_create failed");
+	    goto errexit;
+	}
 	for (;;) {
 	    buf = radtlsget(client->peer.ssl);
 	    if (!buf)
@@ -1508,6 +1509,8 @@ void *tlsserverrd(void *arg) {
 	printf("tlsserverrd: waiting for writer to end\n");
 	pthread_join(tlsserverwrth, NULL);
     }
+    
+ errexit:
     s = SSL_get_fd(ssl);
     SSL_free(ssl);
     close(s);
