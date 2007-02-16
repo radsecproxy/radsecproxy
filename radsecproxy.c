@@ -1405,7 +1405,8 @@ void *udpserverrd(void *arg) {
         printf("udpserverrd: socket/bind failed\n");
 	exit(1);
     }
-    printf("udpserverrd: listening for UDP on host %s port %s\n", udp_server_listen->host, udp_server_listen->port);
+    printf("udpserverrd: listening for UDP on %s:%s\n",
+	   udp_server_listen->host ? udp_server_listen->host : "*", udp_server_listen->port);
 
     if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	errx("pthread_create failed");
@@ -1528,7 +1529,8 @@ int tlslistener() {
     }
     
     listen(s, 0);
-    printf("listening for incoming TCP on address %s port %s\n", tcp_server_listen->host, tcp_server_listen->port);
+    printf("listening for incoming TCP on %s:%s\n",
+	   tcp_server_listen->host ? tcp_server_listen->host : "*", tcp_server_listen->port);
 
     for (;;) {
 	snew = accept(s, (struct sockaddr *)&from, &fromlen);
@@ -1813,10 +1815,8 @@ struct peer *server_create(char type) {
 	    free(server->host);
 	    server->host = NULL;
 	}
-    } else if (type == 'T')
-	server->port = stringcopy(DEFAULT_TLS_PORT, 0);
-    else
-	server->port = stringcopy(options.udpserverport ? options.udpserverport : DEFAULT_UDP_PORT, 0);
+    } else
+	server->port = stringcopy(type == 'T' ? DEFAULT_TLS_PORT : DEFAULT_UDP_PORT, 0);
     if (!resolvepeer(server, AI_PASSIVE)) {
 	printf("failed to resolve host %s port %s, exiting\n", server->host, server->port);
 	exit(1);
@@ -1871,10 +1871,6 @@ void getmainconfig(const char *configfile) {
 	}
 	if (!strcasecmp(opt, "TLSCertificateKeyPassword")) {
 	    options.tlscertificatekeypassword = stringcopy(val, 0);
-	    continue;
-	}
-	if (!strcasecmp(opt, "UDPServerPort")) {
-	    options.udpserverport = stringcopy(val, 0);
 	    continue;
 	}
 	if (!strcasecmp(opt, "ListenUDP")) {

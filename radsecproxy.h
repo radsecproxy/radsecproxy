@@ -53,7 +53,6 @@ struct options {
     char *tlscertificatefile;
     char *tlscertificatekeyfile;
     char *tlscertificatekeypassword;
-    char *udpserverport;
     char *listenudp;
     char *listentcp;
 };
