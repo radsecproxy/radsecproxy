@@ -9,26 +9,22 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <stdarg.h>
 #include "debug.h"
 
-static uint8_t debug_level = 0;
+static uint8_t debug_level = DBG_WARN;
+
+void debug_set_level(uint8_t level) {
+    debug_level = level;
+}
 
 void debug(uint8_t level, char *format, ...) {
-    extern int errno;
-    
     if (level >= debug_level) {
 	va_list ap;
 	va_start(ap, format);
 	vfprintf(stderr, format, ap);
 	va_end(ap);
-	if (errno) {
-	    fprintf(stderr, ": ");
-	    perror(NULL);
-	    fprintf(stderr, "errno=%d\n", errno);
-	} else
-	    fprintf(stderr, "\n");
+	fprintf(stderr, "\n");
     }
     if (level >= DBG_ERR)
 	exit(1);

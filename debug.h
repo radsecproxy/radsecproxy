@@ -10,4 +10,5 @@
 #define DBG_WARN 32
 #define DBG_ERR 64
 
+void debug_set_level(uint8_t level);
 void debug(uint8_t level, char *format, ...);

@@ -48,8 +48,8 @@
 #include <openssl/err.h>
 #include <openssl/md5.h>
 #include <openssl/hmac.h>
-#include "radsecproxy.h"
 #include "debug.h"
+#include "radsecproxy.h"
 
 static struct options options;
 static struct client *clients;
@@ -1681,9 +1681,9 @@ FILE *openconfigfile(const char *filename) {
     }
 
     if (!f)
-	err("could not read config file %s nor %s\n", filename, base);
-
-    printf("reading config file %s\n", base);
+	debug(DBG_ERR, "could not read config file %s nor %s\n%s", filename, base, strerror(errno));
+    
+    debug(DBG_INFO, "reading config file %s", base);
     return f;
 }
 
@@ -1718,8 +1718,7 @@ void getconfig(const char *serverfile, const char *clientfile) {
 	    (*ucount)++;
 	    break;
 	default:
-	    printf("type must be U or T, got %c\n", *p);
-	    exit(1);
+	    debug(DBG_ERR, "type must be U or T, got %c", *p);
 	}
     }
 
@@ -1727,18 +1726,18 @@ void getconfig(const char *serverfile, const char *clientfile) {
 	count = server_count = server_udp_count + server_tls_count;
 	servers = calloc(count, sizeof(struct server));
 	if (!servers)
-	    errx("malloc failed");
+	    debug(DBG_ERR, "malloc failed");
     } else {
 	count = client_count = client_udp_count + client_tls_count;
 	clients = calloc(count, sizeof(struct client));
 	if (!clients)
-	    errx("malloc failed");
+	    debug(DBG_ERR, "malloc failed");
     }
     
     if (client_udp_count) {
 	udp_server_replyq.replies = malloc(client_udp_count * MAX_REQUESTS * sizeof(struct reply));
 	if (!udp_server_replyq.replies)
-	    errx("malloc failed");
+	    debug(DBG_ERR, "malloc failed");
 	udp_server_replyq.size = client_udp_count * MAX_REQUESTS;
 	udp_server_replyq.count = 0;
 	pthread_mutex_init(&udp_server_replyq.count_mutex, NULL);
@@ -1769,33 +1768,27 @@ void getconfig(const char *serverfile, const char *clientfile) {
 	for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
 	if (field == p) {
 	    /* no secret set and end of line, line is complete if TLS */
-	    if (peer->type == 'U') {
-		printf("secret must be specified for UDP\n");
-		exit(1);
-	    }
+	    if (peer->type == 'U')
+		debug(DBG_ERR, "secret must be specified for UDP");
 	    peer->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
 	} else {
 	    peer->secret = stringcopy(field, p - field);
 	    /* check that rest of line only white space */
 	    for (; *p == ' ' || *p == '\t'; p++);
-	    if (*p && *p != '\n') {
-		printf("max 4 fields per line, found a 5th\n");
-		exit(1);
-	    }
+	    if (*p && *p != '\n')
+		debug(DBG_ERR, "max 4 fields per line, found a 5th");
 	}
 
 	if ((serverfile && !resolvepeer(&server->peer, 0)) ||
-	    (clientfile && !resolvepeer(&client->peer, 0))) {
-	    printf("failed to resolve host %s port %s, exiting\n", peer->host, peer->port);
-	    exit(1);
-	}
+	    (clientfile && !resolvepeer(&client->peer, 0)))
+	    debug(DBG_ERR, "failed to resolve host %s port %s, exiting", peer->host, peer->port);
 
 	if (serverfile) {
 	    pthread_mutex_init(&server->lock, NULL);
 	    server->sock = -1;
 	    server->requests = calloc(MAX_REQUESTS, sizeof(struct request));
 	    if (!server->requests)
-		errx("malloc failed");
+		debug(DBG_ERR, "malloc failed");
 	    server->newrq = 0;
 	    pthread_mutex_init(&server->newrq_mutex, NULL);
 	    pthread_cond_init(&server->newrq_cond, NULL);
@@ -1805,22 +1798,21 @@ void getconfig(const char *serverfile, const char *clientfile) {
 	    else {
 		client->replyq = malloc(sizeof(struct replyq));
 		if (!client->replyq)
-		    errx("malloc failed");
+		    debug(DBG_ERR, "malloc failed");
 		client->replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
 		if (!client->replyq->replies)
-		    errx("malloc failed");
+		    debug(DBG_ERR, "malloc failed");
 		client->replyq->size = MAX_REQUESTS;
 		client->replyq->count = 0;
 		pthread_mutex_init(&client->replyq->count_mutex, NULL);
 		pthread_cond_init(&client->replyq->count_cond, NULL);
 	    }
 	}
-	printf("got type %c, host %s, port %s, secret %s\n", peer->type, peer->host, peer->port, peer->secret);
+	debug(DBG_INFO, "got type %c, host %s, port %s, secret %s", peer->type, peer->host, peer->port, peer->secret);
 	if (serverfile) {
-	    printf("    with realms:");
+	    debug(DBG_INFO, "    with realms:");
 	    for (r = server->realms; *r; r++)
-		printf(" %s", *r);
-	    printf("\n");
+		debug(DBG_INFO, "\t%s", *r);
 	}
 	i++;
     }
@@ -1870,8 +1862,7 @@ void getmainconfig(const char *configfile) {
 	for (; *p == ' ' || *p == '\t'; p++);
 	if (!*p || *p == '\n') {
 	    endopt[1] = '\0';
-	    printf("error in %s, option %s has no value\n", configfile, opt);
-	    exit(1);
+	    debug(DBG_ERR, "error in %s, option %s has no value", configfile, opt);
 	}
 	val = p;
 	for (; *p && *p != '\n'; p++)
@@ -1879,7 +1870,7 @@ void getmainconfig(const char *configfile) {
 		endval = p;
 	endopt[1] = '\0';
 	endval[1] = '\0';
-	printf("getmainconfig: %s = %s\n", opt, val);
+	debug(DBG_INFO, "getmainconfig: %s = %s", opt, val);
 	
 	if (!strcasecmp(opt, "TLSCACertificateFile")) {
 	    options.tlscacertificatefile = stringcopy(val, 0);
@@ -1913,13 +1904,11 @@ void getmainconfig(const char *configfile) {
 	    if (!strcasecmp(val, "on"))
 		options.statusserver = 1;
 	    else if (strcasecmp(val, "off")) {
-		printf("error in %s, value of option %s is %s, must be on or off\n", configfile, opt, val);
-		exit(1);
+		debug(DBG_ERR, "error in %s, value of option %s is %s, must be on or off", configfile, opt, val);
 	    }
 	    continue;
 	}
-	printf("error in %s, unknown option %s\n", configfile, opt);
-	exit(1);
+	debug(DBG_ERR, "error in %s, unknown option %s", configfile, opt);
     }
     fclose(f);
 }
@@ -1928,6 +1917,7 @@ int main(int argc, char **argv) {
     pthread_t udpserverth;
     int i;
 
+    debug_set_level(DEBUG_LEVEL);
     getmainconfig(CONFIG_MAIN);
     getconfig(CONFIG_SERVERS, NULL);
     getconfig(NULL, CONFIG_CLIENTS);
