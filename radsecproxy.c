@@ -1926,23 +1926,15 @@ void getmainconfig(const char *configfile) {
 
 int main(int argc, char **argv) {
     pthread_t udpserverth;
-    /*    pthread_attr_t joinable; */
     int i;
 
-    debug(DBG_INFO, "debug test info");
-    debug(DBG_WARN, "debug test warn");
-    
-    /*    parseargs(argc, argv); */
     getmainconfig(CONFIG_MAIN);
     getconfig(CONFIG_SERVERS, NULL);
     getconfig(NULL, CONFIG_CLIENTS);
 
-    /*    pthread_attr_init(&joinable); */
-    /*    pthread_attr_setdetachstate(&joinable, PTHREAD_CREATE_JOINABLE); */
-   
     if (client_udp_count) {
 	udp_server_listen = server_create('U');
-	if (pthread_create(&udpserverth, NULL /*&joinable*/, udpserverrd, NULL))
+	if (pthread_create(&udpserverth, NULL, udpserverrd, NULL))
 	    debug(DBG_ERR, "pthread_create failed");
     }
     
