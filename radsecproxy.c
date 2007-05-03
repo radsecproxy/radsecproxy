@@ -201,7 +201,7 @@ int resolvepeer(struct peer *peer, int ai_flags) {
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = ai_flags;
     if (getaddrinfo(peer->host, peer->port, &hints, &addrinfo)) {
-	err("resolvepeer: can't resolve %s port %s", peer->host, peer->port);
+	debug(DBG_WARN, "resolvepeer: can't resolve %s port %s", peer->host, peer->port);
 	return 0;
     }
 
@@ -1601,35 +1601,28 @@ char *parsehostport(char *s, struct peer *peer) {
 	p++;
 	field = p;
 	for (; *p && *p != ']' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	if (*p != ']') {
-	    printf("no ] matching initial [\n");
-	    exit(1);
-	}
+	if (*p != ']')
+	    debug(DBG_ERR, "no ] matching initial [");
 	ipv6 = 1;
     } else {
 	field = p;
 	for (; *p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
     }
-    if (field == p) {
-	printf("missing host/address\n");
-	exit(1);
-    }
+    if (field == p)
+	debug(DBG_ERR, "missing host/address");
+
     peer->host = stringcopy(field, p - field);
     if (ipv6) {
 	p++;
-	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n') {
-	    printf("unexpected character after ]\n");
-	    exit(1);
-	}
+	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n')
+	    debug(DBG_ERR, "unexpected character after ]");
     }
     if (*p == ':') {
 	    /* port number or service name is specified */;
 	    field = ++p;
 	    for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	    if (field == p) {
-		printf("syntax error, : but no following port\n");
-		exit(1);
-	    }
+	    if (field == p)
+		debug(DBG_ERR, "syntax error, : but no following port");
 	    peer->port = stringcopy(field, p - field);
     } else
 	peer->port = stringcopy(peer->type == 'U' ? DEFAULT_UDP_PORT : DEFAULT_TLS_PORT, 0);
@@ -1645,14 +1638,13 @@ char *parserealmlist(char *s, struct server *server) {
 	if (*p == ';')
 	    n++;
     l = p - s;
-    if (!l) {
-	printf("realm list must be specified\n");
-	exit(1);
-    }
+    if (!l)
+	debug(DBG_ERR, "realm list must be specified");
+
     server->realmdata = stringcopy(s, l);
     server->realms = malloc((1+n) * sizeof(char *));
     if (!server->realms)
-	errx("malloc failed");
+	debug(DBG_ERR, "malloc failed");
     server->realms[0] = server->realmdata;
     for (n = 1, i = 0; i < l; i++)
 	if (server->realmdata[i] == ';') {
@@ -1825,7 +1817,7 @@ struct peer *server_create(char type) {
 
     server = malloc(sizeof(struct peer));
     if (!server)
-	errx("malloc failed");
+	debug(DBG_ERR, "malloc failed");
     memset(server, 0, sizeof(struct peer));
     server->type = type;
     conf = (type == 'T' ? options.listentcp : options.listenudp);
@@ -1837,10 +1829,8 @@ struct peer *server_create(char type) {
 	}
     } else
 	server->port = stringcopy(type == 'T' ? DEFAULT_TLS_PORT : DEFAULT_UDP_PORT, 0);
-    if (!resolvepeer(server, AI_PASSIVE)) {
-	printf("failed to resolve host %s port %s, exiting\n", server->host, server->port);
-	exit(1);
-    }
+    if (!resolvepeer(server, AI_PASSIVE))
+	debug(DBG_ERR, "failed to resolve host %s port %s, exiting", server->host, server->port);
     return server;
 }
 		

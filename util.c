@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdarg.h>
+#include "debug.h"
 
 void errx(char *format, ...) {
     extern int errno;
@@ -53,7 +54,7 @@ char *stringcopy(char *s, int len) {
 	len = strlen(s);
     r = malloc(len + 1);
     if (!r)
-	errx("stringcopy: malloc failed");
+	debug(DBG_ERR, "stringcopy: malloc failed");
     memcpy(r, s, len);
     r[len] = '\0';
     return r;
