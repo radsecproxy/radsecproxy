@@ -49,6 +49,7 @@
 #include <openssl/md5.h>
 #include <openssl/hmac.h>
 #include "radsecproxy.h"
+#include "debug.h"
 
 static struct options options;
 static struct client *clients;
@@ -1923,32 +1924,13 @@ void getmainconfig(const char *configfile) {
     fclose(f);
 }
 
-#if 0
-void parseargs(int argc, char **argv) {
-    int c;
-
-    while ((c = getopt(argc, argv, "p:")) != -1) {
-	switch (c) {
-	case 'p':
-	    udp_server_port = optarg;
-	    break;
-	default:
-	    goto usage;
-	}
-    }
-
-    return;
-
- usage:
-    printf("radsecproxy [ -p UDP-port ]\n");
-    exit(1);
-}
-#endif
-
 int main(int argc, char **argv) {
     pthread_t udpserverth;
     /*    pthread_attr_t joinable; */
     int i;
+
+    debug(DBG_INFO, "debug test info");
+    debug(DBG_WARN, "debug test warn");
     
     /*    parseargs(argc, argv); */
     getmainconfig(CONFIG_MAIN);
@@ -1961,7 +1943,7 @@ int main(int argc, char **argv) {
     if (client_udp_count) {
 	udp_server_listen = server_create('U');
 	if (pthread_create(&udpserverth, NULL /*&joinable*/, udpserverrd, NULL))
-	    errx("pthread_create failed");
+	    debug(DBG_ERR, "pthread_create failed");
     }
     
     if (client_tls_count || server_tls_count)
@@ -1969,7 +1951,7 @@ int main(int argc, char **argv) {
     
     for (i = 0; i < server_count; i++)
 	if (pthread_create(&servers[i].clientth, NULL, clientwr, (void *)&servers[i]))
-	    errx("pthread_create failed");
+	    debug(DBG_ERR, "pthread_create failed");
 
     if (client_tls_count) {
 	tcp_server_listen = server_create('T');
