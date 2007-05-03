@@ -138,14 +138,11 @@ SSL_CTX *ssl_init() {
     int i;
     unsigned long error;
     
-    if (!options.tlscertificatefile || !options.tlscertificatekeyfile) {
-	printf("TLSCertificateFile and TLSCertificateKeyFile must be specified for TLS\n");
-	exit(1);
-    }
-    if (!options.tlscacertificatefile && !options.tlscacertificatepath) {
-	printf("CA Certificate file/path need to be configured\n");
-	exit(1);
-    }
+    if (!options.tlscertificatefile || !options.tlscertificatekeyfile)
+	debug(DBG_ERR, "TLSCertificateFile and TLSCertificateKeyFile must be specified for TLS");
+
+    if (!options.tlscacertificatefile && !options.tlscacertificatepath)
+	debug(DBG_ERR, "CA Certificate file/path need to be configured");
 
     ssl_locks = malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
     ssl_lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
@@ -181,8 +178,8 @@ SSL_CTX *ssl_init() {
     }
 
     while ((error = ERR_get_error()))
-	err("SSL: %s", ERR_error_string(error, NULL));
-    exit(1);
+	debug(DBG_WARN, "SSL: %s", ERR_error_string(error, NULL));
+    debug(DBG_ERR, "Error initialising SSL/TLS");
 }    
 
 void printauth(char *s, unsigned char *t) {
