@@ -12,7 +12,7 @@
                             sizeof(struct sockaddr_in) : \
                             sizeof(struct sockaddr_in6))
 
-#define DEBUG_LEVEL DBG_INFO
+#define DEBUG_LEVEL DBG_WARN
 
 #define CONFIG_MAIN "/etc/radsecproxy/radsecproxy.conf"
 #define CONFIG_SERVERS "/etc/radsecproxy/servers.conf"
@@ -57,6 +57,8 @@ struct options {
     char *tlscertificatekeypassword;
     char *listenudp;
     char *listentcp;
+    char *logdestination;
+    uint8_t loglevel;
     uint8_t statusserver;
 };
 

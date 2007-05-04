@@ -13,10 +13,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <errno.h>
 #include <stdarg.h>
 #include "debug.h"
 
+#if 0
+#include <errno.h>
 void errx(char *format, ...) {
     extern int errno;
 
@@ -47,6 +48,7 @@ void err(char *format, ...) {
     } else
         fprintf(stderr, "\n");
 }
+#endif
 
 char *stringcopy(char *s, int len) {
     char *r;
@@ -78,7 +80,7 @@ char *addr2string(struct sockaddr *addr, socklen_t len) {
     }
     if (getnameinfo(addr, len, addr_buf[i], sizeof(addr_buf[i]),
                     NULL, 0, NI_NUMERICHOST)) {
-        err("getnameinfo");
+        debug(DBG_WARN, "getnameinfo failed");
         return NULL;
     }
     return addr_buf[i];
@@ -93,19 +95,19 @@ int connectport(int type, char *host, char *port) {
     hints.ai_family = AF_UNSPEC;
 
     if (getaddrinfo(host, port, &hints, &res0) != 0) {
-        err("connectport: can't resolve host %s port %s", host, port);
+	debug(DBG_ERR, "connectport: can't resolve host %s port %s", host, port);
 	return -1;
     }
 
     for (res = res0; res; res = res->ai_next) {
 	s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 	if (s < 0) {
-	    err("connectport: socket failed");
+	    debug(DBG_WARN, "connectport: socket failed");
 	    continue;
 	}
 	if (connect(s, res->ai_addr, res->ai_addrlen) == 0)
 	    break;
-	err("connectport: connect failed");
+	debug(DBG_WARN, "connectport: connect failed");
 	close(s);
 	s = -1;
     }
