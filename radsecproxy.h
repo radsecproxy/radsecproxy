@@ -12,7 +12,7 @@
                             sizeof(struct sockaddr_in) : \
                             sizeof(struct sockaddr_in6))
 
-#define DEBUG_LEVEL DBG_WARN
+#define DEBUG_LEVEL 2
 
 #define CONFIG_MAIN "/etc/radsecproxy/radsecproxy.conf"
 #define CONFIG_SERVERS "/etc/radsecproxy/servers.conf"

@@ -1919,14 +1919,9 @@ void getmainconfig(const char *configfile) {
 	    continue;
 	}
 	if (!strcasecmp(opt, "LogLevel")) {
-	    if (!strcasecmp(val, "1"))
-		options.loglevel = DBG_ERR;
-	    else if (!strcasecmp(val, "2"))
-		options.loglevel = DBG_WARN;
-	    else if (!strcasecmp(val, "3"))
-		options.loglevel = DBG_INFO;
-	    else
+	    if (strlen(val) != 1 || *val < '1' || *val > '3')
 		debugx(1, DBG_ERR, "error in %s, value of option %s is %s, must be 1, 2 or 3", configfile, opt, val);
+	    options.loglevel = *val - '0';
 	    continue;
 	}
 	if (!strcasecmp(opt, "LogDestination")) {
@@ -1938,20 +1933,59 @@ void getmainconfig(const char *configfile) {
     fclose(f);
 }
 
+void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel) {
+    int c;
+
+    while ((c = getopt(argc, argv, "d:f")) != -1) {
+	switch (c) {
+	case 'd':
+	    if (strlen(optarg) != 1 || *optarg < '1' || *optarg > '3')
+		debugx(1, DBG_ERR, "Debug level must be 1, 2 or 3, not %s", optarg);
+	    *loglevel = *optarg - '0';
+	    break;
+	case 'f':
+	    *foreground = 1;
+	    break;
+	default:
+	    goto usage;
+	}
+    }
+    if (!(argc - optind))
+	return;
+
+ usage:
+    debug(DBG_ERR, "Usage:\n%s [ -f ] [ -d debuglevel ]", argv[0]);
+    exit(1);
+}
+
 int main(int argc, char **argv) {
     pthread_t udpserverth;
     int i;
-
-    debug_set_level(DEBUG_LEVEL);
-    getmainconfig(CONFIG_MAIN);
+    uint8_t foreground = 0, loglevel = 0;
+    
     debug_init("radsecproxy");
-    if (options.loglevel)
+    debug_set_level(DEBUG_LEVEL);
+    getargs(argc, argv, &foreground, &loglevel);
+    if (loglevel)
+	debug_set_level(loglevel);
+    getmainconfig(CONFIG_MAIN);
+    if (loglevel)
+	options.loglevel = loglevel;
+    else if (options.loglevel)
 	debug_set_level(options.loglevel);
-    if (options.logdestination)
+    if (foreground)
+	options.logdestination = NULL;
+    else {
+	if (!options.logdestination)
+	    options.logdestination = "x-syslog://";
 	debug_set_destination(options.logdestination);
+    }
     getconfig(CONFIG_SERVERS, NULL);
     getconfig(NULL, CONFIG_CLIENTS);
 
+    if (!foreground && (daemon(0, 0) < 0))
+	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
+	
     if (client_udp_count) {
 	udp_server_listen = server_create('U');
 	if (pthread_create(&udpserverth, NULL, udpserverrd, NULL))

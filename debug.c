@@ -30,7 +30,17 @@ void debug_init(char *ident) {
 }
 
 void debug_set_level(uint8_t level) {
-    debug_level = level;
+    switch (level) {
+    case 1:
+	debug_level = DBG_ERR;
+	return;
+    case 2:
+	debug_level = DBG_WARN;
+	return;
+    case 3:
+	debug_level = DBG_INFO;
+	return;
+    }
 }
 
 uint8_t debug_get_level() {
