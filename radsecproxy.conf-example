@@ -23,7 +23,9 @@ TLSCertificateKeyPassword	follow the white rabbit
 #Optional LogDestinatinon, else stderr used for logging
 # Logging to file
 #LogDestination		file:///tmp/rp.log
-# Or logging with Syslog. LOG_DAEMON used if facility not specified 
+# Or logging with Syslog. LOG_DAEMON used if facility not specified
+# The supported facilities are LOG_DAEMON, LOG_MAIL, LOG_USER and
+# LOG_LOCAL0, ..., LOG_LOCAL7
 #LogDestination         x-syslog://
 #LogDestination         x-syslog://log_local2
 
