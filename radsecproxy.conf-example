@@ -21,5 +21,9 @@ TLSCertificateKeyPassword	follow the white rabbit
 # Optional log level. 2 is default, 1 is less, 3 is more
 #LogLevel		2
 #Optional LogDestinatinon, else stderr used for logging
-#LogDestination         x-syslog://
+# Logging to file
 #LogDestination		file:///tmp/rp.log
+# Or logging with Syslog. LOG_DAEMON used if facility not specified 
+#LogDestination         x-syslog://
+#LogDestination         x-syslog://log_local2
+

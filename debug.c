@@ -38,7 +38,14 @@ uint8_t debug_get_level() {
 }
 
 int debug_set_destination(char *dest) {
+    static const char *facstrings[] = { "LOG_DAEMON", "LOG_MAIL", "LOG_USER", "LOG_LOCAL0",
+					"LOG_LOCAL1", "LOG_LOCAL2", "LOG_LOCAL3", "LOG_LOCAL4",
+					"LOG_LOCAL5", "LOG_LOCAL6", "LOG_LOCAL7", NULL };
+    static const int facvals[] = { LOG_DAEMON, LOG_MAIL, LOG_USER, LOG_LOCAL0,
+				   LOG_LOCAL1, LOG_LOCAL2, LOG_LOCAL3, LOG_LOCAL4,
+				   LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7 };
     extern int errno;
+    int i;
     
     if (!strncasecmp(dest, "file:///", 8)) {
 	debug_file = fopen(dest + 7, "a");
@@ -48,12 +55,22 @@ int debug_set_destination(char *dest) {
 	setvbuf(debug_file, NULL, _IONBF, 0);
 	return 1;
     }
-    if (!strcasecmp(dest, "x-syslog://")) {
-	debug_syslogfacility = LOG_DAEMON;
+    if (!strncasecmp(dest, "x-syslog://", 11)) {
+	dest += 11;
+	if (*dest) {
+	    for (i = 0; facstrings[i]; i++)
+		if (!strcasecmp(dest, facstrings[i]))
+		    break;
+	    if (!facstrings[i])
+		debugx(1, DBG_ERR, "Unknown syslog facility %s", dest);
+	    debug_syslogfacility = facvals[i];
+	} else
+	    debug_syslogfacility = LOG_DAEMON;
 	openlog(debug_ident, LOG_PID, debug_syslogfacility);
 	return 1;
     }
-    return 0;
+    debug(DBG_ERR, "Unknown log destination, exiting %s", dest);
+    exit(1);
 }
 
 void debug_logit(uint8_t level, const char *format, va_list ap) {
