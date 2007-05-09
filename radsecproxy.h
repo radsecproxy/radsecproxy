@@ -6,12 +6,6 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
-#define RADLEN(x) ntohs(((uint16_t *)(x))[1])
-
-#define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ? \
-                            sizeof(struct sockaddr_in) : \
-                            sizeof(struct sockaddr_in6))
-
 #define DEBUG_LEVEL 2
 
 #define CONFIG_MAIN "/etc/radsecproxy/radsecproxy.conf"
@@ -118,6 +112,12 @@ struct server {
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
 };
+
+#define RADLEN(x) ntohs(((uint16_t *)(x))[1])
+
+#define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ? \
+                            sizeof(struct sockaddr_in) : \
+                            sizeof(struct sockaddr_in6))
 
 void errx(char *format, ...);
 void err(char *format, ...);
