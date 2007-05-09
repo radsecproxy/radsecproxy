@@ -18,8 +18,8 @@ TLSCertificateKeyPassword	follow the white rabbit
 #listenUDP		localhost
 #listenTCP		10.10.10.10:2084
 #ListenTCP		[2001:700:1:7:215:f2ff:fe35:307d]:2084
-# Optional log level. 2 is default, 1 is less, 3 is more
-#LogLevel		2
+# Optional log level. 3 is default, 1 is less, 4 is more
+#LogLevel		3
 #Optional LogDestinatinon, else stderr used for logging
 # Logging to file
 #LogDestination		file:///tmp/rp.log
@@ -28,4 +28,3 @@ TLSCertificateKeyPassword	follow the white rabbit
 # LOG_LOCAL0, ..., LOG_LOCAL7
 #LogDestination         x-syslog://
 #LogDestination         x-syslog://log_local2
-

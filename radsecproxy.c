@@ -331,7 +331,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_WARN, "radudpget: recv failed");
 	    continue;
 	}
-	debug(DBG_INFO, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
+	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
 
 	if (cnt < 20) {
 	    debug(DBG_WARN, "radudpget: packet too small");
@@ -345,7 +345,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    continue;
 	}
 	if (cnt > len)
-	    debug(DBG_INFO, "radudpget: packet was padded with %d bytes", cnt - len);
+	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
 
 	f = (client
 	     ? (void *)find_client('U', (struct sockaddr *)&from, *client)
@@ -410,7 +410,7 @@ int tlsverifycert(struct peer *peer) {
 	}
 #endif	
 	if (l == strlen(peer->host) && !strncasecmp(peer->host, (char *)v, l)) {
-	    debug(DBG_INFO, "tlsverifycert: Found cn matching host %s, All OK", peer->host);
+	    debug(DBG_DBG, "tlsverifycert: Found cn matching host %s, All OK", peer->host);
 	    return 1;
 	}
 	debug(DBG_ERR, "tlsverifycert: cn not matching host %s", peer->host);
@@ -423,16 +423,16 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
     struct timeval now;
     time_t elapsed;
 
-    debug(DBG_INFO, "tlsconnect called from %s", text);
+    debug(DBG_DBG, "tlsconnect called from %s", text);
     pthread_mutex_lock(&server->lock);
     if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
 	/* already reconnected, nothing to do */
-	debug(DBG_INFO, "tlsconnect(%s): seems already reconnected", text);
+	debug(DBG_DBG, "tlsconnect(%s): seems already reconnected", text);
 	pthread_mutex_unlock(&server->lock);
 	return;
     }
 
-    debug(DBG_INFO, "tlsconnect %s", text);
+    debug(DBG_DBG, "tlsconnect %s", text);
 
     for (;;) {
 	gettimeofday(&now, NULL);
@@ -443,10 +443,10 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	} else if (elapsed < 5)
 	    sleep(10);
 	else if (elapsed < 600) {
-	    debug(DBG_WARN, "tlsconnect: sleeping %lds", elapsed);
+	    debug(DBG_INFO, "tlsconnect: sleeping %lds", elapsed);
 	    sleep(elapsed);
 	} else if (elapsed < 1000) {
-	    debug(DBG_WARN, "tlsconnect: sleeping %ds", 900);
+	    debug(DBG_INFO, "tlsconnect: sleeping %ds", 900);
 	    sleep(900);
 	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
@@ -514,7 +514,7 @@ unsigned char *radtlsget(SSL *ssl) {
 	debug(DBG_WARN, "radtlsget: packet smaller than minimum radius size");
     }
     
-    debug(DBG_INFO, "radtlsget: got %d bytes", total);
+    debug(DBG_DBG, "radtlsget: got %d bytes", total);
     return rad;
 }
 
@@ -527,7 +527,7 @@ int clientradput(struct server *server, unsigned char *rad) {
     len = RADLEN(rad);
     if (server->peer.type == 'U') {
 	if (send(server->sock, rad, len, 0) >= 0) {
-	    debug(DBG_INFO, "clienradput: sent UDP of length %d to %s port %s", len, server->peer.host, server->peer.port);
+	    debug(DBG_DBG, "clienradput: sent UDP of length %d to %s port %s", len, server->peer.host, server->peer.port);
 	    return 1;
 	}
 	debug(DBG_WARN, "clientradput: send failed");
@@ -543,7 +543,7 @@ int clientradput(struct server *server, unsigned char *rad) {
     }
 
     server->connectionok = 1;
-    debug(DBG_INFO, "clientradput: Sent %d bytes, Radius packet of length %d to TLS peer %s",
+    debug(DBG_DBG, "clientradput: Sent %d bytes, Radius packet of length %d to TLS peer %s",
 	   cnt, len, server->peer.host);
     return 1;
 }
@@ -685,7 +685,7 @@ void sendrq(struct server *to, struct client *from, struct request *rq) {
     
     to->nextid = i + 1;
     rq->buf[1] = (char)i;
-    debug(DBG_INFO, "sendrq: inserting packet with id %d in queue for %s", i, to->peer.host);
+    debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->peer.host);
     
     if (!createmessageauth(rq->buf, rq->messageauthattrval, to->peer.secret))
 	return;
@@ -694,7 +694,7 @@ void sendrq(struct server *to, struct client *from, struct request *rq) {
 
     if (!to->newrq) {
 	to->newrq = 1;
-	debug(DBG_INFO, "signalling client writer");
+	debug(DBG_DBG, "signalling client writer");
 	pthread_cond_signal(&to->newrq_cond);
     }
     pthread_mutex_unlock(&to->newrq_mutex);
@@ -716,7 +716,7 @@ void sendreply(struct client *to, struct server *from, unsigned char *buf, struc
     replyq->count++;
 
     if (replyq->count == 1) {
-	debug(DBG_INFO, "signalling client writer");
+	debug(DBG_DBG, "signalling client writer");
 	pthread_cond_signal(&replyq->count_cond);
     }
     pthread_mutex_unlock(&replyq->count_mutex);
@@ -986,7 +986,7 @@ struct server *id2server(char *id, uint8_t len) {
 	for (realm = servers[i].realms; *realm; realm++) {
 	    if ((strlen(*realm) == 1 && **realm == '*') ||
 		(strlen(*realm) == len && !memcmp(idrealm, *realm, len))) {
-		debug(DBG_INFO, "found matching realm: %s, host %s", *realm, servers[i].peer.host);
+		debug(DBG_DBG, "found matching realm: %s, host %s", *realm, servers[i].peer.host);
 		return servers + i;
 	    }
 	}
@@ -1023,10 +1023,10 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     len = RADLEN(buf);
     auth = (uint8_t *)(buf + 4);
 
-    debug(DBG_INFO, "radsrv: code %d, id %d, length %d", code, id, len);
+    debug(DBG_DBG, "radsrv: code %d, id %d, length %d", code, id, len);
     
     if (code != RAD_Access_Request) {
-	debug(DBG_WARN, "radsrv: server currently accepts only access-requests, ignoring");
+	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, ignoring");
 	return NULL;
     }
 
@@ -1069,16 +1069,16 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
 	
     memcpy(attrstring, &usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
     attrstring[usernameattr[RAD_Attr_Length] - 2] = '\0';
-    debug(DBG_WARN, "Access Request with username: %s", attrstring);
+    debug(DBG_DBG, "Access Request with username: %s", attrstring);
     
     to = id2server((char *)&usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
     if (!to) {
-	debug(DBG_WARN, "radsrv: ignoring request, don't know where to send it");
+	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
 	return NULL;
     }
 
     if (rqinqueue(to, from, id)) {
-	debug(DBG_WARN, "radsrv: ignoring request from host %s with id %d, already got one", from->peer.host, id);
+	debug(DBG_INFO, "radsrv: ignoring request from host %s with id %d, already got one", from->peer.host, id);
 	return NULL;
     }
     
@@ -1099,7 +1099,7 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
 #endif
     
     if (userpwdattr) {
-	debug(DBG_INFO, "radsrv: found userpwdattr of length %d", userpwdattr[RAD_Attr_Length]);
+	debug(DBG_DBG, "radsrv: found userpwdattr of length %d", userpwdattr[RAD_Attr_Length]);
 	attrvallen = userpwdattr[RAD_Attr_Length] - 2;
 	if (attrvallen < 16 || attrvallen > 128 || attrvallen % 16) {
 	    debug(DBG_WARN, "radsrv: invalid user password length");
@@ -1123,7 +1123,7 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     }
 
     if (tunnelpwdattr) {
-	debug(DBG_INFO, "radsrv: found tunnelpwdattr of length %d", tunnelpwdattr[RAD_Attr_Length]);
+	debug(DBG_DBG, "radsrv: found tunnelpwdattr of length %d", tunnelpwdattr[RAD_Attr_Length]);
 	attrvallen = tunnelpwdattr[RAD_Attr_Length] - 2;
 	if (attrvallen < 16 || attrvallen > 128 || attrvallen % 16) {
 	    debug(DBG_WARN, "radsrv: invalid user password length");
@@ -1183,29 +1183,29 @@ void *clientrd(void *arg) {
 
 	switch (*buf) {
 	case RAD_Access_Accept:
-	    debug(DBG_WARN, "got Access Accept with id %d", i);
+	    debug(DBG_DBG, "got Access Accept with id %d", i);
 	    break;
 	case RAD_Access_Reject:
-	    debug(DBG_WARN, "got Access Reject with id %d", i);
+	    debug(DBG_DBG, "got Access Reject with id %d", i);
 	    break;
 	case RAD_Access_Challenge:
-	    debug(DBG_WARN, "got Access Challenge with id %d", i);
+	    debug(DBG_DBG, "got Access Challenge with id %d", i);
 	    break;
 	default:
-	    debug(DBG_WARN, "clientrd: discarding, only accept access accept, access reject and access challenge messages");
+	    debug(DBG_INFO, "clientrd: discarding, only accept access accept, access reject and access challenge messages");
 	    continue;
 	}
 	
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->requests[i].buf || !server->requests[i].tries) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
-	    debug(DBG_WARN, "clientrd: no matching request sent with this id, ignoring");
+	    debug(DBG_INFO, "clientrd: no matching request sent with this id, ignoring");
 	    continue;
 	}
 
 	if (server->requests[i].received) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
-	    debug(DBG_WARN, "clientrd: already received, ignoring");
+	    debug(DBG_INFO, "clientrd: already received, ignoring");
 	    continue;
 	}
 	
@@ -1239,7 +1239,7 @@ void *clientrd(void *arg) {
 		    goto getnext;
 		}
 		memcpy(buf + 4, tmp, 16);
-		debug(DBG_INFO, "clientrd: message auth ok");
+		debug(DBG_DBG, "clientrd: message auth ok");
 		messageauthattr = attr;
 		break;
 	    }
@@ -1266,7 +1266,7 @@ void *clientrd(void *arg) {
 		    if (subattr[RAD_Attr_Type] != RAD_VS_ATTR_MS_MPPE_Send_Key &&
 			subattr[RAD_Attr_Type] != RAD_VS_ATTR_MS_MPPE_Recv_Key)
 			continue;
-		    debug(DBG_INFO, "clientrd: Got MS MPPE");
+		    debug(DBG_DBG, "clientrd: Got MS MPPE");
 		    if (subattr[RAD_Attr_Length] < 20)
 			continue;
 
@@ -1290,6 +1290,8 @@ void *clientrd(void *arg) {
 	    attr += attr[RAD_Attr_Length];
 	}
 
+	/* log DBG_INFO that received access accept/reject and username attr from original request */
+	/* TODO STIG */
 	/* once we set received = 1, requests[i] may be reused */
 	buf[1] = (char)server->requests[i].origid;
 	memcpy(buf + 4, server->requests[i].origauth, 16);
@@ -1299,7 +1301,7 @@ void *clientrd(void *arg) {
 	if (messageauthattr) {
 	    if (!createmessageauth(buf, &messageauthattr[RAD_Attr_Value], from->peer.secret))
 		continue;
-	    debug(DBG_INFO, "clientrd: computed messageauthattr");
+	    debug(DBG_DBG, "clientrd: computed messageauthattr");
 	}
 
 	if (from->peer.type == 'U')
@@ -1314,7 +1316,7 @@ void *clientrd(void *arg) {
 #ifdef DEBUG	
 	printauth("signedorigauth/buf+4", buf + 4);
 #endif	
-	debug(DBG_INFO, "clientrd: giving packet back to where it came from");
+	debug(DBG_DBG, "clientrd: giving packet back to where it came from");
 	sendreply(from, server, buf, from->peer.type == 'U' ? &fromsa : NULL);
     }
 }
@@ -1345,7 +1347,7 @@ void *clientwr(void *arg) {
 	if (!server->newrq) {
 	    gettimeofday(&now, NULL);
 	    if (timeout.tv_sec) {
-		debug(DBG_INFO, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
+		debug(DBG_DBG, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
 		pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
 		timeout.tv_sec = 0;
 	    } else if (options.statusserver) {
@@ -1356,15 +1358,15 @@ void *clientwr(void *arg) {
 		pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
 		timeout.tv_sec = 0;
 	    } else {
-		debug(DBG_INFO, "clientwr: waiting for new request");
+		debug(DBG_DBG, "clientwr: waiting for new request");
 		pthread_cond_wait(&server->newrq_cond, &server->newrq_mutex);
 	    }
 	}
 	if (server->newrq) {
-	    debug(DBG_INFO, "clientwr: got new request");
+	    debug(DBG_DBG, "clientwr: got new request");
 	    server->newrq = 0;
 	} else
-	    debug(DBG_INFO, "clientwr: request timer expired, processing request queue");
+	    debug(DBG_DBG, "clientwr: request timer expired, processing request queue");
 	pthread_mutex_unlock(&server->newrq_mutex);
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
@@ -1378,7 +1380,7 @@ void *clientwr(void *arg) {
 	    rq = server->requests + i;
 
             if (rq->received) {
-		debug(DBG_INFO, "clientwr: removing received packet from queue");
+		debug(DBG_DBG, "clientwr: removing received packet from queue");
                 free(rq->buf);
                 /* setting this to NULL means that it can be reused */
                 rq->buf = NULL;
@@ -1395,7 +1397,7 @@ void *clientwr(void *arg) {
 	    }
 
 	    if (rq->tries == (server->peer.type == 'T' ? 1 : REQUEST_RETRIES)) {
-		debug(DBG_INFO, "clientwr: removing expired packet from queue");
+		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		free(rq->buf);
 		/* setting this to NULL means that it can be reused */
 		rq->buf = NULL;
@@ -1417,7 +1419,7 @@ void *clientwr(void *arg) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - lastsend.tv_sec >= STATUS_SERVER_PERIOD) {
 		lastsend.tv_sec = now.tv_sec;
-		debug(DBG_INFO, "clientwr: should send status to %s here", server->peer.host);
+		debug(DBG_DBG, "clientwr: should send status to %s here", server->peer.host);
 	    }
 	}
     }
@@ -1430,9 +1432,9 @@ void *udpserverwr(void *arg) {
     pthread_mutex_lock(&replyq->count_mutex);
     for (;;) {
 	while (!replyq->count) {
-	    debug(DBG_INFO, "udp server writer, waiting for signal");
+	    debug(DBG_DBG, "udp server writer, waiting for signal");
 	    pthread_cond_wait(&replyq->count_cond, &replyq->count_mutex);
-	    debug(DBG_INFO, "udp server writer, got signal");
+	    debug(DBG_DBG, "udp server writer, got signal");
 	}
 	pthread_mutex_unlock(&replyq->count_mutex);
 	
@@ -1470,7 +1472,7 @@ void *udpserverrd(void *arg) {
 	buf = radudpget(udp_server_sock, &fr, NULL, &rq.fromsa);
 	to = radsrv(&rq, buf, fr);
 	if (!to) {
-	    debug(DBG_WARN, "udpserverrd: ignoring request, no place to send it");
+	    debug(DBG_INFO, "udpserverrd: ignoring request, no place to send it");
 	    continue;
 	}
 	sendrq(to, fr, &rq);
@@ -1483,27 +1485,27 @@ void *tlsserverwr(void *arg) {
     struct client *client = (struct client *)arg;
     struct replyq *replyq;
     
-    debug(DBG_INFO, "tlsserverwr starting for %s", client->peer.host);
+    debug(DBG_DBG, "tlsserverwr starting for %s", client->peer.host);
     replyq = client->replyq;
     pthread_mutex_lock(&replyq->count_mutex);
     for (;;) {
 	while (!replyq->count) {
 	    if (client->peer.ssl) {	    
-		debug(DBG_INFO, "tls server writer, waiting for signal");
+		debug(DBG_DBG, "tls server writer, waiting for signal");
 		pthread_cond_wait(&replyq->count_cond, &replyq->count_mutex);
-		debug(DBG_INFO, "tls server writer, got signal");
+		debug(DBG_DBG, "tls server writer, got signal");
 	    }
 	    if (!client->peer.ssl) {
 		/* ssl might have changed while waiting */
 		pthread_mutex_unlock(&replyq->count_mutex);
-		debug(DBG_INFO, "tlsserverwr: exiting as requested");
+		debug(DBG_DBG, "tlsserverwr: exiting as requested");
 		pthread_exit(NULL);
 	    }
 	}
 	pthread_mutex_unlock(&replyq->count_mutex);
 	cnt = SSL_write(client->peer.ssl, replyq->replies->buf, RADLEN(replyq->replies->buf));
 	if (cnt > 0)
-	    debug(DBG_INFO, "tlsserverwr: Sent %d bytes, Radius packet of length %d",
+	    debug(DBG_DBG, "tlsserverwr: Sent %d bytes, Radius packet of length %d",
 		  cnt, RADLEN(replyq->replies->buf));
 	else
 	    while ((error = ERR_get_error()))
@@ -1526,7 +1528,7 @@ void *tlsserverrd(void *arg) {
     pthread_t tlsserverwrth;
     SSL *ssl;
     
-    debug(DBG_INFO, "tlsserverrd starting for %s", client->peer.host);
+    debug(DBG_DBG, "tlsserverrd starting for %s", client->peer.host);
     ssl = client->peer.ssl;
 
     if (SSL_accept(ssl) <= 0) {
@@ -1544,11 +1546,11 @@ void *tlsserverrd(void *arg) {
 	    buf = radtlsget(client->peer.ssl);
 	    if (!buf)
 		break;
-	    debug(DBG_INFO, "tlsserverrd: got Radius message from %s", client->peer.host);
+	    debug(DBG_DBG, "tlsserverrd: got Radius message from %s", client->peer.host);
 	    memset(&rq, 0, sizeof(struct request));
 	    to = radsrv(&rq, buf, client);
 	    if (!to) {
-		debug(DBG_WARN, "tlsserverrd: ignoring request, no place to send it");
+		debug(DBG_INFO, "tlsserverrd: ignoring request, no place to send it");
 		continue;
 	    }
 	    sendrq(to, client, &rq);
@@ -1559,7 +1561,7 @@ void *tlsserverrd(void *arg) {
 	pthread_mutex_lock(&client->replyq->count_mutex);
 	pthread_cond_signal(&client->replyq->count_cond);
 	pthread_mutex_unlock(&client->replyq->count_mutex);
-	debug(DBG_INFO, "tlsserverrd: waiting for writer to end");
+	debug(DBG_DBG, "tlsserverrd: waiting for writer to end");
 	pthread_join(tlsserverwrth, NULL);
     }
     
@@ -1568,7 +1570,7 @@ void *tlsserverrd(void *arg) {
     SSL_free(ssl);
     shutdown(s, SHUT_RDWR);
     close(s);
-    debug(DBG_INFO, "tlsserverrd thread for %s exiting", client->peer.host);
+    debug(DBG_DBG, "tlsserverrd thread for %s exiting", client->peer.host);
     client->peer.ssl = NULL;
     pthread_exit(NULL);
 }
@@ -1694,7 +1696,7 @@ FILE *openconfigfile(const char *filename) {
     
     f = fopen(filename, "r");
     if (f) {
-	debug(DBG_INFO, "reading config file %s", filename);
+	debug(DBG_DBG, "reading config file %s", filename);
 	return f;
     }
 
@@ -1708,7 +1710,7 @@ FILE *openconfigfile(const char *filename) {
     if (!f)
 	debugx(1, DBG_ERR, "could not read config file %s nor %s\n%s", filename, base, strerror(errno));
     
-    debug(DBG_INFO, "reading config file %s", base);
+    debug(DBG_DBG, "reading config file %s", base);
     return f;
 }
 
@@ -1833,11 +1835,11 @@ void getconfig(const char *serverfile, const char *clientfile) {
 		pthread_cond_init(&client->replyq->count_cond, NULL);
 	    }
 	}
-	debug(DBG_INFO, "got type %c, host %s, port %s, secret %s", peer->type, peer->host, peer->port, peer->secret);
+	debug(DBG_DBG, "got type %c, host %s, port %s, secret %s", peer->type, peer->host, peer->port, peer->secret);
 	if (serverfile) {
-	    debug(DBG_INFO, "    with realms:");
+	    debug(DBG_DBG, "    with realms:");
 	    for (r = server->realms; *r; r++)
-		debug(DBG_INFO, "\t%s", *r);
+		debug(DBG_DBG, "\t%s", *r);
 	}
 	i++;
     }
@@ -1893,7 +1895,7 @@ void getmainconfig(const char *configfile) {
 		endval = p;
 	endopt[1] = '\0';
 	endval[1] = '\0';
-	debug(DBG_INFO, "getmainconfig: %s = %s", opt, val);
+	debug(DBG_DBG, "getmainconfig: %s = %s", opt, val);
 	
 	if (!strcasecmp(opt, "TLSCACertificateFile")) {
 	    options.tlscacertificatefile = stringcopy(val, 0);
@@ -1932,8 +1934,8 @@ void getmainconfig(const char *configfile) {
 	    continue;
 	}
 	if (!strcasecmp(opt, "LogLevel")) {
-	    if (strlen(val) != 1 || *val < '1' || *val > '3')
-		debugx(1, DBG_ERR, "error in %s, value of option %s is %s, must be 1, 2 or 3", configfile, opt, val);
+	    if (strlen(val) != 1 || *val < '1' || *val > '4')
+		debugx(1, DBG_ERR, "error in %s, value of option %s is %s, must be 1, 2, 3 or 4", configfile, opt, val);
 	    options.loglevel = *val - '0';
 	    continue;
 	}
@@ -1952,8 +1954,8 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel) {
     while ((c = getopt(argc, argv, "d:f")) != -1) {
 	switch (c) {
 	case 'd':
-	    if (strlen(optarg) != 1 || *optarg < '1' || *optarg > '3')
-		debugx(1, DBG_ERR, "Debug level must be 1, 2 or 3, not %s", optarg);
+	    if (strlen(optarg) != 1 || *optarg < '1' || *optarg > '4')
+		debugx(1, DBG_ERR, "Debug level must be 1, 2, 3 or 4, not %s", optarg);
 	    *loglevel = *optarg - '0';
 	    break;
 	case 'f':

@@ -19,7 +19,7 @@
 #include "debug.h"
 
 static char *debug_ident = NULL;
-static uint8_t debug_level = DBG_WARN;
+static uint8_t debug_level = DBG_INFO;
 static FILE *debug_file = NULL;
 static int debug_syslogfacility = 0;
 
@@ -39,6 +39,9 @@ void debug_set_level(uint8_t level) {
 	return;
     case 3:
 	debug_level = DBG_INFO;
+	return;
+    case 4:
+	debug_level = DBG_DBG;
 	return;
     }
 }
@@ -90,6 +93,9 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
     
     if (debug_syslogfacility) {
 	switch (level) {
+	case DBG_DBG:
+	    priority = LOG_DEBUG;
+	    break;
 	case DBG_INFO:
 	    priority = LOG_INFO;
 	    break;
