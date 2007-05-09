@@ -1013,6 +1013,7 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     int left;
     struct server *to;
     unsigned char newauth[16];
+    char attrstring[256];
 #ifdef DEBUG
     int i;
 #endif    
@@ -1033,6 +1034,10 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     attr = buf + 20;
     
     while (left > 1) {
+	if (attr[RAD_Attr_Length] < 2) {
+	    debug(DBG_WARN, "radsrv: invalid attribute length, ignoring packet");
+	    return NULL;
+	}
 	left -= attr[RAD_Attr_Length];
 	if (left < 0) {
 	    debug(DBG_WARN, "radsrv: attribute length exceeds packet length, ignoring packet");
@@ -1057,14 +1062,14 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     if (left)
 	debug(DBG_WARN, "radsrv: malformed packet? remaining byte after last attribute");
 
-#ifdef DEBUG
-    if (usernameattr) {
-	printf("radsrv: Username: ");
-	for (i = 0; i < usernameattr[RAD_Attr_Length] - 2; i++)
-	    printf("%c", usernameattr[RAD_Attr_Value + i]);
-	printf("\n");
+    if (!usernameattr) {
+	debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
+	return NULL;
     }
-#endif
+	
+    memcpy(attrstring, &usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
+    attrstring[usernameattr[RAD_Attr_Length] - 2] = '\0';
+    debug(DBG_WARN, "Access Request with username: %s", attrstring);
     
     to = id2server((char *)&usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
     if (!to) {
@@ -1174,15 +1179,23 @@ void *clientrd(void *arg) {
     
 	server->connectionok = 1;
 
-	if (*buf != RAD_Access_Accept && *buf != RAD_Access_Reject && *buf != RAD_Access_Challenge) {
+	i = buf[1]; /* i is the id */
+
+	switch (*buf) {
+	case RAD_Access_Accept:
+	    debug(DBG_WARN, "got Access Accept with id %d", i);
+	    break;
+	case RAD_Access_Reject:
+	    debug(DBG_WARN, "got Access Reject with id %d", i);
+	    break;
+	case RAD_Access_Challenge:
+	    debug(DBG_WARN, "got Access Challenge with id %d", i);
+	    break;
+	default:
 	    debug(DBG_WARN, "clientrd: discarding, only accept access accept, access reject and access challenge messages");
 	    continue;
 	}
-
-	debug(DBG_INFO, "got message type: %d, id: %d", buf[0], buf[1]);
 	
-	i = buf[1]; /* i is the id */
-
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->requests[i].buf || !server->requests[i].tries) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
