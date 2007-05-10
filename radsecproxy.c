@@ -1006,14 +1006,43 @@ int rqinqueue(struct server *to, struct client *from, uint8_t id) {
     return i < MAX_REQUESTS;
 }
 
+int attrvalidate(unsigned char *attrs, int length) {
+    while (length > 1) {
+	if (attrs[RAD_Attr_Length] < 2) {
+	    debug(DBG_WARN, "attrvalidate: invalid attribute length %d", attrs[RAD_Attr_Length]);
+	    return 0;
+	}
+	length -= attrs[RAD_Attr_Length];
+	if (length < 0) {
+	    debug(DBG_WARN, "attrvalidate: attribute length %d exceeds packet length", attrs[RAD_Attr_Length]);
+	    return 0;
+	}
+	attrs += attrs[RAD_Attr_Length];
+    }
+    if (length)
+	debug(DBG_WARN, "attrvalidate: malformed packet? remaining byte after last attribute");
+    return 1;
+}
+
+unsigned char *attrget(unsigned char *attrs, int length, uint8_t type, uint8_t *len) {
+    while (length > 1) {
+	if (attrs[RAD_Attr_Type] == type) {
+	    *len = attrs[RAD_Attr_Length] - 2;
+	    return &attrs[RAD_Attr_Value];
+	}
+	length -= attrs[RAD_Attr_Length];
+	attrs += attrs[RAD_Attr_Length];
+    }
+    return NULL;
+}
+
 struct server *radsrv(struct request *rq, unsigned char *buf, struct client *from) {
-    uint8_t code, id, *auth, *attr, attrvallen;
-    uint8_t *usernameattr = NULL, *userpwdattr = NULL, *tunnelpwdattr = NULL, *messageauthattr = NULL;
+    uint8_t code, id, *auth, *attr, attrvallen, *attrval = NULL;
     uint16_t len;
     int left;
     struct server *to;
+    char username[256];
     unsigned char newauth[16];
-    char attrstring[256];
 #ifdef DEBUG
     int i;
 #endif    
@@ -1032,58 +1061,34 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
 
     left = len - 20;
     attr = buf + 20;
-    
-    while (left > 1) {
-	if (attr[RAD_Attr_Length] < 2) {
-	    debug(DBG_WARN, "radsrv: invalid attribute length, ignoring packet");
-	    return NULL;
-	}
-	left -= attr[RAD_Attr_Length];
-	if (left < 0) {
-	    debug(DBG_WARN, "radsrv: attribute length exceeds packet length, ignoring packet");
-	    return NULL;
-	}
-	switch (attr[RAD_Attr_Type]) {
-	case RAD_Attr_User_Name:
-	    usernameattr = attr;
-	    break;
-	case RAD_Attr_User_Password:
-	    userpwdattr = attr;
-	    break;
-	case RAD_Attr_Tunnel_Password:
-	    tunnelpwdattr = attr;
-	    break;
-	case RAD_Attr_Message_Authenticator:
-	    messageauthattr = attr;
-	    break;
-	}
-	attr += attr[RAD_Attr_Length];
-    }
-    if (left)
-	debug(DBG_WARN, "radsrv: malformed packet? remaining byte after last attribute");
 
-    if (!usernameattr) {
-	debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
+    if (!attrvalidate(attr, left)) {
+	debug(DBG_WARN, "radsrv: attribute validation failed, ignoring packet");
 	return NULL;
     }
 	
-    memcpy(attrstring, &usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
-    attrstring[usernameattr[RAD_Attr_Length] - 2] = '\0';
-    debug(DBG_DBG, "Access Request with username: %s", attrstring);
+    attrval = attrget(attr, left, RAD_Attr_User_Name, &attrvallen);
+    if (!attrval) {
+	debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
+	return NULL;
+    }
+    memcpy(username, attrval, attrvallen);
+    username[attrvallen] = '\0';
+    debug(DBG_DBG, "Access Request with username: %s", username);
     
-    to = id2server((char *)&usernameattr[RAD_Attr_Value], usernameattr[RAD_Attr_Length] - 2);
+    to = id2server(username, attrvallen);
     if (!to) {
 	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
 	return NULL;
     }
-
+    
     if (rqinqueue(to, from, id)) {
 	debug(DBG_INFO, "radsrv: ignoring request from host %s with id %d, already got one", from->peer.host, id);
 	return NULL;
     }
-    
-    if (messageauthattr && (messageauthattr[RAD_Attr_Length] != 18 ||
-			    !checkmessageauth(buf, &messageauthattr[RAD_Attr_Value], from->peer.secret))) {
+
+    rq->messageauthattrval = attrget(attr, left, RAD_Attr_Message_Authenticator, &attrvallen);
+    if (rq->messageauthattrval && (attrvallen != 16 || !checkmessageauth(buf, rq->messageauthattrval, from->peer.secret))) {
 	debug(DBG_WARN, "radsrv: message authentication failed");
 	return NULL;
     }
@@ -1098,49 +1103,49 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     printauth("newauth", newauth);
 #endif
     
-    if (userpwdattr) {
-	debug(DBG_DBG, "radsrv: found userpwdattr of length %d", userpwdattr[RAD_Attr_Length]);
-	attrvallen = userpwdattr[RAD_Attr_Length] - 2;
+    attrval = attrget(attr, left, RAD_Attr_User_Password, &attrvallen);
+    if (attrval) {
+	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attrvallen);
 	if (attrvallen < 16 || attrvallen > 128 || attrvallen % 16) {
 	    debug(DBG_WARN, "radsrv: invalid user password length");
 	    return NULL;
 	}
 	
-	if (!pwddecrypt(&userpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
+	if (!pwddecrypt(attrval, attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
 	    debug(DBG_WARN, "radsrv: cannot decrypt password");
 	    return NULL;
 	}
 #ifdef DEBUG
 	printf("radsrv: password: ");
 	for (i = 0; i < attrvallen; i++)
-	    printf("%02x ", userpwdattr[RAD_Attr_Value + i]);
+	    printf("%02x ", attrval[i]);
 	printf("\n");
 #endif	
-	if (!pwdencrypt(&userpwdattr[RAD_Attr_Value], attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
+	if (!pwdencrypt(attrval, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
 	    debug(DBG_WARN, "radsrv: cannot encrypt password");
 	    return NULL;
 	}
     }
-
-    if (tunnelpwdattr) {
-	debug(DBG_DBG, "radsrv: found tunnelpwdattr of length %d", tunnelpwdattr[RAD_Attr_Length]);
-	attrvallen = tunnelpwdattr[RAD_Attr_Length] - 2;
+    
+    attrval = attrget(attr, left, RAD_Attr_Tunnel_Password, &attrvallen);
+    if (attrval) {
+	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", attrvallen);
 	if (attrvallen < 16 || attrvallen > 128 || attrvallen % 16) {
 	    debug(DBG_WARN, "radsrv: invalid user password length");
 	    return NULL;
 	}
 	
-	if (!pwddecrypt(&tunnelpwdattr[RAD_Attr_Value], attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
+	if (!pwddecrypt(attrval, attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
 	    debug(DBG_WARN, "radsrv: cannot decrypt password");
 	    return NULL;
 	}
 #ifdef DEBUG	
 	printf("radsrv: password: ");
 	for (i = 0; i < attrvallen; i++)
-	    printf("%02x ", tunnelpwdattr[RAD_Attr_Value + i]);
+	    printf("%02x ", attrval[i]);
 	printf("\n");
 #endif	
-	if (!pwdencrypt(&tunnelpwdattr[RAD_Attr_Value], attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
+	if (!pwdencrypt(attrval, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
 	    debug(DBG_WARN, "radsrv: cannot encrypt password");
 	    return NULL;
 	}
@@ -1149,7 +1154,6 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     rq->buf = buf;
     rq->from = from;
     rq->origid = id;
-    rq->messageauthattrval = (messageauthattr ? &messageauthattr[RAD_Attr_Value] : NULL);
     memcpy(rq->origauth, auth, 16);
     memcpy(auth, newauth, 16);
 #ifdef DEBUG    
@@ -1221,12 +1225,13 @@ void *clientrd(void *arg) {
 	messageauthattr = NULL;
 	left = RADLEN(buf) - 20;
 	attr = buf + 20;
+
+	if (!attrvalidate(attr, left)) {
+	    debug(DBG_WARN, "clientrd: attribute validation failed, ignoring packet");
+	    continue;
+	}
+
 	while (left > 1) {
-	    left -= attr[RAD_Attr_Length];
-	    if (left < 0) {
-		debug(DBG_WARN, "clientrd: attribute length exceeds packet length, ignoring packet");
-		goto getnext;
-	    }
 	    if (attr[RAD_Attr_Type] == RAD_Attr_Message_Authenticator) {
 		if (attr[RAD_Attr_Length] != 18) {
 		    debug(DBG_WARN, "clientrd: illegal message auth attribute length, ignoring packet");
@@ -1243,6 +1248,7 @@ void *clientrd(void *arg) {
 		messageauthattr = attr;
 		break;
 	    }
+	    left -= attr[RAD_Attr_Length];
 	    attr += attr[RAD_Attr_Length];
 	}
 
@@ -1250,11 +1256,6 @@ void *clientrd(void *arg) {
 	left = RADLEN(buf) - 20;
 	attr = buf + 20;
 	while (left > 1) {
-	    left -= attr[RAD_Attr_Length];
-	    if (left < 0) {
-		debug(DBG_WARN, "clientrd: attribute length exceeds packet length, ignoring packet");
-		goto getnext;
-	    }
 	    if (attr[RAD_Attr_Type] == RAD_Attr_Vendor_Specific &&
 		((uint16_t *)attr)[1] == 0 && ntohs(((uint16_t *)attr)[2]) == 311) { /* 311 == MS */
 		subleft = attr[RAD_Attr_Length] - 6;
@@ -1287,11 +1288,13 @@ void *clientrd(void *arg) {
 		    goto getnext;
 		}
 	    }
+	    left -= attr[RAD_Attr_Length];
 	    attr += attr[RAD_Attr_Length];
 	}
 
 	/* log DBG_INFO that received access accept/reject and username attr from original request */
-	/* TODO STIG */
+	/* TODO STIG add username in request structure for logging purpose */
+	/* Write general routines for validating radius message and extracting a given attribute */
 	/* once we set received = 1, requests[i] may be reused */
 	buf[1] = (char)server->requests[i].origid;
 	memcpy(buf + 4, server->requests[i].origauth, 16);
