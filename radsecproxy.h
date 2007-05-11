@@ -63,7 +63,6 @@ struct request {
     uint8_t received;
     struct timeval expiry;
     struct client *from;
-    unsigned char *messageauthattrval;
     uint8_t origid; /* used by servwr */
     char origauth[16]; /* used by servwr */
     struct sockaddr_storage fromsa; /* used by udpservwr */
