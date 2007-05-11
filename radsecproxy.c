@@ -1180,7 +1180,7 @@ void *clientrd(void *arg) {
     uint8_t attrvallen;
     struct sockaddr_storage fromsa;
     struct timeval lastconnecttry;
-    char tmp[255];
+    char tmp[256];
     
     for (;;) {
 	lastconnecttry = server->lastconnecttry;
@@ -1281,7 +1281,20 @@ void *clientrd(void *arg) {
 	    }
 	}
 
-	/* log DBG_INFO that received access accept/reject and username attr from original request */
+	if (*buf == RAD_Access_Accept || *buf == RAD_Access_Reject) {
+	    attrval = attrget(server->requests[i].buf + 20, RADLEN(server->requests[i].buf) - 20, RAD_Attr_User_Name, &attrvallen);
+	    /* we know the attribute exists */
+	    memcpy(tmp, attrval, attrvallen);
+	    tmp[attrvallen] = '\0';
+	    switch (*buf) {
+	    case RAD_Access_Accept:
+		debug(DBG_INFO, "Access Accept for %s", tmp);
+		break;
+	    case RAD_Access_Reject:
+		debug(DBG_INFO, "Access Reject for %s", tmp);
+		break;
+	    }
+	}
 	
 	/* once we set received = 1, requests[i] may be reused */
 	buf[1] = (char)server->requests[i].origid;
