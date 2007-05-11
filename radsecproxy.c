@@ -1260,7 +1260,7 @@ void *clientrd(void *arg) {
 	    sublen = attrvallen - 4;
 	    subattrs = attrval + 4;
 	    if (!attrvalidate(subattrs, sublen)) {
-		debug(DBG_WARN, "radsrv: MS attribute validation failed, ignoring packet");
+		debug(DBG_WARN, "clientrd: MS attribute validation failed, ignoring packet");
 		continue;
 	    }
 	    
@@ -1873,15 +1873,14 @@ struct peer *server_create(char type) {
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", server->host, server->port);
     return server;
 }
-		
-void getmainconfig(const char *configfile) {
-    FILE *f;
-    char line[1024];
-    char *p, *opt, *endopt, *val, *endval;
-    
-    f = openconfigfile(configfile);
-    memset(&options, 0, sizeof(options));
 
+void getgeneralconfig(FILE *f, ...) {
+    va_list ap;
+    char line[1024];
+    char *p, *opt, *endopt, *val, *endval, *word, **str;
+    int type;
+    void (*cbk)(char *, char *, FILE *);
+	
     while (fgets(line, 1024, f)) {
 	for (p = line; *p == ' ' || *p == '\t'; p++);
 	if (!*p || *p == '#' || *p == '\n')
@@ -1892,7 +1891,7 @@ void getmainconfig(const char *configfile) {
 	for (; *p == ' ' || *p == '\t'; p++);
 	if (!*p || *p == '\n') {
 	    endopt[1] = '\0';
-	    debugx(1, DBG_ERR, "error in %s, option %s has no value", configfile, opt);
+	    debugx(1, DBG_ERR, "configuration error, option %s has no value", opt);
 	}
 	val = p;
 	for (; *p && *p != '\n'; p++)
@@ -1900,56 +1899,85 @@ void getmainconfig(const char *configfile) {
 		endval = p;
 	endopt[1] = '\0';
 	endval[1] = '\0';
-	debug(DBG_DBG, "getmainconfig: %s = %s", opt, val);
-	
-	if (!strcasecmp(opt, "TLSCACertificateFile")) {
-	    options.tlscacertificatefile = stringcopy(val, 0);
-	    continue;
-	}
-	if (!strcasecmp(opt, "TLSCACertificatePath")) {
-	    options.tlscacertificatepath = stringcopy(val, 0);
-	    continue;
-	}
-	if (!strcasecmp(opt, "TLSCertificateFile")) {
-	    options.tlscertificatefile = stringcopy(val, 0);
-	    continue;
-	}
-	if (!strcasecmp(opt, "TLSCertificateKeyFile")) {
-	    options.tlscertificatekeyfile = stringcopy(val, 0);
-	    continue;
-	}
-	if (!strcasecmp(opt, "TLSCertificateKeyPassword")) {
-	    options.tlscertificatekeypassword = stringcopy(val, 0);
-	    continue;
-	}
-	if (!strcasecmp(opt, "ListenUDP")) {
-	    options.listenudp = stringcopy(val, 0);
-	    continue;
-	}
-	if (!strcasecmp(opt, "ListenTCP")) {
-	    options.listentcp = stringcopy(val, 0);
-	    continue;
-	}
-	if (!strcasecmp(opt, "StatusServer")) {
-	    if (!strcasecmp(val, "on"))
-		options.statusserver = 1;
-	    else if (strcasecmp(val, "off")) {
-		debugx(1, DBG_ERR, "error in %s, value of option %s is %s, must be on or off", configfile, opt, val);
+	if (val[0] == '=' && (val[1] == ' ' || val[1] == '\t'))
+	    for (val++; *val == ' ' || *val == '\t'; val++);
+	debug(DBG_DBG, "getgeneralconfig: %s = %s", opt, val);
+
+	va_start(ap, f);
+	while ((word = va_arg(ap, char *))) {
+	    type = va_arg(ap, int);
+	    switch (type) {
+	    case CONF_STR:
+		str = va_arg(ap, char **);
+		if (!str)
+		    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
+		break;
+	    case CONF_CBK:
+		break;
+	    default:
+		debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
 	    }
-	    continue;
+	    if (!strcasecmp(opt, word))
+		break;
 	}
-	if (!strcasecmp(opt, "LogLevel")) {
-	    if (strlen(val) != 1 || *val < '1' || *val > '4')
-		debugx(1, DBG_ERR, "error in %s, value of option %s is %s, must be 1, 2, 3 or 4", configfile, opt, val);
-	    options.loglevel = *val - '0';
-	    continue;
+	va_end(ap);
+	if (!word)
+	    debugx(1, DBG_ERR, "configuration error, unknown option %s", opt);
+	
+	switch (type) {
+	case CONF_STR:
+	    *str = stringcopy(val, 0);
+	    break;
+	case CONF_CBK:
+	    /*	    (void (*conf_cb)(char *, char *, FILE *))(word, val, f);*/
+	    cbk(word, val, f);
+	    break;
+	default:
+	    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
 	}
-	if (!strcasecmp(opt, "LogDestination")) {
-	    options.logdestination = stringcopy(val, 0);
-	    continue;
-	}
-	debugx(1, DBG_ERR, "error in %s, unknown option %s", configfile, opt);
     }
+}
+
+void conf_cb(char *word, char *val, FILE *f) {
+    debug(DBG_DBG, "conf_cb called");
+}
+
+void getmainconfig(const char *configfile) {
+    FILE *f;
+    char *statusserver = NULL, *loglevel = NULL;
+
+    f = openconfigfile(configfile);
+    memset(&options, 0, sizeof(options));
+
+    getgeneralconfig(f,
+		     "TLSCACertificateFile", CONF_STR, &options.tlscacertificatefile,
+		     "TLSCACertificatePath", CONF_STR, &options.tlscacertificatepath,
+		     "TLSCertificateFile", CONF_STR, &options.tlscertificatefile,
+		     "TLSCertificateKeyFile", CONF_STR, &options.tlscertificatekeyfile,
+		     "TLSCertificateKeyPassword", CONF_STR, &options.tlscertificatekeypassword,
+		     "ListenUDP", CONF_STR, &options.listenudp,
+		     "ListenTCP", CONF_STR, &options.listentcp,
+		     "StatusServer", CONF_STR, &statusserver,
+		     "LogLevel", CONF_STR, &loglevel,
+		     "LogDestination", CONF_STR, &options.logdestination,
+		     "Client", CONF_CBK, conf_cb,
+		     NULL
+		     );
+
+    if (statusserver) {
+	if (!strcasecmp(statusserver, "on"))
+	    options.statusserver = 1;
+	else if (strcasecmp(statusserver, "off"))
+	    debugx(1, DBG_ERR, "error in %s, value of option StatusServer is %s, must be on or off", configfile, statusserver);
+	free(statusserver);
+    }
+    if (loglevel) {
+	if (strlen(loglevel) != 1 || *loglevel < '1' || *loglevel > '4')
+	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %s, must be 1, 2, 3 or 4", configfile, loglevel);
+	options.loglevel = *loglevel - '0';
+	free(loglevel);
+    }
+
     fclose(f);
 }
 

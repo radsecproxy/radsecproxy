@@ -43,6 +43,9 @@
 #define RAD_Attr_Length 1
 #define RAD_Attr_Value 2
 
+#define CONF_STR 1
+#define CONF_CBK 2
+
 struct options {
     char *tlscacertificatefile;
     char *tlscacertificatepath;
