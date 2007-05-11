@@ -1043,15 +1043,52 @@ int attrvalidate(unsigned char *attrs, int length) {
     return 1;
 }
 
+int pwdrecrypt(uint8_t *pwd, uint8_t len, char *oldsecret, char *newsecret, uint8_t *oldauth, uint8_t *newauth) {
+#ifdef DEBUG    
+    int i;
+#endif    
+    if (len < 16 || len > 128 || len % 16) {
+	debug(DBG_WARN, "pwdrecrypt: invalid password length");
+	return 0;
+    }
+	
+    if (!pwddecrypt(pwd, len, oldsecret, strlen(oldsecret), oldauth)) {
+	debug(DBG_WARN, "pwdrecrypt: cannot decrypt password");
+	return 0;
+    }
+#ifdef DEBUG
+    printf("pwdrecrypt: password: ");
+    for (i = 0; i < len; i++)
+	printf("%02x ", pwd[i]);
+    printf("\n");
+#endif	
+    if (!pwdencrypt(pwd, len, newsecret, strlen(newsecret), newauth)) {
+	debug(DBG_WARN, "pwdrecrypt: cannot encrypt password");
+	return 0;
+    }
+    return 1;
+}
+
+int msmpprecrypt(uint8_t *msmpp, uint8_t len, char *oldsecret, char *newsecret, unsigned char *oldauth, char *newauth) {
+    if (len < 18)
+	return 0;
+    if (!msmppdecrypt(msmpp + 2, len - 2, (unsigned char *)oldsecret, strlen(oldsecret), oldauth, msmpp)) {
+	debug(DBG_WARN, "msmpprecrypt: failed to decrypt msppe key");
+	return 0;
+    }
+    if (!msmppencrypt(msmpp + 2, len - 2, (unsigned char *)newsecret, strlen(newsecret), (unsigned char *)newauth, msmpp)) {
+	debug(DBG_WARN, "msmpprecrypt: failed to encrypt msppe key");
+	return 0;
+    }
+    return 1;
+}
+
 struct server *radsrv(struct request *rq, unsigned char *buf, struct client *from) {
     uint8_t code, id, *auth, *attrs, attrvallen, *attrval;
     uint16_t len;
     struct server *to;
     char username[256];
     unsigned char newauth[16];
-#ifdef DEBUG
-    int i;
-#endif    
     
     code = *(uint8_t *)buf;
     id = *(uint8_t *)(buf + 1);
@@ -1112,49 +1149,15 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     attrval = attrget(attrs, len, RAD_Attr_User_Password, &attrvallen);
     if (attrval) {
 	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attrvallen);
-	if (attrvallen < 16 || attrvallen > 128 || attrvallen % 16) {
-	    debug(DBG_WARN, "radsrv: invalid user password length");
+	if (!pwdrecrypt(attrval, attrvallen, from->peer.secret, to->peer.secret, auth, newauth))
 	    return NULL;
-	}
-	
-	if (!pwddecrypt(attrval, attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
-	    debug(DBG_WARN, "radsrv: cannot decrypt password");
-	    return NULL;
-	}
-#ifdef DEBUG
-	printf("radsrv: password: ");
-	for (i = 0; i < attrvallen; i++)
-	    printf("%02x ", attrval[i]);
-	printf("\n");
-#endif	
-	if (!pwdencrypt(attrval, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
-	    debug(DBG_WARN, "radsrv: cannot encrypt password");
-	    return NULL;
-	}
     }
     
     attrval = attrget(attrs, len, RAD_Attr_Tunnel_Password, &attrvallen);
     if (attrval) {
 	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", attrvallen);
-	if (attrvallen < 16 || attrvallen > 128 || attrvallen % 16) {
-	    debug(DBG_WARN, "radsrv: invalid user password length");
+	if (!pwdrecrypt(attrval, attrvallen, from->peer.secret, to->peer.secret, auth, newauth))
 	    return NULL;
-	}
-	
-	if (!pwddecrypt(attrval, attrvallen, from->peer.secret, strlen(from->peer.secret), auth)) {
-	    debug(DBG_WARN, "radsrv: cannot decrypt password");
-	    return NULL;
-	}
-#ifdef DEBUG	
-	printf("radsrv: password: ");
-	for (i = 0; i < attrvallen; i++)
-	    printf("%02x ", attrval[i]);
-	printf("\n");
-#endif	
-	if (!pwdencrypt(attrval, attrvallen, to->peer.secret, strlen(to->peer.secret), newauth)) {
-	    debug(DBG_WARN, "radsrv: cannot encrypt password");
-	    return NULL;
-	}
     }
 
     rq->buf = buf;
@@ -1263,36 +1266,18 @@ void *clientrd(void *arg) {
 	    
 	    attrval = attrget(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, &attrvallen);
 	    if (attrval) {
-		debug(DBG_DBG, "clientrd: Got MS MPPE");
-		if (attrvallen < 18)
+		debug(DBG_DBG, "clientrd: Got MS MPPE Send Key");
+		if (!msmpprecrypt(attrval, attrvallen, server->peer.secret, from->peer.secret,
+				  server->requests[i].buf + 4, server->requests[i].origauth))
 		    continue;
-		if (!msmppdecrypt(attrval + 2, attrvallen - 2, (unsigned char *)server->peer.secret,
-				  strlen(server->peer.secret), server->requests[i].buf + 4, attrval)) {
-		    debug(DBG_WARN, "clientrd: failed to decrypt msppe key");
-		    continue;
-		}
-		if (!msmppencrypt(attrval + 2, attrvallen - 2, (unsigned char *)from->peer.secret,
-				  strlen(from->peer.secret), (unsigned char *)server->requests[i].origauth, attrval)) {
-		    debug(DBG_WARN, "clientrd: failed to encrypt msppe key");
-		    continue;
-		}
 	    }
 	    
 	    attrval = attrget(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Recv_Key, &attrvallen);
 	    if (attrval) {
-		debug(DBG_DBG, "clientrd: Got MS MPPE");
-		if (attrvallen < 18)
+		debug(DBG_DBG, "clientrd: Got MS MPPE Recv Key");
+		if (!msmpprecrypt(attrval, attrvallen, server->peer.secret, from->peer.secret,
+				  server->requests[i].buf + 4, server->requests[i].origauth))
 		    continue;
-		if (!msmppdecrypt(attrval + 2, attrvallen - 2, (unsigned char *)server->peer.secret,
-				  strlen(server->peer.secret), server->requests[i].buf + 4, attrval)) {
-		    debug(DBG_WARN, "clientrd: failed to decrypt msppe key");
-		    continue;
-		}
-		if (!msmppencrypt(attrval + 2, attrvallen - 2, (unsigned char *)from->peer.secret,
-				  strlen(from->peer.secret), (unsigned char *)server->requests[i].origauth, attrval)) {
-		    debug(DBG_WARN, "clientrd: failed to encrypt msppe key");
-		    continue;
-		}
 	    }
 	}
 
