@@ -54,6 +54,7 @@
 static struct options options;
 static struct client *clients = NULL;
 static struct server *servers = NULL;
+static struct realm *realms = NULL;
 
 static int client_udp_count = 0;
 static int client_tls_count = 0;
@@ -61,6 +62,7 @@ static int client_count = 0;
 static int server_udp_count = 0;
 static int server_tls_count = 0;
 static int server_count = 0;
+static int realm_count = 0;
 
 static struct peer *tcp_server_listen;
 static struct peer *udp_server_listen;
@@ -991,8 +993,9 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 
 struct server *id2server(char *id, uint8_t len) {
     int i;
-    char **realm, *idrealm;
-
+    char *idrealm;
+    struct server *deflt = NULL;
+    
     idrealm = strchr(id, '@');
     if (idrealm) {
 	idrealm++;
@@ -1001,6 +1004,8 @@ struct server *id2server(char *id, uint8_t len) {
 	idrealm = "-";
 	len = 1;
     }
+#if 0
+    char **realm;
     for (i = 0; i < server_count; i++) {
 	for (realm = servers[i].realms; *realm; realm++) {
 	    if ((strlen(*realm) == 1 && **realm == '*') ||
@@ -1011,6 +1016,17 @@ struct server *id2server(char *id, uint8_t len) {
 	}
     }
     return NULL;
+#else
+    for (i = 0; i < realm_count; i++) {
+	if (!deflt && realms[i].name[0] == '*' && realms[i].name[1] == '\0')
+	    deflt = realms[i].server;
+	else if (!strncasecmp(idrealm, realms[i].name, len)) {
+	    debug(DBG_DBG, "found matching realm: %s, host %s", realms[i].name, servers[i].peer.host);
+	    return servers + i;
+	}
+    }
+    return deflt;
+#endif
 }
 
 int rqinqueue(struct server *to, struct client *from, uint8_t id) {
@@ -1288,10 +1304,10 @@ void *clientrd(void *arg) {
 	    tmp[attrvallen] = '\0';
 	    switch (*buf) {
 	    case RAD_Access_Accept:
-		debug(DBG_INFO, "Access Accept for %s", tmp);
+		debug(DBG_INFO, "Access Accept for %s from %s", tmp, server->peer.host);
 		break;
 	    case RAD_Access_Reject:
-		debug(DBG_INFO, "Access Reject for %s", tmp);
+		debug(DBG_INFO, "Access Reject for %s from %s", tmp, server->peer.host);
 		break;
 	    }
 	}
@@ -1631,6 +1647,27 @@ int tlslistener() {
     return 0;
 }
 
+void addrealm(char *value, char *server) {
+    int i;
+    struct realm *realm;
+    
+    for (i = 0; i < server_count; i++)
+	if (!strcasecmp(server, servers[i].peer.host))
+	    break;
+    if (i == server_count)
+	debugx(1, DBG_ERR, "addrealm failed, no server %s", server);
+
+    realm_count++;
+    realms = realloc(realms, realm_count * sizeof(struct realm));
+    if (!realms)
+	debugx(1, DBG_ERR, "malloc failed");
+    realm = realms + realm_count - 1;
+    memset(realm, 0, sizeof(struct realm));
+    realm->name = stringcopy(value, 0);
+    realm->server = servers + i;
+    debug(DBG_DBG, "addrealm: added realm %s for server %s", value, server);
+}
+
 char *parsehostport(char *s, struct peer *peer) {
     char *p, *field;
     int ipv6 = 0;
@@ -1669,10 +1706,14 @@ char *parsehostport(char *s, struct peer *peer) {
     return p;
 }
 
+/* TODO remove this */
 /* * is default, else longest match ... ";" used for separator */
 char *parserealmlist(char *s, struct server *server) {
+#if 0    
     char *p;
     int i, n, l;
+    char *realmdata;
+    char **realms;
 
     for (p = s, n = 1; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++)
 	if (*p == ';')
@@ -1681,18 +1722,37 @@ char *parserealmlist(char *s, struct server *server) {
     if (!l)
 	debugx(1, DBG_ERR, "realm list must be specified");
 
-    server->realmdata = stringcopy(s, l);
-    server->realms = malloc((1+n) * sizeof(char *));
-    if (!server->realms)
+    realmdata = stringcopy(s, l);
+    realms = malloc((1+n) * sizeof(char *));
+    if (!realms)
 	debugx(1, DBG_ERR, "malloc failed");
-    server->realms[0] = server->realmdata;
+    realms[0] = realmdata;
     for (n = 1, i = 0; i < l; i++)
-	if (server->realmdata[i] == ';') {
-	    server->realmdata[i] = '\0';
-	    server->realms[n++] = server->realmdata + i + 1;
+	if (realmdata[i] == ';') {
+	    realmdata[i] = '\0';
+	    realms[n++] = realmdata + i + 1;
 	}	
-    server->realms[n] = NULL;
+    for (i = 0; i < n; i++)
+	addrealm(realms[i], server->peer.host);
+    free(realms);
+    free(realmdata);
     return p;
+#else
+    char *start;
+    char *realm;
+
+    for (start = s;; s++)
+	if (!*s || *s == ';' || *s == ' ' || *s == '\t' || *s == '\n') {
+	    if (s - start > 0) {
+		realm = stringcopy(start, s - start);
+		addrealm(realm, server->peer.host);
+		free(realm);
+	    }
+	    if (*s != ';')
+		return s;
+	    start = s + 1;
+	}
+#endif    
 }
 
 FILE *openconfigfile(const char *filename) {
@@ -1723,7 +1783,7 @@ FILE *openconfigfile(const char *filename) {
 void getconfig(const char *serverfile, const char *clientfile) {
     FILE *f;
     char line[1024];
-    char *p, *field, **r;
+    char *p, *field;
     struct client *client;
     struct server *server;
     struct peer *peer;
@@ -1760,6 +1820,16 @@ void getconfig(const char *serverfile, const char *clientfile) {
 	if (!servers)
 	    debugx(1, DBG_ERR, "malloc failed");
     } else {
+	if (client_udp_count) {
+	    udp_server_replyq.replies = malloc(client_udp_count * MAX_REQUESTS * sizeof(struct reply));
+	    if (!udp_server_replyq.replies)
+		debugx(1, DBG_ERR, "malloc failed");
+	    udp_server_replyq.size = client_udp_count * MAX_REQUESTS;
+	    udp_server_replyq.count = 0;
+	    pthread_mutex_init(&udp_server_replyq.count_mutex, NULL);
+	    pthread_cond_init(&udp_server_replyq.count_cond, NULL);
+	}    
+
 	count = client_count = client_udp_count + client_tls_count;
 	clients = calloc(count, sizeof(struct client));
 	if (!clients)
@@ -1831,11 +1901,6 @@ void getconfig(const char *serverfile, const char *clientfile) {
 	    }
 	}
 	debug(DBG_DBG, "got type %c, host %s, port %s, secret %s", peer->type, peer->host, peer->port, peer->secret);
-	if (serverfile) {
-	    debug(DBG_DBG, "    with realms:");
-	    for (r = server->realms; *r; r++)
-		debug(DBG_DBG, "\t%s", *r);
-	}
 	i++;
     }
     fclose(f);
@@ -1968,53 +2033,73 @@ void getgeneralconfig(FILE *f, char *block, ...) {
     }
 }
 
-void conf_cb(FILE *f, char *opt, char *val) {
-    char *type = NULL, *secret = NULL /*, *port = NULL*/;
+void confclsrv_cb(FILE *f, char *opt, char *val) {
+    char *type = NULL, *secret = NULL, *port = NULL;
     char *block;
-    struct client *client;
+    struct client *client = NULL;
+    struct server *server = NULL;
     struct peer *peer;
     
     block = malloc(strlen(opt) + strlen(val) + 2);
     if (!block)
 	debugx(1, DBG_ERR, "malloc failed");
     sprintf(block, "%s %s", opt, val);
-    debug(DBG_DBG, "conf_cb called for %s", block);
+    debug(DBG_DBG, "confclsrv_cb called for %s", block);
     
-    getgeneralconfig(f, block,
-		     "type", CONF_STR, &type,
-		     "secret", CONF_STR, &secret,
-		     /*		     "port", CONF_STR, &port,*/
-		     NULL
-		     );
-
-    client_count++;
-    clients = realloc(clients, client_count * sizeof(struct client));
-    if (!clients)
-	debugx(1, DBG_ERR, "malloc failed");
-    client = clients + client_count - 1;
-    memset(client, 0, sizeof(struct client));
-    peer = &client->peer;
+    if (!strcasecmp(opt, "client")) {
+	getgeneralconfig(f, block,
+			 "type", CONF_STR, &type,
+			 "secret", CONF_STR, &secret,
+			 NULL
+			 );
+	client_count++;
+	clients = realloc(clients, client_count * sizeof(struct client));
+	if (!clients)
+	    debugx(1, DBG_ERR, "malloc failed");
+	client = clients + client_count - 1;
+	memset(client, 0, sizeof(struct client));
+	peer = &client->peer;
+    } else {
+	getgeneralconfig(f, block,
+			 "type", CONF_STR, &type,
+			 "secret", CONF_STR, &secret,
+			 "port", CONF_STR, &port,
+			 NULL
+			 );
+	server_count++;
+	servers = realloc(servers, server_count * sizeof(struct server));
+	if (!servers)
+	    debugx(1, DBG_ERR, "malloc failed");
+	server = servers + server_count - 1;
+	memset(server, 0, sizeof(struct server));
+	peer = &server->peer;
+	peer->port = port;
+    }
+    
     peer->host = stringcopy(val, 0);
-    /*    peer->port = port;*/
     
     if (type && !strcasecmp(type, "udp")) {
 	peer->type = 'U';
-	/*
-	if (!port)
-	peer->port = stringcopy(DEFAULT_UDP_PORT, 0);
-	*/
-	client_udp_count++;
+	if (client)
+	    client_udp_count++;
+	else {
+	    server_udp_count++;
+	    if (!port)
+		peer->port = stringcopy(DEFAULT_UDP_PORT, 0);
+	}
     } else if (type && !strcasecmp(type, "tls")) {
 	peer->type = 'T';
-	/*
-	if (!port)
-	    peer->port = stringcopy(DEFAULT_TLS_PORT, 0);
-	*/
-	client_tls_count++;
+	if (client)
+	    client_tls_count++;
+	else {
+	    server_tls_count++;
+	    if (!port)
+		peer->port = stringcopy(DEFAULT_TLS_PORT, 0);
+	}
     } else
 	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
     free(type);
-    /*    free(port);*/
+    
     if (!resolvepeer(peer, 0))
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", peer->host, peer->port);
     
@@ -2025,22 +2110,55 @@ void conf_cb(FILE *f, char *opt, char *val) {
     } else {
 	peer->secret = secret;
     }
-    
-    if (peer->type == 'U')
-	client->replyq = &udp_server_replyq;
-    else {
-	client->replyq = malloc(sizeof(struct replyq));
-	if (!client->replyq)
+
+    if (client) {
+	if (peer->type == 'U')
+	    client->replyq = &udp_server_replyq;
+	else {
+	    client->replyq = malloc(sizeof(struct replyq));
+	    if (!client->replyq)
+		debugx(1, DBG_ERR, "malloc failed");
+	    client->replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
+	    if (!client->replyq->replies)
+		debugx(1, DBG_ERR, "malloc failed");
+	    client->replyq->size = MAX_REQUESTS;
+	    client->replyq->count = 0;
+	    pthread_mutex_init(&client->replyq->count_mutex, NULL);
+	    pthread_cond_init(&client->replyq->count_cond, NULL);
+	}
+    } else {
+	pthread_mutex_init(&server->lock, NULL);
+	server->sock = -1;
+	server->requests = calloc(MAX_REQUESTS, sizeof(struct request));
+	if (!server->requests)
 	    debugx(1, DBG_ERR, "malloc failed");
-	client->replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
-	if (!client->replyq->replies)
-	    debugx(1, DBG_ERR, "malloc failed");
-	client->replyq->size = MAX_REQUESTS;
-	client->replyq->count = 0;
-	pthread_mutex_init(&client->replyq->count_mutex, NULL);
-	pthread_cond_init(&client->replyq->count_cond, NULL);
+	server->newrq = 0;
+	pthread_mutex_init(&server->newrq_mutex, NULL);
+	pthread_cond_init(&server->newrq_cond, NULL);
     }
     
+    free(block);
+}
+
+void confrealm_cb(FILE *f, char *opt, char *val) {
+    char *server = NULL;
+    char *block;
+    
+    block = malloc(strlen(opt) + strlen(val) + 2);
+    if (!block)
+	debugx(1, DBG_ERR, "malloc failed");
+    sprintf(block, "%s %s", opt, val);
+    debug(DBG_DBG, "confrealm_cb called for %s", block);
+    
+    getgeneralconfig(f, block,
+		     "server", CONF_STR, &server,
+		     NULL
+		     );
+    if (!server)
+	debugx(1, DBG_ERR, "error in block %s, server must be specified", block);
+
+    addrealm(val, server);
+    free(server);
     free(block);
 }
 
@@ -2062,7 +2180,9 @@ void getmainconfig(const char *configfile) {
 		     "StatusServer", CONF_STR, &statusserver,
 		     "LogLevel", CONF_STR, &loglevel,
 		     "LogDestination", CONF_STR, &options.logdestination,
-		     "Client", CONF_CBK, conf_cb,
+		     "Client", CONF_CBK, confclsrv_cb,
+		     "Server", CONF_CBK, confclsrv_cb,
+		     "Realm", CONF_CBK, confrealm_cb,
 		     NULL
 		     );
     fclose(f);
@@ -2092,11 +2212,14 @@ void getmainconfig(const char *configfile) {
     }    
 }
 
-void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel) {
+void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char **configfile) {
     int c;
 
-    while ((c = getopt(argc, argv, "d:f")) != -1) {
+    while ((c = getopt(argc, argv, "c:d:f")) != -1) {
 	switch (c) {
+	case 'c':
+	    *configfile = optarg;
+	    break;
 	case 'd':
 	    if (strlen(optarg) != 1 || *optarg < '1' || *optarg > '4')
 		debugx(1, DBG_ERR, "Debug level must be 1, 2, 3 or 4, not %s", optarg);
@@ -2113,7 +2236,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel) {
 	return;
 
  usage:
-    debug(DBG_ERR, "Usage:\n%s [ -f ] [ -d debuglevel ]", argv[0]);
+    debug(DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ]", argv[0]);
     exit(1);
 }
 
@@ -2121,13 +2244,14 @@ int main(int argc, char **argv) {
     pthread_t udpserverth;
     int i;
     uint8_t foreground = 0, loglevel = 0;
+    char *configfile = NULL;
     
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
-    getargs(argc, argv, &foreground, &loglevel);
+    getargs(argc, argv, &foreground, &loglevel, &configfile);
     if (loglevel)
 	debug_set_level(loglevel);
-    getmainconfig(CONFIG_MAIN);
+    getmainconfig(configfile ? configfile : CONFIG_MAIN);
     if (loglevel)
 	options.loglevel = loglevel;
     else if (options.loglevel)
@@ -2139,9 +2263,16 @@ int main(int argc, char **argv) {
 	    options.logdestination = "x-syslog://";
 	debug_set_destination(options.logdestination);
     }
-    getconfig(CONFIG_SERVERS, NULL);
+
+    /* TODO remove getconfig completely when all use new config method */
+    if (!server_count)
+	getconfig(CONFIG_SERVERS, NULL);
     if (!client_count)
 	getconfig(NULL, CONFIG_CLIENTS);
+
+    /* TODO exit if not at least one client and one server configured */
+    if (!realm_count)
+	debugx(1, DBG_ERR, "No realms configured, nothing to do, exiting");
 
     if (!foreground && (daemon(0, 0) < 0))
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));

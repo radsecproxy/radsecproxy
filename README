@@ -11,12 +11,13 @@ The config files must be in either "/etc/radsecproxy" or the
 proxy's current work directory. You may alter the path near
 the top of radsecproxy.h if necessary.
 
-There are two options that may be specified on the command line.
-They are "-d loglevel" to set a loglevel of 1, 2, 3 or 4 where 4
-is the most detailed logging. Also "-f" to run the proxy in
-the foreground with logging to stderr. Without "-f" the default
-is to detach as a daemon and log to syslog.
+There are three options that may be specified on the command line.
+"-c configfile" to specify a non-default config file path;
+"-d loglevel" to set a loglevel of 1, 2, 3 or 4 where 4 is the most
+detailed; and "-f" to run the proxy in the foreground with logging
+to stderr. Without "-f" the default is to detach as a daemon and
+log to syslog.
 
 For more information, feedback etc. contact <venaas@uninett.no>.
 
-Stig Venaas, 2007.05.09
+Stig Venaas, 2007.05.14

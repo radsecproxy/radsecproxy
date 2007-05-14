@@ -101,8 +101,6 @@ struct client {
 
 struct server {
     struct peer peer;
-    char *realmdata;
-    char **realms;
     int sock;
     pthread_mutex_t lock;
     pthread_t clientth;
@@ -113,6 +111,11 @@ struct server {
     uint8_t newrq;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
+};
+
+struct realm {
+    char *name;
+    struct server *server;
 };
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
