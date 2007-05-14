@@ -52,8 +52,8 @@
 #include "radsecproxy.h"
 
 static struct options options;
-static struct client *clients;
-static struct server *servers;
+static struct client *clients = NULL;
+static struct server *servers = NULL;
 
 static int client_udp_count = 0;
 static int client_tls_count = 0;
@@ -1766,16 +1766,6 @@ void getconfig(const char *serverfile, const char *clientfile) {
 	    debugx(1, DBG_ERR, "malloc failed");
     }
     
-    if (client_udp_count) {
-	udp_server_replyq.replies = malloc(client_udp_count * MAX_REQUESTS * sizeof(struct reply));
-	if (!udp_server_replyq.replies)
-	    debugx(1, DBG_ERR, "malloc failed");
-	udp_server_replyq.size = client_udp_count * MAX_REQUESTS;
-	udp_server_replyq.count = 0;
-	pthread_mutex_init(&udp_server_replyq.count_mutex, NULL);
-	pthread_cond_init(&udp_server_replyq.count_cond, NULL);
-    }    
-    
     rewind(f);
     for (i = 0; i < count && fgets(line, 1024, f);) {
 	if (serverfile) {
@@ -1874,36 +1864,62 @@ struct peer *server_create(char type) {
     return server;
 }
 
-void getgeneralconfig(FILE *f, ...) {
+/* Parses config with following syntax:
+ * One of these:
+ * option-name value
+ * option-name = value
+ * Or:
+ * option-name value {
+ *     option-name [=] value
+ *     ...
+ * }
+ */
+void getgeneralconfig(FILE *f, char *block, ...) {
     va_list ap;
     char line[1024];
-    char *p, *opt, *endopt, *val, *endval, *word, **str;
-    int type;
-    void (*cbk)(char *, char *, FILE *);
+    char *tokens[3], *opt, *val, *word, **str;
+    int type, tcount, conftype;
+    void (*cbk)(FILE *, char *, char *);
 	
     while (fgets(line, 1024, f)) {
-	for (p = line; *p == ' ' || *p == '\t'; p++);
-	if (!*p || *p == '#' || *p == '\n')
+	tokens[0] = strtok(line, " \t\n");
+	if (!*tokens || **tokens == '#')
 	    continue;
-	opt = p++;
-	for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	endopt = p - 1;
-	for (; *p == ' ' || *p == '\t'; p++);
-	if (!*p || *p == '\n') {
-	    endopt[1] = '\0';
-	    debugx(1, DBG_ERR, "configuration error, option %s has no value", opt);
+	for (tcount = 1; tcount < 3 && (tokens[tcount] = strtok(NULL, " \t\n")); tcount++);
+	
+	if (tcount && **tokens == '}') {
+	    if (block)
+		return;
+	    debugx(1, DBG_ERR, "configuration error, found } with no matching {");
 	}
-	val = p;
-	for (; *p && *p != '\n'; p++)
-	    if (*p != ' ' && *p != '\t')
-		endval = p;
-	endopt[1] = '\0';
-	endval[1] = '\0';
-	if (val[0] == '=' && (val[1] == ' ' || val[1] == '\t'))
-	    for (val++; *val == ' ' || *val == '\t'; val++);
-	debug(DBG_DBG, "getgeneralconfig: %s = %s", opt, val);
+	    
+	switch (tcount) {
+	case 2:
+	    opt = tokens[0];
+	    val = tokens[1];
+	    conftype = CONF_STR;
+	    break;
+	case 3:
+	    if (tokens[1][0] == '=' && tokens[1][1] == '\0') {
+		opt = tokens[0];
+		val = tokens[2];
+		conftype = CONF_STR;
+		break;
+	    }
+	    if (tokens[2][0] == '{' && tokens[2][1] == '\0') {
+		opt = tokens[0];
+		val = tokens[1];
+		conftype = CONF_CBK;
+		break;
+	    }
+	    /* fall through */
+	default:
+	    if (block)
+		debugx(1, DBG_ERR, "configuration error in block %s, line starting with %s", block, tokens[0]);
+	    debugx(1, DBG_ERR, "configuration error, syntax error in line starting with %s", tokens[0]);
+	}
 
-	va_start(ap, f);
+	va_start(ap, block);
 	while ((word = va_arg(ap, char *))) {
 	    type = va_arg(ap, int);
 	    switch (type) {
@@ -1913,6 +1929,7 @@ void getgeneralconfig(FILE *f, ...) {
 		    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
 		break;
 	    case CONF_CBK:
+		cbk = va_arg(ap, void (*)(FILE *, char *, char *));
 		break;
 	    default:
 		debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
@@ -1921,16 +1938,29 @@ void getgeneralconfig(FILE *f, ...) {
 		break;
 	}
 	va_end(ap);
-	if (!word)
+	
+	if (!word) {
+	    if (block)
+		debugx(1, DBG_ERR, "configuration error in block %s, unknown option %s", block, opt);
 	    debugx(1, DBG_ERR, "configuration error, unknown option %s", opt);
+	}
+
+	if (type != conftype) {
+	    if (block)
+		debugx(1, DBG_ERR, "configuration error in block %s, wrong syntax for option %s", block, opt);
+	    debugx(1, DBG_ERR, "configuration error, wrong syntax for option %s", opt);
+	}
 	
 	switch (type) {
 	case CONF_STR:
+	    if (block)
+		debug(DBG_DBG, "getgeneralconfig: block %s: %s = %s", block, opt, val);
+	    else 
+		debug(DBG_DBG, "getgeneralconfig: %s = %s", opt, val);
 	    *str = stringcopy(val, 0);
 	    break;
 	case CONF_CBK:
-	    /*	    (void (*conf_cb)(char *, char *, FILE *))(word, val, f);*/
-	    cbk(word, val, f);
+	    cbk(f, opt, val);
 	    break;
 	default:
 	    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
@@ -1938,8 +1968,80 @@ void getgeneralconfig(FILE *f, ...) {
     }
 }
 
-void conf_cb(char *word, char *val, FILE *f) {
-    debug(DBG_DBG, "conf_cb called");
+void conf_cb(FILE *f, char *opt, char *val) {
+    char *type = NULL, *secret = NULL /*, *port = NULL*/;
+    char *block;
+    struct client *client;
+    struct peer *peer;
+    
+    block = malloc(strlen(opt) + strlen(val) + 2);
+    if (!block)
+	debugx(1, DBG_ERR, "malloc failed");
+    sprintf(block, "%s %s", opt, val);
+    debug(DBG_DBG, "conf_cb called for %s", block);
+    
+    getgeneralconfig(f, block,
+		     "type", CONF_STR, &type,
+		     "secret", CONF_STR, &secret,
+		     /*		     "port", CONF_STR, &port,*/
+		     NULL
+		     );
+
+    client_count++;
+    clients = realloc(clients, client_count * sizeof(struct client));
+    if (!clients)
+	debugx(1, DBG_ERR, "malloc failed");
+    client = clients + client_count - 1;
+    memset(client, 0, sizeof(struct client));
+    peer = &client->peer;
+    peer->host = stringcopy(val, 0);
+    /*    peer->port = port;*/
+    
+    if (type && !strcasecmp(type, "udp")) {
+	peer->type = 'U';
+	/*
+	if (!port)
+	peer->port = stringcopy(DEFAULT_UDP_PORT, 0);
+	*/
+	client_udp_count++;
+    } else if (type && !strcasecmp(type, "tls")) {
+	peer->type = 'T';
+	/*
+	if (!port)
+	    peer->port = stringcopy(DEFAULT_TLS_PORT, 0);
+	*/
+	client_tls_count++;
+    } else
+	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
+    free(type);
+    /*    free(port);*/
+    if (!resolvepeer(peer, 0))
+	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", peer->host, peer->port);
+    
+    if (!secret) {
+	if (peer->type == 'U')
+	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for UDP", block);
+	peer->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
+    } else {
+	peer->secret = secret;
+    }
+    
+    if (peer->type == 'U')
+	client->replyq = &udp_server_replyq;
+    else {
+	client->replyq = malloc(sizeof(struct replyq));
+	if (!client->replyq)
+	    debugx(1, DBG_ERR, "malloc failed");
+	client->replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
+	if (!client->replyq->replies)
+	    debugx(1, DBG_ERR, "malloc failed");
+	client->replyq->size = MAX_REQUESTS;
+	client->replyq->count = 0;
+	pthread_mutex_init(&client->replyq->count_mutex, NULL);
+	pthread_cond_init(&client->replyq->count_cond, NULL);
+    }
+    
+    free(block);
 }
 
 void getmainconfig(const char *configfile) {
@@ -1949,7 +2051,7 @@ void getmainconfig(const char *configfile) {
     f = openconfigfile(configfile);
     memset(&options, 0, sizeof(options));
 
-    getgeneralconfig(f,
+    getgeneralconfig(f, NULL,
 		     "TLSCACertificateFile", CONF_STR, &options.tlscacertificatefile,
 		     "TLSCACertificatePath", CONF_STR, &options.tlscacertificatepath,
 		     "TLSCertificateFile", CONF_STR, &options.tlscertificatefile,
@@ -1963,6 +2065,7 @@ void getmainconfig(const char *configfile) {
 		     "Client", CONF_CBK, conf_cb,
 		     NULL
 		     );
+    fclose(f);
 
     if (statusserver) {
 	if (!strcasecmp(statusserver, "on"))
@@ -1978,7 +2081,15 @@ void getmainconfig(const char *configfile) {
 	free(loglevel);
     }
 
-    fclose(f);
+    if (client_udp_count) {
+	udp_server_replyq.replies = malloc(client_udp_count * MAX_REQUESTS * sizeof(struct reply));
+	if (!udp_server_replyq.replies)
+	    debugx(1, DBG_ERR, "malloc failed");
+	udp_server_replyq.size = client_udp_count * MAX_REQUESTS;
+	udp_server_replyq.count = 0;
+	pthread_mutex_init(&udp_server_replyq.count_mutex, NULL);
+	pthread_cond_init(&udp_server_replyq.count_cond, NULL);
+    }    
 }
 
 void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel) {
@@ -2029,7 +2140,8 @@ int main(int argc, char **argv) {
 	debug_set_destination(options.logdestination);
     }
     getconfig(CONFIG_SERVERS, NULL);
-    getconfig(NULL, CONFIG_CLIENTS);
+    if (!client_count)
+	getconfig(NULL, CONFIG_CLIENTS);
 
     if (!foreground && (daemon(0, 0) < 0))
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
