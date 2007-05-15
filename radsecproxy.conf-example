@@ -28,3 +28,52 @@ TLSCertificateKeyPassword	follow the white rabbit
 # LOG_LOCAL0, ..., LOG_LOCAL7
 #LogDestination         x-syslog://
 #LogDestination         x-syslog://log_local2
+
+#Now we configure clients, servers and realms. Note that these and
+#also the lines above may be in any order, except that a realm
+#can only be configured to use a server that is previously configured.
+
+client 2001:db8::1 {
+	type	tls
+	secret	verysecret
+}
+client 127.0.0.1 {
+	type	udp
+	secret	secret
+}
+client radius.example.com {
+	type TLS
+# secret is optional for TLS
+}
+
+server 127.0.0.1 {
+	type	UDP
+	secret	secret
+}
+realm	eduroam.cc {
+	server	127.0.0.1
+}
+
+server 2001:db8::1 {
+	type	TLS
+	port	2283
+# secret is optional for TLS
+}
+server radius.example.com {
+	type	tls
+	secret	verysecret
+}
+
+realm example.com {
+	server 2001:db8::1
+}
+realm com {
+	server 2001:db8::1
+}
+# Matching of realms is done in the order specified.
+# Except * which is a catch all that is used as a last resort
+# The matching is going to be changed to be regexp of the
+# entire username value
+realm * {
+	server radius.example.com
+}

@@ -448,12 +448,12 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	    sleep(10);
 	} else if (elapsed < 5)
 	    sleep(10);
-	else if (elapsed < 600) {
+	else if (elapsed < 300) {
 	    debug(DBG_INFO, "tlsconnect: sleeping %lds", elapsed);
 	    sleep(elapsed);
-	} else if (elapsed < 1000) {
-	    debug(DBG_INFO, "tlsconnect: sleeping %ds", 900);
-	    sleep(900);
+	} else if (elapsed < 100000) {
+	    debug(DBG_INFO, "tlsconnect: sleeping %ds", 600);
+	    sleep(600);
 	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
 	debug(DBG_WARN, "tlsconnect: trying to open TLS connection to %s port %s", server->peer.host, server->peer.port);
