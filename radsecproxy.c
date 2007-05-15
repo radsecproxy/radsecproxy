@@ -1019,8 +1019,10 @@ struct server *id2server(char *id, uint8_t len) {
 #else
     int i;
     for (i = 0; i < realm_count; i++)
-	if (!regexec(&realms[i].regex, id, 0, NULL, 0))
+	if (!regexec(&realms[i].regex, id, 0, NULL, 0)) {
+	    debug(DBG_DBG, "found matching realm: %s, host %s", realms[i].name, realms[i].server->peer.host);
 	    return realms[i].server;
+	}
     return NULL;
 #endif    
 }
