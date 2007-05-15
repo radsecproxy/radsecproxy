@@ -1017,6 +1017,7 @@ struct server *id2server(char *id, uint8_t len) {
     }
     return deflt;
 #else
+    int i;
     for (i = 0; i < realm_count; i++)
 	if (!regexec(&realms[i].regex, id, 0, NULL, 0))
 	    return realms[i].server;
