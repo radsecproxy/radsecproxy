@@ -41,6 +41,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <regex.h>
 #include <libgen.h>
 #include <pthread.h>
 #include <openssl/ssl.h>
@@ -992,6 +993,7 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 }
 
 struct server *id2server(char *id, uint8_t len) {
+#ifndef REGEXP    
     int i;
     char *idrealm;
     struct server *deflt = NULL;
@@ -1004,29 +1006,22 @@ struct server *id2server(char *id, uint8_t len) {
 	idrealm = "-";
 	len = 1;
     }
-#if 0
-    char **realm;
-    for (i = 0; i < server_count; i++) {
-	for (realm = servers[i].realms; *realm; realm++) {
-	    if ((strlen(*realm) == 1 && **realm == '*') ||
-		(strlen(*realm) == len && !memcmp(idrealm, *realm, len))) {
-		debug(DBG_DBG, "found matching realm: %s, host %s", *realm, servers[i].peer.host);
-		return servers + i;
-	    }
-	}
-    }
-    return NULL;
-#else
+
     for (i = 0; i < realm_count; i++) {
 	if (!deflt && realms[i].name[0] == '*' && realms[i].name[1] == '\0')
 	    deflt = realms[i].server;
 	else if (!strncasecmp(idrealm, realms[i].name, len)) {
-	    debug(DBG_DBG, "found matching realm: %s, host %s", realms[i].name, servers[i].peer.host);
-	    return servers + i;
+	    debug(DBG_DBG, "found matching realm: %s, host %s", realms[i].name, realms[i].server->peer.host);
+	    return realms[i].server;
 	}
     }
     return deflt;
-#endif
+#else
+    for (i = 0; i < realm_count; i++)
+	if (!regexec(&realms[i].regex, id, 0, NULL, 0))
+	    return realms[i].server;
+    return NULL;
+#endif    
 }
 
 int rqinqueue(struct server *to, struct client *from, uint8_t id) {
@@ -1665,6 +1660,8 @@ void addrealm(char *value, char *server) {
     memset(realm, 0, sizeof(struct realm));
     realm->name = stringcopy(value, 0);
     realm->server = servers + i;
+    if (regcomp(&realm->regex, value, REG_ICASE | REG_NOSUB))
+	debugx(1, DBG_ERR, "addrealm: failed to compile regular expression %s", value);
     debug(DBG_DBG, "addrealm: added realm %s for server %s", value, server);
 }
 

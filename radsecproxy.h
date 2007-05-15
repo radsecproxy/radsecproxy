@@ -115,6 +115,7 @@ struct server {
 
 struct realm {
     char *name;
+    regex_t regex;
     struct server *server;
 };
 
