@@ -2215,7 +2215,7 @@ void getmainconfig(const char *configfile) {
 void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char **configfile) {
     int c;
 
-    while ((c = getopt(argc, argv, "c:d:f")) != -1) {
+    while ((c = getopt(argc, argv, "c:d:fv")) != -1) {
 	switch (c) {
 	case 'c':
 	    *configfile = optarg;
@@ -2228,6 +2228,8 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 	case 'f':
 	    *foreground = 1;
 	    break;
+	case 'v':
+		debugx(0, DBG_ERR, "radsecproxy revision $Rev$");
 	default:
 	    goto usage;
 	}
@@ -2236,7 +2238,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 	return;
 
  usage:
-    debug(DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ]", argv[0]);
+    debug(DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ] [ -v ]", argv[0]);
     exit(1);
 }
 
