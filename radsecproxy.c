@@ -1094,6 +1094,18 @@ int msmpprecrypt(uint8_t *msmpp, uint8_t len, char *oldsecret, char *newsecret, 
     return 1;
 }
 
+int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct request *rq,
+	   char *oldsecret, char *newsecret) {
+    unsigned char *attr;
+    
+    for (attr = attrs; (attr = attrget(attr, length - (attr - attrs), type)); attr += ATTRLEN(attr)) {
+	debug(DBG_DBG, "msmppe: Got %s", attrtxt);
+	if (!msmpprecrypt(ATTRVAL(attr), ATTRVALLEN(attr), oldsecret, newsecret, rq->buf + 4, rq->origauth))
+	    return 0;
+    }
+    return 1;
+}
+
 struct server *radsrv(struct request *rq, unsigned char *buf, struct client *from) {
     uint8_t code, id, *auth, *attrs, *attr;
     uint16_t len;
@@ -1187,7 +1199,7 @@ void *clientrd(void *arg) {
     struct server *server = (struct server *)arg;
     struct client *from;
     int i, len, sublen;
-    unsigned char *buf, *messageauth, *subattrs, *attrs, *attr, *msmpp;
+    unsigned char *buf, *messageauth, *subattrs, *attrs, *attr;
     struct sockaddr_storage fromsa;
     struct timeval lastconnecttry;
     char tmp[256];
@@ -1266,29 +1278,26 @@ void *clientrd(void *arg) {
 
 	/* MS MPPE */
 	for (attr = attrs; (attr = attrget(attr, len - (attr - attrs), RAD_Attr_Vendor_Specific)); attr += ATTRLEN(attr)) {
-	    if (ATTRVALLEN(attr) <= 4 || ((uint16_t *)attr)[1] != 0 || ntohs(((uint16_t *)attr)[2]) != 311) /* 311 == MS */
+	    if (ATTRVALLEN(attr) <= 4)
+		break;
+	    
+	    if (((uint16_t *)attr)[1] != 0 || ntohs(((uint16_t *)attr)[2]) != 311) /* 311 == MS */
 		continue;
+	    
 	    sublen = ATTRVALLEN(attr) - 4;
 	    subattrs = ATTRVAL(attr) + 4;  
-	    if (!attrvalidate(subattrs, sublen)) {
-		debug(DBG_WARN, "clientrd: MS attribute validation failed, ignoring packet");
-		continue;
-	    }
-	    
-	    for (msmpp = subattrs; (msmpp = attrget(msmpp, sublen - (msmpp - subattrs), RAD_VS_ATTR_MS_MPPE_Send_Key)); msmpp += ATTRLEN(msmpp)) {
-		debug(DBG_DBG, "clientrd: Got MS MPPE Send Key");
-		if (!msmpprecrypt(ATTRVAL(msmpp), ATTRVALLEN(msmpp), server->peer.secret, from->peer.secret,
-				  server->requests[i].buf + 4, server->requests[i].origauth))
-		    continue; /* should jump out completely, put this into a function */
-	    }
-	    for (msmpp = subattrs; (msmpp = attrget(msmpp, sublen - (msmpp - subattrs), RAD_VS_ATTR_MS_MPPE_Recv_Key)); msmpp += ATTRLEN(msmpp)) {
-		debug(DBG_DBG, "clientrd: Got MS MPPE Recv Key");
-		if (!msmpprecrypt(ATTRVAL(msmpp), ATTRVALLEN(msmpp), server->peer.secret, from->peer.secret,
-				  server->requests[i].buf + 4, server->requests[i].origauth))
-		    continue; /* should jump out completely, put this into a function */
-	    }
+	    if (!attrvalidate(subattrs, sublen) ||
+		!msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, "MS MPPE Send Key",
+			server->requests + i, server->peer.secret, from->peer.secret) ||
+		!msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Recv_Key, "MS MPPE Recv Key",
+			server->requests + i, server->peer.secret, from->peer.secret))
+		break;
 	}
-
+	if (attr) {
+	    debug(DBG_WARN, "clientrd: MS attribute handling failed, ignoring packet");
+	    continue;
+	}
+	
 	if (*buf == RAD_Access_Accept || *buf == RAD_Access_Reject) {
 	    attr = attrget(server->requests[i].buf + 20, RADLEN(server->requests[i].buf) - 20, RAD_Attr_User_Name);
 	    /* we know the attribute exists */
