@@ -39,10 +39,6 @@
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
 
-#define RAD_Attr_Type 0
-#define RAD_Attr_Length 1
-#define RAD_Attr_Value 2
-
 #define CONF_STR 1
 #define CONF_CBK 2
 
@@ -120,6 +116,11 @@ struct realm {
 };
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
+
+#define ATTRTYPE(x) ((x)[0])
+#define ATTRLEN(x) ((x)[1])
+#define ATTRVAL(x) ((x) + 2)
+#define ATTRVALLEN(x) ((x)[1] - 2)
 
 #define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ? \
                             sizeof(struct sockaddr_in) : \

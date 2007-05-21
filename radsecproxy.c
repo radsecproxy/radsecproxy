@@ -673,10 +673,10 @@ int createmessageauth(unsigned char *rad, unsigned char *authattrval, char *secr
 
 unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
     while (length > 1) {
-	if (attrs[RAD_Attr_Type] == type)
+	if (ATTRTYPE(attrs) == type)
 	    return attrs;
-	length -= attrs[RAD_Attr_Length];
-	attrs += attrs[RAD_Attr_Length];
+	length -= ATTRLEN(attrs);
+	attrs += ATTRLEN(attrs);
     }
     return NULL;
 }
@@ -706,7 +706,7 @@ void sendrq(struct server *to, struct client *from, struct request *rq) {
     debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->peer.host);
 
     attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_Message_Authenticator);
-    if (attr && !createmessageauth(rq->buf, &attr[RAD_Attr_Value], to->peer.secret))
+    if (attr && !createmessageauth(rq->buf, ATTRVAL(attr), to->peer.secret))
 	return;
 
     to->requests[i] = *rq;
@@ -1038,16 +1038,16 @@ int rqinqueue(struct server *to, struct client *from, uint8_t id) {
 
 int attrvalidate(unsigned char *attrs, int length) {
     while (length > 1) {
-	if (attrs[RAD_Attr_Length] < 2) {
-	    debug(DBG_WARN, "attrvalidate: invalid attribute length %d", attrs[RAD_Attr_Length]);
+	if (ATTRLEN(attrs) < 2) {
+	    debug(DBG_WARN, "attrvalidate: invalid attribute length %d", ATTRLEN(attrs));
 	    return 0;
 	}
-	length -= attrs[RAD_Attr_Length];
+	length -= ATTRLEN(attrs);
 	if (length < 0) {
-	    debug(DBG_WARN, "attrvalidate: attribute length %d exceeds packet length", attrs[RAD_Attr_Length]);
+	    debug(DBG_WARN, "attrvalidate: attribute length %d exceeds packet length", ATTRLEN(attrs));
 	    return 0;
 	}
-	attrs += attrs[RAD_Attr_Length];
+	attrs += ATTRLEN(attrs);
     }
     if (length)
 	debug(DBG_WARN, "attrvalidate: malformed packet? remaining byte after last attribute");
@@ -1126,8 +1126,8 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
 	debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
 	return NULL;
     }
-    memcpy(username, &attr[RAD_Attr_Value], attr[RAD_Attr_Length] - 2);
-    username[attr[RAD_Attr_Length] - 2] = '\0';
+    memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
+    username[ATTRVALLEN(attr)] = '\0';
     debug(DBG_DBG, "Access Request with username: %s", username);
     
     to = id2server(username, strlen(username));
@@ -1142,7 +1142,7 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     }
 
     attr = attrget(attrs, len, RAD_Attr_Message_Authenticator);
-    if (attr && (attr[RAD_Attr_Length] != 2 + 16 || !checkmessageauth(buf, &attr[RAD_Attr_Value], from->peer.secret))) {
+    if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(buf, ATTRVAL(attr), from->peer.secret))) {
 	debug(DBG_WARN, "radsrv: message authentication failed");
 	return NULL;
     }
@@ -1159,17 +1159,15 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     
     attr = attrget(attrs, len, RAD_Attr_User_Password);
     if (attr) {
-	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attr[RAD_Attr_Length] - 2);
-	if (!pwdrecrypt(&attr[RAD_Attr_Value], attr[RAD_Attr_Length] - 2, from->peer.secret,
-			to->peer.secret, auth, newauth))
+	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", ATTRVALLEN(attr));
+	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), from->peer.secret, to->peer.secret, auth, newauth))
 	    return NULL;
     }
     
     attr = attrget(attrs, len, RAD_Attr_Tunnel_Password);
     if (attr) {
-	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", attr[RAD_Attr_Length] - 2);
-	if (!pwdrecrypt(&attr[RAD_Attr_Value], attr[RAD_Attr_Length] - 2, from->peer.secret,
-			to->peer.secret, auth, newauth))
+	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", ATTRVALLEN(attr));
+	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), from->peer.secret, to->peer.secret, auth, newauth))
 	    return NULL;
     }
 
@@ -1252,13 +1250,13 @@ void *clientrd(void *arg) {
 	/* Message Authenticator */
 	messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
 	if (messageauth) {
-	    if (messageauth[RAD_Attr_Length] != 2 + 16) {
+	    if (ATTRVALLEN(messageauth) != 16) {
 		debug(DBG_WARN, "clientrd: illegal message auth attribute length, ignoring packet");
 		continue;
 	    }
 	    memcpy(tmp, buf + 4, 16);
 	    memcpy(buf + 4, server->requests[i].buf + 4, 16);
-	    if (!checkmessageauth(buf, &messageauth[RAD_Attr_Value], server->peer.secret)) {
+	    if (!checkmessageauth(buf, ATTRVAL(messageauth), server->peer.secret)) {
 		debug(DBG_WARN, "clientrd: message authentication failed");
 		continue;
 	    }
@@ -1267,25 +1265,25 @@ void *clientrd(void *arg) {
 	}
 
 	/* MS MPPE */
-	for (attr = attrs; (attr = attrget(attr, len - (attr - attrs), RAD_Attr_Vendor_Specific)); attr += attr[RAD_Attr_Length]) {
-	    if (attr[RAD_Attr_Length] <= 2 + 4 || ((uint16_t *)attr)[1] != 0 || ntohs(((uint16_t *)attr)[2]) != 311) /* 311 == MS */
+	for (attr = attrs; (attr = attrget(attr, len - (attr - attrs), RAD_Attr_Vendor_Specific)); attr += ATTRLEN(attr)) {
+	    if (ATTRVALLEN(attr) <= 4 || ((uint16_t *)attr)[1] != 0 || ntohs(((uint16_t *)attr)[2]) != 311) /* 311 == MS */
 		continue;
-	    sublen = attr[RAD_Attr_Length] - 2 - 4;
-	    subattrs = attr + 2 + 4;  
+	    sublen = ATTRVALLEN(attr) - 4;
+	    subattrs = ATTRVAL(attr) + 4;  
 	    if (!attrvalidate(subattrs, sublen)) {
 		debug(DBG_WARN, "clientrd: MS attribute validation failed, ignoring packet");
 		continue;
 	    }
 	    
-	    for (msmpp = subattrs; (msmpp = attrget(msmpp, sublen - (msmpp - subattrs), RAD_VS_ATTR_MS_MPPE_Send_Key)); msmpp += msmpp[RAD_Attr_Length]) {
+	    for (msmpp = subattrs; (msmpp = attrget(msmpp, sublen - (msmpp - subattrs), RAD_VS_ATTR_MS_MPPE_Send_Key)); msmpp += ATTRLEN(msmpp)) {
 		debug(DBG_DBG, "clientrd: Got MS MPPE Send Key");
-		if (!msmpprecrypt(&msmpp[RAD_Attr_Value], msmpp[RAD_Attr_Length] - 2, server->peer.secret, from->peer.secret,
+		if (!msmpprecrypt(ATTRVAL(msmpp), ATTRVALLEN(msmpp), server->peer.secret, from->peer.secret,
 				  server->requests[i].buf + 4, server->requests[i].origauth))
 		    continue; /* should jump out completely, put this into a function */
 	    }
-	    for (msmpp = subattrs; (msmpp = attrget(msmpp, sublen - (msmpp - subattrs), RAD_VS_ATTR_MS_MPPE_Recv_Key)); msmpp += msmpp[RAD_Attr_Length]) {
+	    for (msmpp = subattrs; (msmpp = attrget(msmpp, sublen - (msmpp - subattrs), RAD_VS_ATTR_MS_MPPE_Recv_Key)); msmpp += ATTRLEN(msmpp)) {
 		debug(DBG_DBG, "clientrd: Got MS MPPE Recv Key");
-		if (!msmpprecrypt(&msmpp[RAD_Attr_Value], msmpp[RAD_Attr_Length] - 2, server->peer.secret, from->peer.secret,
+		if (!msmpprecrypt(ATTRVAL(msmpp), ATTRVALLEN(msmpp), server->peer.secret, from->peer.secret,
 				  server->requests[i].buf + 4, server->requests[i].origauth))
 		    continue; /* should jump out completely, put this into a function */
 	    }
@@ -1294,8 +1292,8 @@ void *clientrd(void *arg) {
 	if (*buf == RAD_Access_Accept || *buf == RAD_Access_Reject) {
 	    attr = attrget(server->requests[i].buf + 20, RADLEN(server->requests[i].buf) - 20, RAD_Attr_User_Name);
 	    /* we know the attribute exists */
-	    memcpy(tmp, &attr[RAD_Attr_Value], attr[RAD_Attr_Length] - 2);
-	    tmp[attr[RAD_Attr_Length] - 2] = '\0';
+	    memcpy(tmp, ATTRVAL(attr), ATTRVALLEN(attr));
+	    tmp[ATTRVALLEN(attr)] = '\0';
 	    switch (*buf) {
 	    case RAD_Access_Accept:
 		debug(DBG_INFO, "Access Accept for %s from %s", tmp, server->peer.host);
@@ -1314,7 +1312,7 @@ void *clientrd(void *arg) {
 #endif
 	
 	if (messageauth) {
-	    if (!createmessageauth(buf, &messageauth[RAD_Attr_Value], from->peer.secret))
+	    if (!createmessageauth(buf, ATTRVAL(messageauth), from->peer.secret))
 		continue;
 	    debug(DBG_DBG, "clientrd: computed messageauthattr");
 	}
