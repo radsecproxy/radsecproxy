@@ -1411,7 +1411,7 @@ void *clientwr(void *arg) {
             }
 	    
 	    gettimeofday(&now, NULL);
-            if (now.tv_sec <= rq->expiry.tv_sec) {
+            if (now.tv_sec < rq->expiry.tv_sec) {
 		if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
 		    timeout.tv_sec = rq->expiry.tv_sec;
 		pthread_mutex_unlock(&server->newrq_mutex);
