@@ -52,7 +52,6 @@ struct options {
     char *listentcp;
     char *logdestination;
     uint8_t loglevel;
-    uint8_t statusserver;
 };
 
 /* requests that our client will send */
@@ -103,6 +102,7 @@ struct server {
     struct timeval lastconnecttry;
     uint8_t connectionok;
     int nextid;
+    uint8_t statusserver;
     struct request *requests;
     uint8_t newrq;
     pthread_mutex_t newrq_mutex;

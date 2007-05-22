@@ -684,7 +684,7 @@ unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
 void sendrq(struct server *to, struct client *from, struct request *rq) {
     int i;
     uint8_t *attr;
-    
+
     pthread_mutex_lock(&to->newrq_mutex);
     /* might simplify if only try nextid, might be ok */
     for (i = to->nextid; i < MAX_REQUESTS; i++)
@@ -696,20 +696,24 @@ void sendrq(struct server *to, struct client *from, struct request *rq) {
 		break;
 	if (i == to->nextid) {
 	    debug(DBG_WARN, "No room in queue, dropping request");
+	    free(rq->buf);
 	    pthread_mutex_unlock(&to->newrq_mutex);
 	    return;
 	}
     }
     
-    to->nextid = i + 1;
     rq->buf[1] = (char)i;
-    debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->peer.host);
 
     attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_Message_Authenticator);
-    if (attr && !createmessageauth(rq->buf, ATTRVAL(attr), to->peer.secret))
+    if (attr && !createmessageauth(rq->buf, ATTRVAL(attr), to->peer.secret)) {
+	free(rq->buf);
+	pthread_mutex_unlock(&to->newrq_mutex);
 	return;
+    }
 
+    debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->peer.host);
     to->requests[i] = *rq;
+    to->nextid = i + 1;
 
     if (!to->newrq) {
 	to->newrq = 1;
@@ -726,6 +730,7 @@ void sendreply(struct client *to, struct server *from, unsigned char *buf, struc
     if (replyq->count == replyq->size) {
 	debug(DBG_WARN, "No room in queue, dropping request");
 	pthread_mutex_unlock(&replyq->count_mutex);
+	free(buf);
 	return;
     }
 
@@ -1159,14 +1164,13 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
 	return NULL;
     }
 
-    if (!RAND_bytes(newauth, 16)) {
-	debug(DBG_WARN, "radsrv: failed to generate random auth");
-	return NULL;
-    }
+     if (!RAND_bytes(newauth, 16)) {
+	 debug(DBG_WARN, "radsrv: failed to generate random auth");
+	 return NULL;
+     }
 
 #ifdef DEBUG    
     printauth("auth", auth);
-    printauth("newauth", newauth);
 #endif
     
     attr = attrget(attrs, len, RAD_Attr_User_Password);
@@ -1188,10 +1192,6 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     rq->origid = id;
     memcpy(rq->origauth, auth, 16);
     memcpy(auth, newauth, 16);
-#ifdef DEBUG    
-    printauth("rq->origauth", (unsigned char *)rq->origauth);
-    printauth("auth", auth);
-#endif    
     return to;
 }
 
@@ -1227,6 +1227,7 @@ void *clientrd(void *arg) {
 	    debug(DBG_DBG, "got Access Challenge with id %d", i);
 	    break;
 	default:
+	    free(buf);
 	    debug(DBG_INFO, "clientrd: discarding, only accept access accept, access reject and access challenge messages");
 	    continue;
 	}
@@ -1234,18 +1235,21 @@ void *clientrd(void *arg) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->requests[i].buf || !server->requests[i].tries) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
+	    free(buf);
 	    debug(DBG_INFO, "clientrd: no matching request sent with this id, ignoring");
 	    continue;
 	}
 
 	if (server->requests[i].received) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
+	    free(buf);
 	    debug(DBG_INFO, "clientrd: already received, ignoring");
 	    continue;
 	}
 	
 	if (!validauth(buf, server->requests[i].buf + 4, (unsigned char *)server->peer.secret)) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
+	    free(buf);
 	    debug(DBG_WARN, "clientrd: invalid auth, ignoring");
 	    continue;
 	}
@@ -1255,6 +1259,8 @@ void *clientrd(void *arg) {
 	attrs = buf + 20;
 
 	if (!attrvalidate(attrs, len)) {
+	    pthread_mutex_unlock(&server->newrq_mutex);
+	    free(buf);
 	    debug(DBG_WARN, "clientrd: attribute validation failed, ignoring packet");
 	    continue;
 	}
@@ -1263,17 +1269,29 @@ void *clientrd(void *arg) {
 	messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
 	if (messageauth) {
 	    if (ATTRVALLEN(messageauth) != 16) {
+		pthread_mutex_unlock(&server->newrq_mutex);
+		free(buf);
 		debug(DBG_WARN, "clientrd: illegal message auth attribute length, ignoring packet");
 		continue;
 	    }
 	    memcpy(tmp, buf + 4, 16);
 	    memcpy(buf + 4, server->requests[i].buf + 4, 16);
 	    if (!checkmessageauth(buf, ATTRVAL(messageauth), server->peer.secret)) {
+		pthread_mutex_unlock(&server->newrq_mutex);
+		free(buf);
 		debug(DBG_WARN, "clientrd: message authentication failed");
 		continue;
 	    }
 	    memcpy(buf + 4, tmp, 16);
 	    debug(DBG_DBG, "clientrd: message auth ok");
+	}
+	
+	if (*server->requests[i].buf == RAD_Status_Server) {
+	    server->requests[i].received = 1;
+	    pthread_mutex_unlock(&server->newrq_mutex);
+	    free(buf);
+	    debug(DBG_INFO, "clientrd: got status server response");
+	    continue;
 	}
 
 	/* MS MPPE */
@@ -1294,6 +1312,8 @@ void *clientrd(void *arg) {
 		break;
 	}
 	if (attr) {
+	    pthread_mutex_unlock(&server->newrq_mutex);
+	    free(buf);
 	    debug(DBG_WARN, "clientrd: MS attribute handling failed, ignoring packet");
 	    continue;
 	}
@@ -1321,8 +1341,11 @@ void *clientrd(void *arg) {
 #endif
 	
 	if (messageauth) {
-	    if (!createmessageauth(buf, ATTRVAL(messageauth), from->peer.secret))
+	    if (!createmessageauth(buf, ATTRVAL(messageauth), from->peer.secret)) {
+		pthread_mutex_unlock(&server->newrq_mutex);
+		free(buf);
 		continue;
+	    }
 	    debug(DBG_DBG, "clientrd: computed messageauthattr");
 	}
 
@@ -1332,6 +1355,7 @@ void *clientrd(void *arg) {
 	pthread_mutex_unlock(&server->newrq_mutex);
 
 	if (!radsign(buf, (unsigned char *)from->peer.secret)) {
+	    free(buf);
 	    debug(DBG_WARN, "clientrd: failed to sign message");
 	    continue;
 	}
@@ -1351,10 +1375,22 @@ void *clientwr(void *arg) {
     uint8_t rnd;
     struct timeval now, lastsend;
     struct timespec timeout;
+    struct request statsrvrq;
+    unsigned char statsrvbuf[38];
 
-    memset(&lastsend, 0, sizeof(struct timeval));
     memset(&timeout, 0, sizeof(struct timespec));
-
+    
+    if (server->statusserver) {
+	memset(&statsrvrq, 0, sizeof(struct request));
+	statsrvrq.buf = statsrvbuf;
+	memset(&statsrvbuf, 0, sizeof(statsrvbuf));
+	statsrvbuf[0] = RAD_Status_Server;
+	statsrvbuf[3] = 38;
+	statsrvbuf[20] = RAD_Attr_Message_Authenticator;
+	statsrvbuf[21] = 18;
+	gettimeofday(&lastsend, NULL);
+    }
+    
     if (server->peer.type == 'U') {
 	if ((server->sock = connecttoserver(server->peer.addrinfo)) < 0)
 	    debugx(1, DBG_ERR, "clientwr: connecttoserver failed");
@@ -1368,15 +1404,15 @@ void *clientwr(void *arg) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->newrq) {
 	    gettimeofday(&now, NULL);
+	    if (server->statusserver) {
+		/* random 0-7 seconds */
+		RAND_bytes(&rnd, 1);
+		rnd /= 32;
+		if (!timeout.tv_sec || timeout.tv_sec - now.tv_sec > lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd)
+		    timeout.tv_sec = lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd;
+	    }   
 	    if (timeout.tv_sec) {
 		debug(DBG_DBG, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
-		pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
-		timeout.tv_sec = 0;
-	    } else if (options.statusserver) {
-		timeout.tv_sec = now.tv_sec + STATUS_SERVER_PERIOD;
-		/* add random 0-7 seconds to timeout */
-		RAND_bytes(&rnd, 1);
-		timeout.tv_sec += rnd / 32;
 		pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
 		timeout.tv_sec = 0;
 	    } else {
@@ -1403,7 +1439,8 @@ void *clientwr(void *arg) {
 
             if (rq->received) {
 		debug(DBG_DBG, "clientwr: removing received packet from queue");
-                free(rq->buf);
+		if (*rq->buf != RAD_Status_Server)
+		    free(rq->buf);
                 /* setting this to NULL means that it can be reused */
                 rq->buf = NULL;
                 pthread_mutex_unlock(&server->newrq_mutex);
@@ -1418,9 +1455,13 @@ void *clientwr(void *arg) {
 		continue;
 	    }
 
-	    if (rq->tries == (server->peer.type == 'T' ? 1 : REQUEST_RETRIES)) {
+	    if (rq->tries == (*rq->buf == RAD_Status_Server || server->peer.type == 'T'
+			      ? 1 : REQUEST_RETRIES)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
-		free(rq->buf);
+		if (*rq->buf == RAD_Status_Server)
+		    debug(DBG_WARN, "clientwr: no status server response, server dead?");
+		else
+		    free(rq->buf);
 		/* setting this to NULL means that it can be reused */
 		rq->buf = NULL;
 		pthread_mutex_unlock(&server->newrq_mutex);
@@ -1429,7 +1470,8 @@ void *clientwr(void *arg) {
             pthread_mutex_unlock(&server->newrq_mutex);
 
 	    rq->expiry.tv_sec = now.tv_sec +
-		(server->peer.type == 'T' ? REQUEST_EXPIRY : REQUEST_EXPIRY / REQUEST_RETRIES);
+		(*rq->buf == RAD_Status_Server || server->peer.type == 'T'
+		 ? REQUEST_EXPIRY : REQUEST_EXPIRY / REQUEST_RETRIES);
 	    if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rq->expiry.tv_sec;
 	    rq->tries++;
@@ -1437,11 +1479,16 @@ void *clientwr(void *arg) {
 	    gettimeofday(&lastsend, NULL);
 	    usleep(200000);
 	}
-	if (options.statusserver) {
+	if (server->statusserver) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - lastsend.tv_sec >= STATUS_SERVER_PERIOD) {
+		if (!RAND_bytes(statsrvbuf + 4, 16)) {
+		    debug(DBG_WARN, "clientwr: failed to generate random auth");
+		    continue;
+		}
+		debug(DBG_DBG, "clientwr: sending status server to %s", server->peer.host);
 		lastsend.tv_sec = now.tv_sec;
-		debug(DBG_DBG, "clientwr: should send status to %s here", server->peer.host);
+		sendrq(server, NULL, &statsrvrq);
 	    }
 	}
     }
@@ -1494,6 +1541,7 @@ void *udpserverrd(void *arg) {
 	buf = radudpget(udp_server_sock, &fr, NULL, &rq.fromsa);
 	to = radsrv(&rq, buf, fr);
 	if (!to) {
+	    free(buf);
 	    debug(DBG_INFO, "udpserverrd: ignoring request, no place to send it");
 	    continue;
 	}
@@ -1572,6 +1620,7 @@ void *tlsserverrd(void *arg) {
 	    memset(&rq, 0, sizeof(struct request));
 	    to = radsrv(&rq, buf, client);
 	    if (!to) {
+		free(buf);
 		debug(DBG_INFO, "tlsserverrd: ignoring request, no place to send it");
 		continue;
 	    }
@@ -2037,12 +2086,12 @@ void getgeneralconfig(FILE *f, char *block, ...) {
 }
 
 void confclsrv_cb(FILE *f, char *opt, char *val) {
-    char *type = NULL, *secret = NULL, *port = NULL;
+    char *type = NULL, *secret = NULL, *port = NULL, *statusserver = NULL;
     char *block;
     struct client *client = NULL;
     struct server *server = NULL;
     struct peer *peer;
-    
+
     block = malloc(strlen(opt) + strlen(val) + 2);
     if (!block)
 	debugx(1, DBG_ERR, "malloc failed");
@@ -2067,6 +2116,7 @@ void confclsrv_cb(FILE *f, char *opt, char *val) {
 			 "type", CONF_STR, &type,
 			 "secret", CONF_STR, &secret,
 			 "port", CONF_STR, &port,
+			 "StatusServer", CONF_STR, &statusserver,
 			 NULL
 			 );
 	server_count++;
@@ -2077,6 +2127,13 @@ void confclsrv_cb(FILE *f, char *opt, char *val) {
 	memset(server, 0, sizeof(struct server));
 	peer = &server->peer;
 	peer->port = port;
+	if (statusserver) {
+	    if (!strcasecmp(statusserver, "on"))
+		server->statusserver = 1;
+	    else if (strcasecmp(statusserver, "off"))
+		debugx(1, DBG_ERR, "error in block %s, StatusServer is %s, must be on or off", block, statusserver);
+	    free(statusserver);
+	}
     }
     
     peer->host = stringcopy(val, 0);
@@ -2167,7 +2224,7 @@ void confrealm_cb(FILE *f, char *opt, char *val) {
 
 void getmainconfig(const char *configfile) {
     FILE *f;
-    char *statusserver = NULL, *loglevel = NULL;
+    char *loglevel = NULL;
 
     f = openconfigfile(configfile);
     memset(&options, 0, sizeof(options));
@@ -2180,7 +2237,6 @@ void getmainconfig(const char *configfile) {
 		     "TLSCertificateKeyPassword", CONF_STR, &options.tlscertificatekeypassword,
 		     "ListenUDP", CONF_STR, &options.listenudp,
 		     "ListenTCP", CONF_STR, &options.listentcp,
-		     "StatusServer", CONF_STR, &statusserver,
 		     "LogLevel", CONF_STR, &loglevel,
 		     "LogDestination", CONF_STR, &options.logdestination,
 		     "Client", CONF_CBK, confclsrv_cb,
@@ -2190,13 +2246,6 @@ void getmainconfig(const char *configfile) {
 		     );
     fclose(f);
 
-    if (statusserver) {
-	if (!strcasecmp(statusserver, "on"))
-	    options.statusserver = 1;
-	else if (strcasecmp(statusserver, "off"))
-	    debugx(1, DBG_ERR, "error in %s, value of option StatusServer is %s, must be on or off", configfile, statusserver);
-	free(statusserver);
-    }
     if (loglevel) {
 	if (strlen(loglevel) != 1 || *loglevel < '1' || *loglevel > '4')
 	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %s, must be 1, 2, 3 or 4", configfile, loglevel);
