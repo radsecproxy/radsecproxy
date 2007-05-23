@@ -995,30 +995,6 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 }
 
 struct server *id2server(char *id, uint8_t len) {
-#ifndef REGEXP    
-    int i;
-    char *idrealm;
-    struct server *deflt = NULL;
-    
-    idrealm = strchr(id, '@');
-    if (idrealm) {
-	idrealm++;
-	len -= idrealm - id;
-    } else {
-	idrealm = "-";
-	len = 1;
-    }
-
-    for (i = 0; i < realm_count; i++) {
-	if (!deflt && realms[i].name[0] == '*' && realms[i].name[1] == '\0')
-	    deflt = realms[i].server;
-	else if (!strncasecmp(idrealm, realms[i].name, len)) {
-	    debug(DBG_DBG, "found matching realm: %s, host %s", realms[i].name, realms[i].server->peer.host);
-	    return realms[i].server;
-	}
-    }
-    return deflt;
-#else
     int i;
     for (i = 0; i < realm_count; i++)
 	if (!regexec(&realms[i].regex, id, 0, NULL, 0)) {
@@ -1026,7 +1002,6 @@ struct server *id2server(char *id, uint8_t len) {
 	    return realms[i].server;
 	}
     return NULL;
-#endif    
 }
 
 int rqinqueue(struct server *to, struct client *from, uint8_t id) {
@@ -1707,6 +1682,13 @@ void addrealm(char *value, char *server) {
     if (i == server_count)
 	debugx(1, DBG_ERR, "addrealm failed, no server %s", server);
 
+    /* temporary warnings */
+    if (*value == '*')
+	debugx(1, DBG_ERR, "Regexps are now used for specifying realms, a string\nstarting with '*' is meaningless, you probably want '.*' for matching everything\nEXITING\n");
+    if (value[strlen(value) - 1] != '$' && value[strlen(value) - 1] != '*') {
+	debug(DBG_ERR, "Regexps are now used for specifying realms, you\nprobably want to rewrite this as e.g. '@example\\.com$' or '\\.com$'\nYou can even do things like '[a-n].*@example\\.com$' to make about half of the\nusers use this server. Note that the matching is case insensitive.\n");
+	sleep(3);
+    }
     realm_count++;
     realms = realloc(realms, realm_count * sizeof(struct realm));
     if (!realms)
