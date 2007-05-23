@@ -723,9 +723,15 @@ void sendrq(struct server *to, struct request *rq) {
     pthread_mutex_unlock(&to->newrq_mutex);
 }
 
-void sendreply(struct client *to, struct server *from, unsigned char *buf, struct sockaddr_storage *tosa) {
+void sendreply(struct client *to, unsigned char *buf, struct sockaddr_storage *tosa) {
     struct replyq *replyq = to->replyq;
     
+    if (!radsign(buf, (unsigned char *)to->peer.secret)) {
+	free(buf);
+	debug(DBG_WARN, "sendreply: failed to sign message");
+	return;
+    }
+	
     pthread_mutex_lock(&replyq->count_mutex);
     if (replyq->count == replyq->size) {
 	debug(DBG_WARN, "No room in queue, dropping request");
@@ -1086,6 +1092,22 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
     return 1;
 }
 
+void respondstatusserver(struct request *rq) {
+    unsigned char *resp;
+
+    resp = malloc(20);
+    if (!resp) {
+	debug(DBG_ERR, "respondstatusserver: malloc failed");
+	return;
+    }
+    memcpy(resp, rq->buf, 20);
+    resp[0] = RAD_Access_Accept;
+    resp[2] = 0;
+    resp[3] = 20;
+    debug(DBG_DBG, "respondstatusserver: responding");
+    sendreply(rq->from, resp, rq->from->peer.type == 'U' ? &rq->fromsa : NULL);
+}
+
 void radsrv(struct request *rq) {
     uint8_t code, id, *auth, *attrs, *attr;
     uint16_t len;
@@ -1101,8 +1123,8 @@ void radsrv(struct request *rq) {
 
     debug(DBG_DBG, "radsrv: code %d, id %d, length %d", code, id, len);
     
-    if (code != RAD_Access_Request) {
-	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, ignoring");
+    if (code != RAD_Access_Request && code != RAD_Status_Server) {
+	debug(DBG_INFO, "radsrv: server currently accepts only access-requests and status-server, ignoring");
 	free(buf);
 	return;
     }
@@ -1115,47 +1137,54 @@ void radsrv(struct request *rq) {
 	free(buf);
 	return;
     }
-	
-    attr = attrget(attrs, len, RAD_Attr_User_Name);
-    if (!attr) {
-	debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
-	free(buf);
-	return;
-    }
-    memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
-    username[ATTRVALLEN(attr)] = '\0';
-    debug(DBG_DBG, "Access Request with username: %s", username);
-    
-    to = id2server(username, strlen(username));
-    if (!to) {
-	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
-	free(buf);
-	return;
-    }
-    
-    if (rqinqueue(to, rq->from, id)) {
-	debug(DBG_INFO, "radsrv: ignoring request from host %s with id %d, already got one", rq->from->peer.host, id);
-	free(buf);
-	return;
-    }
 
+    if (code == RAD_Access_Request) {
+	attr = attrget(attrs, len, RAD_Attr_User_Name);
+	if (!attr) {
+	    debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
+	    free(buf);
+	    return;
+	}
+	memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
+	username[ATTRVALLEN(attr)] = '\0';
+	debug(DBG_DBG, "Access Request with username: %s", username);
+    
+	to = id2server(username, strlen(username));
+	if (!to) {
+	    debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
+	    free(buf);
+	    return;
+	}
+    
+	if (rqinqueue(to, rq->from, id)) {
+	    debug(DBG_INFO, "radsrv: already got request from host %s with id %d, ignoring", rq->from->peer.host, id);
+	    free(buf);
+	    return;
+	}
+    }
+    
     attr = attrget(attrs, len, RAD_Attr_Message_Authenticator);
     if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(buf, ATTRVAL(attr), rq->from->peer.secret))) {
 	debug(DBG_WARN, "radsrv: message authentication failed");
 	free(buf);
 	return;
     }
-
-     if (!RAND_bytes(newauth, 16)) {
-	 debug(DBG_WARN, "radsrv: failed to generate random auth");
-	 free(buf);
-	 return;
-     }
+    
+    if (code == RAD_Status_Server) {
+	respondstatusserver(rq);
+	return;
+    }
+    
+    if (!RAND_bytes(newauth, 16)) {
+	debug(DBG_WARN, "radsrv: failed to generate random auth");
+	free(buf);
+	return;
+    }
 
 #ifdef DEBUG    
     printauth("auth", auth);
 #endif
-    
+
     attr = attrget(attrs, len, RAD_Attr_User_Password);
     if (attr) {
 	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", ATTRVALLEN(attr));
@@ -1339,16 +1368,8 @@ void *clientrd(void *arg) {
 	server->requests[i].received = 1;
 	pthread_mutex_unlock(&server->newrq_mutex);
 
-	if (!radsign(buf, (unsigned char *)from->peer.secret)) {
-	    free(buf);
-	    debug(DBG_WARN, "clientrd: failed to sign message");
-	    continue;
-	}
-#ifdef DEBUG	
-	printauth("signedorigauth/buf+4", buf + 4);
-#endif	
 	debug(DBG_DBG, "clientrd: giving packet back to where it came from");
-	sendreply(from, server, buf, from->peer.type == 'U' ? &fromsa : NULL);
+	sendreply(from, buf, from->peer.type == 'U' ? &fromsa : NULL);
     }
 }
 
@@ -1367,8 +1388,7 @@ void *clientwr(void *arg) {
     
     if (server->statusserver) {
 	memset(&statsrvrq, 0, sizeof(struct request));
-	statsrvrq.buf = statsrvbuf;
-	memset(&statsrvbuf, 0, sizeof(statsrvbuf));
+	memset(statsrvbuf, 0, sizeof(statsrvbuf));
 	statsrvbuf[0] = RAD_Status_Server;
 	statsrvbuf[3] = 38;
 	statsrvbuf[20] = RAD_Attr_Message_Authenticator;
@@ -1424,8 +1444,7 @@ void *clientwr(void *arg) {
 
             if (rq->received) {
 		debug(DBG_DBG, "clientwr: removing received packet from queue");
-		if (*rq->buf != RAD_Status_Server)
-		    free(rq->buf);
+		free(rq->buf);
                 /* setting this to NULL means that it can be reused */
                 rq->buf = NULL;
                 pthread_mutex_unlock(&server->newrq_mutex);
@@ -1445,8 +1464,7 @@ void *clientwr(void *arg) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		if (*rq->buf == RAD_Status_Server)
 		    debug(DBG_WARN, "clientwr: no status server response, server dead?");
-		else
-		    free(rq->buf);
+		free(rq->buf);
 		/* setting this to NULL means that it can be reused */
 		rq->buf = NULL;
 		pthread_mutex_unlock(&server->newrq_mutex);
@@ -1471,6 +1489,12 @@ void *clientwr(void *arg) {
 		    debug(DBG_WARN, "clientwr: failed to generate random auth");
 		    continue;
 		}
+		statsrvrq.buf = malloc(sizeof(statsrvbuf));
+		if (!statsrvrq.buf) {
+		    debug(DBG_ERR, "clientwr: malloc failed");
+		    continue;
+		}
+		memcpy(statsrvrq.buf, statsrvbuf, sizeof(statsrvbuf));
 		debug(DBG_DBG, "clientwr: sending status server to %s", server->peer.host);
 		lastsend.tv_sec = now.tv_sec;
 		sendrq(server, &statsrvrq);
