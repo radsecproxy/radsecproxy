@@ -1104,7 +1104,7 @@ void respondstatusserver(struct request *rq) {
     resp[0] = RAD_Access_Accept;
     resp[2] = 0;
     resp[3] = 20;
-    debug(DBG_DBG, "respondstatusserver: responding");
+    debug(DBG_DBG, "respondstatusserver: responding to %s", rq->from->peer.host);
     sendreply(rq->from, resp, rq->from->peer.type == 'U' ? &rq->fromsa : NULL);
 }
 
@@ -1304,7 +1304,7 @@ void *clientrd(void *arg) {
 	    server->requests[i].received = 1;
 	    pthread_mutex_unlock(&server->newrq_mutex);
 	    free(buf);
-	    debug(DBG_INFO, "clientrd: got status server response");
+	    debug(DBG_INFO, "clientrd: got status server response from %s", server->peer.host);
 	    continue;
 	}
 
@@ -1463,7 +1463,7 @@ void *clientwr(void *arg) {
 			      ? 1 : REQUEST_RETRIES)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		if (*rq->buf == RAD_Status_Server)
-		    debug(DBG_WARN, "clientwr: no status server response, server dead?");
+		    debug(DBG_WARN, "clientwr: no status server response, %s dead?", server->peer.host);
 		free(rq->buf);
 		/* setting this to NULL means that it can be reused */
 		rq->buf = NULL;
