@@ -69,6 +69,8 @@ server 2001:db8::1 {
 server radius.example.com {
 	type	tls
 	secret	verysecret
+	StatusServer on
+# statusserver is optional, can be on or off. Off is default
 }
 
 realm @example\.com$ {
