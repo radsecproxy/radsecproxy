@@ -1437,10 +1437,13 @@ void *clientwr(void *arg) {
 	    rq = server->requests + i;
 
             if (rq->received) {
-		debug(DBG_DBG, "clientwr: removing received packet from queue");
-		free(rq->buf);
-                /* setting this to NULL means that it can be reused */
-                rq->buf = NULL;
+		debug(DBG_DBG, "clientwr: packet %d in queue is marked as received", i);
+		if (rq->buf) {
+		    debug(DBG_DBG, "clientwr: freeing received packet %d from queue", i);
+		    free(rq->buf);
+		    /* setting this to NULL means that it can be reused */
+		    rq->buf = NULL;
+		}
                 pthread_mutex_unlock(&server->newrq_mutex);
                 continue;
             }
