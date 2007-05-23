@@ -681,7 +681,7 @@ unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
     return NULL;
 }
 
-void sendrq(struct server *to, struct client *from, struct request *rq) {
+void sendrq(struct server *to, struct request *rq) {
     int i;
     uint8_t *attr;
 
@@ -1086,13 +1086,14 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
     return 1;
 }
 
-struct server *radsrv(struct request *rq, unsigned char *buf, struct client *from) {
+void radsrv(struct request *rq) {
     uint8_t code, id, *auth, *attrs, *attr;
     uint16_t len;
     struct server *to;
     char username[256];
-    unsigned char newauth[16];
-    
+    unsigned char *buf, newauth[16];
+
+    buf = rq->buf;
     code = *(uint8_t *)buf;
     id = *(uint8_t *)(buf + 1);
     len = RADLEN(buf);
@@ -1102,7 +1103,8 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     
     if (code != RAD_Access_Request) {
 	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, ignoring");
-	return NULL;
+	free(buf);
+	return;
     }
 
     len -= 20;
@@ -1110,13 +1112,15 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
 
     if (!attrvalidate(attrs, len)) {
 	debug(DBG_WARN, "radsrv: attribute validation failed, ignoring packet");
-	return NULL;
+	free(buf);
+	return;
     }
 	
     attr = attrget(attrs, len, RAD_Attr_User_Name);
     if (!attr) {
 	debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
-	return NULL;
+	free(buf);
+	return;
     }
     memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
     username[ATTRVALLEN(attr)] = '\0';
@@ -1125,23 +1129,27 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     to = id2server(username, strlen(username));
     if (!to) {
 	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
-	return NULL;
+	free(buf);
+	return;
     }
     
-    if (rqinqueue(to, from, id)) {
-	debug(DBG_INFO, "radsrv: ignoring request from host %s with id %d, already got one", from->peer.host, id);
-	return NULL;
+    if (rqinqueue(to, rq->from, id)) {
+	debug(DBG_INFO, "radsrv: ignoring request from host %s with id %d, already got one", rq->from->peer.host, id);
+	free(buf);
+	return;
     }
 
     attr = attrget(attrs, len, RAD_Attr_Message_Authenticator);
-    if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(buf, ATTRVAL(attr), from->peer.secret))) {
+    if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(buf, ATTRVAL(attr), rq->from->peer.secret))) {
 	debug(DBG_WARN, "radsrv: message authentication failed");
-	return NULL;
+	free(buf);
+	return;
     }
 
      if (!RAND_bytes(newauth, 16)) {
 	 debug(DBG_WARN, "radsrv: failed to generate random auth");
-	 return NULL;
+	 free(buf);
+	 return;
      }
 
 #ifdef DEBUG    
@@ -1151,23 +1159,25 @@ struct server *radsrv(struct request *rq, unsigned char *buf, struct client *fro
     attr = attrget(attrs, len, RAD_Attr_User_Password);
     if (attr) {
 	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", ATTRVALLEN(attr));
-	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), from->peer.secret, to->peer.secret, auth, newauth))
-	    return NULL;
+	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->peer.secret, to->peer.secret, auth, newauth)) {
+	    free(buf);
+	    return;
+	}
     }
     
     attr = attrget(attrs, len, RAD_Attr_Tunnel_Password);
     if (attr) {
 	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", ATTRVALLEN(attr));
-	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), from->peer.secret, to->peer.secret, auth, newauth))
-	    return NULL;
+	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->peer.secret, to->peer.secret, auth, newauth)) {
+	    free(buf);
+	    return;
+	}
     }
 
-    rq->buf = buf;
-    rq->from = from;
     rq->origid = id;
     memcpy(rq->origauth, auth, 16);
     memcpy(auth, newauth, 16);
-    return to;
+    sendrq(to, rq);
 }
 
 void *clientrd(void *arg) {
@@ -1463,7 +1473,7 @@ void *clientwr(void *arg) {
 		}
 		debug(DBG_DBG, "clientwr: sending status server to %s", server->peer.host);
 		lastsend.tv_sec = now.tv_sec;
-		sendrq(server, NULL, &statsrvrq);
+		sendrq(server, &statsrvrq);
 	    }
 	}
     }
@@ -1496,9 +1506,6 @@ void *udpserverwr(void *arg) {
 
 void *udpserverrd(void *arg) {
     struct request rq;
-    unsigned char *buf;
-    struct server *to;
-    struct client *fr;
     pthread_t udpserverwrth;
 
     if ((udp_server_sock = bindtoaddr(udp_server_listen->addrinfo)) < 0)
@@ -1511,16 +1518,9 @@ void *udpserverrd(void *arg) {
 	debugx(1, DBG_ERR, "pthread_create failed");
     
     for (;;) {
-	fr = NULL;
 	memset(&rq, 0, sizeof(struct request));
-	buf = radudpget(udp_server_sock, &fr, NULL, &rq.fromsa);
-	to = radsrv(&rq, buf, fr);
-	if (!to) {
-	    free(buf);
-	    debug(DBG_INFO, "udpserverrd: ignoring request, no place to send it");
-	    continue;
-	}
-	sendrq(to, fr, &rq);
+	rq.buf = radudpget(udp_server_sock, &rq.from, NULL, &rq.fromsa);
+	radsrv(&rq);
     }
 }
 
@@ -1565,9 +1565,7 @@ void *tlsserverwr(void *arg) {
 
 void *tlsserverrd(void *arg) {
     struct request rq;
-    char unsigned *buf;
     unsigned long error;
-    struct server *to;
     int s;
     struct client *client = (struct client *)arg;
     pthread_t tlsserverwrth;
@@ -1588,18 +1586,13 @@ void *tlsserverrd(void *arg) {
 	    goto errexit;
 	}
 	for (;;) {
-	    buf = radtlsget(client->peer.ssl);
-	    if (!buf)
+	    memset(&rq, 0, sizeof(struct request));
+	    rq.buf = radtlsget(client->peer.ssl);
+	    if (!rq.buf)
 		break;
 	    debug(DBG_DBG, "tlsserverrd: got Radius message from %s", client->peer.host);
-	    memset(&rq, 0, sizeof(struct request));
-	    to = radsrv(&rq, buf, client);
-	    if (!to) {
-		free(buf);
-		debug(DBG_INFO, "tlsserverrd: ignoring request, no place to send it");
-		continue;
-	    }
-	    sendrq(to, client, &rq);
+	    rq.from = client;
+	    radsrv(&rq);
 	}
 	debug(DBG_ERR, "tlsserverrd: connection lost");
 	/* stop writer by setting peer.ssl to NULL and give signal in case waiting for data */
