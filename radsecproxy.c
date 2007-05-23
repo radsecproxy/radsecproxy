@@ -6,12 +6,6 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
-/* TODO:
- * accounting
- * radius keep alives (server status)
- * setsockopt(keepalive...), check if openssl has some keepalive feature
-*/
-
 /* For UDP there is one server instance consisting of udpserverrd and udpserverth
  *              rd is responsible for init and launching wr
  * For TLS there is a server instance that launches tlsserverrd for each TLS peer
