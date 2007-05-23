@@ -1686,7 +1686,7 @@ void addrealm(char *value, char *server) {
     if (*value == '*')
 	debugx(1, DBG_ERR, "Regexps are now used for specifying realms, a string\nstarting with '*' is meaningless, you probably want '.*' for matching everything\nEXITING\n");
     if (value[strlen(value) - 1] != '$' && value[strlen(value) - 1] != '*') {
-	debug(DBG_ERR, "Regexps are now used for specifying realms, you\nprobably want to rewrite this as e.g. '@example\\.com$' or '\\.com$'\nYou can even do things like '[a-n].*@example\\.com$' to make about half of the\nusers use this server. Note that the matching is case insensitive.\n");
+	debug(DBG_ERR, "Regexps are now used for specifying realms, you\nprobably want to rewrite this as e.g. '@example\\.com$' or '\\.com$'\nYou can even do things like '^[a-n].*@example\\.com$' to make about half of the\nusers use this server. Note that the matching is case insensitive.\n");
 	sleep(3);
     }
     realm_count++;

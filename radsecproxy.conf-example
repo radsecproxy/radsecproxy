@@ -36,7 +36,7 @@ TLSCertificateKeyPassword	follow the white rabbit
 #Also note that case insensitive regexp is used for realms, matching
 #the entire username string. The matching is done in the order the
 #realms are specified, using the first match found. Some examples are
-#"@example\.com$", "\.com$", ".*" and "[a-z].*@example\.com$".
+#"@example\.com$", "\.com$", ".*" and "^[a-z].*@example\.com$".
 #To treat local users separately you might try first specifying "@"
 #and after that ".*".
 
