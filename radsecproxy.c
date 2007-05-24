@@ -1977,6 +1977,38 @@ struct peer *server_create(char type) {
     return server;
 }
 
+/* returns 0 on error, 1 if ok. E.g. "" will return token with empty string */
+int strtokenquote(char *s, char **token, char *del, char *quote, char *comment) {
+    char *t = s, *q;
+
+    if (!t || !token || !del)
+	return 0;
+    while (strchr(del, *t))
+	t++;
+    if (!*t || comment && strchr(comment, *t)) {
+	*token = NULL;
+	return 1;
+    }
+    if (quote && (q = strchr(quote, *t))) {
+	t++;
+	while (*t && *t != *q)
+	    t++;
+	if (!*t)
+	    return 0;
+	if (t[1] && !strchr(del, t[1]))
+	    return 0;
+	*t = '\0';
+	*token = q + 1;
+	return 1;
+    }
+    *token = t;
+    t++;
+    while (*t && !strchr(del, *t))
+	t++;
+    *t = '\0';
+    return 1;
+}
+
 /* Parses config with following syntax:
  * One of these:
  * option-name value
