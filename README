@@ -2,7 +2,9 @@ This is a beta version of a generic RADIUS proxy that can support
 various RADIUS clients over UDP or TLS (RadSec).
 
 It should build on most Linux and BSD platforms by simply typing
-"make". To use it you need to create a config file called
+"make". You may also try to use autoconf if you like.
+
+To use it you need to create a config file called
 "radsecproxy.conf" which must be in /etc/radsecproxy (unless
 you alter it in the header file), the current directory, or
 you can specify the location with the "-c" command line
@@ -16,6 +18,14 @@ detailed; and "-f" to run the proxy in the foreground with logging
 to stderr. Without "-f" the default is to detach as a daemon and
 log to syslog.
 
+Thanks to Stefan Winter and Andreas Solberg for making me do this,
+and the funding from GEANT2. Stefan as well as Kolbjørn Barmen
+and Maja Wolniewicz have helped with early testing of the code.
+All of the above plus Milan Sova have provided good feedback on
+several implementation choices. Finally thanks to Hans Zandbelt
+for providing the autoconf stuff. I may have forgotten someone,
+let me know if you feel left out.
+
 For more information, feedback etc. contact <venaas@uninett.no>.
 
-Stig Venaas, 2007.05.15
+Stig Venaas, 2007.05.24
