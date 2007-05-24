@@ -740,7 +740,7 @@ void sendreply(struct client *to, unsigned char *buf, struct sockaddr_storage *t
     replyq->count++;
 
     if (replyq->count == 1) {
-	debug(DBG_DBG, "signalling client writer");
+	debug(DBG_DBG, "signalling server writer");
 	pthread_cond_signal(&replyq->count_cond);
     }
     pthread_mutex_unlock(&replyq->count_mutex);
@@ -1477,7 +1477,6 @@ void *clientwr(void *arg) {
 	    rq->tries++;
 	    clientradput(server, server->requests[i].buf);
 	    gettimeofday(&lastsend, NULL);
-	    usleep(200000);
 	}
 	if (server->statusserver) {
 	    gettimeofday(&now, NULL);
