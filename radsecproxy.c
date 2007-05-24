@@ -213,7 +213,8 @@ int resolvepeer(struct peer *peer, int ai_flags) {
 int connecttoserver(struct addrinfo *addrinfo) {
     int s;
     struct addrinfo *res;
-    
+
+    s = -1;
     for (res = addrinfo; res; res = res->ai_next) {
         s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
         if (s < 0) {
@@ -251,7 +252,7 @@ int bindtoaddr(struct addrinfo *addrinfo) {
 /* returns the client with matching address, or NULL */
 /* if client argument is not NULL, we only check that one client */
 struct client *find_client(char type, struct sockaddr *addr, struct client *client) {
-    struct sockaddr_in6 *sa6;
+    struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
     struct client *c;
     int i;
@@ -283,7 +284,7 @@ struct client *find_client(char type, struct sockaddr *addr, struct client *clie
 /* returns the server with matching address, or NULL */
 /* if server argument is not NULL, we only check that one server */
 struct server *find_server(char type, struct sockaddr *addr, struct server *server) {
-    struct sockaddr_in6 *sa6;
+    struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
     struct server *s;
     int i;
@@ -1105,7 +1106,7 @@ void respondstatusserver(struct request *rq) {
 void radsrv(struct request *rq) {
     uint8_t code, id, *auth, *attrs, *attr;
     uint16_t len;
-    struct server *to;
+    struct server *to = NULL;
     char username[256];
     unsigned char *buf, newauth[16];
 
@@ -1804,7 +1805,7 @@ char *parserealmlist(char *s, struct server *server) {
 
 FILE *openconfigfile(const char *filename) {
     FILE *f;
-    char pathname[100], *base;
+    char pathname[100], *base = NULL;
     
     f = fopen(filename, "r");
     if (f) {
@@ -1989,9 +1990,10 @@ struct peer *server_create(char type) {
 void getgeneralconfig(FILE *f, char *block, ...) {
     va_list ap;
     char line[1024];
-    char *tokens[3], *opt, *val, *word, **str;
-    int type, tcount, conftype;
-    void (*cbk)(FILE *, char *, char *);
+    /* initialise lots of stuff to avoid stupid compiler warnings */
+    char *tokens[3], *opt = NULL, *val = NULL, *word, **str = NULL;
+    int type = 0, tcount, conftype = 0;
+    void (*cbk)(FILE *, char *, char *) = NULL;
 	
     while (fgets(line, 1024, f)) {
 	tokens[0] = strtok(line, " \t\n");
