@@ -1687,8 +1687,9 @@ int tlslistener() {
 }
 
 void addrealm(char *value, char *server) {
-    int i;
+    int i, n;
     struct realm *realm;
+    char *s, *regex = NULL;
     
     for (i = 0; i < server_count; i++)
 	if (!strcasecmp(server, servers[i].peer.host))
@@ -1696,13 +1697,31 @@ void addrealm(char *value, char *server) {
     if (i == server_count)
 	debugx(1, DBG_ERR, "addrealm failed, no server %s", server);
 
-    /* temporary warnings */
-    if (*value == '*')
-	debugx(1, DBG_ERR, "Regexps are now used for specifying realms, a string\nstarting with '*' is meaningless, you probably want '.*' for matching everything\nEXITING\n");
-    if (value[strlen(value) - 1] != '$' && value[strlen(value) - 1] != '*') {
-	debug(DBG_ERR, "Regexps are now used for specifying realms, you\nprobably want to rewrite this as e.g. '@example\\.com$' or '\\.com$'\nYou can even do things like '^[a-n].*@example\\.com$' to make about half of the\nusers use this server. Note that the matching is case insensitive.\n");
-	sleep(3);
+    if (*value != '/') {
+	/* not a regexp, let us make it one */
+	if (*value == '*' && !value[1])
+	    regex = stringcopy(".*", 0);
+	else {
+	    for (n = 0, s = value; *s;)
+		if (*s++ == '.')
+		    n++;
+	    regex = malloc(strlen(value) + n + 3);
+	    if (regex) {
+		regex[0] = '@';
+		for (n = 1, s = value; *s; s++) {
+		    if (*s == '.')
+			regex[n++] = '\\';
+		    regex[n++] = *s;
+		}
+		regex[n++] = '$';
+		regex[n] = '\0';
+	    }
+	}
+	if (!regex)
+	    debugx(1, DBG_ERR, "malloc failed");
+	debug(DBG_DBG, "addrealm: constructed regexp %s from %s", regex, value);
     }
+
     realm_count++;
     realms = realloc(realms, realm_count * sizeof(struct realm));
     if (!realms)
@@ -1710,9 +1729,13 @@ void addrealm(char *value, char *server) {
     realm = realms + realm_count - 1;
     memset(realm, 0, sizeof(struct realm));
     realm->name = stringcopy(value, 0);
+    if (!realm->name)
+	debugx(1, DBG_ERR, "malloc failed");
     realm->server = servers + i;
-    if (regcomp(&realm->regex, value, REG_ICASE | REG_NOSUB))
-	debugx(1, DBG_ERR, "addrealm: failed to compile regular expression %s", value);
+    if (regcomp(&realm->regex, regex ? regex : value + 1, REG_ICASE | REG_NOSUB))
+	debugx(1, DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
+    if (regex)
+	free(regex);
     debug(DBG_DBG, "addrealm: added realm %s for server %s", value, server);
 }
 
@@ -1977,36 +2000,35 @@ struct peer *server_create(char type) {
     return server;
 }
 
-/* returns 0 on error, 1 if ok. E.g. "" will return token with empty string */
-int strtokenquote(char *s, char **token, char *del, char *quote, char *comment) {
-    char *t = s, *q;
+/* returns NULL on error, where to continue parsing if token and ok. E.g. "" will return token with empty string */
+char *strtokenquote(char *s, char **token, char *del, char *quote) {
+    char *t = s, *q, *r;
 
     if (!t || !token || !del)
-	return 0;
-    while (strchr(del, *t))
+	return NULL;
+    while (*t && strchr(del, *t))
 	t++;
-    if (!*t || comment && strchr(comment, *t)) {
+    if (!*t) {
 	*token = NULL;
-	return 1;
+	return t + 1; /* needs to be non-NULL, but value doesn't matter */
     }
     if (quote && (q = strchr(quote, *t))) {
 	t++;
+	r = t;
 	while (*t && *t != *q)
 	    t++;
-	if (!*t)
-	    return 0;
-	if (t[1] && !strchr(del, t[1]))
-	    return 0;
+	if (!*t || (t[1] && !strchr(del, t[1])))
+	    return NULL;
 	*t = '\0';
-	*token = q + 1;
-	return 1;
+	*token = r;
+	return t + 1;
     }
     *token = t;
     t++;
     while (*t && !strchr(del, *t))
 	t++;
     *t = '\0';
-    return 1;
+    return t + 1;
 }
 
 /* Parses config with following syntax:
@@ -2023,17 +2045,23 @@ void getgeneralconfig(FILE *f, char *block, ...) {
     va_list ap;
     char line[1024];
     /* initialise lots of stuff to avoid stupid compiler warnings */
-    char *tokens[3], *opt = NULL, *val = NULL, *word, **str = NULL;
+    char *tokens[3], *s, *opt = NULL, *val = NULL, *word, **str = NULL;
     int type = 0, tcount, conftype = 0;
     void (*cbk)(FILE *, char *, char *) = NULL;
 	
     while (fgets(line, 1024, f)) {
-	tokens[0] = strtok(line, " \t\n");
-	if (!*tokens || **tokens == '#')
+	s = line;
+	for (tcount = 0; tcount < 3; tcount++) {
+	    s = strtokenquote(s, &tokens[tcount], " \t\n", "\"'");
+	    if (!s)
+		debugx(1, DBG_ERR, "Syntax error in line starting with: %s", line);
+	    if (!tokens[tcount])
+		break;
+	}
+	if (!tcount || **tokens == '#')
 	    continue;
-	for (tcount = 1; tcount < 3 && (tokens[tcount] = strtok(NULL, " \t\n")); tcount++);
-	
-	if (tcount && **tokens == '}') {
+
+	if (**tokens == '}') {
 	    if (block)
 		return;
 	    debugx(1, DBG_ERR, "configuration error, found } with no matching {");
@@ -2065,6 +2093,9 @@ void getgeneralconfig(FILE *f, char *block, ...) {
 	    debugx(1, DBG_ERR, "configuration error, syntax error in line starting with %s", tokens[0]);
 	}
 
+	if (!*val)
+	    debugx(1, DBG_ERR, "configuration error, option %s needs a non-empty value", opt);
+	
 	va_start(ap, block);
 	while ((word = va_arg(ap, char *))) {
 	    type = va_arg(ap, int);

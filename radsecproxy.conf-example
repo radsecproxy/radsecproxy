@@ -33,12 +33,14 @@ TLSCertificateKeyPassword	follow the white rabbit
 #also the lines above may be in any order, except that a realm
 #can only be configured to use a server that is previously configured.
 
-#Also note that case insensitive regexp is used for realms, matching
-#the entire username string. The matching is done in the order the
-#realms are specified, using the first match found. Some examples are
+#A realm can be a literal domain name, * which matches all, or a
+#regexp. A regexp is specified by the character prefix /
+#For regexp we do case insensitive matching of the entire username string.
+#The matching of realms is done in the order they are specified, using the
+#first match found. Some examples are
 #"@example\.com$", "\.com$", ".*" and "^[a-z].*@example\.com$".
 #To treat local users separately you might try first specifying "@"
-#and after that ".*".
+#and after that "*".
 
 client 2001:db8::1 {
 	type	tls
@@ -57,7 +59,7 @@ server 127.0.0.1 {
 	type	UDP
 	secret	secret
 }
-realm	@eduroam\.cc$ {
+realm	eduroam.cc {
 	server	127.0.0.1
 }
 
@@ -73,12 +75,14 @@ server radius.example.com {
 # statusserver is optional, can be on or off. Off is default
 }
 
-realm @example\.com$ {
+# Equivalent to example.com
+realm /@example\.com$ {
 	server 2001:db8::1
 }
-realm \.com$ {
+realm /\.com$ {
 	server 2001:db8::1
 }
-realm .* {
+# The realm below is equivalent to /.*
+realm * {
 	server radius.example.com
 }
