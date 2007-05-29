@@ -995,15 +995,14 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     return 1;
 }
 
-int id2server(struct server **server, char *id, uint8_t len) {
+struct realm *id2realm(char *id, uint8_t len) {
     int i;
     for (i = 0; i < realm_count; i++)
 	if (!regexec(&realms[i].regex, id, 0, NULL, 0)) {
-	    debug(DBG_DBG, "found matching realm: %s, host %s", realms[i].name, realms[i].server->peer.host);
-	    *server = realms[i].server;
-	    return 1;
+	    debug(DBG_DBG, "found matching realm: %s", realms[i].name);
+	    return realms + i;
 	}
-    return 0;
+    return NULL;
 }
 
 int rqinqueue(struct server *to, struct client *from, uint8_t id) {
@@ -1104,18 +1103,26 @@ void respondstatusserver(struct request *rq) {
     sendreply(rq->from, resp, rq->from->peer.type == 'U' ? &rq->fromsa : NULL);
 }
 
-void respondreject(struct request *rq) {
+void respondreject(struct request *rq, char *message) {
     unsigned char *resp;
+    int len = 20;
 
-    resp = malloc(20);
+    if (message)
+	len += 2 + strlen(message);
+    
+    resp = malloc(len);
     if (!resp) {
 	debug(DBG_ERR, "respondreject: malloc failed");
 	return;
     }
     memcpy(resp, rq->buf, 20);
     resp[0] = RAD_Access_Reject;
-    resp[2] = 0;
-    resp[3] = 20;
+    *(uint16_t *)(resp + 2) = htons(len);
+    if (message) {
+	resp[20] = RAD_Attr_Reply_Message;
+	resp[21] = len - 20;
+	memcpy(resp + 22, message, len - 22);
+    }
     sendreply(rq->from, resp, rq->from->peer.type == 'U' ? &rq->fromsa : NULL);
 }
 
@@ -1125,7 +1132,8 @@ void radsrv(struct request *rq) {
     struct server *to = NULL;
     char username[256];
     unsigned char *buf, newauth[16];
-
+    struct realm *realm = NULL;
+    
     buf = rq->buf;
     code = *(uint8_t *)buf;
     id = *(uint8_t *)(buf + 1);
@@ -1159,12 +1167,14 @@ void radsrv(struct request *rq) {
 	memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
 	username[ATTRVALLEN(attr)] = '\0';
 	debug(DBG_DBG, "Access Request with username: %s", username);
-    
-	if (!id2server(&to, username, strlen(username))) {
+
+	realm = id2realm(username, strlen(username));
+	if (!realm) {
 	    debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
 	    free(buf);
 	    return;
 	}
+	to = realm->server;
 
 	if (to && rqinqueue(to, rq->from, id)) {
 	    debug(DBG_INFO, "radsrv: already got request from host %s with id %d, ignoring", rq->from->peer.host, id);
@@ -1187,7 +1197,7 @@ void radsrv(struct request *rq) {
 
     if (!to) {
 	debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->peer.host, username);
-	respondreject(rq);
+	respondreject(rq, realm->message);
 	return;
     }
     
@@ -1707,7 +1717,7 @@ int tlslistener() {
     return 0;
 }
 
-void addrealm(char *value, char *server) {
+void addrealm(char *value, char *server, char *message) {
     int i, n;
     struct realm *realm;
     char *s, *regex = NULL;
@@ -1754,6 +1764,9 @@ void addrealm(char *value, char *server) {
     realm->name = stringcopy(value, 0);
     if (!realm->name)
 	debugx(1, DBG_ERR, "malloc failed");
+    if (message && strlen(message) > 253)
+	debugx(1, DBG_ERR, "ReplyMessage can be at most 253 bytes");
+    realm->message = message;
     if (server)
 	realm->server = servers + i;
     if (regcomp(&realm->regex, regex ? regex : value + 1, REG_ICASE | REG_NOSUB))
@@ -2109,7 +2122,7 @@ void confclsrv_cb(FILE *f, char *opt, char *val) {
 }
 
 void confrealm_cb(FILE *f, char *opt, char *val) {
-    char *server = NULL;
+    char *server = NULL, *msg = NULL;
     char *block;
     
     block = malloc(strlen(opt) + strlen(val) + 2);
@@ -2120,13 +2133,11 @@ void confrealm_cb(FILE *f, char *opt, char *val) {
     
     getgeneralconfig(f, block,
 		     "server", CONF_STR, &server,
+		     "ReplyMessage", CONF_STR, &msg,
 		     NULL
 		     );
-#if 0    
-    if (!server)
-	debugx(1, DBG_ERR, "error in block %s, server must be specified", block);
-#endif
-    addrealm(val, server);
+
+    addrealm(val, server, msg);
     free(server);
     free(block);
 }

@@ -79,8 +79,14 @@ server radius.example.com {
 realm /@example\.com$ {
 	server 2001:db8::1
 }
+# One can define a realm without servers, the proxy will then reject
+# and requests matching this. Optionally one can specify ReplyMessage
+# attribute to be included in the reject message.
+# 
 realm /\.com$ {
-	server 2001:db8::1
+}
+realm /^anonymous$ {
+        replymessage "No Access"
 }
 # The realm below is equivalent to /.*
 realm * {
