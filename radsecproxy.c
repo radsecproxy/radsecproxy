@@ -1777,55 +1777,6 @@ char *parsehostport(char *s, struct peer *peer) {
     return p;
 }
 
-/* TODO remove this */
-/* * is default, else longest match ... ";" used for separator */
-char *parserealmlist(char *s, struct server *server) {
-#if 0    
-    char *p;
-    int i, n, l;
-    char *realmdata;
-    char **realms;
-
-    for (p = s, n = 1; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++)
-	if (*p == ';')
-	    n++;
-    l = p - s;
-    if (!l)
-	debugx(1, DBG_ERR, "realm list must be specified");
-
-    realmdata = stringcopy(s, l);
-    realms = malloc((1+n) * sizeof(char *));
-    if (!realms)
-	debugx(1, DBG_ERR, "malloc failed");
-    realms[0] = realmdata;
-    for (n = 1, i = 0; i < l; i++)
-	if (realmdata[i] == ';') {
-	    realmdata[i] = '\0';
-	    realms[n++] = realmdata + i + 1;
-	}	
-    for (i = 0; i < n; i++)
-	addrealm(realms[i], server->peer.host);
-    free(realms);
-    free(realmdata);
-    return p;
-#else
-    char *start;
-    char *realm;
-
-    for (start = s;; s++)
-	if (!*s || *s == ';' || *s == ' ' || *s == '\t' || *s == '\n') {
-	    if (s - start > 0) {
-		realm = stringcopy(start, s - start);
-		addrealm(realm, server->peer.host);
-		free(realm);
-	    }
-	    if (*s != ';')
-		return s;
-	    start = s + 1;
-	}
-#endif    
-}
-
 FILE *openconfigfile(const char *filename) {
     FILE *f;
     char pathname[100], *base = NULL;
@@ -1848,133 +1799,6 @@ FILE *openconfigfile(const char *filename) {
     
     debug(DBG_DBG, "reading config file %s", base);
     return f;
-}
-
-/* exactly one argument must be non-NULL */
-void getconfig(const char *serverfile, const char *clientfile) {
-    FILE *f;
-    char line[1024];
-    char *p, *field;
-    struct client *client;
-    struct server *server;
-    struct peer *peer;
-    int i, count, *ucount, *tcount;
- 
-    f = openconfigfile(serverfile ? serverfile : clientfile);
-    if (serverfile) {
-	ucount = &server_udp_count;
-	tcount = &server_tls_count;
-    } else {
-	ucount = &client_udp_count;
-	tcount = &client_tls_count;
-    }
-    while (fgets(line, 1024, f)) {
-	for (p = line; *p == ' ' || *p == '\t'; p++);
-	switch (*p) {
-	case '#':
-	case '\n':
-	    break;
-	case 'T':
-	    (*tcount)++;
-	    break;
-	case 'U':
-	    (*ucount)++;
-	    break;
-	default:
-	    debugx(1, DBG_ERR, "type must be U or T, got %c", *p);
-	}
-    }
-
-    if (serverfile) {
-	count = server_count = server_udp_count + server_tls_count;
-	servers = calloc(count, sizeof(struct server));
-	if (!servers)
-	    debugx(1, DBG_ERR, "malloc failed");
-    } else {
-	if (client_udp_count) {
-	    udp_server_replyq.replies = malloc(client_udp_count * MAX_REQUESTS * sizeof(struct reply));
-	    if (!udp_server_replyq.replies)
-		debugx(1, DBG_ERR, "malloc failed");
-	    udp_server_replyq.size = client_udp_count * MAX_REQUESTS;
-	    udp_server_replyq.count = 0;
-	    pthread_mutex_init(&udp_server_replyq.count_mutex, NULL);
-	    pthread_cond_init(&udp_server_replyq.count_cond, NULL);
-	}    
-
-	count = client_count = client_udp_count + client_tls_count;
-	clients = calloc(count, sizeof(struct client));
-	if (!clients)
-	    debugx(1, DBG_ERR, "malloc failed");
-    }
-    
-    rewind(f);
-    for (i = 0; i < count && fgets(line, 1024, f);) {
-	if (serverfile) {
-	    server = &servers[i];
-	    peer = &server->peer;
-	} else {
-	    client = &clients[i];
-	    peer = &client->peer;
-	}
-	for (p = line; *p == ' ' || *p == '\t'; p++);
-	if (*p == '#' || *p == '\n')
-	    continue;
-	peer->type = *p;	/* we already know it must be U or T */
-	for (p++; *p == ' ' || *p == '\t'; p++);
-	p = parsehostport(p, peer);
-	for (; *p == ' ' || *p == '\t'; p++);
-	if (serverfile) {
-	    p = parserealmlist(p, server);
-	    for (; *p == ' ' || *p == '\t'; p++);
-	}
-	field = p;
-	for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	if (field == p) {
-	    /* no secret set and end of line, line is complete if TLS */
-	    if (peer->type == 'U')
-		debugx(1, DBG_ERR, "secret must be specified for UDP");
-	    peer->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
-	} else {
-	    peer->secret = stringcopy(field, p - field);
-	    /* check that rest of line only white space */
-	    for (; *p == ' ' || *p == '\t'; p++);
-	    if (*p && *p != '\n')
-		debugx(1, DBG_ERR, "max 4 fields per line, found a 5th");
-	}
-
-	if ((serverfile && !resolvepeer(&server->peer, 0)) ||
-	    (clientfile && !resolvepeer(&client->peer, 0)))
-	    debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", peer->host, peer->port);
-
-	if (serverfile) {
-	    pthread_mutex_init(&server->lock, NULL);
-	    server->sock = -1;
-	    server->requests = calloc(MAX_REQUESTS, sizeof(struct request));
-	    if (!server->requests)
-		debugx(1, DBG_ERR, "malloc failed");
-	    server->newrq = 0;
-	    pthread_mutex_init(&server->newrq_mutex, NULL);
-	    pthread_cond_init(&server->newrq_cond, NULL);
-	} else {
-	    if (peer->type == 'U')
-		client->replyq = &udp_server_replyq;
-	    else {
-		client->replyq = malloc(sizeof(struct replyq));
-		if (!client->replyq)
-		    debugx(1, DBG_ERR, "malloc failed");
-		client->replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
-		if (!client->replyq->replies)
-		    debugx(1, DBG_ERR, "malloc failed");
-		client->replyq->size = MAX_REQUESTS;
-		client->replyq->count = 0;
-		pthread_mutex_init(&client->replyq->count_mutex, NULL);
-		pthread_cond_init(&client->replyq->count_cond, NULL);
-	    }
-	}
-	debug(DBG_DBG, "got type %c, host %s, port %s, secret %s", peer->type, peer->host, peer->port, peer->secret);
-	i++;
-    }
-    fclose(f);
 }
 
 struct peer *server_create(char type) {
@@ -2378,13 +2202,10 @@ int main(int argc, char **argv) {
 	debug_set_destination(options.logdestination);
     }
 
-    /* TODO remove getconfig completely when all use new config method */
     if (!server_count)
-	getconfig(CONFIG_SERVERS, NULL);
+	debugx(1, DBG_ERR, "No servers configured, nothing to do, exiting");
     if (!client_count)
-	getconfig(NULL, CONFIG_CLIENTS);
-
-    /* TODO exit if not at least one client and one server configured */
+	debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");
     if (!realm_count)
 	debugx(1, DBG_ERR, "No realms configured, nothing to do, exiting");
 
