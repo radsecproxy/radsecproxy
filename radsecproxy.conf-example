@@ -10,7 +10,7 @@ TLSCACertificatePath	/etc/cacerts
 TLSCertificateFile	/etc/hostcertkey/host.example.com.pem
 TLSCertificateKeyFile	/etc/hostcertkey/host.example.com.key.pem
 # Optionally specify password if key is encrypted (not very secure)
-TLSCertificateKeyPassword	follow the white rabbit
+TLSCertificateKeyPassword	"follow the white rabbit"
 
 # You can optionally specify addresses and ports to listen on
 #	Max one of each, below are just multiple examples
