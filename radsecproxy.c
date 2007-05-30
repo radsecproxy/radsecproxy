@@ -1730,7 +1730,11 @@ void addrealm(char *value, char *server, char *message) {
 	    debugx(1, DBG_ERR, "addrealm failed, no server %s", server);
     }
     
-    if (*value != '/') {
+    if (*value == '/') {
+	/* regexp, remove optional trailing / if present */
+	if (value[strlen(value) - 1] == '/')
+	    value[strlen(value) - 1] = '\0';
+    } else {
 	/* not a regexp, let us make it one */
 	if (*value == '*' && !value[1])
 	    regex = stringcopy(".*", 0);
