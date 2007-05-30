@@ -1866,14 +1866,14 @@ struct peer *server_create(char type) {
 }
 
 /* returns NULL on error, where to continue parsing if token and ok. E.g. "" will return token with empty string */
-char *strtokenquote(char *s, char **token, char *del, char *quote) {
+char *strtokenquote(char *s, char **token, char *del, char *quote, char *comment) {
     char *t = s, *q, *r;
 
     if (!t || !token || !del)
 	return NULL;
     while (*t && strchr(del, *t))
 	t++;
-    if (!*t) {
+    if (!*t || (comment && strchr(comment, *t))) {
 	*token = NULL;
 	return t + 1; /* needs to be non-NULL, but value doesn't matter */
     }
@@ -1917,7 +1917,7 @@ void getgeneralconfig(FILE *f, char *block, ...) {
     while (fgets(line, 1024, f)) {
 	s = line;
 	for (tcount = 0; tcount < 3; tcount++) {
-	    s = strtokenquote(s, &tokens[tcount], " \t\n", "\"'");
+	    s = strtokenquote(s, &tokens[tcount], " \t\n", "\"'", tcount ? NULL : "#");
 	    if (!s)
 		debugx(1, DBG_ERR, "Syntax error in line starting with: %s", line);
 	    if (!tokens[tcount])
