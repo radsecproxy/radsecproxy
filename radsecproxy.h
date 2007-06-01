@@ -44,11 +44,6 @@
 #define CONF_CBK 2
 
 struct options {
-    char *tlscacertificatefile;
-    char *tlscacertificatepath;
-    char *tlscertificatefile;
-    char *tlscertificatekeyfile;
-    char *tlscertificatekeypassword;
     char *listenudp;
     char *listentcp;
     char *logdestination;
@@ -87,6 +82,7 @@ struct peer {
     char *port;
     char *secret;
     SSL *ssl;
+    SSL_CTX *ssl_ctx;
     struct addrinfo *addrinfo;
 };
 
@@ -115,6 +111,12 @@ struct realm {
     char *message;
     regex_t regex;
     struct server *server;
+};
+
+struct tls {
+    char *name;
+    SSL_CTX *ctx;
+    int count;
 };
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])

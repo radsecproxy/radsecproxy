@@ -50,6 +50,7 @@ static struct options options;
 static struct client *clients = NULL;
 static struct server *servers = NULL;
 static struct realm *realms = NULL;
+static struct tls *tls = NULL;
 
 static int client_udp_count = 0;
 static int client_tls_count = 0;
@@ -58,6 +59,7 @@ static int server_udp_count = 0;
 static int server_tls_count = 0;
 static int server_count = 0;
 static int realm_count = 0;
+static int tls_count = 0;
 
 static struct peer *tcp_server_listen;
 static struct peer *udp_server_listen;
@@ -65,7 +67,6 @@ static struct replyq udp_server_replyq;
 static int udp_server_sock = -1;
 static pthread_mutex_t *ssl_locks;
 static long *ssl_lock_count;
-static SSL_CTX *ssl_ctx = NULL;
 extern int optind;
 extern char *optarg;
 
@@ -131,56 +132,6 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
 #endif  
   return ok;
 }
-
-SSL_CTX *ssl_init() {
-    SSL_CTX *ctx;
-    int i;
-    unsigned long error;
-    
-    if (!options.tlscertificatefile || !options.tlscertificatekeyfile)
-	debugx(1, DBG_ERR, "TLSCertificateFile and TLSCertificateKeyFile must be specified for TLS");
-
-    if (!options.tlscacertificatefile && !options.tlscacertificatepath)
-	debugx(1, DBG_ERR, "CA Certificate file/path need to be configured");
-
-    ssl_locks = malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
-    ssl_lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
-    for (i = 0; i < CRYPTO_num_locks(); i++) {
-	ssl_lock_count[i] = 0;
-	pthread_mutex_init(&ssl_locks[i], NULL);
-    }
-    CRYPTO_set_id_callback(ssl_thread_id);
-    CRYPTO_set_locking_callback(ssl_locking_callback);
-
-    SSL_load_error_strings();
-    SSL_library_init();
-
-    while (!RAND_status()) {
-	time_t t = time(NULL);
-	pid_t pid = getpid();
-	RAND_seed((unsigned char *)&t, sizeof(time_t));
-        RAND_seed((unsigned char *)&pid, sizeof(pid));
-    }
-
-    ctx = SSL_CTX_new(TLSv1_method());
-    if (options.tlscertificatekeypassword) {
-	SSL_CTX_set_default_passwd_cb_userdata(ctx, options.tlscertificatekeypassword);
-	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
-    }
-    if (SSL_CTX_use_certificate_chain_file(ctx, options.tlscertificatefile) &&
-	SSL_CTX_use_PrivateKey_file(ctx, options.tlscertificatekeyfile, SSL_FILETYPE_PEM) &&
-	SSL_CTX_check_private_key(ctx) &&
-	SSL_CTX_load_verify_locations(ctx, options.tlscacertificatefile, options.tlscacertificatepath)) {
-	SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
-	SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
-	return ctx;
-    }
-
-    while ((error = ERR_get_error()))
-	debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-    debug(DBG_ERR, "Error initialising SSL/TLS");
-    exit(1);
-}    
 
 #ifdef DEBUG
 void printauth(char *s, unsigned char *t) {
@@ -461,7 +412,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	}
 	
 	SSL_free(server->peer.ssl);
-	server->peer.ssl = SSL_new(ssl_ctx);
+	server->peer.ssl = SSL_new(server->peer.ssl_ctx);
 	SSL_set_fd(server->peer.ssl, server->sock);
 	if (SSL_connect(server->peer.ssl) > 0 && tlsverifycert(&server->peer))
 	    break;
@@ -1702,7 +1653,7 @@ int tlslistener() {
 	    close(snew);
 	    continue;
 	}
-	client->peer.ssl = SSL_new(ssl_ctx);
+	client->peer.ssl = SSL_new(client->peer.ssl_ctx);
 	SSL_set_fd(client->peer.ssl, snew);
 	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)client)) {
 	    debug(DBG_ERR, "tlslistener: pthread_create failed");
@@ -1715,6 +1666,97 @@ int tlslistener() {
 	pthread_detach(tlsserverth);
     }
     return 0;
+}
+
+void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, char *certkeyfile, char *certkeypwd) {
+    struct tls *new;
+    SSL_CTX *ctx;
+    int i;
+    unsigned long error;
+    
+    if (!certfile || !certkeyfile)
+	debugx(1, DBG_ERR, "TLSCertificateFile and TLSCertificateKeyFile must be specified in TLS context %s", value);
+
+    if (!cacertfile && !cacertpath)
+	debugx(1, DBG_ERR, "CA Certificate file or path need to be specified in TLS context %s", value);
+
+    if (!ssl_locks) {
+	ssl_locks = malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
+	ssl_lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
+	for (i = 0; i < CRYPTO_num_locks(); i++) {
+	    ssl_lock_count[i] = 0;
+	    pthread_mutex_init(&ssl_locks[i], NULL);
+	}
+	CRYPTO_set_id_callback(ssl_thread_id);
+	CRYPTO_set_locking_callback(ssl_locking_callback);
+
+	SSL_load_error_strings();
+	SSL_library_init();
+
+	while (!RAND_status()) {
+	    time_t t = time(NULL);
+	    pid_t pid = getpid();
+	    RAND_seed((unsigned char *)&t, sizeof(time_t));
+	    RAND_seed((unsigned char *)&pid, sizeof(pid));
+	}
+    }
+    ctx = SSL_CTX_new(TLSv1_method());
+    if (certkeypwd) {
+	SSL_CTX_set_default_passwd_cb_userdata(ctx, certkeypwd);
+	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
+    }
+    if (!SSL_CTX_use_certificate_chain_file(ctx, certfile) ||
+	!SSL_CTX_use_PrivateKey_file(ctx, certkeyfile, SSL_FILETYPE_PEM) ||
+	!SSL_CTX_check_private_key(ctx) ||
+	!SSL_CTX_load_verify_locations(ctx, cacertfile, cacertpath)) {
+	while ((error = ERR_get_error()))
+	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+	debugx(1, DBG_ERR, "Error initialising SSL/TLS in TLS context %s", value);
+    }
+    
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
+    SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
+    
+    tls_count++;
+    tls = realloc(tls, tls_count * sizeof(struct tls));
+    if (!tls)
+	debugx(1, DBG_ERR, "malloc failed");
+    new = tls + tls_count - 1;
+    memset(new, 0, sizeof(struct tls));
+    new->name = stringcopy(value, 0);
+    if (!new->name)
+	debugx(1, DBG_ERR, "malloc failed");
+    new->ctx = ctx;
+    new->count = 0;
+    debug(DBG_DBG, "tlsadd: added TLS context %s", value);
+}
+
+void tlsfree() {
+    int i;
+    for (i = 0; i < tls_count; i++)
+	if (!tls[i].count)
+	    SSL_CTX_free(tls[i].ctx);
+    tls_count = 0;
+    free(tls);
+    tls = NULL;
+}
+
+SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
+    int i, c1 = -1, c2 = -1;
+    for (i = 0; i < tls_count; i++) {
+	if (!strcasecmp(tls[i].name, alt1)) {
+	    c1 = i;
+	    break;
+	}
+	if (c2 == -1 && alt2 && !strcasecmp(tls[i].name, alt2))
+	    c2 = i;
+    }
+
+    i = (c1 == -1 ? c2 : c1);
+    if (i == -1)
+	return NULL;
+    tls[i].count++;
+    return tls[i].ctx;
 }
 
 void addrealm(char *value, char *server, char *message) {
@@ -2011,12 +2053,12 @@ void getgeneralconfig(FILE *f, char *block, ...) {
 }
 
 void confclsrv_cb(FILE *f, char *opt, char *val) {
-    char *type = NULL, *secret = NULL, *port = NULL, *statusserver = NULL;
+    char *type = NULL, *secret = NULL, *port = NULL, *tls = NULL, *statusserver = NULL;
     char *block;
     struct client *client = NULL;
     struct server *server = NULL;
     struct peer *peer;
-
+    
     block = malloc(strlen(opt) + strlen(val) + 2);
     if (!block)
 	debugx(1, DBG_ERR, "malloc failed");
@@ -2027,6 +2069,7 @@ void confclsrv_cb(FILE *f, char *opt, char *val) {
 	getgeneralconfig(f, block,
 			 "type", CONF_STR, &type,
 			 "secret", CONF_STR, &secret,
+			 "tls", CONF_STR, &tls,
 			 NULL
 			 );
 	client_count++;
@@ -2041,6 +2084,7 @@ void confclsrv_cb(FILE *f, char *opt, char *val) {
 			 "type", CONF_STR, &type,
 			 "secret", CONF_STR, &secret,
 			 "port", CONF_STR, &port,
+			 "tls", CONF_STR, &tls,
 			 "StatusServer", CONF_STR, &statusserver,
 			 NULL
 			 );
@@ -2073,14 +2117,18 @@ void confclsrv_cb(FILE *f, char *opt, char *val) {
 		peer->port = stringcopy(DEFAULT_UDP_PORT, 0);
 	}
     } else if (type && !strcasecmp(type, "tls")) {
-	peer->type = 'T';
-	if (client)
+	if (client) {
+	    peer->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultclient", "default");
 	    client_tls_count++;
-	else {
+	} else {
+	    peer->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultserver", "default");
 	    server_tls_count++;
 	    if (!port)
 		peer->port = stringcopy(DEFAULT_TLS_PORT, 0);
 	}
+	if (!peer->ssl_ctx)
+	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
+	peer->type = 'T';
     } else
 	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
     free(type);
@@ -2146,6 +2194,34 @@ void confrealm_cb(FILE *f, char *opt, char *val) {
     free(block);
 }
 
+void conftls_cb(FILE *f, char *opt, char *val) {
+    char *cacertfile = NULL, *cacertpath = NULL, *certfile = NULL, *certkeyfile = NULL, *certkeypwd = NULL;
+    char *block;
+    
+    block = malloc(strlen(opt) + strlen(val) + 2);
+    if (!block)
+	debugx(1, DBG_ERR, "malloc failed");
+    sprintf(block, "%s %s", opt, val);
+    debug(DBG_DBG, "conftls_cb called for %s", block);
+    
+    getgeneralconfig(f, block,
+		     "CACertificateFile", CONF_STR, &cacertfile,
+		     "CACertificatePath", CONF_STR, &cacertpath,
+		     "CertificateFile", CONF_STR, &certfile,
+		     "CertificateKeyFile", CONF_STR, &certkeyfile,
+		     "CertificateKeyPassword", CONF_STR, &certkeypwd,
+		     NULL
+		     );
+    
+    tlsadd(val, cacertfile, cacertpath, certfile, certkeyfile, certkeypwd);
+    free(cacertfile);
+    free(cacertpath);
+    free(certfile);
+    free(certkeyfile);
+    free(certkeypwd);
+    free(block);
+}
+
 void getmainconfig(const char *configfile) {
     FILE *f;
     char *loglevel = NULL;
@@ -2154,11 +2230,6 @@ void getmainconfig(const char *configfile) {
     memset(&options, 0, sizeof(options));
 
     getgeneralconfig(f, NULL,
-		     "TLSCACertificateFile", CONF_STR, &options.tlscacertificatefile,
-		     "TLSCACertificatePath", CONF_STR, &options.tlscacertificatepath,
-		     "TLSCertificateFile", CONF_STR, &options.tlscertificatefile,
-		     "TLSCertificateKeyFile", CONF_STR, &options.tlscertificatekeyfile,
-		     "TLSCertificateKeyPassword", CONF_STR, &options.tlscertificatekeypassword,
 		     "ListenUDP", CONF_STR, &options.listenudp,
 		     "ListenTCP", CONF_STR, &options.listentcp,
 		     "LogLevel", CONF_STR, &loglevel,
@@ -2166,10 +2237,12 @@ void getmainconfig(const char *configfile) {
 		     "Client", CONF_CBK, confclsrv_cb,
 		     "Server", CONF_CBK, confclsrv_cb,
 		     "Realm", CONF_CBK, confrealm_cb,
+		     "TLS", CONF_CBK, conftls_cb,
 		     NULL
 		     );
     fclose(f);
-
+    tlsfree();
+    
     if (loglevel) {
 	if (strlen(loglevel) != 1 || *loglevel < '1' || *loglevel > '4')
 	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %s, must be 1, 2, 3 or 4", configfile, loglevel);
@@ -2258,9 +2331,6 @@ int main(int argc, char **argv) {
 	if (pthread_create(&udpserverth, NULL, udpserverrd, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
-    
-    if (client_tls_count || server_tls_count)
-	ssl_ctx = ssl_init();
     
     for (i = 0; i < server_count; i++)
 	if (pthread_create(&servers[i].clientth, NULL, clientwr, (void *)&servers[i]))
