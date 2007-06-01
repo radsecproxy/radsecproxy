@@ -1952,9 +1952,9 @@ void getgeneralconfig(FILE *f, char *block, ...) {
     va_list ap;
     char line[1024];
     /* initialise lots of stuff to avoid stupid compiler warnings */
-    char *tokens[3], *s, *opt = NULL, *val = NULL, *word, **str = NULL;
+    char *tokens[3], *s, *opt = NULL, *val = NULL, *word, *optval, **str = NULL;
     int type = 0, tcount, conftype = 0;
-    void (*cbk)(FILE *, char *, char *) = NULL;
+    void (*cbk)(FILE *, char *, char *, char *) = NULL;
 	
     while (fgets(line, 1024, f)) {
 	s = line;
@@ -2013,7 +2013,7 @@ void getgeneralconfig(FILE *f, char *block, ...) {
 		    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
 		break;
 	    case CONF_CBK:
-		cbk = va_arg(ap, void (*)(FILE *, char *, char *));
+		cbk = va_arg(ap, void (*)(FILE *, char *, char *, char *));
 		break;
 	    default:
 		debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
@@ -2044,7 +2044,12 @@ void getgeneralconfig(FILE *f, char *block, ...) {
 	    *str = stringcopy(val, 0);
 	    break;
 	case CONF_CBK:
-	    cbk(f, opt, val);
+	    optval = malloc(strlen(opt) + strlen(val) + 2);
+	    if (!optval)
+		debugx(1, DBG_ERR, "malloc failed");
+	    sprintf(optval, "%s %s", opt, val);
+	    cbk(f, optval, opt, val);
+	    free(optval);
 	    break;
 	default:
 	    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
@@ -2052,17 +2057,12 @@ void getgeneralconfig(FILE *f, char *block, ...) {
     }
 }
 
-void confclsrv_cb(FILE *f, char *opt, char *val) {
+void confclsrv_cb(FILE *f, char *block, char *opt, char *val) {
     char *type = NULL, *secret = NULL, *port = NULL, *tls = NULL, *statusserver = NULL;
-    char *block;
     struct client *client = NULL;
     struct server *server = NULL;
     struct peer *peer;
     
-    block = malloc(strlen(opt) + strlen(val) + 2);
-    if (!block)
-	debugx(1, DBG_ERR, "malloc failed");
-    sprintf(block, "%s %s", opt, val);
     debug(DBG_DBG, "confclsrv_cb called for %s", block);
     
     if (!strcasecmp(opt, "client")) {
@@ -2169,18 +2169,11 @@ void confclsrv_cb(FILE *f, char *opt, char *val) {
 	pthread_mutex_init(&server->newrq_mutex, NULL);
 	pthread_cond_init(&server->newrq_cond, NULL);
     }
-    
-    free(block);
 }
 
-void confrealm_cb(FILE *f, char *opt, char *val) {
+void confrealm_cb(FILE *f, char *block, char *opt, char *val) {
     char *server = NULL, *msg = NULL;
-    char *block;
     
-    block = malloc(strlen(opt) + strlen(val) + 2);
-    if (!block)
-	debugx(1, DBG_ERR, "malloc failed");
-    sprintf(block, "%s %s", opt, val);
     debug(DBG_DBG, "confrealm_cb called for %s", block);
     
     getgeneralconfig(f, block,
@@ -2191,17 +2184,11 @@ void confrealm_cb(FILE *f, char *opt, char *val) {
 
     addrealm(val, server, msg);
     free(server);
-    free(block);
 }
 
-void conftls_cb(FILE *f, char *opt, char *val) {
+void conftls_cb(FILE *f, char *block, char *opt, char *val) {
     char *cacertfile = NULL, *cacertpath = NULL, *certfile = NULL, *certkeyfile = NULL, *certkeypwd = NULL;
-    char *block;
     
-    block = malloc(strlen(opt) + strlen(val) + 2);
-    if (!block)
-	debugx(1, DBG_ERR, "malloc failed");
-    sprintf(block, "%s %s", opt, val);
     debug(DBG_DBG, "conftls_cb called for %s", block);
     
     getgeneralconfig(f, block,
@@ -2219,7 +2206,6 @@ void conftls_cb(FILE *f, char *opt, char *val) {
     free(certfile);
     free(certkeyfile);
     free(certkeypwd);
-    free(block);
 }
 
 void getmainconfig(const char *configfile) {
