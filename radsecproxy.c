@@ -2264,7 +2264,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 	    *foreground = 1;
 	    break;
 	case 'v':
-		debugx(0, DBG_ERR, "radsecproxy revision $Rev$");
+		debugx(0, DBG_ERR, "radsecproxy 1.0-alpha");
 	default:
 	    goto usage;
 	}
@@ -2288,7 +2288,7 @@ int main(int argc, char **argv) {
     getargs(argc, argv, &foreground, &loglevel, &configfile);
     if (loglevel)
 	debug_set_level(loglevel);
-    debug(DBG_INFO, "radsecproxy revision $Rev$ starting");
+    debug(DBG_INFO, "radsecproxy 1.0-alpha starting");
     getmainconfig(configfile ? configfile : CONFIG_MAIN);
     if (loglevel)
 	options.loglevel = loglevel;
