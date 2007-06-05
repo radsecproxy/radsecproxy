@@ -254,7 +254,7 @@ struct server *find_server(char type, struct sockaddr *addr, struct server *serv
 	    for (res = s->peer.addrinfo; res; res = res->ai_next)
 		if ((a4 && res->ai_family == AF_INET &&
 		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
-		    (res->ai_family == AF_INET6 &&
+		    (sa6 && res->ai_family == AF_INET6 &&
 		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
 		    return s;
 	if (server)
