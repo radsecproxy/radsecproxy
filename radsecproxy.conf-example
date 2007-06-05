@@ -124,5 +124,5 @@ realm * {
 #If you don't have a default server you probably want to
 #reject all unknowns. Optionally you can also include a message
 #realm * {
-        replymessage "User unknown"
-}
+#        replymessage "User unknown"
+#}

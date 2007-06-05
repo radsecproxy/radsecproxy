@@ -1,4 +1,4 @@
-CFLAGS = -g -Wall -pedantic -pthread
+CFLAGS = -Wall -pedantic -pthread
 LDFLAGS = -lssl
 OBJ = util.o debug.o radsecproxy.o
 
