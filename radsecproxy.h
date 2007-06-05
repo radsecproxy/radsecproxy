@@ -8,9 +8,7 @@
 
 #define DEBUG_LEVEL 3
 
-#define CONFIG_MAIN "/etc/radsecproxy/radsecproxy.conf"
-#define CONFIG_SERVERS "/etc/radsecproxy/servers.conf"
-#define CONFIG_CLIENTS "/etc/radsecproxy/clients.conf"
+#define CONFIG_MAIN "/etc/radsecproxy.conf"
 
 /* MAX_REQUESTS must be 256 due to Radius' 8 bit ID field */
 #define MAX_REQUESTS 256

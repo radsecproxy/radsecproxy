@@ -11,12 +11,13 @@ you can specify the location with the "-c" command line
 option (see below). See the enclosed example file for further
 instructions.
 
-There are three options that may be specified on the command line.
+There are four options that may be specified on the command line.
 "-c configfile" to specify a non-default config file path;
 "-d loglevel" to set a loglevel of 1, 2, 3 or 4 where 4 is the most
 detailed; and "-f" to run the proxy in the foreground with logging
 to stderr. Without "-f" the default is to detach as a daemon and
-log to syslog.
+log to syslog. Finally "-v" just prints version information and
+exits.
 
 Thanks to Stefan Winter and Andreas Solberg for making me do this,
 and the funding from GEANT2. Stefan as well as Kolbjørn Barmen
