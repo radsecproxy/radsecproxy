@@ -8,9 +8,7 @@
 
 #define DEBUG_LEVEL 3
 
-#define CONFIG_MAIN "/etc/radsecproxy/radsecproxy.conf"
-#define CONFIG_SERVERS "/etc/radsecproxy/servers.conf"
-#define CONFIG_CLIENTS "/etc/radsecproxy/clients.conf"
+#define CONFIG_MAIN "/etc/radsecproxy.conf"
 
 /* MAX_REQUESTS must be 256 due to Radius' 8 bit ID field */
 #define MAX_REQUESTS 256
@@ -32,6 +30,7 @@
 
 #define RAD_Attr_User_Name 1
 #define RAD_Attr_User_Password 2
+#define RAD_Attr_Reply_Message 18
 #define RAD_Attr_Vendor_Specific 26
 #define RAD_Attr_Tunnel_Password 69
 #define RAD_Attr_Message_Authenticator 80
@@ -43,11 +42,6 @@
 #define CONF_CBK 2
 
 struct options {
-    char *tlscacertificatefile;
-    char *tlscacertificatepath;
-    char *tlscertificatefile;
-    char *tlscertificatekeyfile;
-    char *tlscertificatekeypassword;
     char *listenudp;
     char *listentcp;
     char *logdestination;
@@ -86,6 +80,7 @@ struct peer {
     char *port;
     char *secret;
     SSL *ssl;
+    SSL_CTX *ssl_ctx;
     struct addrinfo *addrinfo;
 };
 
@@ -111,8 +106,15 @@ struct server {
 
 struct realm {
     char *name;
+    char *message;
     regex_t regex;
     struct server *server;
+};
+
+struct tls {
+    char *name;
+    SSL_CTX *ctx;
+    int count;
 };
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])

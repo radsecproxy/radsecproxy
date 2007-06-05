@@ -1,17 +1,8 @@
 #Master config file, must be in /etc/radsecproxy or proxy's current directory
 #	All possible config options are listed below
+
+# First you may define any global options, these are:
 #
-# You must specify at least one of TLSCACertificateFile or TLSCACertificatePath
-# for TLS to work. We always verify peer certificate (both client and server)
-#TLSCACertificateFile    /etc/cacerts/CA.pem
-TLSCACertificatePath	/etc/cacerts
-
-# You must specify the below for TLS, we will always present our certificate
-TLSCertificateFile	/etc/hostcertkey/host.example.com.pem
-TLSCertificateKeyFile	/etc/hostcertkey/host.example.com.key.pem
-# Optionally specify password if key is encrypted (not very secure)
-TLSCertificateKeyPassword	follow the white rabbit
-
 # You can optionally specify addresses and ports to listen on
 #	Max one of each, below are just multiple examples
 #ListenUDP		*:1814
@@ -29,20 +20,55 @@ TLSCertificateKeyPassword	follow the white rabbit
 #LogDestination         x-syslog://
 #LogDestination         x-syslog://log_local2
 
+#If we have TLS clients or servers we must define at least one tls block.
+#You can name them whatever you like and then reference them by name when
+#specifying clients or servers later. There are however three special names
+#"default", "defaultclient" and "defaultserver". If no name is defined for
+#a client, the "defaultclient" block will be used if it exists, if not the
+#"default" will be used. For a server, "defaultserver" followed by "default"
+#will be checked.
+#
+#The simplest configuration you can do is:
+tls default {
+    # You must specify at least one of CACertificateFile or CACertificatePath
+    # for TLS to work. We always verify peer certificate (client and server)
+    # CACertificateFile    /etc/cacerts/CA.pem
+    CACertificatePath	/etc/cacerts
+
+    # You must specify the below for TLS, we always present our certificate
+    CertificateFile	/etc/hostcertkey/host.example.com.pem
+    CertificateKeyFile	/etc/hostcertkey/host.example.com.key.pem
+    # Optionally specify password if key is encrypted (not very secure)
+    CertificateKeyPassword	"follow the white rabbit"
+}
+
+#If you want one cert for all clients and another for all servers, use
+#defaultclient and defaultserver instead of default. If we wanted some
+#particular server to use something else you could specify a block
+#"tls myserver" and then reference that for that server. If you always
+#name the tls block in the client/server config you don't need a default
+
 #Now we configure clients, servers and realms. Note that these and
 #also the lines above may be in any order, except that a realm
 #can only be configured to use a server that is previously configured.
 
-#Also note that case insensitive regexp is used for realms, matching
-#the entire username string. The matching is done in the order the
-#realms are specified, using the first match found. Some examples are
+#A realm can be a literal domain name, * which matches all, or a
+#regexp. A regexp is specified by the character prefix /
+#For regexp we do case insensitive matching of the entire username string.
+#The matching of realms is done in the order they are specified, using the
+#first match found. Some examples are
 #"@example\.com$", "\.com$", ".*" and "^[a-z].*@example\.com$".
 #To treat local users separately you might try first specifying "@"
-#and after that ".*".
+#and after that "*".
 
 client 2001:db8::1 {
 	type	tls
 	secret	verysecret
+#we could specify tls here, e.g.
+#	tls myclient
+#in order to use tls parameters named myclient. We don't, so we will
+#use "tls defaultclient" if defined, or look for "tls default" as a
+#last resort
 }
 client 127.0.0.1 {
 	type	udp
@@ -57,7 +83,7 @@ server 127.0.0.1 {
 	type	UDP
 	secret	secret
 }
-realm	@eduroam\.cc$ {
+realm	eduroam.cc {
 	server	127.0.0.1
 }
 
@@ -65,18 +91,38 @@ server 2001:db8::1 {
 	type	TLS
 	port	2283
 # secret is optional for TLS
+#we could specify tls here, e.g.
+#	tls myserver
+#in order to use tls parameters named myserver. We don't, so we will
+#use "tls defaultserver" if defined, or look for "tls default" as a
+#last resort
 }
 server radius.example.com {
 	type	tls
 	secret	verysecret
+	StatusServer on
+# statusserver is optional, can be on or off. Off is default
 }
 
-realm @example\.com$ {
+# Equivalent to example.com
+realm /@example\.com$ {
 	server 2001:db8::1
 }
-realm \.com$ {
-	server 2001:db8::1
+# One can define a realm without servers, the proxy will then reject
+# and requests matching this. Optionally one can specify ReplyMessage
+# attribute to be included in the reject message.
+# 
+realm /\.com$ {
 }
-realm .* {
+realm /^anonymous$ {
+        replymessage "No Access"
+}
+# The realm below is equivalent to /.*
+realm * {
 	server radius.example.com
+}
+#If you don't have a default server you probably want to
+#reject all unknowns. Optionally you can also include a message
+#realm * {
+        replymessage "User unknown"
 }
