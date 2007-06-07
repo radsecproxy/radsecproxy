@@ -1,0 +1,273 @@
+.TH radsecproxy.conf 5 "7 June 2007"
+
+.SH "NAME"
+radsecproxy.conf - Radsec proxy configuration file
+
+.SH "DESCRIPTION"
+
+When the proxy server starts, it will first check the command line arguments,
+and then read the configuration file. If specified by the command line -c option
+(read \fIradsecproxy(1)\fR for details), the specified file is tried first and
+if that fails the file of the same name in current directory is tried.
+.sp
+If -c option isn't used the proxy will read the file 
+\fB/etc/radsecproxy.conf\fR. If that fails server will look for
+\fBradsecproxy.conf\fR in the \fBcurrent directory\fR.
+.sp
+If the configuration file can not be found, the proxy will exit with an error
+message.
+
+.SH "CONFIGURATION SYNTAX"
+When the configuration file is processed, whitespace (spaces and tabs) are
+generally ignored. For each line, leading and trailing whitespace are ignored.
+A line is ignored if it is empty, only consists of whitespace, or if the first 
+non-whitespace character is a \fB#\fR. The configuration is generally case 
+insensitive, but in some cases the option values (see below) are not.
+.sp
+There are two types of configuration structures than can be used. The first
+and simplest are lines of the format \fIoption value\fR. That is, an option name,
+see below for a list of valid options, followed by whitespace (at least one
+space or tab character), followed by a value. Note that if the value contains
+whitespace, then it must be quoted using "" or ''. Any whitespace in front of
+the option or after the value will be ignored.
+.sp
+The other type of structure is a block. A block spans at least two lines, and
+has the format:
+.sp
+.IP
+.nf
+blocktype name {
+    option value
+    option value
+    ...
+}
+.fi
+.LP
+That is, some blocktype, see below for a list of the different block types, and
+then enclosed in braces you have zero or more lines that each have the previously
+described \fIoption value\fR format. Different block types have different rules for
+which options can be specified, they are listed below. The rules regarding white
+space, comments and quotes are as above. Hence you may do things like:
+.sp
+.IP
+.nf
+blocktype name {
+#    option value
+    option "value with space"
+    ...
+}
+.fi
+.LP
+
+.SH "BASIC OPTIONS"
+The following basic options may be specified in the configuration file. Note that
+blocktypes and options inside blocks are discussed later. Note that none of these
+options are required, and indeed in many cases they are not needed. Note that you
+should specify each at most once. The behaviour with multiple occurences is
+undefined.
+.sp
+.TP
+\fBLogLevel\fR
+This option specifies the debug level. It must be set to 1, 2, 3 or 4, where 1
+logs only serious errors, and 4 logs \fIeverything\fR. The default is 3 which logs
+errors, warnings and some informational messages. Note that the command line option
+\fB-d\fR overrides this if present.
+.sp
+.TP
+\fBLogDestination\fR
+This specifies where the log messages should go. By default the messages go to
+syslog with facility \fBLOG_DAEMON\fR. Using this option you can specify another
+syslog facility, or you may specify that logging should be to a particular file,
+not using syslog. The value must be either a \fIfile\fR or \fIsyslog\fR URL. The
+file URL is the standard one, specifying a local file that should be used. For
+syslog, you must do use the following URL syntax: \fBx-syslog://FACILITY\fR where
+\fBFACILITY\fR must be one of \fBLOG_DAEMON\fR, \fBLOG_MAIL\fR, \fBLOG_USER\fR,
+\fBLOG_LOCAL0\fR, \fBLOG_LOCAL1\fR, \fBLOG_LOCAL2\fR, \fBLOG_LOCAL3\fR,
+\fBLOG_LOCAL4\fR, \fBLOG_LOCAL5\fR, \fBLOG_LOCAL6\fR or \fBLOG_LOCAL7\fR. You may
+omit the facility from the URL to specify logging to the default facility, but
+this is not very useful since this is the default log destination. Note that this
+option is ignored if \fB-f\fR is specified on the command line.
+.sp
+.TP
+\fBListenUDP\fR
+Normally the proxy will listen to the standard RADIUS UDP port \fB1812\fR if
+configured to handle UDP clients. On most systems it will do this for all of the
+system's IP addresses (both IPv4 and IPv6). On some systems however, it may respond
+to only IPv4 or only IPv6. To specify an alternate port you may use a value of
+the form \fB*:port\fR where port is any valid port number. If you also want to
+specify a specific address you can do e.g. \fB192.168.1.1:1812\fR or
+\fB[2001:db8::1]:1812\fR. The port may be omitted if you want the default one
+(like in these examples). These examples are equivalent to \fB192.168.1.1\fR and
+\fB2001:db8::1\fR. Note that you must use brackets around the IPv6 address if
+you specify port number.
+.sp
+.TP
+\fBListenTCP\fR
+This is similar to the \fBListenUDP\fR option, except that it used for receiving
+connections from TCP clients. The default port number is \fB2083\fR.
+.sp
+
+.SH "BLOCKS"
+There are four types of blocks, they are \fBClient\fR, \fBServer\fR, \fBRealm\fR
+and \fBTLS\fR. At least one instance of each of \fBClient\fR, \fBServer\fR and
+\fBRealm\fR is required. This is necessary for the proxy to do anything useful,
+and it will exit if not. The \fBTLS\fR block is required if at least one TLS
+client or server is configured. Note that there can be multiple blocks for each
+type. For each type, the block names should be unique. The behaviour with multiple
+occurences of the same name for the same block type is undefined. Also note that
+some block option values may reference a block by name, in which case the block
+name must be previously defined. Hence the order of the blocks may be significant.
+.sp
+
+.SH "CLIENT BLOCK"
+The client block is used to configure a client. That is, tell the proxy about a
+client, and what parameters should be used for that client. The \fBname\fR of the
+client block must be either the IP address (IPv4 or IPv6) of the client, or a
+domain name (FQDN). If a domain name is specified, then this will be resolved
+immediately to all the addresses associated with the name, and the proxy will not
+care about any possible DNS changes that might occur later. Hence there is no
+dependency on DNS after startup. When some client later sends a request to the
+proxy, the proxy will look at the IP address the request comes from, and then go
+through all the addresses of each of the configured clients, to determine which
+(if any) of the clients this is. In the case of TLS, the name of the client must
+match the FQDN or IP address in the client certificate. Note that at the time of
+writing it must match the certificate CN. This will be extended to check
+subjectAltName if present.
+.sp
+The allowed options in a client block are \fBtype\fR, \fBsecret\fR and \fBtls\fR.
+The value of \fBtype\fR must be either \fBudp\fR or \fBtls\fR. The value of
+\fBsecret\fR is the shared RADIUS key used with this client. If the secret
+contains whitespace, the value must be quoted. This option is optional for TLS.
+For a TLS client you may also specify the \fBtls\fR option. The option value must
+be the name of a previously defined TLS block. If this option is not specified,
+the TLS block with the name \fBdefaultclient\fR will be used if defined. If not
+defined, it will try to use the TLS block named \fBdefault\fR. If the specified
+TLS block name does not exist, or the option is not specified and none of the
+defaults exist, the proxy will exit with an error.
+.sp
+
+.SH "SERVER BLOCK"
+The server block is used to configure a server. That is, tell the proxy about
+a server, and what parameters should be used when communicating with that server.
+The \fBname\fR of the server block must be either the IP address (IPv4 or IPv6)
+of the server, or a domain name (FQDN). If a domain name is specified, then this
+will be resolved immediately to all the addresses associated with the name, and
+the proxy will not care about any possible DNS changes that might occur later.
+Hence there is no dependency on DNS after startup. If the domain name resolves
+to multiple addresses, then for UDP the first address is used. For TLS, the proxy
+will loop through the addresses until it can connect to one of them. In the case
+of TLS, the name of the server must match the FQDN or IP address in the server
+certificate. Note that at the time of writing it must match the certificate CN.
+This will be extended to check subjectAltName if present.
+.sp
+The allowed options in a server block are \fBtype\fR, \fBsecret\fR, \fBtls\fR,
+\fBport\fR and \fBstatusServer\fR. The values of \fBtype\fR, \fBsecret\fR and
+\fBtls\fR are just as specified for the \fIclient block\fR above, except that
+\fBdefaultserve\fRr (and not \fBdefaultclient\fR) is used as a fallback if the
+\fBtls\fR option is not used.
+.sp
+The \fBport\fR option allows you to specify which port number the server uses.
+\fBstatusServer\fR can be specified to enable the use of statusServer messages
+for this server. The value must be either \fBon\fR or \fBoff\fR. The default
+when not specified, is \fBoff\fR. If statusServer is enabled, the proxy will
+during idle periods send regular statusServer messages to the server to verify
+that it is alive. This should only be enabled if the server supports it.
+
+.SH "REALM BLOCK"
+When the proxy receives an \fBAccess Request\fR it needs to figure out to which
+server it should be forwarded. This is done by looking at the Username attribute
+in the request, and matching that against the names of the defined realm blocks.
+The proxy will match against the blocks in the order they are specified, using
+the first match if any. If no realm matches, the proxy will simply ignore the
+request. Each realm block specifies what the server should do when a match is
+found. A realm block may contain at most one \fBserver\fR option, and at most
+one \fBreplyMessage\fR option. We will discuss these later.
+.sp
+
+.TP
+\fBRealm block names and matching\fR
+.sp
+In the general case the proxy will look for a @ in the username attribute, and
+try to do an exact case insensitive match between what comes after the @ and
+the name of the realm block. So if you get a request with the attribute value
+\fBanonymous@example.com\fR, the proxy will go through the realm names in the
+order they are specified, looking for a realm block named \fBexample.com\fR.
+.sp
+There are two exceptions to this, one is the realm name \fB*\fT which means
+match everything. Hence if you have a realm block named \fB*\fR, then it will
+always match. This should then be the last realm block defined, since any
+blocks after this would never be checked. This is useful for having a default.
+.sp
+The other exception is regular expression matching. If the realm name starts
+with a \fB/\fR, the name is treated as an regular expression. A case insensitive
+regexp match will then be done using this regexp on the value of the entire
+Username attribute. Optionally you may also have a trailing \fB/\fR after the
+regexp. So as an example, if you want to use regexp matching the domain
+\fBexample.com\fR you could have a realm block named \fB/@example\\.com$\fR.
+Optinally this can also be written \fB/@example\\.com$/\fR. If you want to
+match all domains under the \fB.com\fR top domain, you could do
+\fB/@.*\\.com$\fR. Note that since the matching is done on the entire
+attribute value, you can also use rules like \fB/^[a-k].*@example\\.com$/\fR
+to get some of the users in this domain to use one server, while other users
+could be matched by another realm block and use another server.
+.sp 
+
+.TP
+\fBRealm block options\fR
+.sp
+A realm block may contain at most one \fBserver\fR option. If defined, the
+value of the \fBserver\fR option must be the name of a previously defined
+server block, and this will be the server that the request is forwarded to.
+.sp
+If there is no \fBserver\fR option, the proxy will reply back to the client
+with an Access Reject message. Note that this is different from having no
+match since then the request is simply ignored. You may wonder why this is
+useful. One example is if you handle say all domains under say \fB.bv\fR.
+Then you may have several realm blocks matching the domains that exists,
+while for other domains under \fB.bv\fR you want to send a reject. At the
+same time you might want to send all other requests to some default server.
+After the realms for the subdomains, you would then have two realm
+definitions. One with the name \fB/@.*\\.bv$\fR with no servers, followed
+by one with the name \fB*\fR with the default server defined. This may also
+be useful for blocking particular usernames.
+.sp
+When sending reject messages, the proxy will check if the option
+\fBreplyMessage\fR is set for the realm. If it is, it will add a replyMessage
+attribute to the reject message with this value. Note that you need to quote
+the message if it contains white space.
+.sp
+
+.SH "TLS BLOCK"
+The TLS block specifies TLS configuration options and you need at least one
+of these if you have clients or servers using TLS. As discussed in the client
+and server block descriptions, a client or server block may reference a
+particular TLS block by name. There are also however the special TLS block
+names \fBdefault\fR, \fBdefaultclient\fR and \fBdefaultserver\fR which are
+used as defaults if the client or server block does not reference a TLS block.
+Also note that a TLS block must be defined before the client or server block
+that would use it. If you want the same TLS configuration for all TLS clients
+and servers, you need just a single TLS block named \fBdefault\fR, and the client
+and servers need not refer to it. If you want all TLS clients to use one
+config, and all TLS servers to use another, then you would be fine only
+defining two TLS blocks named \fBdefaultclient\fR and \fBdefaultserver\fR.
+If you want different clients (or different servers) to have different TLS
+parameters, then you may need to create other TLS blocks with other names,
+and reference those from the client or server definitions. Note that you could
+also have say a client block refer to a default, even \fBdefaultserver\fR
+if you really want to.
+.sp
+The available TLS block options are \fBCACertificateFile\fR,
+\fBCACertificatePath\fR, \fBCertificateFile\fR, \fBCertificateKeyFile\fR
+and \fBCertificateKeyPassword\fR. When doing RADIUS over TLS, both the
+client and the server present certificates, and they are both verified
+by the peer. Hence you must always specify \fBCertificateFile\fR and
+\fBCertificateKeyFile\fR options, as well as \fBCertificateKeyPassword\fR
+if a password is needed to decrypt the private key. Note that
+\fBCACertificateFile\fR may be a certificate chain. In order to verify
+certificates, or send a chain of certificates to a peer, you also always
+need to specify \fBCACertificateFile\fR or \fBCACertificatePath\fR. Note
+that you may specify both, in which case the certificates in
+\fBCACertificateFile\fR are checked first.
+
+.SH "SEE ALSO"
+radsecproxy(1), RadSec draft paper.
