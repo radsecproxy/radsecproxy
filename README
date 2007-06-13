@@ -1,4 +1,4 @@
-This is radsecproxy version 1.0-alpha, which is a generic RADIUS
+This is radsecproxy version 1.0-alpha-p1, which is a generic RADIUS
 proxy that can support various RADIUS clients over UDP or TLS
 (RadSec).
 
