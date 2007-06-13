@@ -70,6 +70,8 @@ int debug_set_destination(char *dest) {
     }
     if (!strncasecmp(dest, "x-syslog://", 11)) {
 	dest += 11;
+	if (*dest == '/')
+	    dest++;
 	if (*dest) {
 	    for (i = 0; facstrings[i]; i++)
 		if (!strcasecmp(dest, facstrings[i]))

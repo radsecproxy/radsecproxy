@@ -2298,7 +2298,7 @@ int main(int argc, char **argv) {
 	options.logdestination = NULL;
     else {
 	if (!options.logdestination)
-	    options.logdestination = "x-syslog://";
+	    options.logdestination = "x-syslog:///";
 	debug_set_destination(options.logdestination);
     }
 

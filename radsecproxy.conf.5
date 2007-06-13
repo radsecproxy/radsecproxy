@@ -1,4 +1,4 @@
-.TH radsecproxy.conf 5 "7 June 2007"
+.TH radsecproxy.conf 5 "13 June 2007"
 
 .SH "NAME"
 radsecproxy.conf - Radsec proxy configuration file
@@ -80,7 +80,7 @@ syslog with facility \fBLOG_DAEMON\fR. Using this option you can specify another
 syslog facility, or you may specify that logging should be to a particular file,
 not using syslog. The value must be either a \fIfile\fR or \fIsyslog\fR URL. The
 file URL is the standard one, specifying a local file that should be used. For
-syslog, you must do use the following URL syntax: \fBx-syslog://FACILITY\fR where
+syslog, you must use the syntax: \fBx-syslog:///FACILITY\fR where
 \fBFACILITY\fR must be one of \fBLOG_DAEMON\fR, \fBLOG_MAIL\fR, \fBLOG_USER\fR,
 \fBLOG_LOCAL0\fR, \fBLOG_LOCAL1\fR, \fBLOG_LOCAL2\fR, \fBLOG_LOCAL3\fR,
 \fBLOG_LOCAL4\fR, \fBLOG_LOCAL5\fR, \fBLOG_LOCAL6\fR or \fBLOG_LOCAL7\fR. You may
