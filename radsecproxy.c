@@ -2264,7 +2264,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 	    *foreground = 1;
 	    break;
 	case 'v':
-		debugx(0, DBG_ERR, "radsecproxy 1.0-alpha");
+		debugx(0, DBG_ERR, "radsecproxy 1.0-alpha-p1");
 	default:
 	    goto usage;
 	}
@@ -2288,7 +2288,7 @@ int main(int argc, char **argv) {
     getargs(argc, argv, &foreground, &loglevel, &configfile);
     if (loglevel)
 	debug_set_level(loglevel);
-    debug(DBG_INFO, "radsecproxy 1.0-alpha starting");
+    debug(DBG_INFO, "radsecproxy 1.0-alpha-p1 starting");
     getmainconfig(configfile ? configfile : CONFIG_MAIN);
     if (loglevel)
 	options.loglevel = loglevel;
@@ -2298,7 +2298,7 @@ int main(int argc, char **argv) {
 	options.logdestination = NULL;
     else {
 	if (!options.logdestination)
-	    options.logdestination = "x-syslog://";
+	    options.logdestination = "x-syslog:///";
 	debug_set_destination(options.logdestination);
     }
 
