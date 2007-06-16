@@ -79,25 +79,26 @@ struct peer {
     char *host;
     char *port;
     char *secret;
-    SSL *ssl;
+    uint8_t statusserver;
     SSL_CTX *ssl_ctx;
     struct addrinfo *addrinfo;
 };
 
 struct client {
-    struct peer peer;
+    struct peer *peer;
+    SSL *ssl;
     struct replyq *replyq;
 };
 
 struct server {
-    struct peer peer;
+    struct peer *peer;
     int sock;
+    SSL *ssl;
     pthread_mutex_t lock;
     pthread_t clientth;
     struct timeval lastconnecttry;
     uint8_t connectionok;
     int nextid;
-    uint8_t statusserver;
     struct request *requests;
     uint8_t newrq;
     pthread_mutex_t newrq_mutex;

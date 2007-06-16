@@ -218,8 +218,8 @@ struct client *find_client(char type, struct sockaddr *addr, struct client *clie
 
     c = (client ? client : clients);
     for (i = 0; i < client_count; i++) {
-	if (c->peer.type == type)
-	    for (res = c->peer.addrinfo; res; res = res->ai_next)
+	if (c->peer->type == type)
+	    for (res = c->peer->addrinfo; res; res = res->ai_next)
 		if ((a4 && res->ai_family == AF_INET &&
 		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
 		    (sa6 && res->ai_family == AF_INET6 &&
@@ -250,8 +250,8 @@ struct server *find_server(char type, struct sockaddr *addr, struct server *serv
 
     s = (server ? server : servers);
     for (i = 0; i < server_count; i++) {
-	if (s->peer.type == type)
-	    for (res = s->peer.addrinfo; res; res = res->ai_next)
+	if (s->peer->type == type)
+	    for (res = s->peer->addrinfo; res; res = res->ai_next)
 		if ((a4 && res->ai_family == AF_INET &&
 		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
 		    (sa6 && res->ai_family == AF_INET6 &&
@@ -323,7 +323,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     return rad;
 }
 
-int tlsverifycert(struct peer *peer) {
+int tlsverifycert(SSL *ssl, struct peer *peer) {
     int l, loc;
     X509 *cert;
     X509_NAME *nm;
@@ -331,14 +331,14 @@ int tlsverifycert(struct peer *peer) {
     unsigned char *v;
     unsigned long error;
 
-    if (SSL_get_verify_result(peer->ssl) != X509_V_OK) {
+    if (SSL_get_verify_result(ssl) != X509_V_OK) {
 	debug(DBG_ERR, "tlsverifycert: basic validation failed");
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "tlsverifycert: TLS: %s", ERR_error_string(error, NULL));
 	return 0;
     }
 
-    cert = SSL_get_peer_certificate(peer->ssl);
+    cert = SSL_get_peer_certificate(ssl);
     if (!cert) {
 	debug(DBG_ERR, "tlsverifycert: failed to obtain certificate");
 	return 0;
@@ -403,21 +403,21 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	    sleep(600);
 	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
-	debug(DBG_WARN, "tlsconnect: trying to open TLS connection to %s port %s", server->peer.host, server->peer.port);
+	debug(DBG_WARN, "tlsconnect: trying to open TLS connection to %s port %s", server->peer->host, server->peer->port);
 	if (server->sock >= 0)
 	    close(server->sock);
-	if ((server->sock = connecttoserver(server->peer.addrinfo)) < 0) {
+	if ((server->sock = connecttoserver(server->peer->addrinfo)) < 0) {
 	    debug(DBG_ERR, "tlsconnect: connecttoserver failed");
 	    continue;
 	}
 	
-	SSL_free(server->peer.ssl);
-	server->peer.ssl = SSL_new(server->peer.ssl_ctx);
-	SSL_set_fd(server->peer.ssl, server->sock);
-	if (SSL_connect(server->peer.ssl) > 0 && tlsverifycert(&server->peer))
+	SSL_free(server->ssl);
+	server->ssl = SSL_new(server->peer->ssl_ctx);
+	SSL_set_fd(server->ssl, server->sock);
+	if (SSL_connect(server->ssl) > 0 && tlsverifycert(server->ssl, server->peer))
 	    break;
     }
-    debug(DBG_WARN, "tlsconnect: TLS connection to %s port %s up", server->peer.host, server->peer.port);
+    debug(DBG_WARN, "tlsconnect: TLS connection to %s port %s up", server->peer->host, server->peer->port);
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
 }
@@ -478,9 +478,9 @@ int clientradput(struct server *server, unsigned char *rad) {
     struct timeval lastconnecttry;
     
     len = RADLEN(rad);
-    if (server->peer.type == 'U') {
+    if (server->peer->type == 'U') {
 	if (send(server->sock, rad, len, 0) >= 0) {
-	    debug(DBG_DBG, "clienradput: sent UDP of length %d to %s port %s", len, server->peer.host, server->peer.port);
+	    debug(DBG_DBG, "clienradput: sent UDP of length %d to %s port %s", len, server->peer->host, server->peer->port);
 	    return 1;
 	}
 	debug(DBG_WARN, "clientradput: send failed");
@@ -488,7 +488,7 @@ int clientradput(struct server *server, unsigned char *rad) {
     }
 
     lastconnecttry = server->lastconnecttry;
-    while ((cnt = SSL_write(server->peer.ssl, rad, len)) <= 0) {
+    while ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "clientradput: TLS: %s", ERR_error_string(error, NULL));
 	tlsconnect(server, &lastconnecttry, "clientradput");
@@ -497,7 +497,7 @@ int clientradput(struct server *server, unsigned char *rad) {
 
     server->connectionok = 1;
     debug(DBG_DBG, "clientradput: Sent %d bytes, Radius packet of length %d to TLS peer %s",
-	   cnt, len, server->peer.host);
+	   cnt, len, server->peer->host);
     return 1;
 }
 
@@ -651,13 +651,13 @@ void sendrq(struct server *to, struct request *rq) {
     rq->buf[1] = (char)i;
 
     attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_Message_Authenticator);
-    if (attr && !createmessageauth(rq->buf, ATTRVAL(attr), to->peer.secret)) {
+    if (attr && !createmessageauth(rq->buf, ATTRVAL(attr), to->peer->secret)) {
 	free(rq->buf);
 	pthread_mutex_unlock(&to->newrq_mutex);
 	return;
     }
 
-    debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->peer.host);
+    debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->peer->host);
     to->requests[i] = *rq;
     to->nextid = i + 1;
 
@@ -672,7 +672,7 @@ void sendrq(struct server *to, struct request *rq) {
 void sendreply(struct client *to, unsigned char *buf, struct sockaddr_storage *tosa) {
     struct replyq *replyq = to->replyq;
     
-    if (!radsign(buf, (unsigned char *)to->peer.secret)) {
+    if (!radsign(buf, (unsigned char *)to->peer->secret)) {
 	free(buf);
 	debug(DBG_WARN, "sendreply: failed to sign message");
 	return;
@@ -1050,8 +1050,8 @@ void respondstatusserver(struct request *rq) {
     resp[0] = RAD_Access_Accept;
     resp[2] = 0;
     resp[3] = 20;
-    debug(DBG_DBG, "respondstatusserver: responding to %s", rq->from->peer.host);
-    sendreply(rq->from, resp, rq->from->peer.type == 'U' ? &rq->fromsa : NULL);
+    debug(DBG_DBG, "respondstatusserver: responding to %s", rq->from->peer->host);
+    sendreply(rq->from, resp, rq->from->peer->type == 'U' ? &rq->fromsa : NULL);
 }
 
 void respondreject(struct request *rq, char *message) {
@@ -1074,7 +1074,7 @@ void respondreject(struct request *rq, char *message) {
 	resp[21] = len - 20;
 	memcpy(resp + 22, message, len - 22);
     }
-    sendreply(rq->from, resp, rq->from->peer.type == 'U' ? &rq->fromsa : NULL);
+    sendreply(rq->from, resp, rq->from->peer->type == 'U' ? &rq->fromsa : NULL);
 }
 
 void radsrv(struct request *rq) {
@@ -1128,14 +1128,14 @@ void radsrv(struct request *rq) {
 	to = realm->server;
 
 	if (to && rqinqueue(to, rq->from, id)) {
-	    debug(DBG_INFO, "radsrv: already got request from host %s with id %d, ignoring", rq->from->peer.host, id);
+	    debug(DBG_INFO, "radsrv: already got request from host %s with id %d, ignoring", rq->from->peer->host, id);
 	    free(buf);
 	    return;
 	}
     }
     
     attr = attrget(attrs, len, RAD_Attr_Message_Authenticator);
-    if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(buf, ATTRVAL(attr), rq->from->peer.secret))) {
+    if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(buf, ATTRVAL(attr), rq->from->peer->secret))) {
 	debug(DBG_WARN, "radsrv: message authentication failed");
 	free(buf);
 	return;
@@ -1147,7 +1147,7 @@ void radsrv(struct request *rq) {
     }
 
     if (!to) {
-	debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->peer.host, username);
+	debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->peer->host, username);
 	respondreject(rq, realm->message);
 	return;
     }
@@ -1165,7 +1165,7 @@ void radsrv(struct request *rq) {
     attr = attrget(attrs, len, RAD_Attr_User_Password);
     if (attr) {
 	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", ATTRVALLEN(attr));
-	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->peer.secret, to->peer.secret, auth, newauth)) {
+	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->peer->secret, to->peer->secret, auth, newauth)) {
 	    free(buf);
 	    return;
 	}
@@ -1174,7 +1174,7 @@ void radsrv(struct request *rq) {
     attr = attrget(attrs, len, RAD_Attr_Tunnel_Password);
     if (attr) {
 	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", ATTRVALLEN(attr));
-	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->peer.secret, to->peer.secret, auth, newauth)) {
+	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->peer->secret, to->peer->secret, auth, newauth)) {
 	    free(buf);
 	    return;
 	}
@@ -1197,8 +1197,8 @@ void *clientrd(void *arg) {
     
     for (;;) {
 	lastconnecttry = server->lastconnecttry;
-	buf = (server->peer.type == 'U' ? radudpget(server->sock, NULL, &server, NULL) : radtlsget(server->peer.ssl));
-	if (!buf && server->peer.type == 'T') {
+	buf = (server->peer->type == 'U' ? radudpget(server->sock, NULL, &server, NULL) : radtlsget(server->ssl));
+	if (!buf && server->peer->type == 'T') {
 	    tlsconnect(server, &lastconnecttry, "clientrd");
 	    continue;
 	}
@@ -1238,7 +1238,7 @@ void *clientrd(void *arg) {
 	    continue;
 	}
 	
-	if (!validauth(buf, server->requests[i].buf + 4, (unsigned char *)server->peer.secret)) {
+	if (!validauth(buf, server->requests[i].buf + 4, (unsigned char *)server->peer->secret)) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
 	    free(buf);
 	    debug(DBG_WARN, "clientrd: invalid auth, ignoring");
@@ -1267,7 +1267,7 @@ void *clientrd(void *arg) {
 	    }
 	    memcpy(tmp, buf + 4, 16);
 	    memcpy(buf + 4, server->requests[i].buf + 4, 16);
-	    if (!checkmessageauth(buf, ATTRVAL(messageauth), server->peer.secret)) {
+	    if (!checkmessageauth(buf, ATTRVAL(messageauth), server->peer->secret)) {
 		pthread_mutex_unlock(&server->newrq_mutex);
 		free(buf);
 		debug(DBG_WARN, "clientrd: message authentication failed");
@@ -1281,7 +1281,7 @@ void *clientrd(void *arg) {
 	    server->requests[i].received = 1;
 	    pthread_mutex_unlock(&server->newrq_mutex);
 	    free(buf);
-	    debug(DBG_INFO, "clientrd: got status server response from %s", server->peer.host);
+	    debug(DBG_INFO, "clientrd: got status server response from %s", server->peer->host);
 	    continue;
 	}
 
@@ -1297,9 +1297,9 @@ void *clientrd(void *arg) {
 	    subattrs = ATTRVAL(attr) + 4;  
 	    if (!attrvalidate(subattrs, sublen) ||
 		!msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, "MS MPPE Send Key",
-			server->requests + i, server->peer.secret, from->peer.secret) ||
+			server->requests + i, server->peer->secret, from->peer->secret) ||
 		!msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Recv_Key, "MS MPPE Recv Key",
-			server->requests + i, server->peer.secret, from->peer.secret))
+			server->requests + i, server->peer->secret, from->peer->secret))
 		break;
 	}
 	if (attr) {
@@ -1316,10 +1316,10 @@ void *clientrd(void *arg) {
 	    tmp[ATTRVALLEN(attr)] = '\0';
 	    switch (*buf) {
 	    case RAD_Access_Accept:
-		debug(DBG_INFO, "Access Accept for %s from %s", tmp, server->peer.host);
+		debug(DBG_INFO, "Access Accept for %s from %s", tmp, server->peer->host);
 		break;
 	    case RAD_Access_Reject:
-		debug(DBG_INFO, "Access Reject for %s from %s", tmp, server->peer.host);
+		debug(DBG_INFO, "Access Reject for %s from %s", tmp, server->peer->host);
 		break;
 	    }
 	}
@@ -1332,7 +1332,7 @@ void *clientrd(void *arg) {
 #endif
 	
 	if (messageauth) {
-	    if (!createmessageauth(buf, ATTRVAL(messageauth), from->peer.secret)) {
+	    if (!createmessageauth(buf, ATTRVAL(messageauth), from->peer->secret)) {
 		pthread_mutex_unlock(&server->newrq_mutex);
 		free(buf);
 		continue;
@@ -1340,13 +1340,13 @@ void *clientrd(void *arg) {
 	    debug(DBG_DBG, "clientrd: computed messageauthattr");
 	}
 
-	if (from->peer.type == 'U')
+	if (from->peer->type == 'U')
 	    fromsa = server->requests[i].fromsa;
 	server->requests[i].received = 1;
 	pthread_mutex_unlock(&server->newrq_mutex);
 
 	debug(DBG_DBG, "clientrd: giving packet back to where it came from");
-	sendreply(from, buf, from->peer.type == 'U' ? &fromsa : NULL);
+	sendreply(from, buf, from->peer->type == 'U' ? &fromsa : NULL);
     }
 }
 
@@ -1363,7 +1363,7 @@ void *clientwr(void *arg) {
 
     memset(&timeout, 0, sizeof(struct timespec));
     
-    if (server->statusserver) {
+    if (server->peer->statusserver) {
 	memset(&statsrvrq, 0, sizeof(struct request));
 	memset(statsrvbuf, 0, sizeof(statsrvbuf));
 	statsrvbuf[0] = RAD_Status_Server;
@@ -1373,8 +1373,8 @@ void *clientwr(void *arg) {
 	gettimeofday(&lastsend, NULL);
     }
     
-    if (server->peer.type == 'U') {
-	if ((server->sock = connecttoserver(server->peer.addrinfo)) < 0)
+    if (server->peer->type == 'U') {
+	if ((server->sock = connecttoserver(server->peer->addrinfo)) < 0)
 	    debugx(1, DBG_ERR, "clientwr: connecttoserver failed");
     } else
 	tlsconnect(server, NULL, "new client");
@@ -1386,7 +1386,7 @@ void *clientwr(void *arg) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->newrq) {
 	    gettimeofday(&now, NULL);
-	    if (server->statusserver) {
+	    if (server->peer->statusserver) {
 		/* random 0-7 seconds */
 		RAND_bytes(&rnd, 1);
 		rnd /= 32;
@@ -1439,11 +1439,11 @@ void *clientwr(void *arg) {
 		continue;
 	    }
 
-	    if (rq->tries == (*rq->buf == RAD_Status_Server || server->peer.type == 'T'
+	    if (rq->tries == (*rq->buf == RAD_Status_Server || server->peer->type == 'T'
 			      ? 1 : REQUEST_RETRIES)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		if (*rq->buf == RAD_Status_Server)
-		    debug(DBG_WARN, "clientwr: no status server response, %s dead?", server->peer.host);
+		    debug(DBG_WARN, "clientwr: no status server response, %s dead?", server->peer->host);
 		free(rq->buf);
 		/* setting this to NULL means that it can be reused */
 		rq->buf = NULL;
@@ -1453,7 +1453,7 @@ void *clientwr(void *arg) {
             pthread_mutex_unlock(&server->newrq_mutex);
 
 	    rq->expiry.tv_sec = now.tv_sec +
-		(*rq->buf == RAD_Status_Server || server->peer.type == 'T'
+		(*rq->buf == RAD_Status_Server || server->peer->type == 'T'
 		 ? REQUEST_EXPIRY : REQUEST_EXPIRY / REQUEST_RETRIES);
 	    if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rq->expiry.tv_sec;
@@ -1461,7 +1461,7 @@ void *clientwr(void *arg) {
 	    clientradput(server, server->requests[i].buf);
 	    gettimeofday(&lastsend, NULL);
 	}
-	if (server->statusserver) {
+	if (server->peer->statusserver) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - lastsend.tv_sec >= STATUS_SERVER_PERIOD) {
 		if (!RAND_bytes(statsrvbuf + 4, 16)) {
@@ -1474,7 +1474,7 @@ void *clientwr(void *arg) {
 		    continue;
 		}
 		memcpy(statsrvrq.buf, statsrvbuf, sizeof(statsrvbuf));
-		debug(DBG_DBG, "clientwr: sending status server to %s", server->peer.host);
+		debug(DBG_DBG, "clientwr: sending status server to %s", server->peer->host);
 		lastsend.tv_sec = now.tv_sec;
 		sendrq(server, &statsrvrq);
 	    }
@@ -1533,17 +1533,17 @@ void *tlsserverwr(void *arg) {
     struct client *client = (struct client *)arg;
     struct replyq *replyq;
     
-    debug(DBG_DBG, "tlsserverwr starting for %s", client->peer.host);
+    debug(DBG_DBG, "tlsserverwr starting for %s", client->peer->host);
     replyq = client->replyq;
     pthread_mutex_lock(&replyq->count_mutex);
     for (;;) {
 	while (!replyq->count) {
-	    if (client->peer.ssl) {	    
+	    if (client->ssl) {	    
 		debug(DBG_DBG, "tls server writer, waiting for signal");
 		pthread_cond_wait(&replyq->count_cond, &replyq->count_mutex);
 		debug(DBG_DBG, "tls server writer, got signal");
 	    }
-	    if (!client->peer.ssl) {
+	    if (!client->ssl) {
 		/* ssl might have changed while waiting */
 		pthread_mutex_unlock(&replyq->count_mutex);
 		debug(DBG_DBG, "tlsserverwr: exiting as requested");
@@ -1551,7 +1551,7 @@ void *tlsserverwr(void *arg) {
 	    }
 	}
 	pthread_mutex_unlock(&replyq->count_mutex);
-	cnt = SSL_write(client->peer.ssl, replyq->replies->buf, RADLEN(replyq->replies->buf));
+	cnt = SSL_write(client->ssl, replyq->replies->buf, RADLEN(replyq->replies->buf));
 	if (cnt > 0)
 	    debug(DBG_DBG, "tlsserverwr: Sent %d bytes, Radius packet of length %d",
 		  cnt, RADLEN(replyq->replies->buf));
@@ -1574,8 +1574,8 @@ void *tlsserverrd(void *arg) {
     pthread_t tlsserverwrth;
     SSL *ssl;
     
-    debug(DBG_DBG, "tlsserverrd starting for %s", client->peer.host);
-    ssl = client->peer.ssl;
+    debug(DBG_DBG, "tlsserverrd starting for %s", client->peer->host);
+    ssl = client->ssl;
 
     if (SSL_accept(ssl) <= 0) {
         while ((error = ERR_get_error()))
@@ -1583,23 +1583,23 @@ void *tlsserverrd(void *arg) {
         debug(DBG_ERR, "SSL_accept failed");
 	goto errexit;
     }
-    if (tlsverifycert(&client->peer)) {
+    if (tlsverifycert(client->ssl, client->peer)) {
 	if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client)) {
 	    debug(DBG_ERR, "tlsserverrd: pthread_create failed");
 	    goto errexit;
 	}
 	for (;;) {
 	    memset(&rq, 0, sizeof(struct request));
-	    rq.buf = radtlsget(client->peer.ssl);
+	    rq.buf = radtlsget(client->ssl);
 	    if (!rq.buf)
 		break;
-	    debug(DBG_DBG, "tlsserverrd: got Radius message from %s", client->peer.host);
+	    debug(DBG_DBG, "tlsserverrd: got Radius message from %s", client->peer->host);
 	    rq.from = client;
 	    radsrv(&rq);
 	}
 	debug(DBG_ERR, "tlsserverrd: connection lost");
-	/* stop writer by setting peer.ssl to NULL and give signal in case waiting for data */
-	client->peer.ssl = NULL;
+	/* stop writer by setting ssl to NULL and give signal in case waiting for data */
+	client->ssl = NULL;
 	pthread_mutex_lock(&client->replyq->count_mutex);
 	pthread_cond_signal(&client->replyq->count_cond);
 	pthread_mutex_unlock(&client->replyq->count_mutex);
@@ -1612,8 +1612,8 @@ void *tlsserverrd(void *arg) {
     SSL_free(ssl);
     shutdown(s, SHUT_RDWR);
     close(s);
-    debug(DBG_DBG, "tlsserverrd thread for %s exiting", client->peer.host);
-    client->peer.ssl = NULL;
+    debug(DBG_DBG, "tlsserverrd thread for %s exiting", client->peer->host);
+    client->ssl = NULL;
     pthread_exit(NULL);
 }
 
@@ -1647,20 +1647,20 @@ int tlslistener() {
 	    continue;
 	}
 
-	if (client->peer.ssl) {
+	if (client->ssl) {
 	    debug(DBG_WARN, "Ignoring incoming TLS connection, already have one from this client");
 	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
 	    continue;
 	}
-	client->peer.ssl = SSL_new(client->peer.ssl_ctx);
-	SSL_set_fd(client->peer.ssl, snew);
+	client->ssl = SSL_new(client->peer->ssl_ctx);
+	SSL_set_fd(client->ssl, snew);
 	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)client)) {
 	    debug(DBG_ERR, "tlslistener: pthread_create failed");
-	    SSL_free(client->peer.ssl);
+	    SSL_free(client->ssl);
 	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
-	    client->peer.ssl = NULL;
+	    client->ssl = NULL;
 	    continue;
 	}
 	pthread_detach(tlsserverth);
@@ -1766,7 +1766,7 @@ void addrealm(char *value, char *server, char *message) {
 
     if (server) {
 	for (i = 0; i < server_count; i++)
-	    if (!strcasecmp(server, servers[i].peer.host))
+	    if (!strcasecmp(server, servers[i].peer->host))
 		break;
 	if (i == server_count)
 	    debugx(1, DBG_ERR, "addrealm failed, no server %s", server);
@@ -2064,7 +2064,15 @@ void confclsrv_cb(FILE *f, char *block, char *opt, char *val) {
     struct peer *peer;
     
     debug(DBG_DBG, "confclsrv_cb called for %s", block);
-    
+
+    /* now create client/server here, later they should be created dynamically
+       where peer has pointer to clients/servers using its config */
+
+    peer = malloc(sizeof(struct peer));
+    if (!peer)
+	debugx(1, DBG_ERR, "malloc failed");
+    memset(peer, 0, sizeof(struct peer));
+       
     if (!strcasecmp(opt, "client")) {
 	getgeneralconfig(f, block,
 			 "type", CONF_STR, &type,
@@ -2078,7 +2086,7 @@ void confclsrv_cb(FILE *f, char *block, char *opt, char *val) {
 	    debugx(1, DBG_ERR, "malloc failed");
 	client = clients + client_count - 1;
 	memset(client, 0, sizeof(struct client));
-	peer = &client->peer;
+	client->peer = peer;
     } else {
 	getgeneralconfig(f, block,
 			 "type", CONF_STR, &type,
@@ -2094,11 +2102,11 @@ void confclsrv_cb(FILE *f, char *block, char *opt, char *val) {
 	    debugx(1, DBG_ERR, "malloc failed");
 	server = servers + server_count - 1;
 	memset(server, 0, sizeof(struct server));
-	peer = &server->peer;
+	server->peer = peer;
 	peer->port = port;
 	if (statusserver) {
 	    if (!strcasecmp(statusserver, "on"))
-		server->statusserver = 1;
+		peer->statusserver = 1;
 	    else if (strcasecmp(statusserver, "off"))
 		debugx(1, DBG_ERR, "error in block %s, StatusServer is %s, must be on or off", block, statusserver);
 	    free(statusserver);
