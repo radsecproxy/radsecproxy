@@ -74,7 +74,7 @@ struct replyq {
     pthread_cond_t count_cond;
 };
 
-struct peer {
+struct clsrvconf {
     char type; /* U for UDP, T for TLS */
     char *host;
     char *port;
@@ -82,16 +82,18 @@ struct peer {
     uint8_t statusserver;
     SSL_CTX *ssl_ctx;
     struct addrinfo *addrinfo;
+    struct client *clients;
+    struct server *servers;
 };
 
 struct client {
-    struct peer *peer;
+    struct clsrvconf *conf;
     SSL *ssl;
     struct replyq *replyq;
 };
 
 struct server {
-    struct peer *peer;
+    struct clsrvconf *conf;
     int sock;
     SSL *ssl;
     pthread_mutex_t lock;
@@ -109,7 +111,7 @@ struct realm {
     char *name;
     char *message;
     regex_t regex;
-    struct server *server;
+    struct clsrvconf *srvconf;
 };
 
 struct tls {
