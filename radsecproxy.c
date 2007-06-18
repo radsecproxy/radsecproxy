@@ -2288,7 +2288,6 @@ int main(int argc, char **argv) {
     getargs(argc, argv, &foreground, &loglevel, &configfile);
     if (loglevel)
 	debug_set_level(loglevel);
-    debug(DBG_INFO, "radsecproxy 1.0-alpha-p1 starting");
     getmainconfig(configfile ? configfile : CONFIG_MAIN);
     if (loglevel)
 	options.loglevel = loglevel;
@@ -2312,6 +2311,8 @@ int main(int argc, char **argv) {
     if (!foreground && (daemon(0, 0) < 0))
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
 	
+    debug(DBG_INFO, "radsecproxy 1.0-alpha-p1 starting");
+
     if (client_udp_count) {
 	udp_server_listen = server_create('U');
 	if (pthread_create(&udpserverth, NULL, udpserverrd, NULL))
