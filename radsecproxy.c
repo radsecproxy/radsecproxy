@@ -1602,8 +1602,9 @@ int tlslistener() {
     int s, snew;
     struct sockaddr_storage from;
     size_t fromlen = sizeof(from);
+    struct clsrvconf *conf;
     struct client *client;
-
+    
     if ((s = bindtoaddr(tcp_server_listen->addrinfo)) < 0)
         debugx(1, DBG_ERR, "tlslistener: socket/bind failed");
     
@@ -1619,13 +1620,14 @@ int tlslistener() {
 	}
 	debug(DBG_WARN, "incoming TLS connection from %s", addr2string((struct sockaddr *)&from, fromlen));
 
-	client = find_peer('T', (struct sockaddr *)&from, clconfs, clconf_count)->clients;
-	if (!client) {
+	conf = find_peer('T', (struct sockaddr *)&from, clconfs, clconf_count);
+	if (!conf) {
 	    debug(DBG_WARN, "ignoring request, not a known TLS client");
 	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
 	    continue;
 	}
+	client = conf->clients;
 
 	if (client->ssl) {
 	    debug(DBG_WARN, "Ignoring incoming TLS connection, already have one from this client");
