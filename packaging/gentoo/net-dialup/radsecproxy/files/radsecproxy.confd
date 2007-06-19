@@ -1,0 +1,6 @@
+#
+# Options for radsecproxy
+#
+# For example tell radsecproxy to use a non-default config file
+
+#OPTS="-c /usr/local/etc/radsecproxy.conf"
