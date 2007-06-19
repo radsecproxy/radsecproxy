@@ -1,4 +1,4 @@
-bin_PROGRAMS        = radsecproxy
+sbin_PROGRAMS        = radsecproxy
 
 radsecproxy_SOURCES = radsecproxy.c \
                       util.c \
