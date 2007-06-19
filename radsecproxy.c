@@ -2146,7 +2146,7 @@ void confclsrv_cb(FILE *f, char *block, char *opt, char *val) {
 	if (!srvconfs)
 	    debugx(1, DBG_ERR, "malloc failed");
 	clsrvconf = srvconfs + srvconf_count - 1;
-	memset(clsrvconf, 0, sizeof(struct server));
+	memset(clsrvconf, 0, sizeof(struct clsrvconf));
 	clsrvconf->servers = malloc(sizeof(struct server));
 	if (!clsrvconf->servers)
 	    debugx(1, DBG_ERR, "malloc failed");
