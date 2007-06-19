@@ -63,7 +63,7 @@ static int tls_count = 0;
 
 static struct clsrvconf *tcp_server_listen;
 static struct clsrvconf *udp_server_listen;
-static struct replyq udp_server_replyq;
+static struct replyq *udp_server_replyq = NULL;
 static int udp_server_sock = -1;
 static pthread_mutex_t *ssl_locks;
 static long *ssl_lock_count;
@@ -227,72 +227,6 @@ struct clsrvconf *find_peer(char type, struct sockaddr *addr, struct clsrvconf *
     }
     return NULL;
 }
-
-#if 0
-/* returns the client with matching address, or NULL */
-/* if client argument is not NULL, we only check that one client */
-struct client *find_client(char type, struct sockaddr *addr, struct client *client) {
-    struct sockaddr_in6 *sa6 = NULL;
-    struct in_addr *a4 = NULL;
-    struct client *c;
-    int i;
-    struct addrinfo *res;
-
-    if (addr->sa_family == AF_INET6) {
-        sa6 = (struct sockaddr_in6 *)addr;
-        if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr))
-            a4 = (struct in_addr *)&sa6->sin6_addr.s6_addr[12];
-    } else
-	a4 = &((struct sockaddr_in *)addr)->sin_addr;
-
-    c = (client ? client : clients);
-    for (i = 0; i < client_count; i++) {
-	if (c->peer->type == type)
-	    for (res = c->peer->addrinfo; res; res = res->ai_next)
-		if ((a4 && res->ai_family == AF_INET &&
-		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
-		    (sa6 && res->ai_family == AF_INET6 &&
-		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
-		    return c;
-	if (client)
-	    break;
-	c++;
-    }
-    return NULL;
-}
-
-/* returns the server with matching address, or NULL */
-/* if server argument is not NULL, we only check that one server */
-struct server *find_server(char type, struct sockaddr *addr, struct server *server) {
-    struct sockaddr_in6 *sa6 = NULL;
-    struct in_addr *a4 = NULL;
-    struct server *s;
-    int i;
-    struct addrinfo *res;
-
-    if (addr->sa_family == AF_INET6) {
-        sa6 = (struct sockaddr_in6 *)addr;
-        if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr))
-            a4 = (struct in_addr *)&sa6->sin6_addr.s6_addr[12];
-    } else
-	a4 = &((struct sockaddr_in *)addr)->sin_addr;
-
-    s = (server ? server : servers);
-    for (i = 0; i < server_count; i++) {
-	if (s->peer->type == type)
-	    for (res = s->peer->addrinfo; res; res = res->ai_next)
-		if ((a4 && res->ai_family == AF_INET &&
-		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
-		    (sa6 && res->ai_family == AF_INET6 &&
-		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
-		    return s;
-	if (server)
-	    break;
-	s++;
-    }
-    return NULL;
-}
-#endif
 
 /* exactly one of client and server must be non-NULL */
 /* should probably take peer list (client(s) or server(s)) as argument instead */
@@ -1529,7 +1463,7 @@ void *clientwr(void *arg) {
 }
 
 void *udpserverwr(void *arg) {
-    struct replyq *replyq = &udp_server_replyq;
+    struct replyq *replyq = udp_server_replyq;
     struct reply *reply = replyq->replies;
     
     pthread_mutex_lock(&replyq->count_mutex);
@@ -1803,6 +1737,61 @@ SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
 	return NULL;
     tls[i].count++;
     return tls[i].ctx;
+}
+
+struct replyq *newreplyq(int size) {
+    struct replyq *replyq;
+    
+    replyq = malloc(sizeof(struct replyq));
+    if (!replyq)
+	debugx(1, DBG_ERR, "malloc failed");
+    replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
+    if (!replyq->replies)
+	debugx(1, DBG_ERR, "malloc failed");
+    replyq->count = 0;
+    replyq->size = size;
+    pthread_mutex_init(&replyq->count_mutex, NULL);
+    pthread_cond_init(&replyq->count_cond, NULL);
+    return replyq;
+}
+
+void addclient(struct clsrvconf *conf) {
+    if (conf->clients)
+	debugx(1, DBG_ERR, "currently works with just one client per conf");
+    
+    conf->clients = malloc(sizeof(struct client));
+    if (!conf->clients)
+	debugx(1, DBG_ERR, "malloc failed");
+    memset(conf->clients, 0, sizeof(struct client));
+    conf->clients->conf = conf;
+
+    if (conf->type == 'T') 
+	conf->clients->replyq = newreplyq(MAX_REQUESTS);
+    else {
+	if (!udp_server_replyq)
+	    udp_server_replyq = newreplyq(client_udp_count * MAX_REQUESTS);
+	conf->clients->replyq = udp_server_replyq;
+    }
+}
+
+void addserver(struct clsrvconf *conf) {
+    if (conf->servers)
+	debugx(1, DBG_ERR, "currently works with just one server per conf");
+    
+    conf->servers = malloc(sizeof(struct server));
+    if (!conf->servers)
+	debugx(1, DBG_ERR, "malloc failed");
+    memset(conf->servers, 0, sizeof(struct server));
+    conf->servers->conf = conf;
+
+    conf->servers->sock = -1;
+    pthread_mutex_init(&conf->servers->lock, NULL);
+    conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct request));
+    if (!conf->servers->requests)
+	debugx(1, DBG_ERR, "malloc failed");
+    conf->servers->newrq = 0;
+    pthread_mutex_init(&conf->servers->newrq_mutex, NULL);
+    pthread_cond_init(&conf->servers->newrq_cond, NULL);
 }
 
 void addrealm(char *value, char *server, char *message) {
@@ -2103,128 +2092,110 @@ void getgeneralconfig(FILE *f, char *block, ...) {
     }
 }
 
-void confclsrv_cb(FILE *f, char *block, char *opt, char *val) {
-    char *type = NULL, *secret = NULL, *port = NULL, *tls = NULL, *statusserver = NULL;
-    struct clsrvconf *clsrvconf;
+void confclient_cb(FILE *f, char *block, char *opt, char *val) {
+    char *type = NULL, *secret = NULL, *tls = NULL;
+    struct clsrvconf *conf;
     
-    debug(DBG_DBG, "confclsrv_cb called for %s", block);
+    debug(DBG_DBG, "confclient_cb called for %s", block);
 
-    /* now create client/server here, later they should be created dynamically
-       where peer has pointer to clients/servers using its config */
-    /* instead of current clients and servers, they would be arrays of struct peer */
-    /* or rather linked lists of struct peers */
+    getgeneralconfig(f, block,
+		     "type", CONF_STR, &type,
+		     "secret", CONF_STR, &secret,
+		     "tls", CONF_STR, &tls,
+		     NULL
+		     );
+    clconf_count++;
+    clconfs = realloc(clconfs, clconf_count * sizeof(struct clsrvconf));
+    if (!clconfs)
+	debugx(1, DBG_ERR, "malloc failed");
+    conf = clconfs + clconf_count - 1;
+    memset(conf, 0, sizeof(struct clsrvconf));
     
-    if (!strcasecmp(opt, "client")) {
-	getgeneralconfig(f, block,
-			 "type", CONF_STR, &type,
-			 "secret", CONF_STR, &secret,
-			 "tls", CONF_STR, &tls,
-			 NULL
-			 );
-	clconf_count++;
-	clconfs = realloc(clconfs, clconf_count * sizeof(struct clsrvconf));
-	if (!clconfs)
-	    debugx(1, DBG_ERR, "malloc failed");
-	clsrvconf = clconfs + clconf_count - 1;
-	memset(clsrvconf, 0, sizeof(struct clsrvconf));
-	clsrvconf->clients = malloc(sizeof(struct client));
-	if (!clsrvconf->clients)
-	    debugx(1, DBG_ERR, "malloc failed");
-	memset(clsrvconf->clients, 0, sizeof(struct client));
-	clsrvconf->clients->conf = clsrvconf;
-    } else {
-	getgeneralconfig(f, block,
-			 "type", CONF_STR, &type,
-			 "secret", CONF_STR, &secret,
-			 "port", CONF_STR, &port,
-			 "tls", CONF_STR, &tls,
-			 "StatusServer", CONF_STR, &statusserver,
-			 NULL
-			 );
-	srvconf_count++;
-	srvconfs = realloc(srvconfs, srvconf_count * sizeof(struct clsrvconf));
-	if (!srvconfs)
-	    debugx(1, DBG_ERR, "malloc failed");
-	clsrvconf = srvconfs + srvconf_count - 1;
-	memset(clsrvconf, 0, sizeof(struct clsrvconf));
-	clsrvconf->servers = malloc(sizeof(struct server));
-	if (!clsrvconf->servers)
-	    debugx(1, DBG_ERR, "malloc failed");
-	memset(clsrvconf->servers, 0, sizeof(struct server));
-	clsrvconf->servers->conf = clsrvconf;
-	clsrvconf->port = port;
-	if (statusserver) {
-	    if (!strcasecmp(statusserver, "on"))
-		clsrvconf->statusserver = 1;
-	    else if (strcasecmp(statusserver, "off"))
-		debugx(1, DBG_ERR, "error in block %s, StatusServer is %s, must be on or off", block, statusserver);
-	    free(statusserver);
-	}
-    }
-    
-    clsrvconf->host = stringcopy(val, 0);
+    conf->host = stringcopy(val, 0);
     
     if (type && !strcasecmp(type, "udp")) {
-	clsrvconf->type = 'U';
-	if (clsrvconf->clients)
-	    client_udp_count++;
-	else {
-	    server_udp_count++;
-	    if (!port)
-		clsrvconf->port = stringcopy(DEFAULT_UDP_PORT, 0);
-	}
+	conf->type = 'U';
+	client_udp_count++;
     } else if (type && !strcasecmp(type, "tls")) {
-	if (clsrvconf->clients) {
-	    clsrvconf->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultclient", "default");
-	    client_tls_count++;
-	} else {
-	    clsrvconf->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultserver", "default");
-	    server_tls_count++;
-	    if (!port)
-		clsrvconf->port = stringcopy(DEFAULT_TLS_PORT, 0);
-	}
-	if (!clsrvconf->ssl_ctx)
+	conf->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultclient", "default");
+	if (!conf->ssl_ctx)
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
-	clsrvconf->type = 'T';
+	conf->type = 'T';
+	client_tls_count++;
     } else
 	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
     free(type);
     
-    if (!resolvepeer(clsrvconf, 0))
-	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", clsrvconf->host, clsrvconf->port);
+    if (!resolvepeer(conf, 0))
+	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
     
-    if (!secret) {
-	if (clsrvconf->type == 'U')
+    if (secret)
+	conf->secret = secret;
+    else {
+	if (conf->type == 'U')
 	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for UDP", block);
-	clsrvconf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
-    } else {
-	clsrvconf->secret = secret;
+	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
     }
+}
 
-    if (clsrvconf->clients) {
-	if (clsrvconf->type == 'U')
-	    clsrvconf->clients->replyq = &udp_server_replyq;
-	else {
-	    clsrvconf->clients->replyq = malloc(sizeof(struct replyq));
-	    if (!clsrvconf->clients->replyq)
-		debugx(1, DBG_ERR, "malloc failed");
-	    clsrvconf->clients->replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
-	    if (!clsrvconf->clients->replyq->replies)
-		debugx(1, DBG_ERR, "malloc failed");
-	    clsrvconf->clients->replyq->size = MAX_REQUESTS;
-	    clsrvconf->clients->replyq->count = 0;
-	    pthread_mutex_init(&clsrvconf->clients->replyq->count_mutex, NULL);
-	    pthread_cond_init(&clsrvconf->clients->replyq->count_cond, NULL);
-	}
-    } else {
-	pthread_mutex_init(&clsrvconf->servers->lock, NULL);
-	clsrvconf->servers->sock = -1;
-	clsrvconf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct request));
-	if (!clsrvconf->servers->requests)
-	    debugx(1, DBG_ERR, "malloc failed");
-	clsrvconf->servers->newrq = 0;
-	pthread_mutex_init(&clsrvconf->servers->newrq_mutex, NULL);
-	pthread_cond_init(&clsrvconf->servers->newrq_cond, NULL);
+void confserver_cb(FILE *f, char *block, char *opt, char *val) {
+    char *type = NULL, *secret = NULL, *port = NULL, *tls = NULL, *statusserver = NULL;
+    struct clsrvconf *conf;
+    
+    debug(DBG_DBG, "confserver_cb called for %s", block);
+
+    getgeneralconfig(f, block,
+		     "type", CONF_STR, &type,
+		     "secret", CONF_STR, &secret,
+		     "port", CONF_STR, &port,
+		     "tls", CONF_STR, &tls,
+		     "StatusServer", CONF_STR, &statusserver,
+		     NULL
+		     );
+    srvconf_count++;
+    srvconfs = realloc(srvconfs, srvconf_count * sizeof(struct clsrvconf));
+    if (!srvconfs)
+	debugx(1, DBG_ERR, "malloc failed");
+    conf = srvconfs + srvconf_count - 1;
+    memset(conf, 0, sizeof(struct clsrvconf));
+    
+    conf->port = port;
+    if (statusserver) {
+	if (!strcasecmp(statusserver, "on"))
+	    conf->statusserver = 1;
+	else if (strcasecmp(statusserver, "off"))
+	    debugx(1, DBG_ERR, "error in block %s, StatusServer is %s, must be on or off", block, statusserver);
+	free(statusserver);
+    }
+    
+    conf->host = stringcopy(val, 0);
+    
+    if (type && !strcasecmp(type, "udp")) {
+	conf->type = 'U';
+	server_udp_count++;
+	if (!port)
+	    conf->port = stringcopy(DEFAULT_UDP_PORT, 0);
+    } else if (type && !strcasecmp(type, "tls")) {
+	conf->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultserver", "default");
+	if (!conf->ssl_ctx)
+	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
+	if (!port)
+	    conf->port = stringcopy(DEFAULT_TLS_PORT, 0);
+	conf->type = 'T';
+	server_tls_count++;
+    } else
+	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
+    free(type);
+    
+    if (!resolvepeer(conf, 0))
+	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
+    
+    if (secret)
+	conf->secret = secret;
+    else {
+	if (conf->type == 'U')
+	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for UDP", block);
+	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
     }
 }
 
@@ -2277,8 +2248,8 @@ void getmainconfig(const char *configfile) {
 		     "ListenTCP", CONF_STR, &options.listentcp,
 		     "LogLevel", CONF_STR, &loglevel,
 		     "LogDestination", CONF_STR, &options.logdestination,
-		     "Client", CONF_CBK, confclsrv_cb,
-		     "Server", CONF_CBK, confclsrv_cb,
+		     "Client", CONF_CBK, confclient_cb,
+		     "Server", CONF_CBK, confserver_cb,
 		     "Realm", CONF_CBK, confrealm_cb,
 		     "TLS", CONF_CBK, conftls_cb,
 		     NULL
@@ -2292,16 +2263,6 @@ void getmainconfig(const char *configfile) {
 	options.loglevel = *loglevel - '0';
 	free(loglevel);
     }
-
-    if (client_udp_count) {
-	udp_server_replyq.replies = malloc(client_udp_count * MAX_REQUESTS * sizeof(struct reply));
-	if (!udp_server_replyq.replies)
-	    debugx(1, DBG_ERR, "malloc failed");
-	udp_server_replyq.size = client_udp_count * MAX_REQUESTS;
-	udp_server_replyq.count = 0;
-	pthread_mutex_init(&udp_server_replyq.count_mutex, NULL);
-	pthread_cond_init(&udp_server_replyq.count_cond, NULL);
-    }    
 }
 
 void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char **configfile) {
@@ -2369,6 +2330,12 @@ int main(int argc, char **argv) {
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
     
     debug(DBG_INFO, "radsecproxy revision $Rev$ starting");
+	
+    for (i = 0; i < clconf_count; i++)
+	addclient(clconfs + i);
+	
+    for (i = 0; i < srvconf_count; i++)
+	addserver(srvconfs + i);
 	
     if (client_udp_count) {
 	udp_server_listen = server_create('U');
