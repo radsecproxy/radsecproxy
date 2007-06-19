@@ -2377,7 +2377,7 @@ int main(int argc, char **argv) {
     }
     
     for (i = 0; i < srvconf_count; i++)
-	if (pthread_create(&srvconfs[i].servers->clientth, NULL, clientwr, (void *)&srvconfs[i]))
+	if (pthread_create(&srvconfs[i].servers->clientth, NULL, clientwr, (void *)srvconfs[i].servers))
 	    debugx(1, DBG_ERR, "pthread_create failed");
 
     if (client_tls_count) {
