@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "http://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+<herd>net-dialup</herd>
+<maintainer>
+  <email>gentoo@kolla.no</email>
+  <name>Kolbjørn Barmen</name>
+</maintainer>
+<longdescription>Highly configurable free RADIUS/RADSEC proxy.</longdescription>
+</pkgmetadata>
