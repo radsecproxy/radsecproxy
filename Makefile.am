@@ -3,8 +3,10 @@ sbin_PROGRAMS        = radsecproxy
 radsecproxy_SOURCES = radsecproxy.c \
                       util.c \
                       debug.c \
+                      list.c \
                       radsecproxy.h \
-                      debug.h
+                      debug.h \
+                      list.h
 
 radsecproxy_CFLAGS  = -g -Wall -pedantic -pthread @SSL_CFLAGS@
 radsecproxy_LDFLAGS = @SSL_LDFLAGS@

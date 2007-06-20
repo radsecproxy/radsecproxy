@@ -44,22 +44,16 @@
 #include <openssl/md5.h>
 #include <openssl/hmac.h>
 #include "debug.h"
+#include "list.h"
 #include "radsecproxy.h"
 
 static struct options options;
-static struct clsrvconf *clconfs = NULL;
-static struct clsrvconf *srvconfs = NULL;
-static struct realm *realms = NULL;
-static struct tls *tls = NULL;
+struct list *clconfs, *srvconfs, *realms, *tls;
 
 static int client_udp_count = 0;
 static int client_tls_count = 0;
-static int clconf_count = 0;
 static int server_udp_count = 0;
 static int server_tls_count = 0;
-static int srvconf_count = 0;
-static int realm_count = 0;
-static int tls_count = 0;
 
 static struct clsrvconf *tcp_server_listen;
 static struct clsrvconf *udp_server_listen;
@@ -201,13 +195,13 @@ int bindtoaddr(struct addrinfo *addrinfo) {
 }	  
 
 /* returns the peer with matching address, or NULL */
-/* if peer argument is not NULL, we only check that one client */
-struct clsrvconf *find_peer(char type, struct sockaddr *addr, struct clsrvconf *confs, int count) {
+/* if conf argument is not NULL, we only check that one */
+struct clsrvconf *find_peer(char type, struct sockaddr *addr, struct list *confs, struct clsrvconf *conf) {
     struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
-    int i;
     struct addrinfo *res;
-
+    struct list_node *entry;
+    
     if (addr->sa_family == AF_INET6) {
         sa6 = (struct sockaddr_in6 *)addr;
         if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr))
@@ -215,16 +209,27 @@ struct clsrvconf *find_peer(char type, struct sockaddr *addr, struct clsrvconf *
     } else
 	a4 = &((struct sockaddr_in *)addr)->sin_addr;
 
-    for (i = 0; i < count; i++) {
-	if (confs->type == type)
-	    for (res = confs->addrinfo; res; res = res->ai_next)
+    if (conf) {
+	if (conf->type == type)
+	    for (res = conf->addrinfo; res; res = res->ai_next)
 		if ((a4 && res->ai_family == AF_INET &&
 		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
 		    (sa6 && res->ai_family == AF_INET6 &&
 		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
-		    return confs;
-	confs++;
+		    return conf;
+	return NULL;
     }
+
+    for (entry = list_first(confs); entry; entry = list_next(entry)) {	
+	conf = (struct clsrvconf *)entry->data;
+	if (conf->type == type)
+	    for (res = conf->addrinfo; res; res = res->ai_next)
+		if ((a4 && res->ai_family == AF_INET &&
+		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
+		    (sa6 && res->ai_family == AF_INET6 &&
+		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
+		    return conf;
+    }    
     return NULL;
 }
 
@@ -233,11 +238,11 @@ struct clsrvconf *find_peer(char type, struct sockaddr *addr, struct clsrvconf *
 /* if *peer == NULL we return who we received from, else require it to be from peer */
 /* return from in sa if not NULL */
 unsigned char *radudpget(int s, struct client **client, struct server **server, struct sockaddr_storage *sa) {
-    int cnt, len, confcount;
+    int cnt, len;
     unsigned char buf[65536], *rad;
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
-    struct clsrvconf *confs, *p;
+    struct clsrvconf *p;
 
     for (;;) {
 	cnt = recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr *)&from, &fromlen);
@@ -266,23 +271,16 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
 
 	if (client)
-	    if (*client) {
-		confcount = 1;
-		confs = (*client)->conf;
-	    } else {
-		confcount = clconf_count;
-		confs = clconfs;
-	    }
+	    if (*client)
+		p = find_peer('U', (struct sockaddr *)&from, NULL, (*client)->conf);
+	    else
+		p = find_peer('U', (struct sockaddr *)&from, clconfs, NULL);
 	else
-	    if (*server) {
-		confcount = 1;
-		confs = (*server)->conf;
-	    } else {
-		confcount = srvconf_count;
-		confs = srvconfs;
-	    }
+	    if (*server)
+		p = find_peer('U', (struct sockaddr *)&from, NULL, (*server)->conf);
+	    else
+		p = find_peer('U', (struct sockaddr *)&from, srvconfs, NULL);
 
-	p = find_peer('U', (struct sockaddr *)&from, confs, confcount);
 	if (!p) {
 	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer, ignoring");
 	    continue;
@@ -927,12 +925,16 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 }
 
 struct realm *id2realm(char *id, uint8_t len) {
-    int i;
-    for (i = 0; i < realm_count; i++)
-	if (!regexec(&realms[i].regex, id, 0, NULL, 0)) {
-	    debug(DBG_DBG, "found matching realm: %s", realms[i].name);
-	    return realms + i;
+    struct list_node *entry;
+    struct realm *realm;
+    
+    for (entry = list_first(realms); entry; entry = list_next(entry)) {
+	realm = (struct realm *)entry->data;
+	if (!regexec(&realm->regex, id, 0, NULL, 0)) {
+	    debug(DBG_DBG, "found matching realm: %s", realm->name);
+	    return realm;
 	}
+    }
     return NULL;
 }
 
@@ -1620,7 +1622,7 @@ int tlslistener() {
 	}
 	debug(DBG_WARN, "incoming TLS connection from %s", addr2string((struct sockaddr *)&from, fromlen));
 
-	conf = find_peer('T', (struct sockaddr *)&from, clconfs, clconf_count);
+	conf = find_peer('T', (struct sockaddr *)&from, clconfs, NULL);
 	if (!conf) {
 	    debug(DBG_WARN, "ignoring request, not a known TLS client");
 	    shutdown(snew, SHUT_RDWR);
@@ -1698,12 +1700,11 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
     
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
-    
-    tls_count++;
-    tls = realloc(tls, tls_count * sizeof(struct tls));
-    if (!tls)
+
+    new = malloc(sizeof(struct tls));
+    if (!new || !list_add(tls, new))
 	debugx(1, DBG_ERR, "malloc failed");
-    new = tls + tls_count - 1;
+
     memset(new, 0, sizeof(struct tls));
     new->name = stringcopy(value, 0);
     if (!new->name)
@@ -1714,31 +1715,37 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
 }
 
 void tlsfree() {
-    int i;
-    for (i = 0; i < tls_count; i++)
-	if (!tls[i].count)
-	    SSL_CTX_free(tls[i].ctx);
-    tls_count = 0;
-    free(tls);
+    struct list_node *entry;
+    struct tls *t;
+    
+    for (entry = list_first(tls); entry; entry = list_next(entry)) {
+	t = (struct tls *)entry->data;
+	if (!t->count)
+	    SSL_CTX_free(t->ctx);
+    }
+    list_destroy(tls);
     tls = NULL;
 }
 
 SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
-    int i, c1 = -1, c2 = -1;
-    for (i = 0; i < tls_count; i++) {
-	if (!strcasecmp(tls[i].name, alt1)) {
-	    c1 = i;
+    struct list_node *entry;
+    struct tls *t, *t1 = NULL, *t2 = NULL;
+    
+    for (entry = list_first(tls); entry; entry = list_next(entry)) {
+	t = (struct tls *)entry->data;
+	if (!strcasecmp(t->name, alt1)) {
+	    t1 = t;
 	    break;
 	}
-	if (c2 == -1 && alt2 && !strcasecmp(tls[i].name, alt2))
-	    c2 = i;
+	if (!t2 && alt2 && !strcasecmp(t->name, alt2))
+	    t2 = t;
     }
 
-    i = (c1 == -1 ? c2 : c1);
-    if (i == -1)
+    t = (t1 ? t1 : t2);
+    if (!t)
 	return NULL;
-    tls[i].count++;
-    return tls[i].ctx;
+    t->count++;
+    return t->ctx;
 }
 
 struct replyq *newreplyq(int size) {
@@ -1797,15 +1804,19 @@ void addserver(struct clsrvconf *conf) {
 }
 
 void addrealm(char *value, char *server, char *message) {
-    int i, n;
+    int n;
     struct realm *realm;
     char *s, *regex = NULL;
-
+    struct list_node *entry;
+    struct clsrvconf *conf;
+    
     if (server) {
-	for (i = 0; i < srvconf_count; i++)
-	    if (!strcasecmp(server, srvconfs[i].host))
+	for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
+	    conf = (struct clsrvconf *)entry->data;
+	    if (!strcasecmp(server, conf->host))
 		break;
-	if (i == srvconf_count)
+	}
+	if (!entry)
 	    debugx(1, DBG_ERR, "addrealm failed, no server %s", server);
     }
     
@@ -1838,11 +1849,10 @@ void addrealm(char *value, char *server, char *message) {
 	debug(DBG_DBG, "addrealm: constructed regexp %s from %s", regex, value);
     }
 
-    realm_count++;
-    realms = realloc(realms, realm_count * sizeof(struct realm));
-    if (!realms)
+    realm = malloc(sizeof(struct realm));
+    if (!realm || !list_add(realms, realm))
 	debugx(1, DBG_ERR, "malloc failed");
-    realm = realms + realm_count - 1;
+    
     memset(realm, 0, sizeof(struct realm));
     realm->name = stringcopy(value, 0);
     if (!realm->name)
@@ -1851,7 +1861,7 @@ void addrealm(char *value, char *server, char *message) {
 	debugx(1, DBG_ERR, "ReplyMessage can be at most 253 bytes");
     realm->message = message;
     if (server)
-	realm->srvconf = srvconfs + i;
+	realm->srvconf = conf;
     if (regcomp(&realm->regex, regex ? regex : value + 1, REG_ICASE | REG_NOSUB))
 	debugx(1, DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
     if (regex)
@@ -2106,11 +2116,9 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
 		     "tls", CONF_STR, &tls,
 		     NULL
 		     );
-    clconf_count++;
-    clconfs = realloc(clconfs, clconf_count * sizeof(struct clsrvconf));
-    if (!clconfs)
+    conf = malloc(sizeof(struct clsrvconf));
+    if (!conf || !list_add(clconfs, conf))
 	debugx(1, DBG_ERR, "malloc failed");
-    conf = clconfs + clconf_count - 1;
     memset(conf, 0, sizeof(struct clsrvconf));
     
     conf->host = stringcopy(val, 0);
@@ -2154,11 +2162,9 @@ void confserver_cb(FILE *f, char *block, char *opt, char *val) {
 		     "StatusServer", CONF_STR, &statusserver,
 		     NULL
 		     );
-    srvconf_count++;
-    srvconfs = realloc(srvconfs, srvconf_count * sizeof(struct clsrvconf));
-    if (!srvconfs)
+    conf = malloc(sizeof(struct clsrvconf));
+    if (!conf || !list_add(srvconfs, conf))
 	debugx(1, DBG_ERR, "malloc failed");
-    conf = srvconfs + srvconf_count - 1;
     memset(conf, 0, sizeof(struct clsrvconf));
     
     conf->port = port;
@@ -2244,7 +2250,23 @@ void getmainconfig(const char *configfile) {
 
     f = openconfigfile(configfile);
     memset(&options, 0, sizeof(options));
-
+    
+    clconfs = list_create();
+    if (!clconfs)
+	debugx(1, DBG_ERR, "malloc failed");
+    
+    srvconfs = list_create();
+    if (!srvconfs)
+	debugx(1, DBG_ERR, "malloc failed");
+    
+    realms = list_create();
+    if (!realms)
+	debugx(1, DBG_ERR, "malloc failed");    
+ 
+    tls = list_create();
+    if (!tls)
+	debugx(1, DBG_ERR, "malloc failed");    
+ 
     getgeneralconfig(f, NULL,
 		     "ListenUDP", CONF_STR, &options.listenudp,
 		     "ListenTCP", CONF_STR, &options.listentcp,
@@ -2299,7 +2321,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 
 int main(int argc, char **argv) {
     pthread_t udpserverth;
-    int i;
+    struct list_node *entry;
     uint8_t foreground = 0, loglevel = 0;
     char *configfile = NULL;
     
@@ -2321,23 +2343,23 @@ int main(int argc, char **argv) {
 	debug_set_destination(options.logdestination);
     }
 
-    if (!srvconf_count)
-	debugx(1, DBG_ERR, "No servers configured, nothing to do, exiting");
-    if (!clconf_count)
+    if (!list_first(clconfs))
 	debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");
-    if (!realm_count)
+    if (!list_first(srvconfs))
+	debugx(1, DBG_ERR, "No servers configured, nothing to do, exiting");
+    if (!list_first(realms))
 	debugx(1, DBG_ERR, "No realms configured, nothing to do, exiting");
 
     if (!foreground && (daemon(0, 0) < 0))
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
     
     debug(DBG_INFO, "radsecproxy revision $Rev$ starting");
-	
-    for (i = 0; i < clconf_count; i++)
-	addclient(clconfs + i);
-	
-    for (i = 0; i < srvconf_count; i++)
-	addserver(srvconfs + i);
+
+    for (entry = list_first(clconfs); entry; entry = list_next(entry))
+	addclient((struct clsrvconf *)entry->data);
+    
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry))
+	addserver((struct clsrvconf *)entry->data);
 	
     if (client_udp_count) {
 	udp_server_listen = server_create('U');
@@ -2345,8 +2367,9 @@ int main(int argc, char **argv) {
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
     
-    for (i = 0; i < srvconf_count; i++)
-	if (pthread_create(&srvconfs[i].servers->clientth, NULL, clientwr, (void *)srvconfs[i].servers))
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry))
+	if (pthread_create(&((struct clsrvconf *)entry->data)->servers->clientth, NULL, clientwr,
+			   (void *)((struct clsrvconf *)entry->data)->servers))
 	    debugx(1, DBG_ERR, "pthread_create failed");
 
     if (client_tls_count) {
