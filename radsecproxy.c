@@ -233,6 +233,57 @@ struct clsrvconf *find_peer(char type, struct sockaddr *addr, struct list *confs
     return NULL;
 }
 
+struct replyq *newreplyq(int size) {
+    struct replyq *replyq;
+    
+    replyq = malloc(sizeof(struct replyq));
+    if (!replyq)
+	debugx(1, DBG_ERR, "malloc failed");
+    replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
+    if (!replyq->replies)
+	debugx(1, DBG_ERR, "malloc failed");
+    replyq->count = 0;
+    replyq->size = size;
+    pthread_mutex_init(&replyq->count_mutex, NULL);
+    pthread_cond_init(&replyq->count_cond, NULL);
+    return replyq;
+}
+
+void addclient(struct clsrvconf *conf) {
+    if (conf->clients) {
+	debug(DBG_ERR, "currently works with just one client per conf");
+	return;
+    }
+    conf->clients = malloc(sizeof(struct client));
+    if (!conf->clients) {
+	debug(DBG_ERR, "malloc failed");
+	return;
+    }
+    memset(conf->clients, 0, sizeof(struct client));
+    conf->clients->conf = conf;
+    conf->clients->replyq = conf->type == 'T' ? newreplyq(MAX_REQUESTS) : udp_server_replyq;
+}
+
+void addserver(struct clsrvconf *conf) {
+    if (conf->servers)
+	debugx(1, DBG_ERR, "currently works with just one server per conf");
+    
+    conf->servers = malloc(sizeof(struct server));
+    if (!conf->servers)
+	debugx(1, DBG_ERR, "malloc failed");
+    memset(conf->servers, 0, sizeof(struct server));
+    conf->servers->conf = conf;
+
+    conf->servers->sock = -1;
+    pthread_mutex_init(&conf->servers->lock, NULL);
+    conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct request));
+    if (!conf->servers->requests)
+	debugx(1, DBG_ERR, "malloc failed");
+    conf->servers->newrq = 0;
+    pthread_mutex_init(&conf->servers->newrq_mutex, NULL);
+    pthread_cond_init(&conf->servers->newrq_cond, NULL);
+}
+
 /* exactly one of client and server must be non-NULL */
 /* should probably take peer list (client(s) or server(s)) as argument instead */
 /* if *peer == NULL we return who we received from, else require it to be from peer */
@@ -285,17 +336,27 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer, ignoring");
 	    continue;
 	}
-
+	
 	rad = malloc(len);
-	if (rad)
-	    break;
-	debug(DBG_ERR, "radudpget: malloc failed");
+	if (!rad) {
+	    debug(DBG_ERR, "radudpget: malloc failed");
+	    continue;
+	}
+	
+	if (client && !*client) {
+	    if (!p->clients)
+		addclient(p);
+	    if (!p->clients) {
+		free(rad);
+		continue;
+	    }
+	    *client = p->clients;
+	} else if (server && !*server)
+	    *server = p->servers;
+	
+	break;
     }
     memcpy(rad, buf, len);
-    if (client && !*client)
-	*client = p->clients;
-    else if (server && !*server)
-	*server = p->servers;
     if (sa)
 	*sa = from;
     return rad;
@@ -1629,10 +1690,14 @@ int tlslistener() {
 	    close(snew);
 	    continue;
 	}
+
+	if (!conf->clients)
+	    addclient(conf);
 	client = conf->clients;
 
-	if (client->ssl) {
-	    debug(DBG_WARN, "Ignoring incoming TLS connection, already have one from this client");
+	if (!client || client->ssl) {
+	    if (client)
+		debug(DBG_WARN, "Ignoring incoming TLS connection, already have one from this client");
 	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
 	    continue;
@@ -1746,61 +1811,6 @@ SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
 	return NULL;
     t->count++;
     return t->ctx;
-}
-
-struct replyq *newreplyq(int size) {
-    struct replyq *replyq;
-    
-    replyq = malloc(sizeof(struct replyq));
-    if (!replyq)
-	debugx(1, DBG_ERR, "malloc failed");
-    replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
-    if (!replyq->replies)
-	debugx(1, DBG_ERR, "malloc failed");
-    replyq->count = 0;
-    replyq->size = size;
-    pthread_mutex_init(&replyq->count_mutex, NULL);
-    pthread_cond_init(&replyq->count_cond, NULL);
-    return replyq;
-}
-
-void addclient(struct clsrvconf *conf) {
-    if (conf->clients)
-	debugx(1, DBG_ERR, "currently works with just one client per conf");
-    
-    conf->clients = malloc(sizeof(struct client));
-    if (!conf->clients)
-	debugx(1, DBG_ERR, "malloc failed");
-    memset(conf->clients, 0, sizeof(struct client));
-    conf->clients->conf = conf;
-
-    if (conf->type == 'T') 
-	conf->clients->replyq = newreplyq(MAX_REQUESTS);
-    else {
-	if (!udp_server_replyq)
-	    udp_server_replyq = newreplyq(client_udp_count * MAX_REQUESTS);
-	conf->clients->replyq = udp_server_replyq;
-    }
-}
-
-void addserver(struct clsrvconf *conf) {
-    if (conf->servers)
-	debugx(1, DBG_ERR, "currently works with just one server per conf");
-    
-    conf->servers = malloc(sizeof(struct server));
-    if (!conf->servers)
-	debugx(1, DBG_ERR, "malloc failed");
-    memset(conf->servers, 0, sizeof(struct server));
-    conf->servers->conf = conf;
-
-    conf->servers->sock = -1;
-    pthread_mutex_init(&conf->servers->lock, NULL);
-    conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct request));
-    if (!conf->servers->requests)
-	debugx(1, DBG_ERR, "malloc failed");
-    conf->servers->newrq = 0;
-    pthread_mutex_init(&conf->servers->newrq_mutex, NULL);
-    pthread_cond_init(&conf->servers->newrq_cond, NULL);
 }
 
 void addrealm(char *value, char *server, char *message) {
@@ -2362,23 +2372,20 @@ int main(int argc, char **argv) {
     
     debug(DBG_INFO, "radsecproxy revision $Rev$ starting");
 
-    for (entry = list_first(clconfs); entry; entry = list_next(entry))
-	addclient((struct clsrvconf *)entry->data);
-    
-    for (entry = list_first(srvconfs); entry; entry = list_next(entry))
-	addserver((struct clsrvconf *)entry->data);
-	
     if (client_udp_count) {
 	udp_server_listen = server_create('U');
+	udp_server_replyq = newreplyq(client_udp_count * MAX_REQUESTS);
 	if (pthread_create(&udpserverth, NULL, udpserverrd, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
     
-    for (entry = list_first(srvconfs); entry; entry = list_next(entry))
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
+	addserver((struct clsrvconf *)entry->data);
 	if (pthread_create(&((struct clsrvconf *)entry->data)->servers->clientth, NULL, clientwr,
 			   (void *)((struct clsrvconf *)entry->data)->servers))
 	    debugx(1, DBG_ERR, "pthread_create failed");
-
+    }
+    
     if (client_tls_count) {
 	tcp_server_listen = server_create('T');
 	return tlslistener();
