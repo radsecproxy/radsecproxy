@@ -1813,7 +1813,7 @@ void addrealm(char *value, char *server, char *message) {
     if (server) {
 	for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	    conf = (struct clsrvconf *)entry->data;
-	    if (!strcasecmp(server, conf->host))
+	    if (!strcasecmp(server, conf->name))
 		break;
 	}
 	if (!entry)
@@ -2105,23 +2105,27 @@ void getgeneralconfig(FILE *f, char *block, ...) {
 }
 
 void confclient_cb(FILE *f, char *block, char *opt, char *val) {
-    char *type = NULL, *secret = NULL, *tls = NULL;
+    char *type = NULL, *tls = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
-    getgeneralconfig(f, block,
-		     "type", CONF_STR, &type,
-		     "secret", CONF_STR, &secret,
-		     "tls", CONF_STR, &tls,
-		     NULL
-		     );
     conf = malloc(sizeof(struct clsrvconf));
     if (!conf || !list_add(clconfs, conf))
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
     
-    conf->host = stringcopy(val, 0);
+    getgeneralconfig(f, block,
+		     "type", CONF_STR, &type,
+		     "host", CONF_STR, &conf->host,
+		     "secret", CONF_STR, &conf->secret,
+		     "tls", CONF_STR, &tls,
+		     NULL
+		     );
+
+    /* leave conf->name to be NULL for clients */
+    if (!conf->host)
+	conf->host = stringcopy(val, 0);
     
     if (type && !strcasecmp(type, "udp")) {
 	conf->type = 'U';
@@ -2135,13 +2139,13 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
     } else
 	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
     free(type);
+    if (tls)
+	free(tls);
     
     if (!resolvepeer(conf, 0))
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
     
-    if (secret)
-	conf->secret = secret;
-    else {
+    if (!conf->secret) {
 	if (conf->type == 'U')
 	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for UDP", block);
 	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
@@ -2149,61 +2153,64 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
 }
 
 void confserver_cb(FILE *f, char *block, char *opt, char *val) {
-    char *type = NULL, *secret = NULL, *port = NULL, *tls = NULL, *statusserver = NULL;
+    char *type = NULL, *tls = NULL, *statusserver = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
-    getgeneralconfig(f, block,
-		     "type", CONF_STR, &type,
-		     "secret", CONF_STR, &secret,
-		     "port", CONF_STR, &port,
-		     "tls", CONF_STR, &tls,
-		     "StatusServer", CONF_STR, &statusserver,
-		     NULL
-		     );
     conf = malloc(sizeof(struct clsrvconf));
     if (!conf || !list_add(srvconfs, conf))
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
     
-    conf->port = port;
-    if (statusserver) {
-	if (!strcasecmp(statusserver, "on"))
-	    conf->statusserver = 1;
-	else if (strcasecmp(statusserver, "off"))
-	    debugx(1, DBG_ERR, "error in block %s, StatusServer is %s, must be on or off", block, statusserver);
-	free(statusserver);
-    }
-    
-    conf->host = stringcopy(val, 0);
+    getgeneralconfig(f, block,
+		     "type", CONF_STR, &type,
+		     "host", CONF_STR, &conf->host,
+		     "port", CONF_STR, &conf->port,
+		     "secret", CONF_STR, &conf->secret,
+		     "tls", CONF_STR, &tls,
+		     "StatusServer", CONF_STR, &statusserver,
+		     NULL
+		     );
+
+    conf->name = stringcopy(val, 0);
+    if (!conf->host)
+	conf->host = stringcopy(val, 0);
     
     if (type && !strcasecmp(type, "udp")) {
 	conf->type = 'U';
 	server_udp_count++;
-	if (!port)
+	if (!conf->port)
 	    conf->port = stringcopy(DEFAULT_UDP_PORT, 0);
     } else if (type && !strcasecmp(type, "tls")) {
 	conf->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultserver", "default");
 	if (!conf->ssl_ctx)
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
-	if (!port)
+	if (!conf->port)
 	    conf->port = stringcopy(DEFAULT_TLS_PORT, 0);
 	conf->type = 'T';
 	server_tls_count++;
     } else
 	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
     free(type);
+    if (tls)
+	free(tls);
     
     if (!resolvepeer(conf, 0))
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
     
-    if (secret)
-	conf->secret = secret;
-    else {
+    if (!conf->secret) {
 	if (conf->type == 'U')
 	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for UDP", block);
 	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
+    }
+    
+    if (statusserver) {
+	if (!strcasecmp(statusserver, "on"))
+	    conf->statusserver = 1;
+	else if (strcasecmp(statusserver, "off"))
+	    debugx(1, DBG_ERR, "error in block %s, StatusServer is %s, must be on or off", block, statusserver);
+	free(statusserver);
     }
 }
 
