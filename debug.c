@@ -62,9 +62,11 @@ int debug_set_destination(char *dest) {
     
     if (!strncasecmp(dest, "file:///", 8)) {
 	debug_file = fopen(dest + 7, "a");
-	if (!debug_file)
+	if (!debug_file) {
+	    debug_file = stderr;
 	    debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
 		   dest + 7, strerror(errno));
+	}
 	setvbuf(debug_file, NULL, _IONBF, 0);
 	return 1;
     }
