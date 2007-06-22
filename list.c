@@ -23,7 +23,7 @@ void list_destroy(struct list *list) {
 }
 
 /* appends entry to list; returns 1 if ok, 0 if malloc fails */
-int list_add(struct list *list, void *data) {
+int list_push(struct list *list, void *data) {
     struct list_node *node;
 
     node = malloc(sizeof(struct list_node));
@@ -40,6 +40,22 @@ int list_add(struct list *list, void *data) {
     list->last = node;
     
     return 1;
+}
+
+/* removes first entry from list and returns data */
+void *list_shift(struct list *list) {
+    struct list_node *node;
+    void *data;
+    
+    if (!list->first)
+	return NULL;
+    
+    node = list->first;
+    list->first = node->next;
+    data = node->data;
+    free(node);
+    
+    return data;
 }
 
 /* returns first node */

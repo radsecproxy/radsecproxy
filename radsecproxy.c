@@ -233,19 +233,17 @@ struct clsrvconf *find_peer(char type, struct sockaddr *addr, struct list *confs
     return NULL;
 }
 
-struct replyq *newreplyq(int size) {
+struct replyq *newreplyq() {
     struct replyq *replyq;
     
     replyq = malloc(sizeof(struct replyq));
     if (!replyq)
 	debugx(1, DBG_ERR, "malloc failed");
-    replyq->replies = calloc(MAX_REQUESTS, sizeof(struct reply));
+    replyq->replies = list_create();
     if (!replyq->replies)
 	debugx(1, DBG_ERR, "malloc failed");
-    replyq->count = 0;
-    replyq->size = size;
-    pthread_mutex_init(&replyq->count_mutex, NULL);
-    pthread_cond_init(&replyq->count_cond, NULL);
+    pthread_mutex_init(&replyq->mutex, NULL);
+    pthread_cond_init(&replyq->cond, NULL);
     return replyq;
 }
 
@@ -261,7 +259,7 @@ void addclient(struct clsrvconf *conf) {
     }
     memset(conf->clients, 0, sizeof(struct client));
     conf->clients->conf = conf;
-    conf->clients->replyq = conf->type == 'T' ? newreplyq(MAX_REQUESTS) : udp_server_replyq;
+    conf->clients->replyq = conf->type == 'T' ? newreplyq() : udp_server_replyq;
 }
 
 void addserver(struct clsrvconf *conf) {
@@ -709,32 +707,43 @@ void sendrq(struct server *to, struct request *rq) {
 }
 
 void sendreply(struct client *to, unsigned char *buf, struct sockaddr_storage *tosa) {
-    struct replyq *replyq = to->replyq;
+    struct reply *reply;
+    uint8_t first;
     
     if (!radsign(buf, (unsigned char *)to->conf->secret)) {
 	free(buf);
 	debug(DBG_WARN, "sendreply: failed to sign message");
 	return;
     }
-	
-    pthread_mutex_lock(&replyq->count_mutex);
-    if (replyq->count == replyq->size) {
-	debug(DBG_WARN, "No room in queue, dropping request");
-	pthread_mutex_unlock(&replyq->count_mutex);
+
+    reply = malloc(sizeof(struct reply));
+    if (!reply) {
 	free(buf);
+	debug(DBG_ERR, "sendreply: malloc failed");
 	return;
     }
-
-    replyq->replies[replyq->count].buf = buf;
+    memset(reply, 0, sizeof(struct reply));
+    reply->buf = buf;
     if (tosa)
-	replyq->replies[replyq->count].tosa = *tosa;
-    replyq->count++;
+	reply->tosa = *tosa;
+    
+    pthread_mutex_lock(&to->replyq->mutex);
 
-    if (replyq->count == 1) {
-	debug(DBG_DBG, "signalling server writer");
-	pthread_cond_signal(&replyq->count_cond);
+    first = list_first(to->replyq->replies) == NULL;
+    
+    if (!list_push(to->replyq->replies, reply)) {
+	pthread_mutex_unlock(&to->replyq->mutex);
+	free(reply);
+	free(buf);
+	debug(DBG_ERR, "sendreply: malloc failed");
+	return;
     }
-    pthread_mutex_unlock(&replyq->count_mutex);
+    
+    if (first) {
+	debug(DBG_DBG, "signalling server writer");
+	pthread_cond_signal(&to->replyq->cond);
+    }
+    pthread_mutex_unlock(&to->replyq->mutex);
 }
 
 int pwdencrypt(uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_t *auth) {
@@ -1527,26 +1536,22 @@ void *clientwr(void *arg) {
 
 void *udpserverwr(void *arg) {
     struct replyq *replyq = udp_server_replyq;
-    struct reply *reply = replyq->replies;
+    struct reply *reply;
     
-    pthread_mutex_lock(&replyq->count_mutex);
     for (;;) {
-	while (!replyq->count) {
+	pthread_mutex_lock(&replyq->mutex);
+	while (!(reply = (struct reply *)list_shift(replyq->replies))) {
 	    debug(DBG_DBG, "udp server writer, waiting for signal");
-	    pthread_cond_wait(&replyq->count_cond, &replyq->count_mutex);
+	    pthread_cond_wait(&replyq->cond, &replyq->mutex);
 	    debug(DBG_DBG, "udp server writer, got signal");
 	}
-	pthread_mutex_unlock(&replyq->count_mutex);
-	
+	pthread_mutex_unlock(&replyq->mutex);
+
 	if (sendto(udp_server_sock, reply->buf, RADLEN(reply->buf), 0,
 		   (struct sockaddr *)&reply->tosa, SOCKADDR_SIZE(reply->tosa)) < 0)
 	    debug(DBG_WARN, "sendudp: send failed");
 	free(reply->buf);
-	
-	pthread_mutex_lock(&replyq->count_mutex);
-	replyq->count--;
-	memmove(replyq->replies, replyq->replies + 1,
-		replyq->count * sizeof(struct reply));
+	free(reply);
     }
 }
 
@@ -1575,37 +1580,36 @@ void *tlsserverwr(void *arg) {
     unsigned long error;
     struct client *client = (struct client *)arg;
     struct replyq *replyq;
+    struct reply *reply;
     
     debug(DBG_DBG, "tlsserverwr starting for %s", client->conf->host);
     replyq = client->replyq;
-    pthread_mutex_lock(&replyq->count_mutex);
     for (;;) {
-	while (!replyq->count) {
+	pthread_mutex_lock(&replyq->mutex);
+	while (!list_first(replyq->replies)) {
 	    if (client->ssl) {	    
 		debug(DBG_DBG, "tls server writer, waiting for signal");
-		pthread_cond_wait(&replyq->count_cond, &replyq->count_mutex);
+		pthread_cond_wait(&replyq->cond, &replyq->mutex);
 		debug(DBG_DBG, "tls server writer, got signal");
 	    }
 	    if (!client->ssl) {
 		/* ssl might have changed while waiting */
-		pthread_mutex_unlock(&replyq->count_mutex);
+		pthread_mutex_unlock(&replyq->mutex);
 		debug(DBG_DBG, "tlsserverwr: exiting as requested");
 		pthread_exit(NULL);
 	    }
 	}
-	pthread_mutex_unlock(&replyq->count_mutex);
-	cnt = SSL_write(client->ssl, replyq->replies->buf, RADLEN(replyq->replies->buf));
+	reply = (struct reply *)list_shift(replyq->replies);
+	pthread_mutex_unlock(&replyq->mutex);
+	cnt = SSL_write(client->ssl, reply->buf, RADLEN(reply->buf));
 	if (cnt > 0)
 	    debug(DBG_DBG, "tlsserverwr: Sent %d bytes, Radius packet of length %d",
-		  cnt, RADLEN(replyq->replies->buf));
+		  cnt, RADLEN(reply->buf));
 	else
 	    while ((error = ERR_get_error()))
 		debug(DBG_ERR, "tlsserverwr: SSL: %s", ERR_error_string(error, NULL));
-	free(replyq->replies->buf);
-
-	pthread_mutex_lock(&replyq->count_mutex);
-	replyq->count--;
-	memmove(replyq->replies, replyq->replies + 1, replyq->count * sizeof(struct reply));
+	free(reply->buf);
+	free(reply);
     }
 }
 
@@ -1643,9 +1647,9 @@ void *tlsserverrd(void *arg) {
 	debug(DBG_ERR, "tlsserverrd: connection lost");
 	/* stop writer by setting ssl to NULL and give signal in case waiting for data */
 	client->ssl = NULL;
-	pthread_mutex_lock(&client->replyq->count_mutex);
-	pthread_cond_signal(&client->replyq->count_cond);
-	pthread_mutex_unlock(&client->replyq->count_mutex);
+	pthread_mutex_lock(&client->replyq->mutex);
+	pthread_cond_signal(&client->replyq->cond);
+	pthread_mutex_unlock(&client->replyq->mutex);
 	debug(DBG_DBG, "tlsserverrd: waiting for writer to end");
 	pthread_join(tlsserverwrth, NULL);
     }
@@ -1767,7 +1771,7 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
 
     new = malloc(sizeof(struct tls));
-    if (!new || !list_add(tls, new))
+    if (!new || !list_push(tls, new))
 	debugx(1, DBG_ERR, "malloc failed");
 
     memset(new, 0, sizeof(struct tls));
@@ -1860,7 +1864,7 @@ void addrealm(char *value, char *server, char *message) {
     }
 
     realm = malloc(sizeof(struct realm));
-    if (!realm || !list_add(realms, realm))
+    if (!realm || !list_push(realms, realm))
 	debugx(1, DBG_ERR, "malloc failed");
     
     memset(realm, 0, sizeof(struct realm));
@@ -2121,7 +2125,7 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
     conf = malloc(sizeof(struct clsrvconf));
-    if (!conf || !list_add(clconfs, conf))
+    if (!conf || !list_push(clconfs, conf))
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
     
@@ -2169,7 +2173,7 @@ void confserver_cb(FILE *f, char *block, char *opt, char *val) {
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
     conf = malloc(sizeof(struct clsrvconf));
-    if (!conf || !list_add(srvconfs, conf))
+    if (!conf || !list_push(srvconfs, conf))
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
     
@@ -2374,7 +2378,7 @@ int main(int argc, char **argv) {
 
     if (client_udp_count) {
 	udp_server_listen = server_create('U');
-	udp_server_replyq = newreplyq(client_udp_count * MAX_REQUESTS);
+	udp_server_replyq = newreplyq();
 	if (pthread_create(&udpserverth, NULL, udpserverrd, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }

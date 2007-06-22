@@ -67,11 +67,9 @@ struct reply {
 };
 
 struct replyq {
-    struct reply *replies;
-    int count;
-    int size;
-    pthread_mutex_t count_mutex;
-    pthread_cond_t count_cond;
+    struct list *replies;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
 };
 
 struct clsrvconf {

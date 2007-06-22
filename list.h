@@ -14,7 +14,10 @@ struct list *list_create();
 void list_destroy(struct list *list);
 
 /* appends entry to list; returns 1 if ok, 0 if malloc fails */
-int list_add(struct list *list, void *data);
+int list_push(struct list *list, void *data);
+
+/* removes first entry from list and returns data */
+void *list_shift(struct list *list);
 
 /* returns first node */
 struct list_node *list_first(struct list *list);
