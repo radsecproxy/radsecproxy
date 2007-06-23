@@ -48,7 +48,7 @@
 #include "radsecproxy.h"
 
 static struct options options;
-struct list *clconfs, *srvconfs, *realms, *tls;
+struct list *clconfs, *srvconfs, *realms, *tlsconfs;
 
 static int client_udp_count = 0;
 static int client_tls_count = 0;
@@ -1463,7 +1463,7 @@ void *clientwr(void *arg) {
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
 	    pthread_mutex_lock(&server->newrq_mutex);
-	    while (!server->requests[i].buf && i < MAX_REQUESTS)
+	    while (i < MAX_REQUESTS && !server->requests[i].buf)
 		i++;
 	    if (i == MAX_REQUESTS) {
 		pthread_mutex_unlock(&server->newrq_mutex);
@@ -1771,7 +1771,7 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
 
     new = malloc(sizeof(struct tls));
-    if (!new || !list_push(tls, new))
+    if (!new || !list_push(tlsconfs, new))
 	debugx(1, DBG_ERR, "malloc failed");
 
     memset(new, 0, sizeof(struct tls));
@@ -1787,20 +1787,22 @@ void tlsfree() {
     struct list_node *entry;
     struct tls *t;
     
-    for (entry = list_first(tls); entry; entry = list_next(entry)) {
+    for (entry = list_first(tlsconfs); entry; entry = list_next(entry)) {
 	t = (struct tls *)entry->data;
+	if (t->name)
+	    free(t->name);
 	if (!t->count)
 	    SSL_CTX_free(t->ctx);
     }
-    list_destroy(tls);
-    tls = NULL;
+    list_destroy(tlsconfs);
+    tlsconfs = NULL;
 }
 
 SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
     struct list_node *entry;
     struct tls *t, *t1 = NULL, *t2 = NULL;
     
-    for (entry = list_first(tls); entry; entry = list_next(entry)) {
+    for (entry = list_first(tlsconfs); entry; entry = list_next(entry)) {
 	t = (struct tls *)entry->data;
 	if (!strcasecmp(t->name, alt1)) {
 	    t1 = t;
@@ -2284,8 +2286,8 @@ void getmainconfig(const char *configfile) {
     if (!realms)
 	debugx(1, DBG_ERR, "malloc failed");    
  
-    tls = list_create();
-    if (!tls)
+    tlsconfs = list_create();
+    if (!tlsconfs)
 	debugx(1, DBG_ERR, "malloc failed");    
  
     getgeneralconfig(f, NULL,
