@@ -50,7 +50,7 @@ static struct options options;
 static struct client *clients = NULL;
 static struct server *servers = NULL;
 static struct realm *realms = NULL;
-static struct tls *tls = NULL;
+static struct tls *tlsconfs = NULL;
 
 static int client_udp_count = 0;
 static int client_tls_count = 0;
@@ -1411,7 +1411,7 @@ void *clientwr(void *arg) {
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
 	    pthread_mutex_lock(&server->newrq_mutex);
-	    while (!server->requests[i].buf && i < MAX_REQUESTS)
+	    while (i < MAX_REQUESTS && !server->requests[i].buf)
 		i++;
 	    if (i == MAX_REQUESTS) {
 		pthread_mutex_unlock(&server->newrq_mutex);
@@ -1718,10 +1718,10 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
     
     tls_count++;
-    tls = realloc(tls, tls_count * sizeof(struct tls));
-    if (!tls)
+    tlsconfs = realloc(tlsconfs, tls_count * sizeof(struct tls));
+    if (!tlsconfs)
 	debugx(1, DBG_ERR, "malloc failed");
-    new = tls + tls_count - 1;
+    new = tlsconfs + tls_count - 1;
     memset(new, 0, sizeof(struct tls));
     new->name = stringcopy(value, 0);
     if (!new->name)
@@ -1733,30 +1733,32 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
 
 void tlsfree() {
     int i;
-    for (i = 0; i < tls_count; i++)
-	if (!tls[i].count)
-	    SSL_CTX_free(tls[i].ctx);
+    for (i = 0; i < tls_count; i++) {
+	free(tlsconfs[i].name);
+	if (!tlsconfs[i].count)
+	    SSL_CTX_free(tlsconfs[i].ctx);
+    }
     tls_count = 0;
-    free(tls);
-    tls = NULL;
+    free(tlsconfs);
+    tlsconfs = NULL;
 }
 
 SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
     int i, c1 = -1, c2 = -1;
     for (i = 0; i < tls_count; i++) {
-	if (!strcasecmp(tls[i].name, alt1)) {
+	if (!strcasecmp(tlsconfs[i].name, alt1)) {
 	    c1 = i;
 	    break;
 	}
-	if (c2 == -1 && alt2 && !strcasecmp(tls[i].name, alt2))
+	if (c2 == -1 && alt2 && !strcasecmp(tlsconfs[i].name, alt2))
 	    c2 = i;
     }
 
     i = (c1 == -1 ? c2 : c1);
     if (i == -1)
 	return NULL;
-    tls[i].count++;
-    return tls[i].ctx;
+    tlsconfs[i].count++;
+    return tlsconfs[i].ctx;
 }
 
 void addrealm(char *value, char *server, char *message) {
