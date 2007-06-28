@@ -78,6 +78,7 @@ struct clsrvconf {
     char *host;
     char *port;
     char *secret;
+    regex_t *certuriregex;
     uint8_t statusserver;
     SSL_CTX *ssl_ctx;
     struct addrinfo *addrinfo;
@@ -130,9 +131,8 @@ struct tls {
                             sizeof(struct sockaddr_in) : \
                             sizeof(struct sockaddr_in6))
 
-void errx(char *format, ...);
-void err(char *format, ...);
 char *stringcopy(char *s, int len);
 char *addr2string(struct sockaddr *addr, socklen_t len);
+void printfchars(char *prefixfmt, char *prefix, char *charfmt, char *chars, int len);
 int bindport(int type, char *port);
 int connectport(int type, char *host, char *port);
