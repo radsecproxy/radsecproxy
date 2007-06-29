@@ -464,7 +464,7 @@ int tlsverifycert(SSL *ssl, struct clsrvconf *conf) {
     if (!cert) {
 	debug(DBG_ERR, "tlsverifycert: failed to obtain certificate");
 	return 0;
-}
+    }
     
     if (inet_pton(AF_INET, conf->host, &addr))
 	type = AF_INET;
