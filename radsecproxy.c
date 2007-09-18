@@ -35,6 +35,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
 #include <regex.h>
 #include <libgen.h>
 #include <pthread.h>
@@ -43,6 +45,7 @@
 #include <openssl/err.h>
 #include <openssl/md5.h>
 #include <openssl/hmac.h>
+#include <openssl/x509v3.h>
 #include "debug.h"
 #include "radsecproxy.h"
 
@@ -132,16 +135,6 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
 #endif  
   return ok;
 }
-
-#ifdef DEBUG
-void printauth(char *s, unsigned char *t) {
-    int i;
-    printf("%s:", s);
-    for (i = 0; i < 16; i++)
-	    printf("%02x ", t[i]);
-    printf("\n");
-}
-#endif
 
 int resolvepeer(struct peer *peer, int ai_flags) {
     struct addrinfo hints, *addrinfo;
@@ -323,14 +316,106 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     return rad;
 }
 
+int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
+    int loc, i, l, n, r = 0;
+    char *v;
+    X509_EXTENSION *ex;
+    STACK_OF(GENERAL_NAME) *alt;
+    GENERAL_NAME *gn;
+    
+    debug(DBG_DBG, "subjectaltnameaddr");
+    
+    loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
+    if (loc < 0)
+        return r;
+    
+    ex = X509_get_ext(cert, loc);
+    alt = X509V3_EXT_d2i(ex);
+    if (!alt)
+        return r;
+    
+    n = sk_GENERAL_NAME_num(alt);
+    for (i = 0; i < n; i++) {
+        gn = sk_GENERAL_NAME_value(alt, i);
+        if (gn->type != GEN_IPADD)
+            continue;
+        r = -1;
+        v = (char *)ASN1_STRING_data(gn->d.ia5);
+        l = ASN1_STRING_length(gn->d.ia5);
+        if (((family == AF_INET && l == sizeof(struct in_addr)) || (family == AF_INET6 && l == sizeof(struct in6_addr)))
+            && !memcmp(v, &addr, l)) {
+            r = 1;
+            break;
+        }
+    }
+    GENERAL_NAMES_free(alt);
+    return r;
+}
+
+int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *regex) {
+    int loc, i, l, n, r = 0;
+    char *s, *v;
+    X509_EXTENSION *ex;
+    STACK_OF(GENERAL_NAME) *alt;
+    GENERAL_NAME *gn;
+    
+    debug(DBG_DBG, "subjectaltnameregexp");
+    
+    loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
+    if (loc < 0)
+        return r;
+    
+    ex = X509_get_ext(cert, loc);
+    alt = X509V3_EXT_d2i(ex);
+    if (!alt)
+        return r;
+    
+    n = sk_GENERAL_NAME_num(alt);
+    for (i = 0; i < n; i++) {
+        gn = sk_GENERAL_NAME_value(alt, i);
+        if (gn->type != type)
+            continue;
+        r = -1;
+        v = (char *)ASN1_STRING_data(gn->d.ia5);
+        l = ASN1_STRING_length(gn->d.ia5);
+        if (l <= 0)
+            continue;
+#ifdef DEBUG
+        printfchars(NULL, gn->type == GEN_DNS ? "dns" : "uri", NULL, v, l);
+#endif  
+        if (exact) {
+            if (memcmp(v, exact, l))
+                continue;
+        } else {
+            s = stringcopy((char *)v, l);
+            if (!s) {
+                debug(DBG_ERR, "malloc failed");
+                continue;
+            }
+            if (regexec(regex, s, 0, NULL, 0)) {
+                free(s);
+                continue;
+            }
+            free(s);
+        }
+        r = 1;
+        break;
+    }
+    GENERAL_NAMES_free(alt);
+    return r;
+}
+
 int tlsverifycert(struct peer *peer) {
-    int l, loc;
+    int l, loc, r;
     X509 *cert;
     X509_NAME *nm;
     X509_NAME_ENTRY *e;
-    unsigned char *v;
+    ASN1_STRING *s;
+    char *v;
+    uint8_t type = 0; /* 0 for DNS, AF_INET for IPv4, AF_INET6 for IPv6 */
     unsigned long error;
-
+    struct in6_addr addr;
+    
     if (SSL_get_verify_result(peer->ssl) != X509_V_OK) {
 	debug(DBG_ERR, "tlsverifycert: basic validation failed");
 	while ((error = ERR_get_error()))
@@ -343,33 +428,59 @@ int tlsverifycert(struct peer *peer) {
 	debug(DBG_ERR, "tlsverifycert: failed to obtain certificate");
 	return 0;
     }
-    nm = X509_get_subject_name(cert);
-    loc = -1;
-    for (;;) {
-	loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
-	if (loc == -1)
-	    break;
-	e = X509_NAME_get_entry(nm, loc);
-	l = ASN1_STRING_to_UTF8(&v, X509_NAME_ENTRY_get_data(e));
-	if (l < 0)
-	    continue;
+
+    if (inet_pton(AF_INET, peer->host, &addr))
+	type = AF_INET;
+    else if (inet_pton(AF_INET6, peer->host, &addr))
+	type = AF_INET6;
+
+    r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, peer->host, NULL);
+    if (r) {
+	if (r < 0) {
+	    X509_free(cert);
+	    debug(DBG_DBG, "tlsverifycert: No subjectaltname matching %s %s", type ? "address" : "host", peer->host);
+	    return 0;
+	}
+	debug(DBG_DBG, "tlsverifycert: Found subjectaltname matching %s %s", type ? "address" : "host", peer->host);
+    } else {
+	nm = X509_get_subject_name(cert);
+	loc = -1;
+	for (;;) {
+	    loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
+	    if (loc == -1)
+		break;
+	    e = X509_NAME_get_entry(nm, loc);
+	    s = X509_NAME_ENTRY_get_data(e);
+	    v = (char *) ASN1_STRING_data(s);
+	    l = ASN1_STRING_length(s);
+	    if (l < 0)
+		continue;
 #ifdef DEBUG
-	{
-	    int i;
-	    printf("cn: ");
-	    for (i = 0; i < l; i++)
-		printf("%c", v[i]);
-	    printf("\n");
-	}
+	    printfchars(NULL, "cn", NULL, v, l);
 #endif	
-	if (l == strlen(peer->host) && !strncasecmp(peer->host, (char *)v, l)) {
-	    debug(DBG_DBG, "tlsverifycert: Found cn matching host %s, All OK", peer->host);
-	    return 1;
+	    if (l == strlen(peer->host) && !strncasecmp(peer->host, v, l)) {
+		r = 1;
+		debug(DBG_DBG, "tlsverifycert: Found cn matching host %s, All OK", peer->host);
+		break;
+	    }
 	}
-	debug(DBG_ERR, "tlsverifycert: cn not matching host %s", peer->host);
+	if (!r) {
+	    X509_free(cert);
+	    debug(DBG_ERR, "tlsverifycert: cn not matching host %s", peer->host);
+	    return 0;
+	}
+    }
+    if (peer->certuriregex) {
+        r = subjectaltnameregexp(cert, GEN_URI, NULL, peer->certuriregex);
+        if (r < 1) {
+            debug(DBG_DBG, "tlsverifycert: subjectaltname URI not matching regex");
+            X509_free(cert);
+            return 0;
+        }
+        debug(DBG_DBG, "tlsverifycert: subjectaltname URI matching regex");
     }
     X509_free(cert);
-    return 0;
+    return 1;
 }
 
 void tlsconnect(struct server *server, struct timeval *when, char *text) {
@@ -784,21 +895,10 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	first = 0;
     }
 
-#if 0    
-    printf("msppencrypt auth in: ");
-    for (i = 0; i < 16; i++)
-	printf("%02x ", auth[i]);
-    printf("\n");
-    
-    printf("msppencrypt salt in: ");
-    for (i = 0; i < 2; i++)
-	printf("%02x ", salt[i]);
-    printf("\n");
-    
-    printf("msppencrypt in: ");
-    for (i = 0; i < len; i++)
-	printf("%02x ", text[i]);
-    printf("\n");
+#if 0
+    printfchars(NULL, "msppencrypt auth in", "%02x ", auth, 16);
+    printfchars(NULL, "msppencrypt salt in", "%02x ", salt, 2);
+    printfchars(NULL, "msppencrypt in", "%02x ", text, len);
 #endif
     
     if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
@@ -810,11 +910,8 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	return 0;
     }
 
-#if 0    
-    printf("msppencrypt hash: ");
-    for (i = 0; i < 16; i++)
-	printf("%02x ", hash[i]);
-    printf("\n");
+#if 0
+    printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
 #endif
     
     for (i = 0; i < 16; i++)
@@ -823,9 +920,7 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     for (offset = 16; offset < len; offset += 16) {
 #if 0	
 	printf("text + offset - 16 c(%d): ", offset / 16);
-	for (i = 0; i < 16; i++)
-	    printf("%02x ", (text + offset - 16)[i]);
-	printf("\n");
+	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
 	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
 	    !EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
@@ -835,11 +930,8 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	    pthread_mutex_unlock(&lock);
 	    return 0;
 	}
-#if 0	
-	printf("msppencrypt hash: ");
-	for (i = 0; i < 16; i++)
-	    printf("%02x ", hash[i]);
-	printf("\n");
+#if 0
+	printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
 #endif    
 	
 	for (i = 0; i < 16; i++)
@@ -847,10 +939,7 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     }
     
 #if 0
-    printf("msppencrypt out: ");
-    for (i = 0; i < len; i++)
-	printf("%02x ", text[i]);
-    printf("\n");
+    printfchars(NULL, "msppencrypt out", "%02x ", text, len);
 #endif
 
     pthread_mutex_unlock(&lock);
@@ -872,21 +961,10 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	first = 0;
     }
 
-#if 0    
-    printf("msppdecrypt auth in: ");
-    for (i = 0; i < 16; i++)
-	printf("%02x ", auth[i]);
-    printf("\n");
-    
-    printf("msppedecrypt salt in: ");
-    for (i = 0; i < 2; i++)
-	printf("%02x ", salt[i]);
-    printf("\n");
-    
-    printf("msppedecrypt in: ");
-    for (i = 0; i < len; i++)
-	printf("%02x ", text[i]);
-    printf("\n");
+#if 0
+    printfchars(NULL, "msppdecrypt auth in", "%02x ", auth, 16);
+    printfchars(NULL, "msppdecrypt salt in", "%02x ", salt, 2);
+    printfchars(NULL, "msppdecrypt in", "%02x ", text, len);
 #endif
     
     if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
@@ -898,11 +976,8 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	return 0;
     }
 
-#if 0    
-    printf("msppedecrypt hash: ");
-    for (i = 0; i < 16; i++)
-	printf("%02x ", hash[i]);
-    printf("\n");
+#if 0
+    printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
 #endif
     
     for (i = 0; i < 16; i++)
@@ -911,9 +986,7 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     for (offset = 16; offset < len; offset += 16) {
 #if 0 	
 	printf("text + offset - 16 c(%d): ", offset / 16);
-	for (i = 0; i < 16; i++)
-	    printf("%02x ", (text + offset - 16)[i]);
-	printf("\n");
+	printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
 #endif
 	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
 	    !EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
@@ -923,23 +996,17 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	    pthread_mutex_unlock(&lock);
 	    return 0;
 	}
-#if 0	
-    printf("msppedecrypt hash: ");
-    for (i = 0; i < 16; i++)
-	printf("%02x ", hash[i]);
-    printf("\n");
+#if 0
+	printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
 #endif    
 
-    for (i = 0; i < 16; i++)
-	plain[offset + i] = text[offset + i] ^ hash[i];
+	for (i = 0; i < 16; i++)
+	    plain[offset + i] = text[offset + i] ^ hash[i];
     }
 
     memcpy(text, plain, len);
 #if 0
-    printf("msppedecrypt out: ");
-    for (i = 0; i < len; i++)
-	printf("%02x ", text[i]);
-    printf("\n");
+    printfchars(NULL, "msppdecrypt out", "%02x ", text, len);
 #endif
 
     pthread_mutex_unlock(&lock);
@@ -987,9 +1054,6 @@ int attrvalidate(unsigned char *attrs, int length) {
 }
 
 int pwdrecrypt(uint8_t *pwd, uint8_t len, char *oldsecret, char *newsecret, uint8_t *oldauth, uint8_t *newauth) {
-#ifdef DEBUG    
-    int i;
-#endif    
     if (len < 16 || len > 128 || len % 16) {
 	debug(DBG_WARN, "pwdrecrypt: invalid password length");
 	return 0;
@@ -1000,10 +1064,7 @@ int pwdrecrypt(uint8_t *pwd, uint8_t len, char *oldsecret, char *newsecret, uint
 	return 0;
     }
 #ifdef DEBUG
-    printf("pwdrecrypt: password: ");
-    for (i = 0; i < len; i++)
-	printf("%02x ", pwd[i]);
-    printf("\n");
+    printfchars(NULL, "pwdrecrypt: password", "%02x ", pwd, len);
 #endif	
     if (!pwdencrypt(pwd, len, newsecret, strlen(newsecret), newauth)) {
 	debug(DBG_WARN, "pwdrecrypt: cannot encrypt password");
@@ -1159,7 +1220,7 @@ void radsrv(struct request *rq) {
     }
 
 #ifdef DEBUG    
-    printauth("auth", auth);
+    printfchars(NULL, "auth", "%02x ", auth, 16);
 #endif
 
     attr = attrget(attrs, len, RAD_Attr_User_Password);
@@ -1328,7 +1389,7 @@ void *clientrd(void *arg) {
 	buf[1] = (char)server->requests[i].origid;
 	memcpy(buf + 4, server->requests[i].origauth, 16);
 #ifdef DEBUG	
-	printauth("origauth/buf+4", buf + 4);
+	printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
 	
 	if (messageauth) {
@@ -2059,8 +2120,34 @@ void getgeneralconfig(FILE *f, char *block, ...) {
     }
 }
 
+int addmatchcertattr(struct peer *conf, char *matchcertattr) {
+    char *v;
+    
+    v = matchcertattr + 20;
+    if (strncasecmp(matchcertattr, "SubjectAltName:URI:/", 20) || !*v)
+        return 0;
+    /* regexp, remove optional trailing / if present */
+    if (v[strlen(v) - 1] == '/')
+        v[strlen(v) - 1] = '\0';
+    if (!*v)
+        return 0;
+
+    conf->certuriregex = malloc(sizeof(regex_t));
+    if (!conf->certuriregex) {
+        debug(DBG_ERR, "malloc failed");
+        return 0;
+    }
+    if (regcomp(conf->certuriregex, v, REG_ICASE | REG_NOSUB)) {
+        regfree(conf->certuriregex);
+        conf->certuriregex = NULL;
+        debug(DBG_ERR, "failed to compile regular expression %s", v);
+        return 0;
+    }
+    return 1;
+}
+
 void confclsrv_cb(FILE *f, char *block, char *opt, char *val) {
-    char *type = NULL, *secret = NULL, *port = NULL, *tls = NULL, *statusserver = NULL;
+    char *type = NULL, *secret = NULL, *port = NULL, *tls = NULL, *matchcertattr = NULL, *statusserver = NULL;
     struct client *client = NULL;
     struct server *server = NULL;
     struct peer *peer;
@@ -2072,6 +2159,7 @@ void confclsrv_cb(FILE *f, char *block, char *opt, char *val) {
 			 "type", CONF_STR, &type,
 			 "secret", CONF_STR, &secret,
 			 "tls", CONF_STR, &tls,
+			 "matchcertificateattribute", CONF_STR, &matchcertattr,
 			 NULL
 			 );
 	client_count++;
@@ -2087,6 +2175,7 @@ void confclsrv_cb(FILE *f, char *block, char *opt, char *val) {
 			 "secret", CONF_STR, &secret,
 			 "port", CONF_STR, &port,
 			 "tls", CONF_STR, &tls,
+			 "matchcertificateattribute", CONF_STR, &matchcertattr,
 			 "StatusServer", CONF_STR, &statusserver,
 			 NULL
 			 );
@@ -2130,10 +2219,16 @@ void confclsrv_cb(FILE *f, char *block, char *opt, char *val) {
 	}
 	if (!peer->ssl_ctx)
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
+	if (matchcertattr && !addmatchcertattr(peer, matchcertattr))
+	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
 	peer->type = 'T';
     } else
 	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
     free(type);
+    if (tls)
+	free(tls);
+    if (matchcertattr)
+	free(matchcertattr);
     
     if (!resolvepeer(peer, 0))
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", peer->host, peer->port);
