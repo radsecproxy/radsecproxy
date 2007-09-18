@@ -381,7 +381,8 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *p;
-
+    struct list_node *node;
+    
     for (;;) {
 	cnt = recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr *)&from, &fromlen);
 	if (cnt == -1) {
@@ -431,8 +432,8 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	}
 	
 	if (client && !*client) {
-	    if (!p->clients)
-		*client = addclient(p);
+	    node = p->clients ? list_first(p->clients) : NULL;
+	    *client = node ? (struct client *)node->data : addclient(p);
 	    if (!*client) {
 		free(rad);
 		continue;
