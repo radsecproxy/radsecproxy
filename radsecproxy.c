@@ -189,7 +189,7 @@ int bindtoaddr(struct addrinfo *addrinfo) {
 
 /* returns the peer with matching address, or NULL */
 /* if conf argument is not NULL, we only check that one */
-struct clsrvconf *find_peer(char type, struct sockaddr *addr, struct list *confs, struct clsrvconf *conf) {
+struct clsrvconf *find_conf(char type, struct sockaddr *addr, struct list *confs, struct clsrvconf *conf) {
     struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
     struct addrinfo *res;
@@ -204,6 +204,8 @@ struct clsrvconf *find_peer(char type, struct sockaddr *addr, struct list *confs
 
     if (conf) {
 	if (conf->type == type)
+	    if (!conf->host) /* for now this means match everything */
+		return conf;
 	    for (res = conf->addrinfo; res; res = res->ai_next)
 		if ((a4 && res->ai_family == AF_INET &&
 		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
@@ -216,6 +218,8 @@ struct clsrvconf *find_peer(char type, struct sockaddr *addr, struct list *confs
     for (entry = list_first(confs); entry; entry = list_next(entry)) {	
 	conf = (struct clsrvconf *)entry->data;
 	if (conf->type == type)
+	    if (!conf->host) /* for now this means match everything */
+		return conf;
 	    for (res = conf->addrinfo; res; res = res->ai_next)
 		if ((a4 && res->ai_family == AF_INET &&
 		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
@@ -314,14 +318,14 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 
 	if (client)
 	    if (*client)
-		p = find_peer('U', (struct sockaddr *)&from, NULL, (*client)->conf);
+		p = find_conf('U', (struct sockaddr *)&from, NULL, (*client)->conf);
 	    else
-		p = find_peer('U', (struct sockaddr *)&from, clconfs, NULL);
+		p = find_conf('U', (struct sockaddr *)&from, clconfs, NULL);
 	else
 	    if (*server)
-		p = find_peer('U', (struct sockaddr *)&from, NULL, (*server)->conf);
+		p = find_conf('U', (struct sockaddr *)&from, NULL, (*server)->conf);
 	    else
-		p = find_peer('U', (struct sockaddr *)&from, srvconfs, NULL);
+		p = find_conf('U', (struct sockaddr *)&from, srvconfs, NULL);
 
 	if (!p) {
 	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer, ignoring");
@@ -1403,7 +1407,7 @@ void *clientrd(void *arg) {
 	    if (ATTRVALLEN(attr) <= 4)
 		break;
 	    
-	    if (((uint16_t *)attr)[1] != 0 || ntohs(((uint16_t *)attr)[2]) != 311) /* 311 == MS */
+	    if (attr[2] != 0 || attr[3] != 0 || attr[4] != 1 || attr[5] != 55)  /* 311 == MS */
 		continue;
 	    
 	    sublen = ATTRVALLEN(attr) - 4;
@@ -1748,7 +1752,7 @@ int tlslistener() {
 	}
 	debug(DBG_WARN, "incoming TLS connection from %s", addr2string((struct sockaddr *)&from, fromlen));
 
-	conf = find_peer('T', (struct sockaddr *)&from, clconfs, NULL);
+	conf = find_conf('T', (struct sockaddr *)&from, clconfs, NULL);
 	if (!conf) {
 	    debug(DBG_WARN, "ignoring request, not a known TLS client");
 	    shutdown(snew, SHUT_RDWR);
@@ -2231,6 +2235,11 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
     if (!conf->host)
 	conf->host = stringcopy(val, 0);
     
+    if (!strcmp(conf->host, "*")) {
+	free(conf->host);
+	conf->host = NULL;
+    }
+    
     if (type && !strcasecmp(type, "udp")) {
 	conf->type = 'U';
 	client_udp_count++;
@@ -2249,9 +2258,11 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
 	free(tls);
     if (matchcertattr)
 	free(matchcertattr);
-    
-    if (!resolvepeer(conf, 0))
-	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
+
+    if (conf->host) {
+	if (!resolvepeer(conf, 0))
+	    debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
+    }
     
     if (!conf->secret) {
 	if (conf->type == 'U')
