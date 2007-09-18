@@ -132,15 +132,59 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
 
 int resolvepeer(struct clsrvconf *conf, int ai_flags) {
     struct addrinfo hints, *addrinfo;
-    
+    char *slash, *s;
+    int plen;
+
+    slash = conf->host ? strchr(conf->host, '/') : NULL;
+    if (slash) {
+	s = slash + 1;
+	if (!*s) {
+	    debug(DBG_WARN, "resolvepeer: prefix length must be specified after the / in %s", conf->host);
+	    return 0;
+	}
+	for (; *s; s++)
+	    if (*s < '0' || *s > '9') {
+		debug(DBG_WARN, "resolvepeer: %s in %s is not a valid prefix length", slash + 1, conf->host);
+		return 0;
+	    }
+	plen = atoi(slash + 1);
+	if (plen < 0 || plen > 128) {
+	    debug(DBG_WARN, "resolvepeer: %s in %s is not a valid prefix length", slash + 1, conf->host);
+	    return 0;
+	}
+	*slash = '\0';
+    }
     memset(&hints, 0, sizeof(hints));
     hints.ai_socktype = (conf->type == 'T' ? SOCK_STREAM : SOCK_DGRAM);
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = ai_flags;
+    if (slash)
+	hints.ai_flags |= AI_NUMERICHOST;
     if (getaddrinfo(conf->host, conf->port, &hints, &addrinfo)) {
 	debug(DBG_WARN, "resolvepeer: can't resolve %s port %s", conf->host, conf->port);
 	return 0;
     }
+
+    if (slash) {
+	*slash = '/';
+	switch (addrinfo->ai_family) {
+	case AF_INET:
+	    if (plen > 32) {
+		debug(DBG_WARN, "resolvepeer: prefix length must be <= 32 in %s", conf->host);
+		freeaddrinfo(addrinfo);
+		return 0;
+	    }
+	    break;
+	case AF_INET6:
+	    break;
+	default:
+	    debug(DBG_WARN, "resolvepeer: prefix must be IPv4 or IPv6 in %s", conf->host);
+	    freeaddrinfo(addrinfo);
+	    return 0;
+	}
+	conf->prefixlen = plen;
+    } else
+	conf->prefixlen = 255;
 
     if (conf->addrinfo)
 	freeaddrinfo(conf->addrinfo);
@@ -187,7 +231,19 @@ int bindtoaddr(struct addrinfo *addrinfo) {
     return -1;
 }	  
 
-/* returns the peer with matching address, or NULL */
+/* returns 1 if the len first bits are equal, else 0 */
+int prefixmatch(void *a1, void *a2, uint8_t len) {
+    static uint8_t mask[] = { 0, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe };
+    int r, l = len / 8;
+    if (l && memcmp(a1, a2, l))
+	return 0;
+    r = len % 8;
+    if (!r)
+	return 1;
+    return (((uint8_t *)a1)[l] & mask[r]) == (((uint8_t *)a2)[l] & mask[r]);
+}
+
+/* returns the config with matching address, or NULL */
 /* if conf argument is not NULL, we only check that one */
 struct clsrvconf *find_conf(char type, struct sockaddr *addr, struct list *confs, struct clsrvconf *conf) {
     struct sockaddr_in6 *sa6 = NULL;
@@ -197,35 +253,55 @@ struct clsrvconf *find_conf(char type, struct sockaddr *addr, struct list *confs
     
     if (addr->sa_family == AF_INET6) {
         sa6 = (struct sockaddr_in6 *)addr;
-        if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr))
+        if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) {
             a4 = (struct in_addr *)&sa6->sin6_addr.s6_addr[12];
+	    sa6 = NULL;
+	}
     } else
 	a4 = &((struct sockaddr_in *)addr)->sin_addr;
 
     if (conf) {
-	if (conf->type == type)
-	    if (!conf->host) /* for now this means match everything */
-		return conf;
-	    for (res = conf->addrinfo; res; res = res->ai_next)
-		if ((a4 && res->ai_family == AF_INET &&
-		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
-		    (sa6 && res->ai_family == AF_INET6 &&
-		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
+	if (conf->type == type) {
+	    if (conf->prefixlen == 255) {
+		for (res = conf->addrinfo; res; res = res->ai_next)
+		    if ((a4 && res->ai_family == AF_INET &&
+			 !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
+			(sa6 && res->ai_family == AF_INET6 &&
+			 !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
+			return conf;
+	    } else {
+		res = conf->addrinfo;
+		if (res &&
+		    ((a4 && res->ai_family == AF_INET &&
+		      prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, conf->prefixlen)) ||
+		     (sa6 && res->ai_family == AF_INET6 &&
+		      prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, conf->prefixlen))))
 		    return conf;
+	    }
+	}
 	return NULL;
     }
 
     for (entry = list_first(confs); entry; entry = list_next(entry)) {	
 	conf = (struct clsrvconf *)entry->data;
-	if (conf->type == type)
-	    if (!conf->host) /* for now this means match everything */
-		return conf;
-	    for (res = conf->addrinfo; res; res = res->ai_next)
-		if ((a4 && res->ai_family == AF_INET &&
-		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
-		    (sa6 && res->ai_family == AF_INET6 &&
-		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
+	if (conf->type == type) {
+	    if (conf->prefixlen == 255) {
+		for (res = conf->addrinfo; res; res = res->ai_next)
+		    if ((a4 && res->ai_family == AF_INET &&
+			 !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
+			(sa6 && res->ai_family == AF_INET6 &&
+			 !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
+			return conf;
+	    } else {
+		res = conf->addrinfo;
+		if (res &&
+		    ((a4 && res->ai_family == AF_INET &&
+		      prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, conf->prefixlen)) ||
+		     (sa6 && res->ai_family == AF_INET6 &&
+		      prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, conf->prefixlen))))
 		    return conf;
+	    }
+	}
     }    
     return NULL;
 }
@@ -244,19 +320,35 @@ struct replyq *newreplyq() {
     return replyq;
 }
 
-void addclient(struct clsrvconf *conf) {
-    if (conf->clients) {
-	debug(DBG_ERR, "currently works with just one client per conf");
-	return;
-    }
-    conf->clients = malloc(sizeof(struct client));
-    if (!conf->clients) {
+struct client *addclient(struct clsrvconf *conf) {
+    struct client *new = malloc(sizeof(struct client));
+    
+    if (!new) {
 	debug(DBG_ERR, "malloc failed");
-	return;
+	return NULL;
     }
-    memset(conf->clients, 0, sizeof(struct client));
-    conf->clients->conf = conf;
-    conf->clients->replyq = conf->type == 'T' ? newreplyq() : udp_server_replyq;
+    if (!conf->clients) {
+	conf->clients = list_create();
+	if (!conf->clients) {
+	    debug(DBG_ERR, "malloc failed");
+	    return NULL;
+	}
+    }
+    
+    memset(new, 0, sizeof(struct client));
+    new->conf = conf;
+    new->replyq = conf->type == 'T' ? newreplyq() : udp_server_replyq;
+
+    list_push(conf->clients, new);
+    return new;
+}
+
+void removeclient(struct client *client) {
+    if (!client || !client->conf->clients)
+	return;
+
+    list_removedata(client->conf->clients, client);
+    free(client);
 }
 
 void addserver(struct clsrvconf *conf) {
@@ -340,12 +432,11 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	
 	if (client && !*client) {
 	    if (!p->clients)
-		addclient(p);
-	    if (!p->clients) {
+		*client = addclient(p);
+	    if (!*client) {
 		free(rad);
 		continue;
 	    }
-	    *client = p->clients;
 	} else if (server && !*server)
 	    *server = p->servers;
 	
@@ -1725,7 +1816,7 @@ void *tlsserverrd(void *arg) {
     shutdown(s, SHUT_RDWR);
     close(s);
     debug(DBG_DBG, "tlsserverrd thread for %s exiting", client->conf->host);
-    client->ssl = NULL;
+    removeclient(client);
     pthread_exit(NULL);
 }
 
@@ -1760,13 +1851,10 @@ int tlslistener() {
 	    continue;
 	}
 
-	if (!conf->clients)
-	    addclient(conf);
-	client = conf->clients;
+	client = addclient(conf);
 
-	if (!client || client->ssl) {
-	    if (client)
-		debug(DBG_WARN, "Ignoring incoming TLS connection, already have one from this client");
+	if (!client) {
+	    debug(DBG_WARN, "Failed to create new client instance");
 	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
 	    continue;
@@ -1776,9 +1864,9 @@ int tlslistener() {
 	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)client)) {
 	    debug(DBG_ERR, "tlslistener: pthread_create failed");
 	    SSL_free(client->ssl);
+	    removeclient(client);
 	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
-	    client->ssl = NULL;
 	    continue;
 	}
 	pthread_detach(tlsserverth);
@@ -2235,11 +2323,6 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
     if (!conf->host)
 	conf->host = stringcopy(val, 0);
     
-    if (!strcmp(conf->host, "*")) {
-	free(conf->host);
-	conf->host = NULL;
-    }
-    
     if (type && !strcasecmp(type, "udp")) {
 	conf->type = 'U';
 	client_udp_count++;
@@ -2259,10 +2342,8 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
     if (matchcertattr)
 	free(matchcertattr);
 
-    if (conf->host) {
-	if (!resolvepeer(conf, 0))
-	    debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
-    }
+    if (!resolvepeer(conf, 0))
+	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
     
     if (!conf->secret) {
 	if (conf->type == 'U')

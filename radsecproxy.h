@@ -82,7 +82,8 @@ struct clsrvconf {
     uint8_t statusserver;
     SSL_CTX *ssl_ctx;
     struct addrinfo *addrinfo;
-    struct client *clients;
+    uint8_t prefixlen;
+    struct list *clients;
     struct server *servers;
 };
 
@@ -90,6 +91,7 @@ struct client {
     struct clsrvconf *conf;
     SSL *ssl;
     struct replyq *replyq;
+    struct client *next;
 };
 
 struct server {

@@ -52,10 +52,38 @@ void *list_shift(struct list *list) {
     
     node = list->first;
     list->first = node->next;
+    if (!list->first)
+	list->last = NULL;
     data = node->data;
     free(node);
     
     return data;
+}
+
+/* removes first entry with matching data pointer */
+void list_removedata(struct list *list, void *data) {
+    struct list_node *node, *t;
+    
+    if (!list->first)
+	return;
+
+    node = list->first;
+    if (node->data == data) {
+	list->first = node->next;
+	if (!list->first)
+	    list->last = NULL;
+	free(node);
+	return;
+    }
+    for (; node->next; node = node->next)
+	if (node->next->data == data) {
+	    t = node->next;
+	    node->next = node->next->next;
+	    if (!node->next) /* we removed the last one */
+		list->last = node;
+	    free(t);
+	    return;
+	}
 }
 
 /* returns first node */
