@@ -432,7 +432,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	}
 	
 	if (client && !*client) {
-	    node = p->clients ? list_first(p->clients) : NULL;
+	    node = list_first(p->clients);
 	    *client = node ? (struct client *)node->data : addclient(p);
 	    if (!*client) {
 		free(rad);
@@ -1293,6 +1293,7 @@ void radsrv(struct request *rq) {
     char username[256];
     unsigned char *buf, newauth[16];
     struct realm *realm = NULL;
+    struct list_node *node;
     
     buf = rq->buf;
     code = *(uint8_t *)buf;
@@ -1334,7 +1335,8 @@ void radsrv(struct request *rq) {
 	    free(buf);
 	    return;
 	}
-	to = realm->srvconf->servers;
+	node = list_first(realm->srvconfs);
+	to = ((struct clsrvconf *)node->data)->servers;
 
 	if (to && rqinqueue(to, rq->from, id)) {
 	    debug(DBG_INFO, "radsrv: already got request from host %s with id %d, ignoring", rq->from->conf->host, id);
@@ -1973,22 +1975,12 @@ SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
     return t->ctx;
 }
 
-void addrealm(char *value, char *server, char *message) {
+void addrealm(char *value, char **servers, char *message) {
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
     struct list_node *entry;
     struct clsrvconf *conf;
-    
-    if (server) {
-	for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
-	    conf = (struct clsrvconf *)entry->data;
-	    if (!strcasecmp(server, conf->name))
-		break;
-	}
-	if (!entry)
-	    debugx(1, DBG_ERR, "addrealm failed, no server %s", server);
-    }
     
     if (*value == '/') {
 	/* regexp, remove optional trailing / if present */
@@ -2020,7 +2012,7 @@ void addrealm(char *value, char *server, char *message) {
     }
 
     realm = malloc(sizeof(struct realm));
-    if (!realm || !list_push(realms, realm))
+    if (!realm)
 	debugx(1, DBG_ERR, "malloc failed");
     
     memset(realm, 0, sizeof(struct realm));
@@ -2030,13 +2022,34 @@ void addrealm(char *value, char *server, char *message) {
     if (message && strlen(message) > 253)
 	debugx(1, DBG_ERR, "ReplyMessage can be at most 253 bytes");
     realm->message = message;
-    if (server)
-	realm->srvconf = conf;
+    
     if (regcomp(&realm->regex, regex ? regex : value + 1, REG_ICASE | REG_NOSUB))
 	debugx(1, DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
     if (regex)
 	free(regex);
-    debug(DBG_DBG, "addrealm: added realm %s for server %s", value, server);
+    
+    if (servers && *servers) {
+	realm->srvconfs = list_create();
+	if (!realm->srvconfs)
+	    debugx(1, DBG_ERR, "malloc failed");
+	for (n = 0; servers[n]; n++) {
+	    for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
+		conf = (struct clsrvconf *)entry->data;
+		if (!strcasecmp(servers[n], conf->name))
+		    break;
+	    }
+	    if (!entry)
+		debugx(1, DBG_ERR, "addrealm failed, no server %s", servers[n]);
+	    if (!list_push(realm->srvconfs, conf))
+		debugx(1, DBG_ERR, "malloc failed");
+	    debug(DBG_DBG, "addrealm: added server %s for realm %s", conf->name, value);
+	}
+    } else
+	realm->srvconfs = NULL;
+    
+    if (!list_push(realms, realm))
+	debugx(1, DBG_ERR, "malloc failed");
+    debug(DBG_DBG, "addrealm: added realm %s", value);
 }
 
 char *parsehostport(char *s, struct clsrvconf *conf) {
@@ -2169,8 +2182,8 @@ void getgeneralconfig(FILE *f, char *block, ...) {
     va_list ap;
     char line[1024];
     /* initialise lots of stuff to avoid stupid compiler warnings */
-    char *tokens[3], *s, *opt = NULL, *val = NULL, *word, *optval, **str = NULL;
-    int type = 0, tcount, conftype = 0;
+    char *tokens[3], *s, *opt = NULL, *val = NULL, *word, *optval, **str = NULL, ***mstr = NULL;
+    int type = 0, tcount, conftype = 0, n;
     void (*cbk)(FILE *, char *, char *, char *) = NULL;
 	
     while (fgets(line, 1024, f)) {
@@ -2229,6 +2242,11 @@ void getgeneralconfig(FILE *f, char *block, ...) {
 		if (!str)
 		    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
 		break;
+	    case CONF_MSTR:
+		mstr = va_arg(ap, char ***);
+		if (!mstr)
+		    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
+		break;
 	    case CONF_CBK:
 		cbk = va_arg(ap, void (*)(FILE *, char *, char *, char *));
 		break;
@@ -2246,7 +2264,8 @@ void getgeneralconfig(FILE *f, char *block, ...) {
 	    debugx(1, DBG_ERR, "configuration error, unknown option %s", opt);
 	}
 
-	if (type != conftype) {
+	if (((type == CONF_STR || type == CONF_MSTR) && conftype != CONF_STR) ||
+	    (type == CONF_CBK && conftype != CONF_CBK)) {
 	    if (block)
 		debugx(1, DBG_ERR, "configuration error in block %s, wrong syntax for option %s", block, opt);
 	    debugx(1, DBG_ERR, "configuration error, wrong syntax for option %s", opt);
@@ -2259,6 +2278,23 @@ void getgeneralconfig(FILE *f, char *block, ...) {
 	    else 
 		debug(DBG_DBG, "getgeneralconfig: %s = %s", opt, val);
 	    *str = stringcopy(val, 0);
+	    if (!*str)
+		debugx(1, DBG_ERR, "malloc failed");
+	    break;
+	case CONF_MSTR:
+	    if (block)
+		debug(DBG_DBG, "getgeneralconfig: block %s: %s = %s", block, opt, val);
+	    else 
+		debug(DBG_DBG, "getgeneralconfig: %s = %s", opt, val);
+	    if (*mstr)
+		for (n = 0; (*mstr)[n]; n++);
+	    else
+		n = 0;
+	    *mstr = realloc(*mstr, sizeof(char *) * (n + 2));
+	    if (!*mstr)
+		debugx(1, DBG_ERR, "malloc failed");
+	    (*mstr)[n] = stringcopy(val, 0);
+	    (*mstr)[n + 1] = NULL;
 	    break;
 	case CONF_CBK:
 	    optval = malloc(strlen(opt) + strlen(val) + 2);
@@ -2421,18 +2457,18 @@ void confserver_cb(FILE *f, char *block, char *opt, char *val) {
 }
 
 void confrealm_cb(FILE *f, char *block, char *opt, char *val) {
-    char *server = NULL, *msg = NULL;
+    char **servers = NULL, *msg = NULL;
     
     debug(DBG_DBG, "confrealm_cb called for %s", block);
     
     getgeneralconfig(f, block,
-		     "server", CONF_STR, &server,
+		     "server", CONF_MSTR, &servers,
 		     "ReplyMessage", CONF_STR, &msg,
 		     NULL
 		     );
 
-    addrealm(val, server, msg);
-    free(server);
+    addrealm(val, servers, msg);
+    free(servers);
 }
 
 void conftls_cb(FILE *f, char *block, char *opt, char *val) {

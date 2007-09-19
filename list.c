@@ -88,7 +88,7 @@ void list_removedata(struct list *list, void *data) {
 
 /* returns first node */
 struct list_node *list_first(struct list *list) {
-    return list->first;
+    return list ? list->first : NULL;
 }
 
 /* returns the next node after the argument */

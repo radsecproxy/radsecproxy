@@ -40,6 +40,7 @@
 
 #define CONF_STR 1
 #define CONF_CBK 2
+#define CONF_MSTR 3
 
 struct options {
     char *listenudp;
@@ -113,7 +114,7 @@ struct realm {
     char *name;
     char *message;
     regex_t regex;
-    struct clsrvconf *srvconf;
+    struct list *srvconfs;
 };
 
 struct tls {
