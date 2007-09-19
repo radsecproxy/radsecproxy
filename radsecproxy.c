@@ -60,8 +60,10 @@ static int server_tls_count = 0;
 
 static struct clsrvconf *tcp_server_listen;
 static struct clsrvconf *udp_server_listen;
+static struct clsrvconf *udp_accserver_listen;
 static struct replyq *udp_server_replyq = NULL;
 static int udp_server_sock = -1;
+static int udp_accserver_sock = -1;
 static pthread_mutex_t *ssl_locks;
 static long *ssl_lock_count;
 extern int optind;
@@ -1247,6 +1249,36 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
     return 1;
 }
 
+void acclog(unsigned char *attrs, int length, char *host) {
+    unsigned char *attr;
+    char username[256];
+    
+    attr = attrget(attrs, length, RAD_Attr_User_Name);
+    if (!attr) {
+	debug(DBG_INFO, "acclog: accounting-request from %s without username attribute", host);
+	return;
+    }
+    memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
+    username[ATTRVALLEN(attr)] = '\0';
+    debug(DBG_INFO, "acclog: accounting-request from %s with username: %s", host, username);
+}
+	
+void respondaccounting(struct request *rq) {
+    unsigned char *resp;
+
+    resp = malloc(20);
+    if (!resp) {
+	debug(DBG_ERR, "respondstatusserver: malloc failed");
+	return;
+    }
+    memcpy(resp, rq->buf, 20);
+    resp[0] = RAD_Accounting_Response;
+    resp[2] = 0;
+    resp[3] = 20;
+    debug(DBG_DBG, "respondaccounting: responding to %s", rq->from->conf->host);
+    sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL);
+}
+
 void respondstatusserver(struct request *rq) {
     unsigned char *resp;
 
@@ -1322,8 +1354,8 @@ void radsrv(struct request *rq) {
 
     debug(DBG_DBG, "radsrv: code %d, id %d, length %d", code, id, len);
     
-    if (code != RAD_Access_Request && code != RAD_Status_Server) {
-	debug(DBG_INFO, "radsrv: server currently accepts only access-requests and status-server, ignoring");
+    if (code != RAD_Access_Request && code != RAD_Status_Server && code != RAD_Accounting_Request) {
+	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
 	free(buf);
 	return;
     }
@@ -1370,14 +1402,23 @@ void radsrv(struct request *rq) {
 	return;
     }
     
+    if (code == RAD_Accounting_Request) {
+	acclog(attrs, len, rq->from->conf->host);
+	respondaccounting(rq);
+	free(buf);
+	return;
+    }
+
     if (code == RAD_Status_Server) {
 	respondstatusserver(rq);
+	free(buf);
 	return;
     }
 
     if (!to) {
 	debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, username);
 	respondreject(rq, realm->message);
+	free(buf);
 	return;
     }
     
@@ -1754,6 +1795,27 @@ void *udpserverrd(void *arg) {
 	memset(&rq, 0, sizeof(struct request));
 	rq.buf = radudpget(udp_server_sock, &rq.from, NULL, &rq.fromsa);
 	radsrv(&rq);
+    }
+}
+
+void *udpaccserverrd(void *arg) {
+    struct request rq;
+
+    if ((udp_accserver_sock = bindtoaddr(udp_accserver_listen->addrinfo)) < 0)
+	debugx(1, DBG_ERR, "udpserverrd: socket/bind failed");
+
+    debug(DBG_WARN, "udpaccserverrd: listening for UDP on %s:%s",
+	  udp_accserver_listen->host ? udp_accserver_listen->host : "*", udp_accserver_listen->port);
+
+    for (;;) {
+	memset(&rq, 0, sizeof(struct request));
+	rq.buf = radudpget(udp_accserver_sock, &rq.from, NULL, &rq.fromsa);
+	if (*(uint8_t *)rq.buf == RAD_Accounting_Request) {
+	    radsrv(&rq);
+	    continue;
+	}
+	debug(DBG_INFO, "udpaccserverrd: got something other than accounting-request, ignoring");
+	free(rq.buf);
     }
 }
 
@@ -2137,16 +2199,14 @@ FILE *openconfigfile(const char *filename) {
     return f;
 }
 
-struct clsrvconf *server_create(char type) {
+struct clsrvconf *server_create(char type, char *lconf) {
     struct clsrvconf *conf;
-    char *lconf;
 
     conf = malloc(sizeof(struct clsrvconf));
     if (!conf)
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
     conf->type = type;
-    lconf = (type == 'T' ? options.listentcp : options.listenudp);
     if (lconf) {
 	parsehostport(lconf, conf);
 	if (!strcmp(conf->host, "*")) {
@@ -2542,6 +2602,7 @@ void getmainconfig(const char *configfile) {
     getgeneralconfig(f, NULL,
 		     "ListenUDP", CONF_STR, &options.listenudp,
 		     "ListenTCP", CONF_STR, &options.listentcp,
+		     "ListenAccountingUDP", CONF_STR, &options.listenaccudp,
 		     "LogLevel", CONF_STR, &loglevel,
 		     "LogDestination", CONF_STR, &options.logdestination,
 		     "Client", CONF_CBK, confclient_cb,
@@ -2592,7 +2653,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 }
 
 int main(int argc, char **argv) {
-    pthread_t udpserverth;
+    pthread_t udpserverth, udpaccserverth;
     struct list_node *entry;
     uint8_t foreground = 0, loglevel = 0;
     char *configfile = NULL;
@@ -2628,10 +2689,15 @@ int main(int argc, char **argv) {
     debug(DBG_INFO, "radsecproxy revision $Rev$ starting");
 
     if (client_udp_count) {
-	udp_server_listen = server_create('U');
+	udp_server_listen = server_create('U', options.listenudp);
 	udp_server_replyq = newreplyq();
 	if (pthread_create(&udpserverth, NULL, udpserverrd, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
+	if (options.listenaccudp) {
+	    udp_accserver_listen = server_create('U', options.listenaccudp);
+	    if (pthread_create(&udpaccserverth, NULL, udpaccserverrd, NULL))
+		debugx(1, DBG_ERR, "pthread_create failed");
+	}
     }
     
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
@@ -2642,7 +2708,7 @@ int main(int argc, char **argv) {
     }
     
     if (client_tls_count) {
-	tcp_server_listen = server_create('T');
+	tcp_server_listen = server_create('T', options.listentcp);
 	return tlslistener();
     }
     
