@@ -1286,6 +1286,26 @@ void respondreject(struct request *rq, char *message) {
     sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL);
 }
 
+struct server *realm2server(struct realm *realm) {
+    struct list_node *entry;
+    struct server *server, *best = NULL;
+    
+    for (entry = list_first(realm->srvconfs); entry; entry = list_next(entry)) {
+	server = ((struct clsrvconf *)entry->data)->servers;
+	if (!server->connectionok)
+	    continue;
+	if (!server->loststatsrv)
+	    return server;
+	if (!best) {
+	    best = server;
+	    continue;
+	}
+	if (server->loststatsrv < best->loststatsrv)
+	    best = server;
+    }
+    return best;
+}
+
 void radsrv(struct request *rq) {
     uint8_t code, id, *auth, *attrs, *attr;
     uint16_t len;
@@ -1293,7 +1313,6 @@ void radsrv(struct request *rq) {
     char username[256];
     unsigned char *buf, newauth[16];
     struct realm *realm = NULL;
-    struct list_node *node;
     
     buf = rq->buf;
     code = *(uint8_t *)buf;
@@ -1335,9 +1354,8 @@ void radsrv(struct request *rq) {
 	    free(buf);
 	    return;
 	}
-	node = list_first(realm->srvconfs);
-	to = ((struct clsrvconf *)node->data)->servers;
-
+	
+	to = realm2server(realm);
 	if (to && rqinqueue(to, rq->from, id)) {
 	    debug(DBG_INFO, "radsrv: already got request from host %s with id %d, ignoring", rq->from->conf->host, id);
 	    free(buf);
@@ -1415,7 +1433,8 @@ void *clientrd(void *arg) {
 	}
     
 	server->connectionok = 1;
-
+	server->loststatsrv = 0;
+	
 	i = buf[1]; /* i is the id */
 
 	switch (*buf) {
@@ -1587,6 +1606,7 @@ void *clientwr(void *arg) {
     if (server->conf->type == 'U') {
 	if ((server->sock = connecttoserver(server->conf->addrinfo)) < 0)
 	    debugx(1, DBG_ERR, "clientwr: connecttoserver failed");
+	server->connectionok = 1;
     } else
 	tlsconnect(server, NULL, "new client");
     
@@ -1653,8 +1673,11 @@ void *clientwr(void *arg) {
 	    if (rq->tries == (*rq->buf == RAD_Status_Server || server->conf->type == 'T'
 			      ? 1 : REQUEST_RETRIES)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
-		if (*rq->buf == RAD_Status_Server)
+		if (*rq->buf == RAD_Status_Server) {
 		    debug(DBG_WARN, "clientwr: no status server response, %s dead?", server->conf->host);
+		    if (server->loststatsrv < 255)
+			server->loststatsrv++;
+		}
 		free(rq->buf);
 		/* setting this to NULL means that it can be reused */
 		rq->buf = NULL;

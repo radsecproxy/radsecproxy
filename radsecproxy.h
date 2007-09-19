@@ -103,6 +103,7 @@ struct server {
     pthread_t clientth;
     struct timeval lastconnecttry;
     uint8_t connectionok;
+    uint8_t loststatsrv;
     int nextid;
     struct request *requests;
     uint8_t newrq;
