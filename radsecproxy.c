@@ -1204,12 +1204,14 @@ void radsrv(struct request *rq) {
     
     if (code == RAD_Status_Server) {
 	respondstatusserver(rq);
+	free(buf);
 	return;
     }
 
     if (!to) {
 	debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->peer.host, username);
 	respondreject(rq, realm->message);
+	free(buf);
 	return;
     }
     
@@ -1351,7 +1353,7 @@ void *clientrd(void *arg) {
 	    if (ATTRVALLEN(attr) <= 4)
 		break;
 	    
-	    if (((uint16_t *)attr)[1] != 0 || ntohs(((uint16_t *)attr)[2]) != 311) /* 311 == MS */
+	    if (attr[2] != 0 || attr[3] != 0 || attr[4] != 1 || attr[5] != 55)  /* 311 == MS */
 		continue;
 	    
 	    sublen = ATTRVALLEN(attr) - 4;
