@@ -130,9 +130,7 @@ dependency on DNS after startup. When some client later sends a request to the
 proxy, the proxy will look at the IP address the request comes from, and then go
 through all the addresses of each of the configured clients, to determine which
 (if any) of the clients this is. In the case of TLS, the name of the client must
-match the FQDN or IP address in the client certificate. Note that at the time of
-writing it must match the certificate CN. This will be extended to check
-subjectAltName if present.
+match the FQDN or IP address in the client certificate.
 .sp
 The allowed options in a client block are \fBtype\fR, \fBsecret\fR, \fBtls\fR
 and \fBmatchcertificateattribute\fR.
@@ -146,7 +144,7 @@ defined, it will try to use the TLS block named \fBdefault\fR. If the specified
 TLS block name does not exist, or the option is not specified and none of the
 defaults exist, the proxy will exit with an error. The matchcertificateattribute
 is optional and can be used to require that certain certificate attributes have
-certain value. Currently the allowed values are of the form
+certain values. Currently the allowed values are of the form
 SubjectAltName:URI:/regexp/ which can be used to specify that SubjectAltName
 URIs in the certificate match the specified regexp.
 .sp
@@ -162,8 +160,7 @@ Hence there is no dependency on DNS after startup. If the domain name resolves
 to multiple addresses, then for UDP the first address is used. For TLS, the proxy
 will loop through the addresses until it can connect to one of them. In the case
 of TLS, the name of the server must match the FQDN or IP address in the server
-certificate. Note that at the time of writing it must match the certificate CN.
-This will be extended to check subjectAltName if present.
+certificate.
 .sp
 The allowed options in a server block are \fBtype\fR, \fBsecret\fR, \fBtls\fR,
 \fBport\fR, \fBstatusServer\fR and \fBmatchcertificateattribute\fR. The values
