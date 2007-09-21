@@ -134,7 +134,8 @@ match the FQDN or IP address in the client certificate. Note that at the time of
 writing it must match the certificate CN. This will be extended to check
 subjectAltName if present.
 .sp
-The allowed options in a client block are \fBtype\fR, \fBsecret\fR and \fBtls\fR.
+The allowed options in a client block are \fBtype\fR, \fBsecret\fR, \fBtls\fR
+and \fBmatchcertificateattribute\fR.
 The value of \fBtype\fR must be either \fBudp\fR or \fBtls\fR. The value of
 \fBsecret\fR is the shared RADIUS key used with this client. If the secret
 contains whitespace, the value must be quoted. This option is optional for TLS.
@@ -143,7 +144,11 @@ be the name of a previously defined TLS block. If this option is not specified,
 the TLS block with the name \fBdefaultclient\fR will be used if defined. If not
 defined, it will try to use the TLS block named \fBdefault\fR. If the specified
 TLS block name does not exist, or the option is not specified and none of the
-defaults exist, the proxy will exit with an error.
+defaults exist, the proxy will exit with an error. The matchcertificateattribute
+is optional and can be used to require that certain certificate attributes have
+certain value. Currently the allowed values are of the form
+SubjectAltName:URI:/regexp/ which can be used to specify that SubjectAltName
+URIs in the certificate match the specified regexp.
 .sp
 
 .SH "SERVER BLOCK"
@@ -161,8 +166,9 @@ certificate. Note that at the time of writing it must match the certificate CN.
 This will be extended to check subjectAltName if present.
 .sp
 The allowed options in a server block are \fBtype\fR, \fBsecret\fR, \fBtls\fR,
-\fBport\fR and \fBstatusServer\fR. The values of \fBtype\fR, \fBsecret\fR and
-\fBtls\fR are just as specified for the \fIclient block\fR above, except that
+\fBport\fR, \fBstatusServer\fR and \fBmatchcertificateattribute\fR. The values
+of \fBtype\fR, \fBsecret\fR, \fBtls\fR and \fBmatchcertificateattribute\fR are
+just as specified for the \fIclient block\fR above, except that
 \fBdefaultserve\fRr (and not \fBdefaultclient\fR) is used as a fallback if the
 \fBtls\fR option is not used.
 .sp

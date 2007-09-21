@@ -2363,7 +2363,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 	    *foreground = 1;
 	    break;
 	case 'v':
-		debugx(0, DBG_ERR, "radsecproxy 1.0-alpha-p1");
+		debugx(0, DBG_ERR, "radsecproxy 1.0");
 	default:
 	    goto usage;
 	}
@@ -2410,7 +2410,7 @@ int main(int argc, char **argv) {
     if (!foreground && (daemon(0, 0) < 0))
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
 	
-    debug(DBG_INFO, "radsecproxy 1.0-alpha-p1 starting");
+    debug(DBG_INFO, "radsecproxy 1.0 starting");
 
     if (client_udp_count) {
 	udp_server_listen = server_create('U');
