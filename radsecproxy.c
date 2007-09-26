@@ -1647,9 +1647,10 @@ void *clientwr(void *arg) {
     if (server->conf->type == 'U') {
 	if ((server->sock = connecttoserver(server->conf->addrinfo)) < 0)
 	    debugx(1, DBG_ERR, "clientwr: connecttoserver failed");
-	server->connectionok = 1;
     } else
 	tlsconnect(server, NULL, "new client");
+    
+    server->connectionok = 1;
     
     if (pthread_create(&clientrdth, NULL, clientrd, (void *)server))
 	debugx(1, DBG_ERR, "clientwr: pthread_create failed");
