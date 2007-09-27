@@ -1299,7 +1299,7 @@ void respondreject(struct request *rq, char *message) {
     unsigned char *resp;
     int len = 20;
 
-    if (message)
+    if (message && *message)
 	len += 2 + strlen(message);
     
     resp = malloc(len);
@@ -1310,7 +1310,7 @@ void respondreject(struct request *rq, char *message) {
     memcpy(resp, rq->buf, 20);
     resp[0] = RAD_Access_Reject;
     *(uint16_t *)(resp + 2) = htons(len);
-    if (message) {
+    if (message && *message) {
 	resp[20] = RAD_Attr_Reply_Message;
 	resp[21] = len - 20;
 	memcpy(resp + 22, message, len - 22);
@@ -1416,8 +1416,10 @@ void radsrv(struct request *rq) {
     }
 
     if (!to) {
-	debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, username);
-	respondreject(rq, realm->message);
+	if (realm->message) {
+	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, username);
+	    respondreject(rq, realm->message);
+	}
 	free(buf);
 	return;
     }
