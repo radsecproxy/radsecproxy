@@ -1249,6 +1249,36 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
     return 1;
 }
 
+void rewriteattr(struct clsrvconf *conf, char *in) {
+    size_t nmatch = 10, reslen = 0, start = 0;
+    regmatch_t pmatch[10], *pfield;
+    int i;
+    char result[1024];
+    char *out = conf->rewriteattrreplacement;
+    
+    if (regexec(conf->rewriteattrregex, in, nmatch, pmatch, 0)) {
+	debug(DBG_DBG, "rewriteattr: username not matching, no rewrite");
+	return;
+    }
+    
+    for (i = start; out[i]; i++) {
+	if (out[i] == '\\' && out[i + 1] >= '1' && out[i + 1] <= '9') {
+	    pfield = &pmatch[out[i + 1] - '0'];
+	    if (pfield->rm_so >= 0) {
+		memcpy(result + reslen, out + start, i - start);
+		reslen += i - start;
+		memcpy(result + reslen, in + pfield->rm_so, pfield->rm_eo - pfield->rm_so);
+		reslen += pfield->rm_eo - pfield->rm_so;
+		start = i + 2;
+	    }
+	    i++;
+	}
+    }
+		
+    memcpy(result + reslen, out + start, i + 1 - start);
+    debug(DBG_DBG, "rewriteattr: username matching, would have rewritten to %s", result);
+}
+		 
 void acclog(unsigned char *attrs, int length, char *host) {
     unsigned char *attr;
     char username[256];
@@ -1380,6 +1410,9 @@ void radsrv(struct request *rq) {
 	username[ATTRVALLEN(attr)] = '\0';
 	debug(DBG_DBG, "Access Request with username: %s", username);
 
+	if (rq->from->conf->rewriteattrregex)
+	    rewriteattr(rq->from->conf, username);
+	
 	realm = id2realm(username, strlen(username));
 	if (!realm) {
 	    debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
