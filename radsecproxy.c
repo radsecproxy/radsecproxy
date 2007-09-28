@@ -2140,7 +2140,7 @@ int addmatchcertattr(struct peer *conf, char *matchcertattr) {
         return 0;
     }
     if (regcomp(conf->certuriregex, v, REG_ICASE | REG_NOSUB)) {
-        regfree(conf->certuriregex);
+        free(conf->certuriregex);
         conf->certuriregex = NULL;
         debug(DBG_ERR, "failed to compile regular expression %s", v);
         return 0;
