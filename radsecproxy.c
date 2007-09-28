@@ -2414,7 +2414,7 @@ int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
 	return 0;
     }
     if (regcomp(conf->certuriregex, v, REG_ICASE | REG_NOSUB)) {
-	regfree(conf->certuriregex);
+	free(conf->certuriregex);
 	conf->certuriregex = NULL;
 	debug(DBG_ERR, "failed to compile regular expression %s", v);
 	return 0;
@@ -2422,8 +2422,48 @@ int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
     return 1;
 }
 
+int addrewriteattr(struct clsrvconf *conf, char *rewriteattr) {
+    char *v, *w;
+    
+    v = rewriteattr + 11;
+    if (strncasecmp(rewriteattr, "User-Name:/", 11) || !*v)
+	return 0;
+    /* regexp, remove optional trailing / if present */
+    if (v[strlen(v) - 1] == '/')
+	v[strlen(v) - 1] = '\0';
+
+    w = strchr(v, '/');
+    if (!*w)
+	return 0;
+    w++;
+    
+    conf->rewriteattrregex = malloc(sizeof(regex_t));
+    if (!conf->rewriteattrregex) {
+	debug(DBG_ERR, "malloc failed");
+	return 0;
+    }
+
+    conf->rewriteattrreplacement = stringcopy(w, 0);
+    if (!conf->rewriteattrreplacement) {
+	free(conf->rewriteattrregex);
+	conf->rewriteattrregex = NULL;
+	return 0;
+    }
+    
+    if (regcomp(conf->rewriteattrregex, v, REG_ICASE | REG_EXTENDED)) {
+	free(conf->rewriteattrregex);
+	conf->rewriteattrregex = NULL;
+	free(conf->rewriteattrreplacement);
+	conf->rewriteattrreplacement = NULL;
+	debug(DBG_ERR, "failed to compile regular expression %s", v);
+	return 0;
+    }
+
+    return 1;
+}
+
 void confclient_cb(FILE *f, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL;
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewriteattr = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confclient_cb called for %s", block);
@@ -2439,6 +2479,7 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
 		     "secret", CONF_STR, &conf->secret,
 		     "tls", CONF_STR, &tls,
 		     "matchcertificateattribute", CONF_STR, &matchcertattr,
+		     "rewriteattribute", CONF_STR, &rewriteattr,
 		     NULL
 		     );
 
@@ -2464,7 +2505,13 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
 	free(tls);
     if (matchcertattr)
 	free(matchcertattr);
-
+    
+    if (rewriteattr) {
+	if (!addrewriteattr(conf, rewriteattr))
+	    debugx(1, DBG_ERR, "error in block %s, invalid RewriteAttributeValue", block);
+	free(rewriteattr);
+    }
+    
     if (!resolvepeer(conf, 0))
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
     

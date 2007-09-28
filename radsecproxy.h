@@ -81,6 +81,8 @@ struct clsrvconf {
     char *port;
     char *secret;
     regex_t *certuriregex;
+    regex_t *rewriteattrregex;
+    char *rewriteattrreplacement;
     uint8_t statusserver;
     SSL_CTX *ssl_ctx;
     struct addrinfo *addrinfo;
