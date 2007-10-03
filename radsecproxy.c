@@ -1256,11 +1256,44 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
     return 1;
 }
 
-int rewriteattr(struct request *rq, char *in) {
+int resizeattr(unsigned char **buf, uint8_t newvallen, uint8_t type) {
+    uint8_t *attrs, *attr, vallen;
+    uint16_t len;
+    unsigned char *new;
+    
+    len = RADLEN(*buf) - 20;
+    attrs = *buf + 20;
+
+    attr = attrget(attrs, len, type);
+    if (!attr)
+	return 0;
+    
+    vallen = ATTRVALLEN(attr);
+    if (vallen == newvallen)
+	return 1;
+
+    len += newvallen - vallen;
+    new = realloc(*buf, len);
+    if (!new) {
+	debug(DBG_ERR, "resizeattr: malloc failed");
+	return 0;
+    }
+    if (new != *buf) {
+	attr += new - *buf;
+	attrs = new + 20;
+	*buf = new;
+    }
+    memmove(attr + 2 + newvallen, attr + 2 + vallen, len - (attr - attrs + newvallen));
+    attr[1] = newvallen + 2;
+    ((uint16_t *)new)[1] = htons(len);
+    return 1;
+}
+		
+int rewriteusername(struct request *rq, char *in) {
     size_t nmatch = 10, reslen = 0, start = 0;
     regmatch_t pmatch[10], *pfield;
     int i;
-    char result[1024];
+    unsigned char *result;
     char *out = rq->from->conf->rewriteattrreplacement;
     
     if (regexec(rq->from->conf->rewriteattrregex, in, nmatch, pmatch, 0)) {
@@ -1276,6 +1309,23 @@ int rewriteattr(struct request *rq, char *in) {
 	if (out[i] == '\\' && out[i + 1] >= '1' && out[i + 1] <= '9') {
 	    pfield = &pmatch[out[i + 1] - '0'];
 	    if (pfield->rm_so >= 0) {
+		reslen += i - start + pfield->rm_eo - pfield->rm_so;
+		start = i + 2;
+	    }
+	    i++;
+	}
+    }
+    reslen += i - start;
+
+    if (!resizeattr(&rq->buf, reslen, RAD_Attr_User_Name))
+	return 0;
+    result = ATTRVAL(attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_User_Name));
+    
+    reslen = 0;
+    for (i = start; out[i]; i++) {
+	if (out[i] == '\\' && out[i + 1] >= '1' && out[i + 1] <= '9') {
+	    pfield = &pmatch[out[i + 1] - '0'];
+	    if (pfield->rm_so >= 0) {
 		memcpy(result + reslen, out + start, i - start);
 		reslen += i - start;
 		memcpy(result + reslen, in + pfield->rm_so, pfield->rm_eo - pfield->rm_so);
@@ -1285,9 +1335,11 @@ int rewriteattr(struct request *rq, char *in) {
 	    i++;
 	}
     }
-		
-    memcpy(result + reslen, out + start, i + 1 - start);
-    debug(DBG_DBG, "rewriteattr: username matching, %s would have rewritten to %s", in, result);
+
+    memcpy(result + reslen, out + start, i - start);
+    reslen += i - start;
+    memcpy(in, result, reslen);
+    in[reslen] = '\0';
     return 1;
 }
 		 
@@ -1385,14 +1437,13 @@ void radsrv(struct request *rq) {
     uint16_t len;
     struct server *to = NULL;
     char username[256];
-    unsigned char *buf, newauth[16];
+    unsigned char newauth[16];
     struct realm *realm = NULL;
     
-    buf = rq->buf;
-    code = *(uint8_t *)buf;
-    id = *(uint8_t *)(buf + 1);
-    len = RADLEN(buf);
-    auth = (uint8_t *)(buf + 4);
+    code = *(uint8_t *)rq->buf;
+    id = *(uint8_t *)(rq->buf + 1);
+    len = RADLEN(rq->buf);
+    auth = (uint8_t *)(rq->buf + 4);
 
     debug(DBG_DBG, "radsrv: code %d, id %d, length %d", code, id, len);
     
@@ -1403,7 +1454,7 @@ void radsrv(struct request *rq) {
     }
 
     len -= 20;
-    attrs = buf + 20;
+    attrs = rq->buf + 20;
 
     if (!attrvalidate(attrs, len)) {
 	debug(DBG_WARN, "radsrv: attribute validation failed, ignoring packet");
@@ -1411,59 +1462,60 @@ void radsrv(struct request *rq) {
 	return;
     }
 
-    if (code == RAD_Access_Request) {
-	attr = attrget(attrs, len, RAD_Attr_User_Name);
-	if (!attr) {
-	    debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
-	    freerqdata(rq);
-	    return;
-	}
-	memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
-	username[ATTRVALLEN(attr)] = '\0';
-
-	if (rq->from->conf->rewriteattrregex)
-	    if (!rewriteattr(rq, username)) {
-		debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
-		freerqdata(rq);
-		return;
-	    }
-
-	if (rq->origusername) 
-	    debug(DBG_DBG, "Access Request with username: %s (originally %s)", username, rq->origusername);
-	else
-	    debug(DBG_DBG, "Access Request with username: %s", username);
-	
-	realm = id2realm(username, strlen(username));
-	if (!realm) {
-	    debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
-	    freerqdata(rq);
-	    return;
-	}
-	
-	to = realm2server(realm);
-	if (to && rqinqueue(to, rq->from, id)) {
-	    debug(DBG_INFO, "radsrv: already got request from host %s with id %d, ignoring", rq->from->conf->host, id);
-	    freerqdata(rq);
-	    return;
-	}
-    }
-    
     attr = attrget(attrs, len, RAD_Attr_Message_Authenticator);
-    if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(buf, ATTRVAL(attr), rq->from->conf->secret))) {
+    if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(rq->buf, ATTRVAL(attr), rq->from->conf->secret))) {
 	debug(DBG_WARN, "radsrv: message authentication failed");
 	freerqdata(rq);
 	return;
     }
-    
-    if (code == RAD_Accounting_Request) {
-	acclog(attrs, len, rq->from->conf->host);
-	respondaccounting(rq);
+
+    if (code != RAD_Access_Request) {
+	switch (code) {
+	case RAD_Accounting_Request:
+	    acclog(attrs, len, rq->from->conf->host);
+	    respondaccounting(rq);
+	    break;
+	case RAD_Status_Server:
+	    respondstatusserver(rq);
+	    break;
+	}
 	freerqdata(rq);
 	return;
     }
 
-    if (code == RAD_Status_Server) {
-	respondstatusserver(rq);
+    /* code == RAD_Access_Request */
+    attr = attrget(attrs, len, RAD_Attr_User_Name);
+    if (!attr) {
+	debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
+	freerqdata(rq);
+	return;
+    }
+    memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
+    username[ATTRVALLEN(attr)] = '\0';
+
+    if (rq->from->conf->rewriteattrregex) {
+	if (!rewriteusername(rq, username)) {
+	    debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
+	    freerqdata(rq);
+	    return;
+	}
+	len = RADLEN(rq->buf) - 20;
+	auth = (uint8_t *)(rq->buf + 4);
+	attrs = rq->buf + 20;
+	debug(DBG_DBG, "Access Request with username: %s (originally %s)", username, rq->origusername);
+    } else
+	debug(DBG_DBG, "Access Request with username: %s", username);
+	
+    realm = id2realm(username, strlen(username));
+    if (!realm) {
+	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
+	freerqdata(rq);
+	return;
+    }
+	
+    to = realm2server(realm);
+    if (to && rqinqueue(to, rq->from, id)) {
+	debug(DBG_INFO, "radsrv: already got request from host %s with id %d, ignoring", rq->from->conf->host, id);
 	freerqdata(rq);
 	return;
     }
