@@ -1256,7 +1256,8 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
     return 1;
 }
 
-int resizeattr(unsigned char **buf, uint8_t newvallen, uint8_t type) {
+/* returns a pointer to the resized attribute value */
+uint8_t *resizeattr(uint8_t **buf, uint8_t newvallen, uint8_t type) {
     uint8_t *attrs, *attr, vallen;
     uint16_t len;
     unsigned char *new;
@@ -1266,11 +1267,11 @@ int resizeattr(unsigned char **buf, uint8_t newvallen, uint8_t type) {
 
     attr = attrget(attrs, len, type);
     if (!attr)
-	return 0;
+	return NULL;
     
     vallen = ATTRVALLEN(attr);
     if (vallen == newvallen)
-	return 1;
+	return attr + 2;
 
     len += newvallen - vallen;
     new = realloc(*buf, len);
@@ -1286,7 +1287,7 @@ int resizeattr(unsigned char **buf, uint8_t newvallen, uint8_t type) {
     memmove(attr + 2 + newvallen, attr + 2 + vallen, len - (attr - attrs + newvallen));
     attr[1] = newvallen + 2;
     ((uint16_t *)new)[1] = htons(len);
-    return 1;
+    return attr + 2;
 }
 		
 int rewriteusername(struct request *rq, char *in) {
@@ -1317,9 +1318,9 @@ int rewriteusername(struct request *rq, char *in) {
     }
     reslen += i - start;
 
-    if (!resizeattr(&rq->buf, reslen, RAD_Attr_User_Name))
+    result = resizeattr(&rq->buf, reslen, RAD_Attr_User_Name);
+    if (!result)
 	return 0;
-    result = ATTRVAL(attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_User_Name));
     
     reslen = 0;
     for (i = start; out[i]; i++) {
@@ -1568,7 +1569,7 @@ void *clientrd(void *arg) {
     struct client *from;
     struct request *rq;
     int i, len, sublen;
-    unsigned char *buf, *messageauth, *subattrs, *attrs, *attr;
+    unsigned char *buf, *messageauth, *subattrs, *attrs, *attr, *username;
     struct sockaddr_storage fromsa;
     struct timeval lastconnecttry;
     char tmp[256];
@@ -1717,6 +1718,20 @@ void *clientrd(void *arg) {
 #ifdef DEBUG	
 	printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
+
+	if (rq->origusername) {
+	    username = resizeattr(&buf, strlen(rq->origusername), RAD_Attr_User_Name);
+	    if (!username) {
+		pthread_mutex_unlock(&server->newrq_mutex);
+		free(buf);
+		continue;
+	    }
+	    memcpy(username, rq->origusername, strlen(rq->origusername));
+	    len = RADLEN(buf) - 20;
+	    attrs = buf + 20;
+	    if (messageauth)
+		messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
+	}
 	
 	if (messageauth) {
 	    if (!createmessageauth(buf, ATTRVAL(messageauth), from->conf->secret)) {
