@@ -1274,19 +1274,21 @@ uint8_t *resizeattr(uint8_t **buf, uint8_t newvallen, uint8_t type) {
 	return attr + 2;
 
     len += newvallen - vallen;
-    new = realloc(*buf, len);
-    if (!new) {
-	debug(DBG_ERR, "resizeattr: malloc failed");
-	return 0;
-    }
-    if (new != *buf) {
-	attr += new - *buf;
-	attrs = new + 20;
-	*buf = new;
+    if (newvallen > vallen) {
+	new = realloc(*buf, len);
+	if (!new) {
+	    debug(DBG_ERR, "resizeattr: malloc failed");
+	    return NULL;
+	}
+	if (new != *buf) {
+	    attr += new - *buf;
+	    attrs = new + 20;
+	    *buf = new;
+	}
     }
     memmove(attr + 2 + newvallen, attr + 2 + vallen, len - (attr - attrs + newvallen));
     attr[1] = newvallen + 2;
-    ((uint16_t *)new)[1] = htons(len);
+    ((uint16_t *)*buf)[1] = htons(len + 20);
     return attr + 2;
 }
 		
@@ -1322,6 +1324,7 @@ int rewriteusername(struct request *rq, char *in) {
     if (!result)
 	return 0;
     
+    start = 0;
     reslen = 0;
     for (i = start; out[i]; i++) {
 	if (out[i] == '\\' && out[i + 1] >= '1' && out[i + 1] <= '9') {
@@ -1503,8 +1506,11 @@ void radsrv(struct request *rq) {
 	len = RADLEN(rq->buf) - 20;
 	auth = (uint8_t *)(rq->buf + 4);
 	attrs = rq->buf + 20;
+    }
+
+    if (rq->origusername)
 	debug(DBG_DBG, "Access Request with username: %s (originally %s)", username, rq->origusername);
-    } else
+    else
 	debug(DBG_DBG, "Access Request with username: %s", username);
 	
     realm = id2realm(username, strlen(username));
@@ -2564,6 +2570,7 @@ int addrewriteattr(struct clsrvconf *conf, char *rewriteattr) {
     w = strchr(v, '/');
     if (!*w)
 	return 0;
+    *w = '\0';
     w++;
     
     conf->rewriteattrregex = malloc(sizeof(regex_t));
