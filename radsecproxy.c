@@ -2410,7 +2410,7 @@ void getgeneralconfig(FILE *f, char *block, ...) {
     while (fgets(line, 1024, f)) {
 	s = line;
 	for (tcount = 0; tcount < 3; tcount++) {
-	    s = strtokenquote(s, &tokens[tcount], " \t\n", "\"'", tcount ? NULL : "#");
+	    s = strtokenquote(s, &tokens[tcount], " \t\r\n", "\"'", tcount ? NULL : "#");
 	    if (!s)
 		debugx(1, DBG_ERR, "Syntax error in line starting with: %s", line);
 	    if (!tokens[tcount])
