@@ -1739,7 +1739,18 @@ int replyh(struct server *server, unsigned char *buf) {
     return 1;
 }
 
-void *clientrd(void *arg) {
+void *udpclientrd(void *arg) {
+    struct server *server = (struct server *)arg;
+    unsigned char *buf;
+    
+    for (;;) {
+	buf = radudpget(server->sock, NULL, &server, NULL);
+	if (!replyh(server, buf))
+	    free(buf);
+    }
+}
+
+void *tlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
     struct timeval lastconnecttry;
@@ -1747,8 +1758,8 @@ void *clientrd(void *arg) {
     for (;;) {
 	/* yes, lastconnecttry is really necessary */
 	lastconnecttry = server->lastconnecttry;
-	buf = (server->conf->type == 'U' ? radudpget(server->sock, NULL, &server, NULL) : radtlsget(server->ssl));
-	if (!buf && server->conf->type == 'T') {
+	buf = radtlsget(server->ssl);
+	if (!buf) {
 	    tlsconnect(server, &lastconnecttry, "clientrd");
 	    continue;
 	}
@@ -1784,14 +1795,16 @@ void *clientwr(void *arg) {
     if (server->conf->type == 'U') {
 	if ((server->sock = connecttoserver(server->conf->addrinfo)) < 0)
 	    debugx(1, DBG_ERR, "clientwr: connecttoserver failed");
-    } else
+	server->connectionok = 1;
+	if (pthread_create(&clientrdth, NULL, udpclientrd, (void *)server))
+	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
+    } else {
 	tlsconnect(server, NULL, "new client");
+	server->connectionok = 1;
+	if (pthread_create(&clientrdth, NULL, tlsclientrd, (void *)server))
+	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
+    }
     
-    server->connectionok = 1;
-    
-    if (pthread_create(&clientrdth, NULL, clientrd, (void *)server))
-	debugx(1, DBG_ERR, "clientwr: pthread_create failed");
-
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->newrq) {
