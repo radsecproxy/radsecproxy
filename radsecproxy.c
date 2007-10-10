@@ -1570,191 +1570,191 @@ void radsrv(struct request *rq) {
     sendrq(to, rq);
 }
 
-void *clientrd(void *arg) {
-    struct server *server = (struct server *)arg;
+int replyh(struct server *server, unsigned char *buf) {
     struct client *from;
     struct request *rq;
     int i, len, sublen;
-    unsigned char *buf, *messageauth, *subattrs, *attrs, *attr, *username;
+    unsigned char *messageauth, *subattrs, *attrs, *attr, *username;
     struct sockaddr_storage fromsa;
-    struct timeval lastconnecttry;
     char tmp[256];
     
+    server->connectionok = 1;
+    server->loststatsrv = 0;
+	
+    i = buf[1]; /* i is the id */
+
+    switch (*buf) {
+    case RAD_Access_Accept:
+	debug(DBG_DBG, "got Access Accept with id %d", i);
+	break;
+    case RAD_Access_Reject:
+	debug(DBG_DBG, "got Access Reject with id %d", i);
+	break;
+    case RAD_Access_Challenge:
+	debug(DBG_DBG, "got Access Challenge with id %d", i);
+	break;
+    default:
+	debug(DBG_INFO, "replyh: discarding, only accept access accept, access reject and access challenge messages");
+	return 0;
+    }
+
+    rq = server->requests + i;
+	
+    pthread_mutex_lock(&server->newrq_mutex);
+    if (!rq->buf || !rq->tries) {
+	pthread_mutex_unlock(&server->newrq_mutex);
+	debug(DBG_INFO, "replyh: no matching request sent with this id, ignoring reply");
+	return 0;
+    }
+
+    if (rq->received) {
+	pthread_mutex_unlock(&server->newrq_mutex);
+	debug(DBG_INFO, "replyh: already received, ignoring reply");
+	return 0;
+    }
+	
+    if (!validauth(buf, rq->buf + 4, (unsigned char *)server->conf->secret)) {
+	pthread_mutex_unlock(&server->newrq_mutex);
+	debug(DBG_WARN, "replyh: invalid auth, ignoring reply");
+	return 0;
+    }
+	
+    from = rq->from;
+    len = RADLEN(buf) - 20;
+    attrs = buf + 20;
+
+    if (!attrvalidate(attrs, len)) {
+	pthread_mutex_unlock(&server->newrq_mutex);
+	debug(DBG_WARN, "replyh: attribute validation failed, ignoring reply");
+	return 0;
+    }
+	
+    /* Message Authenticator */
+    messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
+    if (messageauth) {
+	if (ATTRVALLEN(messageauth) != 16) {
+	    pthread_mutex_unlock(&server->newrq_mutex);
+	    debug(DBG_WARN, "replyh: illegal message auth attribute length, ignoring reply");
+	    return 0;
+	}
+	memcpy(tmp, buf + 4, 16);
+	memcpy(buf + 4, rq->buf + 4, 16);
+	if (!checkmessageauth(buf, ATTRVAL(messageauth), server->conf->secret)) {
+	    pthread_mutex_unlock(&server->newrq_mutex);
+	    debug(DBG_WARN, "replyh: message authentication failed, ignoring reply");
+	    return 0;
+	}
+	memcpy(buf + 4, tmp, 16);
+	debug(DBG_DBG, "replyh: message auth ok");
+    }
+	
+    if (*rq->buf == RAD_Status_Server) {
+	rq->received = 1;
+	pthread_mutex_unlock(&server->newrq_mutex);
+	debug(DBG_INFO, "replyh: got status server response from %s", server->conf->host);
+	return 0;
+    }
+
+    /* MS MPPE */
+    for (attr = attrs; (attr = attrget(attr, len - (attr - attrs), RAD_Attr_Vendor_Specific)); attr += ATTRLEN(attr)) {
+	if (ATTRVALLEN(attr) <= 4)
+	    break;
+	    
+	if (attr[2] != 0 || attr[3] != 0 || attr[4] != 1 || attr[5] != 55)  /* 311 == MS */
+	    continue;
+	    
+	sublen = ATTRVALLEN(attr) - 4;
+	subattrs = ATTRVAL(attr) + 4;  
+	if (!attrvalidate(subattrs, sublen) ||
+	    !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, "MS MPPE Send Key",
+		    rq, server->conf->secret, from->conf->secret) ||
+	    !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Recv_Key, "MS MPPE Recv Key",
+		    rq, server->conf->secret, from->conf->secret))
+	    break;
+    }
+    if (attr) {
+	pthread_mutex_unlock(&server->newrq_mutex);
+	debug(DBG_WARN, "replyh: MS attribute handling failed, ignoring reply");
+	return 0;
+    }
+	
+    if (*buf == RAD_Access_Accept || *buf == RAD_Access_Reject) {
+	attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_User_Name);
+	/* we know the attribute exists */
+	memcpy(tmp, ATTRVAL(attr), ATTRVALLEN(attr));
+	tmp[ATTRVALLEN(attr)] = '\0';
+	switch (*buf) {
+	case RAD_Access_Accept:
+	    if (rq->origusername)
+		debug(DBG_INFO, "Access Accept for %s (originally %s) from %s", tmp, rq->origusername, server->conf->host);
+	    else
+		debug(DBG_INFO, "Access Accept for %s from %s", tmp, server->conf->host);
+	    break;
+	case RAD_Access_Reject:
+	    if (rq->origusername)
+		debug(DBG_INFO, "Access Reject for %s (originally %s) from %s", tmp, rq->origusername, server->conf->host);
+	    else
+		debug(DBG_INFO, "Access Reject for %s from %s", tmp, server->conf->host);
+	    break;
+	}
+    }
+	
+    buf[1] = (char)rq->origid;
+    memcpy(buf + 4, rq->origauth, 16);
+#ifdef DEBUG	
+    printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
+#endif
+
+    if (rq->origusername) {
+	username = resizeattr(&buf, strlen(rq->origusername), RAD_Attr_User_Name);
+	if (!username) {
+	    pthread_mutex_unlock(&server->newrq_mutex);
+	    debug(DBG_WARN, "replyh: malloc failed, ignoring reply");
+	    return 0;
+	}
+	memcpy(username, rq->origusername, strlen(rq->origusername));
+	len = RADLEN(buf) - 20;
+	attrs = buf + 20;
+	if (messageauth)
+	    messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
+    }
+	
+    if (messageauth) {
+	if (!createmessageauth(buf, ATTRVAL(messageauth), from->conf->secret)) {
+	    pthread_mutex_unlock(&server->newrq_mutex);
+	    debug(DBG_WARN, "replyh: failed to create authenticator, malloc failed?, ignoring reply");
+	    return 0;
+	}
+	debug(DBG_DBG, "replyh: computed messageauthattr");
+    }
+
+    if (from->conf->type == 'U')
+	fromsa = rq->fromsa;
+    /* once we set received = 1, rq may be reused */
+    rq->received = 1;
+    pthread_mutex_unlock(&server->newrq_mutex);
+
+    debug(DBG_DBG, "replyh: giving packet back to where it came from");
+    sendreply(from, buf, from->conf->type == 'U' ? &fromsa : NULL);
+    return 1;
+}
+
+void *clientrd(void *arg) {
+    struct server *server = (struct server *)arg;
+    unsigned char *buf;
+    struct timeval lastconnecttry;
+    
     for (;;) {
+	/* yes, lastconnecttry is really necessary */
 	lastconnecttry = server->lastconnecttry;
 	buf = (server->conf->type == 'U' ? radudpget(server->sock, NULL, &server, NULL) : radtlsget(server->ssl));
 	if (!buf && server->conf->type == 'T') {
 	    tlsconnect(server, &lastconnecttry, "clientrd");
 	    continue;
 	}
-    
-	server->connectionok = 1;
-	server->loststatsrv = 0;
-	
-	i = buf[1]; /* i is the id */
 
-	switch (*buf) {
-	case RAD_Access_Accept:
-	    debug(DBG_DBG, "got Access Accept with id %d", i);
-	    break;
-	case RAD_Access_Reject:
-	    debug(DBG_DBG, "got Access Reject with id %d", i);
-	    break;
-	case RAD_Access_Challenge:
-	    debug(DBG_DBG, "got Access Challenge with id %d", i);
-	    break;
-	default:
+	if (!replyh(server, buf))
 	    free(buf);
-	    debug(DBG_INFO, "clientrd: discarding, only accept access accept, access reject and access challenge messages");
-	    continue;
-	}
-
-	rq = server->requests + i;
-	
-	pthread_mutex_lock(&server->newrq_mutex);
-	if (!rq->buf || !rq->tries) {
-	    pthread_mutex_unlock(&server->newrq_mutex);
-	    free(buf);
-	    debug(DBG_INFO, "clientrd: no matching request sent with this id, ignoring");
-	    continue;
-	}
-
-	if (rq->received) {
-	    pthread_mutex_unlock(&server->newrq_mutex);
-	    free(buf);
-	    debug(DBG_INFO, "clientrd: already received, ignoring");
-	    continue;
-	}
-	
-	if (!validauth(buf, rq->buf + 4, (unsigned char *)server->conf->secret)) {
-	    pthread_mutex_unlock(&server->newrq_mutex);
-	    free(buf);
-	    debug(DBG_WARN, "clientrd: invalid auth, ignoring");
-	    continue;
-	}
-	
-	from = rq->from;
-	len = RADLEN(buf) - 20;
-	attrs = buf + 20;
-
-	if (!attrvalidate(attrs, len)) {
-	    pthread_mutex_unlock(&server->newrq_mutex);
-	    free(buf);
-	    debug(DBG_WARN, "clientrd: attribute validation failed, ignoring packet");
-	    continue;
-	}
-	
-	/* Message Authenticator */
-	messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
-	if (messageauth) {
-	    if (ATTRVALLEN(messageauth) != 16) {
-		pthread_mutex_unlock(&server->newrq_mutex);
-		free(buf);
-		debug(DBG_WARN, "clientrd: illegal message auth attribute length, ignoring packet");
-		continue;
-	    }
-	    memcpy(tmp, buf + 4, 16);
-	    memcpy(buf + 4, rq->buf + 4, 16);
-	    if (!checkmessageauth(buf, ATTRVAL(messageauth), server->conf->secret)) {
-		pthread_mutex_unlock(&server->newrq_mutex);
-		free(buf);
-		debug(DBG_WARN, "clientrd: message authentication failed");
-		continue;
-	    }
-	    memcpy(buf + 4, tmp, 16);
-	    debug(DBG_DBG, "clientrd: message auth ok");
-	}
-	
-	if (*rq->buf == RAD_Status_Server) {
-	    rq->received = 1;
-	    pthread_mutex_unlock(&server->newrq_mutex);
-	    free(buf);
-	    debug(DBG_INFO, "clientrd: got status server response from %s", server->conf->host);
-	    continue;
-	}
-
-	/* MS MPPE */
-	for (attr = attrs; (attr = attrget(attr, len - (attr - attrs), RAD_Attr_Vendor_Specific)); attr += ATTRLEN(attr)) {
-	    if (ATTRVALLEN(attr) <= 4)
-		break;
-	    
-	    if (attr[2] != 0 || attr[3] != 0 || attr[4] != 1 || attr[5] != 55)  /* 311 == MS */
-		continue;
-	    
-	    sublen = ATTRVALLEN(attr) - 4;
-	    subattrs = ATTRVAL(attr) + 4;  
-	    if (!attrvalidate(subattrs, sublen) ||
-		!msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, "MS MPPE Send Key",
-			rq, server->conf->secret, from->conf->secret) ||
-		!msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Recv_Key, "MS MPPE Recv Key",
-			rq, server->conf->secret, from->conf->secret))
-		break;
-	}
-	if (attr) {
-	    pthread_mutex_unlock(&server->newrq_mutex);
-	    free(buf);
-	    debug(DBG_WARN, "clientrd: MS attribute handling failed, ignoring packet");
-	    continue;
-	}
-	
-	if (*buf == RAD_Access_Accept || *buf == RAD_Access_Reject) {
-	    attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_User_Name);
-	    /* we know the attribute exists */
-	    memcpy(tmp, ATTRVAL(attr), ATTRVALLEN(attr));
-	    tmp[ATTRVALLEN(attr)] = '\0';
-	    switch (*buf) {
-	    case RAD_Access_Accept:
-		if (rq->origusername)
-		    debug(DBG_INFO, "Access Accept for %s (originally %s) from %s", tmp, rq->origusername, server->conf->host);
-		else
-		    debug(DBG_INFO, "Access Accept for %s from %s", tmp, server->conf->host);
-		break;
-	    case RAD_Access_Reject:
-		if (rq->origusername)
-		    debug(DBG_INFO, "Access Reject for %s (originally %s) from %s", tmp, rq->origusername, server->conf->host);
-		else
-		    debug(DBG_INFO, "Access Reject for %s from %s", tmp, server->conf->host);
-		break;
-	    }
-	}
-	
-	/* once we set received = 1, rq may be reused */
-	buf[1] = (char)rq->origid;
-	memcpy(buf + 4, rq->origauth, 16);
-#ifdef DEBUG	
-	printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
-#endif
-
-	if (rq->origusername) {
-	    username = resizeattr(&buf, strlen(rq->origusername), RAD_Attr_User_Name);
-	    if (!username) {
-		pthread_mutex_unlock(&server->newrq_mutex);
-		free(buf);
-		continue;
-	    }
-	    memcpy(username, rq->origusername, strlen(rq->origusername));
-	    len = RADLEN(buf) - 20;
-	    attrs = buf + 20;
-	    if (messageauth)
-		messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
-	}
-	
-	if (messageauth) {
-	    if (!createmessageauth(buf, ATTRVAL(messageauth), from->conf->secret)) {
-		pthread_mutex_unlock(&server->newrq_mutex);
-		free(buf);
-		continue;
-	    }
-	    debug(DBG_DBG, "clientrd: computed messageauthattr");
-	}
-
-	if (from->conf->type == 'U')
-	    fromsa = rq->fromsa;
-	rq->received = 1;
-	pthread_mutex_unlock(&server->newrq_mutex);
-
-	debug(DBG_DBG, "clientrd: giving packet back to where it came from");
-	sendreply(from, buf, from->conf->type == 'U' ? &fromsa : NULL);
     }
 }
 
