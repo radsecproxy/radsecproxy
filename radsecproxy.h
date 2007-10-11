@@ -109,7 +109,7 @@ struct realm {
     char *name;
     char *message;
     regex_t regex;
-    struct server *server;
+    int serverno;
 };
 
 struct tls {

@@ -1186,7 +1186,7 @@ void radsrv(struct request *rq) {
 	    free(buf);
 	    return;
 	}
-	to = realm->server;
+	to = servers + realm->serverno;
 
 	if (to && rqinqueue(to, rq->from, id)) {
 	    debug(DBG_INFO, "radsrv: already got request from host %s with id %d, ignoring", rq->from->peer.host, id);
@@ -1879,7 +1879,7 @@ void addrealm(char *value, char *server, char *message) {
 	debugx(1, DBG_ERR, "ReplyMessage can be at most 253 bytes");
     realm->message = message;
     if (server)
-	realm->server = servers + i;
+	realm->serverno = i;
     if (regcomp(&realm->regex, regex ? regex : value + 1, REG_ICASE | REG_NOSUB))
 	debugx(1, DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
     if (regex)
@@ -2365,7 +2365,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 	    *foreground = 1;
 	    break;
 	case 'v':
-		debugx(0, DBG_ERR, "radsecproxy 1.0");
+		debugx(0, DBG_ERR, "radsecproxy 1.0p1");
 	default:
 	    goto usage;
 	}
