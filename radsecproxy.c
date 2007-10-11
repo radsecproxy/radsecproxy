@@ -2106,6 +2106,8 @@ void getgeneralconfig(FILE *f, char *block, ...) {
 		debug(DBG_DBG, "getgeneralconfig: block %s: %s = %s", block, opt, val);
 	    else 
 		debug(DBG_DBG, "getgeneralconfig: %s = %s", opt, val);
+	    if (*str)
+		debugx(1, DBG_ERR, "configuration error, option %s already set to %s", opt, *str);
 	    *str = stringcopy(val, 0);
 	    break;
 	case CONF_CBK:
