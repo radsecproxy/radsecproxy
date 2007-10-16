@@ -1,0 +1,4 @@
+1.0p1 released 2007.10.16
+  Fixed crash when configuring servers after the first realm statement
+	
+1.0 released 2007.09.21
