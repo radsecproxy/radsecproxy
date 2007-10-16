@@ -2412,7 +2412,7 @@ int main(int argc, char **argv) {
     if (!foreground && (daemon(0, 0) < 0))
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
 	
-    debug(DBG_INFO, "radsecproxy 1.0 starting");
+    debug(DBG_INFO, "radsecproxy 1.0p1 starting");
 
     if (client_udp_count) {
 	udp_server_listen = server_create('U');

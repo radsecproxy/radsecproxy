@@ -1,4 +1,4 @@
-This is radsecproxy version 1.0, which is a generic RADIUS
+This is radsecproxy version 1.0p1, which is a generic RADIUS
 proxy that can support various RADIUS clients over UDP or TLS
 (RadSec).
 
@@ -33,4 +33,4 @@ let me know if you feel left out.
 For more information, feedback etc. please see the information
 at http://software.uninett.no/radsecproxy/
 
-Stig Venaas <venaas@uninett.no> -- 2007.09.21
+Stig Venaas <venaas@uninett.no> -- 2007.10.16
