@@ -64,6 +64,8 @@ static struct clsrvconf *udp_accserver_listen;
 static struct replyq *udp_server_replyq = NULL;
 static int udp_server_sock = -1;
 static int udp_accserver_sock = -1;
+static int udp_client4_sock = -1;
+static int udp_client6_sock = -1;
 static pthread_mutex_t *ssl_locks;
 static long *ssl_lock_count;
 extern int optind;
@@ -354,8 +356,10 @@ void removeclient(struct client *client) {
 }
 
 void addserver(struct clsrvconf *conf) {
+    int on = 1;
+    
     if (conf->servers)
-	debugx(1, DBG_ERR, "currently works with just one server per conf");
+	debugx(1, DBG_ERR, "addserver: currently works with just one server per conf");
     
     conf->servers = malloc(sizeof(struct server));
     if (!conf->servers)
@@ -363,7 +367,40 @@ void addserver(struct clsrvconf *conf) {
     memset(conf->servers, 0, sizeof(struct server));
     conf->servers->conf = conf;
 
-    conf->servers->sock = -1;
+    if (conf->type == 'U') {
+	switch (conf->addrinfo->ai_family) {
+	case AF_INET:
+	    if (udp_client4_sock < 0) {
+		struct sockaddr_in sa;
+		memset(&sa, 0, sizeof(sa));
+		udp_client4_sock = socket(AF_INET, conf->addrinfo->ai_socktype, conf->addrinfo->ai_protocol);
+		if (udp_client4_sock < 0)
+		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+		if (!bind(udp_client4_sock, (struct sockaddr *)&sa, sizeof(sa)))
+		    debugx(1, DBG_ERR, "addserver: failed to bind client socket for server %s", conf->host);
+	    }
+	    conf->servers->sock = udp_client4_sock;
+	case AF_INET6:
+	    if (udp_client6_sock < 0) {
+		struct sockaddr_in6 sa;
+		memset(&sa, 0, sizeof(sa));
+		udp_client6_sock = socket(AF_INET6, conf->addrinfo->ai_socktype, conf->addrinfo->ai_protocol);
+		if (udp_client6_sock < 0)
+		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+#ifdef IPV6_V6ONLY
+		setsockopt(udp_client6_sock, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&on, sizeof(on));
+#endif		
+		if (!bind(udp_client6_sock, (struct sockaddr *)&sa, sizeof(sa)))
+		    debugx(1, DBG_ERR, "addserver: failed to bind client socket for server %s", conf->host);
+	    }
+	    conf->servers->sock = udp_client6_sock;
+	default:
+	    debugx(1, DBG_ERR, "addserver: unsupported address family");
+	}
+	
+    } else
+	conf->servers->sock = -1;
+    
     pthread_mutex_init(&conf->servers->lock, NULL);
     conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct request));
     if (!conf->servers->requests)
@@ -722,11 +759,12 @@ int clientradput(struct server *server, unsigned char *rad) {
     size_t len;
     unsigned long error;
     struct timeval lastconnecttry;
+    struct clsrvconf *conf = server->conf;
     
     len = RADLEN(rad);
-    if (server->conf->type == 'U') {
-	if (send(server->sock, rad, len, 0) >= 0) {
-	    debug(DBG_DBG, "clienradput: sent UDP of length %d to %s port %s", len, server->conf->host, server->conf->port);
+    if (conf->type == 'U') {
+	if (sendto(server->sock, rad, len, 0, conf->addrinfo->ai_addr, conf->addrinfo->ai_addrlen) >= 0) {
+	    debug(DBG_DBG, "clienradput: sent UDP of length %d to %s port %s", len, conf->host, conf->port);
 	    return 1;
 	}
 	debug(DBG_WARN, "clientradput: send failed");
@@ -742,8 +780,7 @@ int clientradput(struct server *server, unsigned char *rad) {
     }
 
     server->connectionok = 1;
-    debug(DBG_DBG, "clientradput: Sent %d bytes, Radius packet of length %d to TLS peer %s",
-	   cnt, len, server->conf->host);
+    debug(DBG_DBG, "clientradput: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->host);
     return 1;
 }
 
@@ -1740,11 +1777,13 @@ int replyh(struct server *server, unsigned char *buf) {
 }
 
 void *udpclientrd(void *arg) {
-    struct server *server = (struct server *)arg;
+    struct server *server;
     unsigned char *buf;
+    int *s = (int *)arg;
     
     for (;;) {
-	buf = radudpget(server->sock, NULL, &server, NULL);
+	server = NULL;
+	buf = radudpget(*s, NULL, &server, NULL);
 	if (!replyh(server, buf))
 	    free(buf);
     }
@@ -1772,7 +1811,7 @@ void *tlsclientrd(void *arg) {
 void *clientwr(void *arg) {
     struct server *server = (struct server *)arg;
     struct request *rq;
-    pthread_t clientrdth;
+    pthread_t tlsclientrdth;
     int i;
     uint8_t rnd;
     struct timeval now, lastsend;
@@ -1793,15 +1832,11 @@ void *clientwr(void *arg) {
     }
     
     if (server->conf->type == 'U') {
-	if ((server->sock = connecttoserver(server->conf->addrinfo)) < 0)
-	    debugx(1, DBG_ERR, "clientwr: connecttoserver failed");
 	server->connectionok = 1;
-	if (pthread_create(&clientrdth, NULL, udpclientrd, (void *)server))
-	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
     } else {
 	tlsconnect(server, NULL, "new client");
 	server->connectionok = 1;
-	if (pthread_create(&clientrdth, NULL, tlsclientrd, (void *)server))
+	if (pthread_create(&tlsclientrdth, NULL, tlsclientrd, (void *)server))
 	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
     }
     
@@ -2854,7 +2889,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 }
 
 int main(int argc, char **argv) {
-    pthread_t udpserverth, udpaccserverth;
+    pthread_t udpserverth, udpaccserverth, udpclient4rdth, udpclient6rdth;
     struct list_node *entry;
     uint8_t foreground = 0, loglevel = 0;
     char *configfile = NULL;
@@ -2907,6 +2942,13 @@ int main(int argc, char **argv) {
 			   (void *)((struct clsrvconf *)entry->data)->servers))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
+
+    if (udp_client4_sock >= 0)
+	if (pthread_create(&udpclient4rdth, NULL, udpclientrd, (void *)&udp_client4_sock))
+	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
+    if (udp_client6_sock >= 0)
+	if (pthread_create(&udpclient6rdth, NULL, udpclientrd, (void *)&udp_client6_sock))
+	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
     
     if (client_tls_count) {
 	tcp_server_listen = server_create('T', options.listentcp);
