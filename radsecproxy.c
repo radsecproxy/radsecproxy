@@ -600,46 +600,48 @@ int tlsverifycert(SSL *ssl, struct clsrvconf *conf) {
 	debug(DBG_ERR, "tlsverifycert: failed to obtain certificate");
 	return 0;
     }
-    
-    if (inet_pton(AF_INET, conf->host, &addr))
-	type = AF_INET;
-    else if (inet_pton(AF_INET6, conf->host, &addr))
-	type = AF_INET6;
 
-    r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, conf->host, NULL);
-    if (r) {
-	if (r < 0) {
-	    X509_free(cert);
-	    debug(DBG_DBG, "tlsverifycert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
-	    return 0;
-	}
-	debug(DBG_DBG, "tlsverifycert: Found subjectaltname matching %s %s", type ? "address" : "host", conf->host);
-    } else {
-	nm = X509_get_subject_name(cert);
-	loc = -1;
-	for (;;) {
-	    loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
-	    if (loc == -1)
-		break;
-	    e = X509_NAME_get_entry(nm, loc);
-	    s = X509_NAME_ENTRY_get_data(e);
-	    v = (char *) ASN1_STRING_data(s);
-	    l = ASN1_STRING_length(s);
-	    if (l < 0)
-		continue;
-#ifdef DEBUG
-	    printfchars(NULL, "cn", NULL, v, l);
-#endif	    
-	    if (l == strlen(conf->host) && !strncasecmp(conf->host, v, l)) {
-		r = 1;
-		debug(DBG_DBG, "tlsverifycert: Found cn matching host %s", conf->host);
-		break;
+    if (conf->prefixlen == 255) {
+	if (inet_pton(AF_INET, conf->host, &addr))
+	    type = AF_INET;
+	else if (inet_pton(AF_INET6, conf->host, &addr))
+	    type = AF_INET6;
+
+	r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, conf->host, NULL);
+	if (r) {
+	    if (r < 0) {
+		X509_free(cert);
+		debug(DBG_DBG, "tlsverifycert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
+		return 0;
 	    }
-	}
-	if (!r) {
-	    X509_free(cert);
-	    debug(DBG_ERR, "tlsverifycert: cn not matching host %s", conf->host);
-	    return 0;
+	    debug(DBG_DBG, "tlsverifycert: Found subjectaltname matching %s %s", type ? "address" : "host", conf->host);
+	} else {
+	    nm = X509_get_subject_name(cert);
+	    loc = -1;
+	    for (;;) {
+		loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
+		if (loc == -1)
+		    break;
+		e = X509_NAME_get_entry(nm, loc);
+		s = X509_NAME_ENTRY_get_data(e);
+		v = (char *) ASN1_STRING_data(s);
+		l = ASN1_STRING_length(s);
+		if (l < 0)
+		    continue;
+#ifdef DEBUG
+		printfchars(NULL, "cn", NULL, v, l);
+#endif	    
+		if (l == strlen(conf->host) && !strncasecmp(conf->host, v, l)) {
+		    r = 1;
+		    debug(DBG_DBG, "tlsverifycert: Found cn matching host %s", conf->host);
+		    break;
+		}
+	    }
+	    if (!r) {
+		X509_free(cert);
+		debug(DBG_ERR, "tlsverifycert: cn not matching host %s", conf->host);
+		return 0;
+	    }
 	}
     }
     if (conf->certuriregex) {
