@@ -373,27 +373,31 @@ void addserver(struct clsrvconf *conf) {
 	    if (udp_client4_sock < 0) {
 		struct sockaddr_in sa;
 		memset(&sa, 0, sizeof(sa));
-		udp_client4_sock = socket(AF_INET, conf->addrinfo->ai_socktype, conf->addrinfo->ai_protocol);
+		sa.sin_family = AF_INET;
+		udp_client4_sock = socket(PF_INET, conf->addrinfo->ai_socktype, conf->addrinfo->ai_protocol);
 		if (udp_client4_sock < 0)
 		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
-		if (!bind(udp_client4_sock, (struct sockaddr *)&sa, sizeof(sa)))
+		if (bind(udp_client4_sock, (struct sockaddr *)&sa, sizeof(sa)))
 		    debugx(1, DBG_ERR, "addserver: failed to bind client socket for server %s", conf->host);
 	    }
 	    conf->servers->sock = udp_client4_sock;
+	    break;
 	case AF_INET6:
 	    if (udp_client6_sock < 0) {
 		struct sockaddr_in6 sa;
 		memset(&sa, 0, sizeof(sa));
-		udp_client6_sock = socket(AF_INET6, conf->addrinfo->ai_socktype, conf->addrinfo->ai_protocol);
+		sa.sin6_family = AF_INET6;
+		udp_client6_sock = socket(PF_INET6, conf->addrinfo->ai_socktype, conf->addrinfo->ai_protocol);
 		if (udp_client6_sock < 0)
 		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
 #ifdef IPV6_V6ONLY
 		setsockopt(udp_client6_sock, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&on, sizeof(on));
 #endif		
-		if (!bind(udp_client6_sock, (struct sockaddr *)&sa, sizeof(sa)))
+		if (bind(udp_client6_sock, (struct sockaddr *)&sa, sizeof(sa)))
 		    debugx(1, DBG_ERR, "addserver: failed to bind client socket for server %s", conf->host);
 	    }
 	    conf->servers->sock = udp_client6_sock;
+	    break;
 	default:
 	    debugx(1, DBG_ERR, "addserver: unsupported address family");
 	}
