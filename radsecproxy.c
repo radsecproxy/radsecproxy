@@ -58,9 +58,6 @@ static int client_tls_count = 0;
 static int server_udp_count = 0;
 static int server_tls_count = 0;
 
-static struct clsrvconf *tcp_server_listen;
-static struct clsrvconf *udp_server_listen;
-static struct clsrvconf *udp_accserver_listen;
 static struct replyq *udp_server_replyq = NULL;
 static int udp_server_sock = -1;
 static int udp_accserver_sock = -1;
@@ -1389,7 +1386,66 @@ int rewriteusername(struct request *rq, char *in) {
     in[reslen] = '\0';
     return 1;
 }
-		 
+
+char *parsehostport(char *s, struct clsrvconf *conf) {
+    char *p, *field;
+    int ipv6 = 0;
+
+    p = s;
+    /* allow literal addresses and port, e.g. [2001:db8::1]:1812 */
+    if (*p == '[') {
+	p++;
+	field = p;
+	for (; *p && *p != ']' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
+	if (*p != ']')
+	    debugx(1, DBG_ERR, "no ] matching initial [");
+	ipv6 = 1;
+    } else {
+	field = p;
+	for (; *p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
+    }
+    if (field == p)
+	debugx(1, DBG_ERR, "missing host/address");
+
+    conf->host = stringcopy(field, p - field);
+    if (ipv6) {
+	p++;
+	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n')
+	    debugx(1, DBG_ERR, "unexpected character after ]");
+    }
+    if (*p == ':') {
+	    /* port number or service name is specified */;
+	    field = ++p;
+	    for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
+	    if (field == p)
+		debugx(1, DBG_ERR, "syntax error, : but no following port");
+	    conf->port = stringcopy(field, p - field);
+    } else
+	conf->port = stringcopy(conf->type == 'U' ? DEFAULT_UDP_PORT : DEFAULT_TLS_PORT, 0);
+    return p;
+}
+
+struct clsrvconf *resolve_hostport(char type, char *lconf) {
+    struct clsrvconf *conf;
+
+    conf = malloc(sizeof(struct clsrvconf));
+    if (!conf)
+	debugx(1, DBG_ERR, "malloc failed");
+    memset(conf, 0, sizeof(struct clsrvconf));
+    conf->type = type;
+    if (lconf) {
+	parsehostport(lconf, conf);
+	if (!strcmp(conf->host, "*")) {
+	    free(conf->host);
+	    conf->host = NULL;
+	}
+    } else
+	conf->port = stringcopy(type == 'T' ? DEFAULT_TLS_PORT : DEFAULT_UDP_PORT, 0);
+    if (!resolvepeer(conf, AI_PASSIVE))
+	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
+    return conf;
+}
+
 void acclog(unsigned char *attrs, int length, char *host) {
     unsigned char *attr;
     char username[256];
@@ -1973,13 +2029,16 @@ void *udpserverwr(void *arg) {
 void *udpserverrd(void *arg) {
     struct request rq;
     pthread_t udpserverwrth;
+    struct clsrvconf *listenres;
 
-    if ((udp_server_sock = bindtoaddr(udp_server_listen->addrinfo)) < 0)
+    listenres = resolve_hostport('U', options.listenudp);
+    if ((udp_server_sock = bindtoaddr(listenres->addrinfo)) < 0)
 	debugx(1, DBG_ERR, "udpserverrd: socket/bind failed");
 
     debug(DBG_WARN, "udpserverrd: listening for UDP on %s:%s",
-	  udp_server_listen->host ? udp_server_listen->host : "*", udp_server_listen->port);
-
+	  listenres->host ? listenres->host : "*", listenres->port);
+    free(listenres);
+    
     if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	debugx(1, DBG_ERR, "pthread_create failed");
     
@@ -1992,13 +2051,16 @@ void *udpserverrd(void *arg) {
 
 void *udpaccserverrd(void *arg) {
     struct request rq;
-
-    if ((udp_accserver_sock = bindtoaddr(udp_accserver_listen->addrinfo)) < 0)
+    struct clsrvconf *listenres;
+    
+    listenres = resolve_hostport('U', options.listenaccudp);
+    if ((udp_accserver_sock = bindtoaddr(listenres->addrinfo)) < 0)
 	debugx(1, DBG_ERR, "udpserverrd: socket/bind failed");
 
     debug(DBG_WARN, "udpaccserverrd: listening for UDP on %s:%s",
-	  udp_accserver_listen->host ? udp_accserver_listen->host : "*", udp_accserver_listen->port);
-
+	  listenres->host ? listenres->host : "*", listenres->port);
+    free(listenres);
+    
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
 	rq.buf = radudpget(udp_accserver_sock, &rq.from, NULL, &rq.fromsa);
@@ -2107,14 +2169,16 @@ int tlslistener() {
     size_t fromlen = sizeof(from);
     struct clsrvconf *conf;
     struct client *client;
+    struct clsrvconf *listenres;
     
-    if ((s = bindtoaddr(tcp_server_listen->addrinfo)) < 0)
+    listenres = resolve_hostport('T', options.listentcp);
+    if ((s = bindtoaddr(listenres->addrinfo)) < 0)
         debugx(1, DBG_ERR, "tlslistener: socket/bind failed");
     
     listen(s, 0);
-    debug(DBG_WARN, "listening for incoming TCP on %s:%s",
-	  tcp_server_listen->host ? tcp_server_listen->host : "*", tcp_server_listen->port);
-
+    debug(DBG_WARN, "listening for incoming TCP on %s:%s", listenres->host ? listenres->host : "*", listenres->port);
+    free(listenres);
+    
     for (;;) {
 	snew = accept(s, (struct sockaddr *)&from, &fromlen);
 	if (snew < 0) {
@@ -2329,44 +2393,6 @@ void addrealm(char *value, char **servers, char *message) {
     debug(DBG_DBG, "addrealm: added realm %s", value);
 }
 
-char *parsehostport(char *s, struct clsrvconf *conf) {
-    char *p, *field;
-    int ipv6 = 0;
-
-    p = s;
-    /* allow literal addresses and port, e.g. [2001:db8::1]:1812 */
-    if (*p == '[') {
-	p++;
-	field = p;
-	for (; *p && *p != ']' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	if (*p != ']')
-	    debugx(1, DBG_ERR, "no ] matching initial [");
-	ipv6 = 1;
-    } else {
-	field = p;
-	for (; *p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-    }
-    if (field == p)
-	debugx(1, DBG_ERR, "missing host/address");
-
-    conf->host = stringcopy(field, p - field);
-    if (ipv6) {
-	p++;
-	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n')
-	    debugx(1, DBG_ERR, "unexpected character after ]");
-    }
-    if (*p == ':') {
-	    /* port number or service name is specified */;
-	    field = ++p;
-	    for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	    if (field == p)
-		debugx(1, DBG_ERR, "syntax error, : but no following port");
-	    conf->port = stringcopy(field, p - field);
-    } else
-	conf->port = stringcopy(conf->type == 'U' ? DEFAULT_UDP_PORT : DEFAULT_TLS_PORT, 0);
-    return p;
-}
-
 FILE *openconfigfile(const char *filename) {
     FILE *f;
     char pathname[100], *base = NULL;
@@ -2389,27 +2415,6 @@ FILE *openconfigfile(const char *filename) {
     
     debug(DBG_DBG, "reading config file %s", base);
     return f;
-}
-
-struct clsrvconf *server_create(char type, char *lconf) {
-    struct clsrvconf *conf;
-
-    conf = malloc(sizeof(struct clsrvconf));
-    if (!conf)
-	debugx(1, DBG_ERR, "malloc failed");
-    memset(conf, 0, sizeof(struct clsrvconf));
-    conf->type = type;
-    if (lconf) {
-	parsehostport(lconf, conf);
-	if (!strcmp(conf->host, "*")) {
-	    free(conf->host);
-	    conf->host = NULL;
-	}
-    } else
-	conf->port = stringcopy(type == 'T' ? DEFAULT_TLS_PORT : DEFAULT_UDP_PORT, 0);
-    if (!resolvepeer(conf, AI_PASSIVE))
-	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
-    return conf;
 }
 
 /* returns NULL on error, where to continue parsing if token and ok. E.g. "" will return token with empty string */
@@ -2931,15 +2936,12 @@ int main(int argc, char **argv) {
     debug(DBG_INFO, "radsecproxy revision $Rev$ starting");
 
     if (client_udp_count) {
-	udp_server_listen = server_create('U', options.listenudp);
 	udp_server_replyq = newreplyq();
 	if (pthread_create(&udpserverth, NULL, udpserverrd, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
-	if (options.listenaccudp) {
-	    udp_accserver_listen = server_create('U', options.listenaccudp);
+	if (options.listenaccudp)
 	    if (pthread_create(&udpaccserverth, NULL, udpaccserverrd, NULL))
 		debugx(1, DBG_ERR, "pthread_create failed");
-	}
     }
     
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
@@ -2956,10 +2958,8 @@ int main(int argc, char **argv) {
 	if (pthread_create(&udpclient6rdth, NULL, udpclientrd, (void *)&udp_client6_sock))
 	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
     
-    if (client_tls_count) {
-	tcp_server_listen = server_create('T', options.listentcp);
+    if (client_tls_count)
 	return tlslistener();
-    }
     
     /* just hang around doing nothing, anything to do here? */
     for (;;)
