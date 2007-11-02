@@ -58,6 +58,9 @@ static int client_tls_count = 0;
 static int server_udp_count = 0;
 static int server_tls_count = 0;
 
+static struct clsrvconf *srcudpres = NULL;
+static struct clsrvconf *srctcpres = NULL;
+
 static struct replyq *udp_server_replyq = NULL;
 static int udp_server_sock = -1;
 static int udp_accserver_sock = -1;
@@ -132,7 +135,7 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
 }
 
 int resolvepeer(struct clsrvconf *conf, int ai_flags) {
-    struct addrinfo hints, *addrinfo;
+    struct addrinfo hints, *addrinfo, *res;
     char *slash, *s;
     int plen;
 
@@ -159,47 +162,149 @@ int resolvepeer(struct clsrvconf *conf, int ai_flags) {
     hints.ai_socktype = (conf->type == 'T' ? SOCK_STREAM : SOCK_DGRAM);
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = ai_flags;
-    if (slash)
-	hints.ai_flags |= AI_NUMERICHOST;
-    if (getaddrinfo(conf->host, conf->port, &hints, &addrinfo)) {
-	debug(DBG_WARN, "resolvepeer: can't resolve %s port %s", conf->host, conf->port);
-	return 0;
-    }
-
-    if (slash) {
-	*slash = '/';
-	switch (addrinfo->ai_family) {
-	case AF_INET:
-	    if (plen > 32) {
-		debug(DBG_WARN, "resolvepeer: prefix length must be <= 32 in %s", conf->host);
+    if (!conf->host && !conf->port) {
+	/* getaddrinfo() doesn't like host and port to be NULL */
+	if (getaddrinfo(conf->host, DEFAULT_UDP_PORT, &hints, &addrinfo)) {
+	    debug(DBG_WARN, "resolvepeer: can't resolve (null) port (null)");
+	    return 0;
+	}
+	for (res = addrinfo; res; res = res->ai_next) {
+	    switch (res->ai_family) {
+	    case AF_INET:
+		((struct sockaddr_in *)res->ai_addr)->sin_port = 0;
+		break;
+	    case AF_INET6:
+		((struct sockaddr_in6 *)res->ai_addr)->sin6_port = 0;
+		break;
+	    }
+	}
+    } else {
+	if (slash)
+	    hints.ai_flags |= AI_NUMERICHOST;
+	if (getaddrinfo(conf->host, conf->port, &hints, &addrinfo)) {
+	    debug(DBG_WARN, "resolvepeer: can't resolve %s port %s", conf->host, conf->port);
+	    return 0;
+	}
+	if (slash) {
+	    *slash = '/';
+	    switch (addrinfo->ai_family) {
+	    case AF_INET:
+		if (plen > 32) {
+		    debug(DBG_WARN, "resolvepeer: prefix length must be <= 32 in %s", conf->host);
+		    freeaddrinfo(addrinfo);
+		    return 0;
+		}
+		break;
+	    case AF_INET6:
+		break;
+	    default:
+		debug(DBG_WARN, "resolvepeer: prefix must be IPv4 or IPv6 in %s", conf->host);
 		freeaddrinfo(addrinfo);
 		return 0;
 	    }
-	    break;
-	case AF_INET6:
-	    break;
-	default:
-	    debug(DBG_WARN, "resolvepeer: prefix must be IPv4 or IPv6 in %s", conf->host);
-	    freeaddrinfo(addrinfo);
-	    return 0;
-	}
-	conf->prefixlen = plen;
-    } else
-	conf->prefixlen = 255;
-
+	    conf->prefixlen = plen;
+	} else
+	    conf->prefixlen = 255;
+    }
     if (conf->addrinfo)
 	freeaddrinfo(conf->addrinfo);
     conf->addrinfo = addrinfo;
     return 1;
 }	  
 
-int connecttoserver(struct addrinfo *addrinfo) {
+int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
+    int s, on = 1;
+    struct addrinfo *res;
+    
+    for (res = addrinfo; res; res = res->ai_next) {
+	if (family != AF_UNSPEC && family != res->ai_family)
+	    continue;
+        s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        if (s < 0) {
+            debug(DBG_WARN, "bindtoaddr: socket failed");
+            continue;
+        }
+	if (reuse)
+	    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+#ifdef IPV6_V6ONLY
+	if (v6only)
+	    setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
+#endif		
+
+	if (!bind(s, res->ai_addr, res->ai_addrlen))
+	    return s;
+	debug(DBG_WARN, "bindtoaddr: bind failed");
+        close(s);
+    }
+    return -1;
+}	  
+
+char *parsehostport(char *s, struct clsrvconf *conf, char *default_port) {
+    char *p, *field;
+    int ipv6 = 0;
+
+    p = s;
+    /* allow literal addresses and port, e.g. [2001:db8::1]:1812 */
+    if (*p == '[') {
+	p++;
+	field = p;
+	for (; *p && *p != ']' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
+	if (*p != ']')
+	    debugx(1, DBG_ERR, "no ] matching initial [");
+	ipv6 = 1;
+    } else {
+	field = p;
+	for (; *p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
+    }
+    if (field == p)
+	debugx(1, DBG_ERR, "missing host/address");
+
+    conf->host = stringcopy(field, p - field);
+    if (ipv6) {
+	p++;
+	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n')
+	    debugx(1, DBG_ERR, "unexpected character after ]");
+    }
+    if (*p == ':') {
+	    /* port number or service name is specified */;
+	    field = ++p;
+	    for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
+	    if (field == p)
+		debugx(1, DBG_ERR, "syntax error, : but no following port");
+	    conf->port = stringcopy(field, p - field);
+    } else
+	conf->port = default_port ? stringcopy(default_port, 0) : NULL;
+    return p;
+}
+
+struct clsrvconf *resolve_hostport(char type, char *lconf, char *default_port) {
+    struct clsrvconf *conf;
+
+    conf = malloc(sizeof(struct clsrvconf));
+    if (!conf)
+	debugx(1, DBG_ERR, "malloc failed");
+    memset(conf, 0, sizeof(struct clsrvconf));
+    conf->type = type;
+    if (lconf) {
+	parsehostport(lconf, conf, default_port);
+	if (!strcmp(conf->host, "*")) {
+	    free(conf->host);
+	    conf->host = NULL;
+	}
+    } else
+	conf->port = default_port ? stringcopy(default_port, 0) : NULL;
+    if (!resolvepeer(conf, AI_PASSIVE))
+	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
+    return conf;
+}
+
+int connecttcp(struct addrinfo *addrinfo) {
     int s;
     struct addrinfo *res;
 
     s = -1;
     for (res = addrinfo; res; res = res->ai_next) {
-        s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+	s = bindtoaddr(srctcpres->addrinfo, res->ai_family, 1, 1);
         if (s < 0) {
             debug(DBG_WARN, "connecttoserver: socket failed");
             continue;
@@ -211,25 +316,6 @@ int connecttoserver(struct addrinfo *addrinfo) {
         s = -1;
     }
     return s;
-}	  
-
-int bindtoaddr(struct addrinfo *addrinfo) {
-    int s, on = 1;
-    struct addrinfo *res;
-    
-    for (res = addrinfo; res; res = res->ai_next) {
-        s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-        if (s < 0) {
-            debug(DBG_WARN, "bindtoaddr: socket failed");
-            continue;
-        }
-	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	if (!bind(s, res->ai_addr, res->ai_addrlen))
-	    return s;
-	debug(DBG_WARN, "bindtoaddr: bind failed");
-        close(s);
-    }
-    return -1;
 }	  
 
 /* returns 1 if the len first bits are equal, else 0 */
@@ -353,8 +439,6 @@ void removeclient(struct client *client) {
 }
 
 void addserver(struct clsrvconf *conf) {
-    int on = 1;
-    
     if (conf->servers)
 	debugx(1, DBG_ERR, "addserver: currently works with just one server per conf");
     
@@ -365,33 +449,22 @@ void addserver(struct clsrvconf *conf) {
     conf->servers->conf = conf;
 
     if (conf->type == 'U') {
+	if (!srcudpres)
+	    srcudpres = resolve_hostport('U', options.sourceudp, NULL);
 	switch (conf->addrinfo->ai_family) {
 	case AF_INET:
 	    if (udp_client4_sock < 0) {
-		struct sockaddr_in sa;
-		memset(&sa, 0, sizeof(sa));
-		sa.sin_family = AF_INET;
-		udp_client4_sock = socket(PF_INET, conf->addrinfo->ai_socktype, conf->addrinfo->ai_protocol);
+		udp_client4_sock = bindtoaddr(srcudpres->addrinfo, AF_INET, 0, 1);
 		if (udp_client4_sock < 0)
 		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
-		if (bind(udp_client4_sock, (struct sockaddr *)&sa, sizeof(sa)))
-		    debugx(1, DBG_ERR, "addserver: failed to bind client socket for server %s", conf->host);
 	    }
 	    conf->servers->sock = udp_client4_sock;
 	    break;
 	case AF_INET6:
 	    if (udp_client6_sock < 0) {
-		struct sockaddr_in6 sa;
-		memset(&sa, 0, sizeof(sa));
-		sa.sin6_family = AF_INET6;
-		udp_client6_sock = socket(PF_INET6, conf->addrinfo->ai_socktype, conf->addrinfo->ai_protocol);
+		udp_client6_sock = bindtoaddr(srcudpres->addrinfo, AF_INET6, 0, 1);
 		if (udp_client6_sock < 0)
 		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
-#ifdef IPV6_V6ONLY
-		setsockopt(udp_client6_sock, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&on, sizeof(on));
-#endif		
-		if (bind(udp_client6_sock, (struct sockaddr *)&sa, sizeof(sa)))
-		    debugx(1, DBG_ERR, "addserver: failed to bind client socket for server %s", conf->host);
 	    }
 	    conf->servers->sock = udp_client6_sock;
 	    break;
@@ -399,8 +472,11 @@ void addserver(struct clsrvconf *conf) {
 	    debugx(1, DBG_ERR, "addserver: unsupported address family");
 	}
 	
-    } else
+    } else {
+	if (!srctcpres)
+	    srctcpres = resolve_hostport('T', options.sourcetcp, NULL);
 	conf->servers->sock = -1;
+    }
     
     pthread_mutex_init(&conf->servers->lock, NULL);
     conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct request));
@@ -692,8 +768,8 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	debug(DBG_WARN, "tlsconnect: trying to open TLS connection to %s port %s", server->conf->host, server->conf->port);
 	if (server->sock >= 0)
 	    close(server->sock);
-	if ((server->sock = connecttoserver(server->conf->addrinfo)) < 0) {
-	    debug(DBG_ERR, "tlsconnect: connecttoserver failed");
+	if ((server->sock = connecttcp(server->conf->addrinfo)) < 0) {
+	    debug(DBG_ERR, "tlsconnect: connecttcp failed");
 	    continue;
 	}
 	
@@ -1387,65 +1463,6 @@ int rewriteusername(struct request *rq, char *in) {
     return 1;
 }
 
-char *parsehostport(char *s, struct clsrvconf *conf) {
-    char *p, *field;
-    int ipv6 = 0;
-
-    p = s;
-    /* allow literal addresses and port, e.g. [2001:db8::1]:1812 */
-    if (*p == '[') {
-	p++;
-	field = p;
-	for (; *p && *p != ']' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	if (*p != ']')
-	    debugx(1, DBG_ERR, "no ] matching initial [");
-	ipv6 = 1;
-    } else {
-	field = p;
-	for (; *p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-    }
-    if (field == p)
-	debugx(1, DBG_ERR, "missing host/address");
-
-    conf->host = stringcopy(field, p - field);
-    if (ipv6) {
-	p++;
-	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n')
-	    debugx(1, DBG_ERR, "unexpected character after ]");
-    }
-    if (*p == ':') {
-	    /* port number or service name is specified */;
-	    field = ++p;
-	    for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	    if (field == p)
-		debugx(1, DBG_ERR, "syntax error, : but no following port");
-	    conf->port = stringcopy(field, p - field);
-    } else
-	conf->port = stringcopy(conf->type == 'U' ? DEFAULT_UDP_PORT : DEFAULT_TLS_PORT, 0);
-    return p;
-}
-
-struct clsrvconf *resolve_hostport(char type, char *lconf) {
-    struct clsrvconf *conf;
-
-    conf = malloc(sizeof(struct clsrvconf));
-    if (!conf)
-	debugx(1, DBG_ERR, "malloc failed");
-    memset(conf, 0, sizeof(struct clsrvconf));
-    conf->type = type;
-    if (lconf) {
-	parsehostport(lconf, conf);
-	if (!strcmp(conf->host, "*")) {
-	    free(conf->host);
-	    conf->host = NULL;
-	}
-    } else
-	conf->port = stringcopy(type == 'T' ? DEFAULT_TLS_PORT : DEFAULT_UDP_PORT, 0);
-    if (!resolvepeer(conf, AI_PASSIVE))
-	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
-    return conf;
-}
-
 void acclog(unsigned char *attrs, int length, char *host) {
     unsigned char *attr;
     char username[256];
@@ -2031,8 +2048,8 @@ void *udpserverrd(void *arg) {
     pthread_t udpserverwrth;
     struct clsrvconf *listenres;
 
-    listenres = resolve_hostport('U', options.listenudp);
-    if ((udp_server_sock = bindtoaddr(listenres->addrinfo)) < 0)
+    listenres = resolve_hostport('U', options.listenudp, DEFAULT_UDP_PORT);
+    if ((udp_server_sock = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
 	debugx(1, DBG_ERR, "udpserverrd: socket/bind failed");
 
     debug(DBG_WARN, "udpserverrd: listening for UDP on %s:%s",
@@ -2053,8 +2070,8 @@ void *udpaccserverrd(void *arg) {
     struct request rq;
     struct clsrvconf *listenres;
     
-    listenres = resolve_hostport('U', options.listenaccudp);
-    if ((udp_accserver_sock = bindtoaddr(listenres->addrinfo)) < 0)
+    listenres = resolve_hostport('U', options.listenaccudp, DEFAULT_UDP_PORT);
+    if ((udp_accserver_sock = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
 	debugx(1, DBG_ERR, "udpserverrd: socket/bind failed");
 
     debug(DBG_WARN, "udpaccserverrd: listening for UDP on %s:%s",
@@ -2171,8 +2188,8 @@ int tlslistener() {
     struct client *client;
     struct clsrvconf *listenres;
     
-    listenres = resolve_hostport('T', options.listentcp);
-    if ((s = bindtoaddr(listenres->addrinfo)) < 0)
+    listenres = resolve_hostport('T', options.listentcp, DEFAULT_TLS_PORT);
+    if ((s = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
         debugx(1, DBG_ERR, "tlslistener: socket/bind failed");
     
     listen(s, 0);
@@ -2850,6 +2867,8 @@ void getmainconfig(const char *configfile) {
 		     "ListenUDP", CONF_STR, &options.listenudp,
 		     "ListenTCP", CONF_STR, &options.listentcp,
 		     "ListenAccountingUDP", CONF_STR, &options.listenaccudp,
+		     "SourceUDP", CONF_STR, &options.sourceudp,
+		     "SourceTCP", CONF_STR, &options.sourcetcp,
 		     "LogLevel", CONF_STR, &loglevel,
 		     "LogDestination", CONF_STR, &options.logdestination,
 		     "Client", CONF_CBK, confclient_cb,
@@ -2950,7 +2969,11 @@ int main(int argc, char **argv) {
 			   (void *)((struct clsrvconf *)entry->data)->servers))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
-
+    /* srcudpres no longer needed, while srctcpres is needed later */
+    if (srcudpres) {
+	free(srcudpres);
+	srcudpres = NULL;
+    }
     if (udp_client4_sock >= 0)
 	if (pthread_create(&udpclient4rdth, NULL, udpclientrd, (void *)&udp_client4_sock))
 	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");

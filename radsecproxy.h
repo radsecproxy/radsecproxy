@@ -46,6 +46,8 @@ struct options {
     char *listenudp;
     char *listentcp;
     char *listenaccudp;
+    char *sourceudp;
+    char *sourcetcp;
     char *logdestination;
     uint8_t loglevel;
 };
