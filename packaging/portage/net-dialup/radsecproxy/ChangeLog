@@ -1,0 +1,29 @@
+# ChangeLog for net-dialup/radsecproxy
+# Copyright 2002-2007 Gentoo Foundation; Distributed under the GPL v2
+# $Header: $
+
+*radsecproxy-1.0.9999 (31 Oct 2007)
+
+  31 Oct 2007; Kolbjørn Barmen <gentoo@kolla.no> +radsecproxy-1.0.9999.ebuild
+  1.0 release tree from SVN
+
+*radsecproxy-9999 (31 Oct 2007)
+
+  31 Oct 2007; Kolbjørn Barmen <gentoo@kolla.no> +radsecproxy-9999.ebuild
+  Developer trunk from SVN
+
+*radsecproxy-1.0_p1 (16 Oct 2007)
+
+  16 Oct 2007; Kolbjørn Barmen <gentoo@kolla.no> +radsecproxy-1.0_p1.ebuild
+  Tiny bugfix so that it doesnt crash if servers are configured after realms.
+  
+*radsecproxy-1.0 (21 Sep 2007)
+
+  21 Sep 2007; Kolbjørn Barmen <gentoo@kolla.no> +radsecproxy-1.0.ebuild
+  1.0 released!
+  
+*radsecproxy-1.0_alpha1 (14 Jun 2007)
+
+  14 Jun 2007; Kolbjørn Barmen <gentoo@kolla.no> +radsecproxy-1.0_alpha1.ebuild
+  Initial release
+

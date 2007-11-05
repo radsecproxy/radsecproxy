@@ -1,0 +1,13 @@
+@comment $NetBSD: PLIST,v 1.0 2007/11/02 10:45:13 kolla Exp $
+man/man1/radsecproxy.1
+man/man5/radsecproxy.conf.5
+sbin/radsecproxy
+share/doc/radsecproxy/README
+share/doc/radsecproxy/AUTHORS
+share/doc/radsecproxy/COPYING
+share/doc/radsecproxy/INSTALL
+share/doc/radsecproxy/ChangeLog
+share/examples/rc.d/radsecproxy
+share/examples/radsecproxy/radsecproxy.conf
+@dirrm share/examples/radsecproxy
+@dirrm share/doc/radsecproxy

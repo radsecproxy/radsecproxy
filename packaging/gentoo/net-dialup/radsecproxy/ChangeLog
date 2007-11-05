@@ -1,8 +1,0 @@
-# ChangeLog for net-dialup/radsecproxy
-# Copyright 2002-2007 Gentoo Foundation; Distributed under the GPL v2
-# $Header: $
-
-  14 Jun 2007; Kolbjørn Barmen <gentoo@kolla.no>
-  radsecproxy-1.0_alpha1.ebuild
-  Initial release, marked as unstable still
-
