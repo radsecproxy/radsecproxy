@@ -12,7 +12,7 @@ fi
 name="radsecproxy"
 rcvar=${name}
 command="/usr/pkg/sbin/${name}"
-command_args="-c /usr/pkg/etc/${name}/${name}.conf"
+command_args="-c /usr/pkg/etc/${name}.conf"
 
 if [ -f /etc/rc.subr ]
 then
