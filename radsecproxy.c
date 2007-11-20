@@ -2238,6 +2238,7 @@ int tlslistener() {
 void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, char *certkeyfile, char *certkeypwd) {
     struct tls *new;
     SSL_CTX *ctx;
+    STACK_OF(X509_NAME) *calist;
     int i;
     unsigned long error;
     
@@ -2280,6 +2281,24 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
 	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
 	debugx(1, DBG_ERR, "Error initialising SSL/TLS in TLS context %s", value);
     }
+
+    calist = cacertfile ? SSL_load_client_CA_file(cacertfile) : NULL;
+    if (!cacertfile || calist) {
+	if (cacertpath) {
+	    if (!calist)
+		calist = sk_X509_NAME_new_null();
+	    if (!SSL_add_dir_cert_subjects_to_stack(calist, cacertpath)) {
+		sk_X509_NAME_free(calist);
+		calist = NULL;
+	    }
+	}
+    }
+    if (!calist) {
+	while ((error = ERR_get_error()))
+	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+	debugx(1, DBG_ERR, "Error adding CA subjects in TLS context %s", value);
+    }
+    SSL_CTX_set_client_CA_list(ctx, calist);
     
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
