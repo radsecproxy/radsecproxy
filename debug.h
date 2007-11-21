@@ -6,6 +6,8 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#include <stdint.h>
+
 #define DBG_DBG 8
 #define DBG_INFO 16
 #define DBG_WARN 32

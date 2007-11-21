@@ -1,6 +1,6 @@
 CFLAGS = -g -Wall -pedantic -pthread
 LDFLAGS = -lssl
-OBJ = util.o debug.o list.o radsecproxy.o
+OBJ = util.o debug.o list.o gconfig.o radsecproxy.o
 
 all: radsecproxy
 

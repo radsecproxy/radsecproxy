@@ -38,10 +38,6 @@
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
 
-#define CONF_STR 1
-#define CONF_CBK 2
-#define CONF_MSTR 3
-
 struct options {
     char *listenudp;
     char *listentcp;
@@ -140,9 +136,3 @@ struct tls {
 #define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ? \
                             sizeof(struct sockaddr_in) : \
                             sizeof(struct sockaddr_in6))
-
-char *stringcopy(char *s, int len);
-char *addr2string(struct sockaddr *addr, socklen_t len);
-void printfchars(char *prefixfmt, char *prefix, char *charfmt, char *chars, int len);
-int bindport(int type, char *port);
-int connectport(int type, char *host, char *port);
