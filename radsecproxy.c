@@ -2907,10 +2907,10 @@ void getmainconfig(const char *configfile) {
     }
 }
 
-void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char **configfile) {
+void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8_t *loglevel, char **configfile) {
     int c;
 
-    while ((c = getopt(argc, argv, "c:d:fv")) != -1) {
+    while ((c = getopt(argc, argv, "c:d:fpv")) != -1) {
 	switch (c) {
 	case 'c':
 	    *configfile = optarg;
@@ -2923,6 +2923,9 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 	case 'f':
 	    *foreground = 1;
 	    break;
+	case 'p':
+	    *pretend = 1;
+	    break;
 	case 'v':
 		debugx(0, DBG_ERR, "radsecproxy revision $Rev$");
 	default:
@@ -2933,19 +2936,19 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 	return;
 
  usage:
-    debug(DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ] [ -v ]", argv[0]);
+    debug(DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ] [ -p ] [ -v ]", argv[0]);
     exit(1);
 }
 
 int main(int argc, char **argv) {
     pthread_t udpserverth, udpaccserverth, udpclient4rdth, udpclient6rdth;
     struct list_node *entry;
-    uint8_t foreground = 0, loglevel = 0;
+    uint8_t foreground = 0, pretend = 0, loglevel = 0;
     char *configfile = NULL;
     
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
-    getargs(argc, argv, &foreground, &loglevel, &configfile);
+    getargs(argc, argv, &foreground, &pretend, &loglevel, &configfile);
     if (loglevel)
 	debug_set_level(loglevel);
     getmainconfig(configfile ? configfile : CONFIG_MAIN);
@@ -2961,6 +2964,9 @@ int main(int argc, char **argv) {
 	debug_set_destination(options.logdestination);
     }
 
+    if (pretend)
+	debugx(0, DBG_ERR, "All OK so far; exiting since only pretending");
+    
     if (!list_first(clconfs))
 	debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");
     if (!list_first(srvconfs))
