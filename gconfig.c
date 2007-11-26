@@ -46,6 +46,51 @@ char *strtokenquote(char *s, char **token, char *del, char *quote, char *comment
     return t + 1;
 }
 
+FILE *pushgconffile(struct gconffile **cf, const char *path) {
+    int i;
+    struct gconffile *newcf;
+    FILE *f;
+
+    f = fopen(path, "r");
+    if (!f) {
+        debug(DBG_INFO, "could not read config file %s", path);
+	return NULL;
+    }
+    if (!*cf) {
+	newcf = malloc(sizeof(struct gconffile) * 2);
+	if (!newcf)
+	    debugx(1, DBG_ERR, "malloc failed");
+	newcf[1].path = NULL;
+    } else {
+	for (i = 0; (*cf)[i].path; i++);
+	newcf = realloc(*cf, sizeof(struct gconffile) * (i + 2));
+	if (!newcf)
+	    debugx(1, DBG_ERR, "malloc failed");
+	memmove(newcf + 1, newcf, sizeof(struct gconffile) * (i + 1));
+    }
+    newcf[0].file = f;
+    newcf[0].path = stringcopy(path, 0);
+    *cf = newcf;
+    return f;
+}
+
+FILE *popgconffile(struct gconffile **cf) {
+    int i;
+
+    if (!*cf)
+	return NULL;
+    for (i = 0; (*cf)[i].path; i++);
+    if (i && (*cf)[0].file)
+	fclose((*cf)[0].file);
+    if (i < 2) {
+	free(*cf);
+	*cf = NULL;
+	return NULL;
+    }
+    memmove(*cf, *cf + 1, sizeof(struct gconffile) * i);
+    return (*cf)[0].file;
+}
+
 /* Parses config with following syntax:
  * One of these:
  * option-name value

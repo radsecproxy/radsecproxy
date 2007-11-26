@@ -50,7 +50,7 @@ void err(char *format, ...) {
 }
 #endif
 
-char *stringcopy(char *s, int len) {
+char *stringcopy(const char *s, int len) {
     char *r;
     if (!len)
 	len = strlen(s);

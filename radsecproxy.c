@@ -2431,28 +2431,29 @@ void addrealm(char *value, char **servers, char *message) {
     debug(DBG_DBG, "addrealm: added realm %s", value);
 }
 
-FILE *openconfigfile(const char *filename) {
+struct gconffile *openconfigfile(const char *filename) {
     FILE *f;
     char pathname[100], *base = NULL;
+    struct gconffile *cf = NULL;
     
-    f = fopen(filename, "r");
+    f = pushgconffile(&cf, filename);
     if (f) {
 	debug(DBG_DBG, "reading config file %s", filename);
-	return f;
+	return cf;
     }
 
     if (strlen(filename) + 1 <= sizeof(pathname)) {
 	/* basename() might modify the string */
 	strcpy(pathname, filename);
 	base = basename(pathname);
-	f = fopen(base, "r");
+	f = pushgconffile(&cf, base);
     }
 
     if (!f)
 	debugx(1, DBG_ERR, "could not read config file %s nor %s\n%s", filename, base, strerror(errno));
     
     debug(DBG_DBG, "reading config file %s", base);
-    return f;
+    return cf;
 }
 
 int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
@@ -2689,8 +2690,10 @@ void conftls_cb(FILE *f, char *block, char *opt, char *val) {
 void getmainconfig(const char *configfile) {
     FILE *f;
     char *loglevel = NULL;
+    struct gconffile *cfs;
 
-    f = openconfigfile(configfile);
+    cfs = openconfigfile(configfile);
+    f = cfs->file;
     memset(&options, 0, sizeof(options));
     
     clconfs = list_create();
@@ -2723,7 +2726,7 @@ void getmainconfig(const char *configfile) {
 		     "TLS", CONF_CBK, conftls_cb,
 		     NULL
 		     );
-    fclose(f);
+    popgconffile(&cfs);
     tlsfree();
     
     if (loglevel) {
