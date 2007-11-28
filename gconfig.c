@@ -56,10 +56,12 @@ FILE *pushgconffile(struct gconffile **cf, const char *path) {
         debug(DBG_INFO, "could not read config file %s", path);
 	return NULL;
     }
+    debug(DBG_DBG, "opened config file %s", path);
     if (!*cf) {
 	newcf = malloc(sizeof(struct gconffile) * 2);
 	if (!newcf)
 	    debugx(1, DBG_ERR, "malloc failed");
+	newcf[1].file = NULL;
 	newcf[1].path = NULL;
     } else {
 	for (i = 0; (*cf)[i].path; i++);
@@ -80,8 +82,10 @@ FILE *popgconffile(struct gconffile **cf) {
     if (!*cf)
 	return NULL;
     for (i = 0; (*cf)[i].path; i++);
-    if (i && (*cf)[0].file)
+    if (i && (*cf)[0].file) {
 	fclose((*cf)[0].file);
+	debug(DBG_DBG, "closing config file %s", (*cf)[0].path);
+    }
     if (i < 2) {
 	free(*cf);
 	*cf = NULL;
@@ -101,15 +105,23 @@ FILE *popgconffile(struct gconffile **cf) {
  *     ...
  * }
  */
-void getgenericconfig(FILE *f, char *block, ...) {
+void getgenericconfig(struct gconffile **cf, char *block, ...) {
     va_list ap;
     char line[1024];
     /* initialise lots of stuff to avoid stupid compiler warnings */
     char *tokens[3], *s, *opt = NULL, *val = NULL, *word, *optval, **str = NULL, ***mstr = NULL;
     int type = 0, tcount, conftype = 0, n;
-    void (*cbk)(FILE *, char *, char *, char *) = NULL;
-	
-    while (fgets(line, 1024, f)) {
+
+    void (*cbk)(struct gconffile **, char *, char *, char *) = NULL;
+
+    if (!cf || !*cf || !(*cf)->file)
+	return;
+    for (;;) {
+	if (!fgets(line, 1024, (*cf)->file)) {
+	    if (popgconffile(cf))
+		continue;
+	    return;
+	}
 	s = line;
 	for (tcount = 0; tcount < 3; tcount++) {
 	    s = strtokenquote(s, &tokens[tcount], " \t\r\n", "\"'", tcount ? NULL : "#");
@@ -155,7 +167,12 @@ void getgenericconfig(FILE *f, char *block, ...) {
 
 	if (!*val)
 	    debugx(1, DBG_ERR, "configuration error, option %s needs a non-empty value", opt);
-	
+
+	if (conftype == CONF_STR && !strcasecmp(opt, "include")) {
+	    pushgconffile(cf, val);
+	    continue;
+	}
+	    
 	va_start(ap, block);
 	while ((word = va_arg(ap, char *))) {
 	    type = va_arg(ap, int);
@@ -171,7 +188,7 @@ void getgenericconfig(FILE *f, char *block, ...) {
 		    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
 		break;
 	    case CONF_CBK:
-		cbk = va_arg(ap, void (*)(FILE *, char *, char *, char *));
+		cbk = va_arg(ap, void (*)(struct gconffile **, char *, char *, char *));
 		break;
 	    default:
 		debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
@@ -226,7 +243,7 @@ void getgenericconfig(FILE *f, char *block, ...) {
 	    if (!optval)
 		debugx(1, DBG_ERR, "malloc failed");
 	    sprintf(optval, "%s %s", opt, val);
-	    cbk(f, optval, opt, val);
+	    cbk(cf, optval, opt, val);
 	    free(optval);
 	    break;
 	default:

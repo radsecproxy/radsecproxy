@@ -7,6 +7,6 @@ struct gconffile {
     FILE *file;
 };
 
-void getgenericconfig(FILE *f, char *block, ...);
+void getgenericconfig(struct gconffile **cf, char *block, ...);
 FILE *pushgconffile(struct gconffile **cf, const char *path);
 FILE *popgconffile(struct gconffile **cf);

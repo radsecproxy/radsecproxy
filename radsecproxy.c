@@ -2523,7 +2523,7 @@ int addrewriteattr(struct clsrvconf *conf, char *rewriteattr) {
     return 1;
 }
 
-void confclient_cb(FILE *f, char *block, char *opt, char *val) {
+void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewriteattr = NULL;
     struct clsrvconf *conf;
     
@@ -2534,7 +2534,7 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
     
-    getgenericconfig(f, block,
+    getgenericconfig(cf, block,
 		     "type", CONF_STR, &type,
 		     "host", CONF_STR, &conf->host,
 		     "secret", CONF_STR, &conf->secret,
@@ -2583,7 +2583,7 @@ void confclient_cb(FILE *f, char *block, char *opt, char *val) {
     }
 }
 
-void confserver_cb(FILE *f, char *block, char *opt, char *val) {
+void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     char *type = NULL, *tls = NULL, *matchcertattr = NULL, *statusserver = NULL;
     struct clsrvconf *conf;
     
@@ -2594,7 +2594,7 @@ void confserver_cb(FILE *f, char *block, char *opt, char *val) {
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
     
-    getgenericconfig(f, block,
+    getgenericconfig(cf, block,
 		     "type", CONF_STR, &type,
 		     "host", CONF_STR, &conf->host,
 		     "port", CONF_STR, &conf->port,
@@ -2650,12 +2650,12 @@ void confserver_cb(FILE *f, char *block, char *opt, char *val) {
     }
 }
 
-void confrealm_cb(FILE *f, char *block, char *opt, char *val) {
+void confrealm_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     char **servers = NULL, *msg = NULL;
     
     debug(DBG_DBG, "confrealm_cb called for %s", block);
     
-    getgenericconfig(f, block,
+    getgenericconfig(cf, block,
 		     "server", CONF_MSTR, &servers,
 		     "ReplyMessage", CONF_STR, &msg,
 		     NULL
@@ -2665,12 +2665,12 @@ void confrealm_cb(FILE *f, char *block, char *opt, char *val) {
     free(servers);
 }
 
-void conftls_cb(FILE *f, char *block, char *opt, char *val) {
+void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     char *cacertfile = NULL, *cacertpath = NULL, *certfile = NULL, *certkeyfile = NULL, *certkeypwd = NULL;
     
     debug(DBG_DBG, "conftls_cb called for %s", block);
     
-    getgenericconfig(f, block,
+    getgenericconfig(cf, block,
 		     "CACertificateFile", CONF_STR, &cacertfile,
 		     "CACertificatePath", CONF_STR, &cacertpath,
 		     "CertificateFile", CONF_STR, &certfile,
@@ -2688,12 +2688,10 @@ void conftls_cb(FILE *f, char *block, char *opt, char *val) {
 }
 
 void getmainconfig(const char *configfile) {
-    FILE *f;
     char *loglevel = NULL;
     struct gconffile *cfs;
 
     cfs = openconfigfile(configfile);
-    f = cfs->file;
     memset(&options, 0, sizeof(options));
     
     clconfs = list_create();
@@ -2712,7 +2710,7 @@ void getmainconfig(const char *configfile) {
     if (!tlsconfs)
 	debugx(1, DBG_ERR, "malloc failed");    
  
-    getgenericconfig(f, NULL,
+    getgenericconfig(&cfs, NULL,
 		     "ListenUDP", CONF_STR, &options.listenudp,
 		     "ListenTCP", CONF_STR, &options.listentcp,
 		     "ListenAccountingUDP", CONF_STR, &options.listenaccudp,
