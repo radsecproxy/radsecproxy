@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <glob.h>
 #include <sys/types.h>
 #include "debug.h"
 #include "util.h"
@@ -76,6 +77,25 @@ FILE *pushgconffile(struct gconffile **cf, const char *path) {
     return f;
 }
 
+FILE *pushgconffiles(struct gconffile **cf, const char *path) {
+    int i;
+    FILE *f;
+    glob_t globbuf;
+    
+    memset(&globbuf, 0, sizeof(glob_t));
+    if (glob(path, 0, NULL, &globbuf)) {
+	debug(DBG_INFO, "could not glob %s", path);
+	return NULL;
+    }
+    for (i = globbuf.gl_pathc - 1; i >= 0; i--) {
+	f = pushgconffile(cf, globbuf.gl_pathv[i]);
+	if (!f)
+	    break;
+    }    
+    globfree(&globbuf);
+    return f;
+}
+
 FILE *popgconffile(struct gconffile **cf) {
     int i;
 
@@ -111,7 +131,6 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
     /* initialise lots of stuff to avoid stupid compiler warnings */
     char *tokens[3], *s, *opt = NULL, *val = NULL, *word, *optval, **str = NULL, ***mstr = NULL;
     int type = 0, tcount, conftype = 0, n;
-
     void (*cbk)(struct gconffile **, char *, char *, char *) = NULL;
 
     if (!cf || !*cf || !(*cf)->file)
@@ -169,7 +188,8 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    debugx(1, DBG_ERR, "configuration error, option %s needs a non-empty value", opt);
 
 	if (conftype == CONF_STR && !strcasecmp(opt, "include")) {
-	    pushgconffile(cf, val);
+	    if (!pushgconffiles(cf, val))
+		debugx(1, DBG_ERR, "failed to include config file %s", val);
 	    continue;
 	}
 	    

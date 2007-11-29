@@ -9,4 +9,5 @@ struct gconffile {
 
 void getgenericconfig(struct gconffile **cf, char *block, ...);
 FILE *pushgconffile(struct gconffile **cf, const char *path);
+FILE *pushgconffiles(struct gconffile **cf, const char *path);
 FILE *popgconffile(struct gconffile **cf);
