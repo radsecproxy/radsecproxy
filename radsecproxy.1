@@ -1,10 +1,10 @@
-.TH radsecproxy 1 "7 June 2007"
+.TH radsecproxy 1 "22 December 2007"
 
 .SH "NAME"
 radsecproxy - a generic RADIUS proxy that provides both RADIUS UDP and TCP/TLS (RadSec) transport.
 
 .SH "SYNOPSIS"
-radsecproxy [ -c configfile ] [ -d debuglevel ] [ -f ] [ -v ]
+radsecproxy [ -c configfile ] [ -d debuglevel ] [ -f ] [ -p ] [ -v ]
 .sp
 
 .SH "DESCRIPTION"
@@ -23,11 +23,11 @@ RADIUS server or client, and configure the existing client/server to
 talk to localhost (the proxy) rather than other clients and servers
 directly.
 .sp
-There may however be other situations where a RADIUS proxy might be
+There are however other situations where a RADIUS proxy might be
 useful. Some people deploy RADIUS topologies where they want to
 route RADIUS messages to the right server. The nodes that do purely
 routing could be using a proxy. Some people may also wish to deploy
-a proxy on a firewall boundary. Since the proxy \fBsupports both IPv4
+a proxy on a site boundary. Since the proxy \fBsupports both IPv4
 and IPv6\fR, it could also be used to allow communication in cases
 where some RADIUS nodes use only IPv4 and some only IPv6.
 
@@ -47,6 +47,17 @@ is, it won't detach. Also all logging will be done to stderr.
 This specifies the debug level. It must be set to 1, 2, 3 or 4, where 1
 logs only serious errors, and 4 logs everything. The default is 3 which
 logs errors, warnings and some informational messages.
+
+.TP
+.B -p
+.sp
+\fIPretend\fR
+.sp
+The proxy reads configuration files and performs initialisation as
+usual, but exits prior to creating any sockets. It will return different
+exit codes depending on whether the configuration files are okay. This
+may be used to verify configuration files, and can be done while another
+instance is running.
 
 .TP
 .B -v
