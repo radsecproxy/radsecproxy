@@ -1,0 +1,12 @@
+2007-09-21 1.0
+2007-10-16 1.0p1
+	Fixed crash when servers were configured after first realm block
+2007-12-24 1.1-alpha
+	Pretend option for validating configuration
+	Include option for including additional config files
+	Allows clients configured by IP prefix, dynamic clients
+	Server failover support
+	Rewriting of username attribute
+	Source address and port can be specified for requests
+	
+	
