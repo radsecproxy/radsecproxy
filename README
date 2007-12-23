@@ -1,4 +1,5 @@
-This is a revision from the radsecproxy 1.1 devel branch.
+This is radsecproxy 1.1-alpha.
+
 radsecproxy is a generic RADIUS proxy that can support various
 RADIUS clients over UDP or TLS (RadSec).
 
@@ -14,17 +15,21 @@ option (see below). For further instructions, please see the
 enclosed example file and the documentation at
 http://software.uninett.no/radsecproxy/?page=documentation
 
-There are four options that may be specified on the command line.
+There are five options that may be specified on the command line.
 "-c configfile" to specify a non-default config file path;
 "-d loglevel" to set a loglevel of 1, 2, 3 or 4 where 4 is the most
 detailed; and "-f" to run the proxy in the foreground with logging
 to stderr. Without "-f" the default is to detach as a daemon and
-log to syslog. Finally "-v" just prints version information and
-exits.
+log to syslog. "-v" just prints version information and exits, while
+"-p" (pretend) makes the proxy go through the configuration files as
+normal, but stops before creating any sockets or doing any serious
+work. This is useful for validating config files.
 
-Thanks to Stefan Winter and Andreas Solberg for making me do this,
-and the funding from GEANT2. Stefan as well as Kolbjørn Barmen
-and Maja Wolniewicz have helped with early testing of the code.
+Thanks to Stefan Winter and Andreas Solberg for talking me into
+doing this, and the funding from GEANT2. Stefan as well as Kolbjørn
+Barmen, Ralf Paffrath and Maja Wolniewicz have helped with early
+testing of the code.
+
 All of the above plus Milan Sova have provided good feedback on
 several implementation choices. Finally thanks to Hans Zandbelt
 for providing the autoconf stuff. I may have forgotten someone,
@@ -33,4 +38,4 @@ let me know if you feel left out.
 For more information, feedback etc. please see the information
 at http://software.uninett.no/radsecproxy/
 
-Stig Venaas <venaas@uninett.no> -- 2007.06.05
+Stig Venaas <venaas@uninett.no> -- 2007.12.24
