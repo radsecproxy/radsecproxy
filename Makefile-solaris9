@@ -1,0 +1,10 @@
+CFLAGS = -g -Wall -pedantic -pthread -D_POSIX_PTHREAD_SEMANTICS -D_POSIX_C_SOURCE -D__EXTENSIONS__ -D_XPG4_2 -DSYS_SOLARIS9
+LDFLAGS = -lssl -lsocket
+OBJ = util.o debug.o list.o gconfig.o radsecproxy.o
+
+all: radsecproxy
+
+radsecproxy: $(OBJ)
+	$(CC) $(CFLAGS) $(OBJ) $(LDFLAGS) -o radsecproxy
+clean:
+	rm -f $(OBJ) radsecproxy
