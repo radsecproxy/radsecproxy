@@ -6,7 +6,9 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#ifndef SYS_SOLARIS9
 #include <stdint.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>

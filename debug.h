@@ -6,7 +6,9 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#ifndef SYS_SOLARIS9
 #include <stdint.h>
+#endif
 
 #define DBG_DBG 8
 #define DBG_INFO 16
