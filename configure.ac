@@ -6,7 +6,7 @@ dnl Check if we're on Solaris and set CFLAGS accordingly
 AC_CANONICAL_SYSTEM
 case "${target_os}" in
   solaris*)
-    TARGET_CFLAGS="-DSYS_SOLARIS9"
+    TARGET_CFLAGS="-DSYS_SOLARIS9 -D_POSIX_PTHREAD_SEMANTICS"
     TARGET_LDFLAGS="-lsocket"
     ;;
   *)
