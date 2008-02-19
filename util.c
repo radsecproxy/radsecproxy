@@ -91,7 +91,7 @@ char *addr2string(struct sockaddr *addr, socklen_t len) {
     if (getnameinfo(addr, len, addr_buf[i], sizeof(addr_buf[i]),
                     NULL, 0, NI_NUMERICHOST)) {
         debug(DBG_WARN, "getnameinfo failed");
-        return NULL;
+        return "getnameinfo_failed";
     }
     return addr_buf[i];
 }
