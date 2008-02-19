@@ -34,6 +34,9 @@
 #include <netdb.h>
 #include <string.h>
 #include <unistd.h>
+#ifdef SYS_SOLARIS9
+#include <fcntl.h>
+#endif
 #include <sys/time.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
@@ -2767,6 +2770,23 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8
     debug(DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ] [ -p ] [ -v ]", argv[0]);
     exit(1);
 }
+
+#ifdef SYS_SOLARIS9
+int daemon(int a, int b) {
+    int i;
+
+    if (fork())
+	exit(0);
+
+    setsid();
+
+    for (i = 0; i < 3; i++) {
+	close(i);
+	open("/dev/null", O_RDWR);
+    }
+    return 1;
+}
+#endif
 
 int main(int argc, char **argv) {
     pthread_t udpserverth, udpaccserverth, udpclient4rdth, udpclient6rdth;
