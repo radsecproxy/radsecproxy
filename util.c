@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -88,10 +88,12 @@ char *addr2string(struct sockaddr *addr, socklen_t len) {
 	    addr = (struct sockaddr *)&sa4;
 	}
     }
+    len = addr->sa_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+    
     if (getnameinfo(addr, len, addr_buf[i], sizeof(addr_buf[i]),
                     NULL, 0, NI_NUMERICHOST)) {
         debug(DBG_WARN, "getnameinfo failed");
-        return return "getnameinfo_failed";
+        return "getnameinfo_failed";
     }
     return addr_buf[i];
 }
