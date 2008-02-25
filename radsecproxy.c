@@ -187,7 +187,7 @@ int resolvepeer(struct clsrvconf *conf, int ai_flags) {
 	if (slash)
 	    hints.ai_flags |= AI_NUMERICHOST;
 	if (getaddrinfo(conf->host, conf->port, &hints, &addrinfo)) {
-	    debug(DBG_WARN, "resolvepeer: can't resolve %s port %s", conf->host, conf->port);
+	    debug(DBG_WARN, "resolvepeer: can't resolve %s port %s", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
 	    return 0;
 	}
 	if (slash) {
@@ -299,7 +299,7 @@ struct clsrvconf *resolve_hostport(char type, char *lconf, char *default_port) {
     } else
 	conf->port = default_port ? stringcopy(default_port, 0) : NULL;
     if (!resolvepeer(conf, AI_PASSIVE))
-	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
+	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
     return conf;
 }
 
@@ -2577,7 +2577,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     }
     
     if (!resolvepeer(conf, 0))
-	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
+	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
     
     if (!conf->secret) {
 	if (conf->type == 'U')
@@ -2636,7 +2636,7 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	free(matchcertattr);
     
     if (!resolvepeer(conf, 0))
-	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host, conf->port);
+	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
     
     if (!conf->secret) {
 	if (conf->type == 'U')
