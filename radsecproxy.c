@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -56,7 +56,7 @@
 #include "radsecproxy.h"
 
 static struct options options;
-struct list *clconfs, *srvconfs, *realms, *tlsconfs;
+struct list *clconfs, *srvconfs, *realms, *tlsconfs, *rewriteconfs;
 
 static int client_udp_count = 0;
 static int client_tls_count = 0;
@@ -2526,6 +2526,43 @@ int addrewriteattr(struct clsrvconf *conf, char *rewriteattr) {
     return 1;
 }
 
+/* should accept both names and numeric values, only numeric right now */
+uint8_t attrname2val(char *attrname) {
+    int val = 0;
+    
+    val = atoi(attrname);
+    return val > 0 && val < 256 ? val : 0;
+}
+
+void addrewrite(char *value, char **attrs) {
+    struct rewrite *new;
+    int i, n;
+    uint8_t *a;
+
+    n = 0;
+    if (attrs)
+	for (; attrs[n]; n++);
+    a = malloc((n + 1) * sizeof(uint8_t));
+    if (!a)
+	debugx(1, DBG_ERR, "malloc failed");
+    
+    for (i = 0; i < n; i++)
+	if (!(a[i] = attrname2val(attrs[i])))
+	    debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", attrs[i]);
+    a[i] = 0;
+    
+    new = malloc(sizeof(struct rewrite));
+    if (!new || !list_push(rewriteconfs, new))
+	debugx(1, DBG_ERR, "malloc failed");
+
+    memset(new, 0, sizeof(struct rewrite));
+    new->name = stringcopy(value, 0);
+    if (!new->name)
+	debugx(1, DBG_ERR, "malloc failed");
+    new->removeattrs = a;
+    debug(DBG_DBG, "addrewrite: added rewrite block %s", value);
+}
+
 void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewriteattr = NULL;
     struct clsrvconf *conf;
@@ -2690,6 +2727,19 @@ void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     free(certkeypwd);
 }
 
+void confrewrite_cb(struct gconffile **cf, char *block, char *opt, char *val) {
+    char **attrs = NULL;
+    
+    debug(DBG_DBG, "confrewrite_cb called for %s", block);
+    
+    getgenericconfig(cf, block,
+		     "removeAttribute", CONF_MSTR, &attrs,
+		     NULL
+		     );
+    addrewrite(val, attrs);
+    free(attrs);
+}
+
 void getmainconfig(const char *configfile) {
     char *loglevel = NULL;
     struct gconffile *cfs;
@@ -2711,6 +2761,10 @@ void getmainconfig(const char *configfile) {
  
     tlsconfs = list_create();
     if (!tlsconfs)
+	debugx(1, DBG_ERR, "malloc failed");
+    
+    rewriteconfs = list_create();
+    if (!rewriteconfs)
 	debugx(1, DBG_ERR, "malloc failed");    
  
     getgenericconfig(&cfs, NULL,
@@ -2725,6 +2779,7 @@ void getmainconfig(const char *configfile) {
 		     "Server", CONF_CBK, confserver_cb,
 		     "Realm", CONF_CBK, confrealm_cb,
 		     "TLS", CONF_CBK, conftls_cb,
+		     "Rewrite", CONF_CBK, confrewrite_cb,
 		     NULL
 		     );
     popgconffile(&cfs);

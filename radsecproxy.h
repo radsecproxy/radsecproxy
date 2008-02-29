@@ -126,6 +126,11 @@ struct tls {
     int count;
 };
 
+struct rewrite {
+    char *name;
+    uint8_t *removeattrs;
+};
+
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
 
 #define ATTRTYPE(x) ((x)[0])
