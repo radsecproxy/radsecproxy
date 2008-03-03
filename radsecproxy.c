@@ -1377,6 +1377,28 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
     return 1;
 }
 
+void removeattrs(uint8_t *buf, uint8_t *rmattrs) {
+    uint8_t *attrs, alen;
+    uint16_t len, rmlen = 0;
+    
+    if (!rmattrs)
+	return;
+
+    len = RADLEN(buf) - 20;
+    attrs = buf + 20;
+    while (len > 1) {
+	alen = ATTRLEN(attrs);
+	len -= alen;
+	if (strchr((char *)rmattrs, ATTRTYPE(attrs))) {
+	    memmove(attrs, attrs + alen, len);
+	    rmlen += alen;
+	} else
+	    attrs += alen;
+    }
+    if (rmlen)
+	((uint16_t *)buf)[1] = htons(RADLEN(buf) - rmlen);
+}
+
 /* returns a pointer to the resized attribute value */
 uint8_t *resizeattr(uint8_t **buf, uint8_t newvallen, uint8_t type) {
     uint8_t *attrs, *attr, vallen;
@@ -1396,7 +1418,7 @@ uint8_t *resizeattr(uint8_t **buf, uint8_t newvallen, uint8_t type) {
 
     len += newvallen - vallen;
     if (newvallen > vallen) {
-	new = realloc(*buf, len);
+	new = realloc(*buf, len + 20);
 	if (!new) {
 	    debug(DBG_ERR, "resizeattr: malloc failed");
 	    return NULL;
@@ -1597,6 +1619,7 @@ void radsrv(struct request *rq) {
     if (code != RAD_Access_Request) {
 	switch (code) {
 	case RAD_Accounting_Request:
+	    /* when forwarding accounting, also filter attributes, call removeattrs(rq) */
 	    acclog(attrs, len, rq->from->conf->host);
 	    respondaccounting(rq);
 	    break;
@@ -1609,6 +1632,11 @@ void radsrv(struct request *rq) {
     }
 
     /* code == RAD_Access_Request */
+    if (rq->from->conf->removeattrs) {
+	removeattrs(rq->buf, rq->from->conf->removeattrs);
+	len = RADLEN(rq->buf) - 20;
+    }
+    
     attr = attrget(attrs, len, RAD_Attr_User_Name);
     if (!attr) {
 	debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
@@ -1776,6 +1804,11 @@ int replyh(struct server *server, unsigned char *buf) {
 	return 0;
     }
 
+    if (server->conf->removeattrs) {
+	removeattrs(buf, server->conf->removeattrs);
+	len = RADLEN(buf) - 20;
+    }
+    
     /* MS MPPE */
     for (attr = attrs; (attr = attrget(attr, len - (attr - attrs), RAD_Attr_Vendor_Specific)); attr += ATTRLEN(attr)) {
 	if (ATTRVALLEN(attr) <= 4)
@@ -2534,6 +2567,42 @@ uint8_t attrname2val(char *attrname) {
     return val > 0 && val < 256 ? val : 0;
 }
 
+void rewritefree() {
+    struct list_node *entry;
+    struct rewrite *r;
+    
+    for (entry = list_first(rewriteconfs); entry; entry = list_next(entry)) {
+	r = (struct rewrite *)entry->data;
+	if (r->name)
+	    free(r->name);
+	if (!r->count)
+	    free(r->removeattrs);
+    }
+    list_destroy(rewriteconfs);
+    rewriteconfs = NULL;
+}
+
+uint8_t *getrewrite(char *alt1, char *alt2) {
+    struct list_node *entry;
+    struct rewrite *r, *r1 = NULL, *r2 = NULL;
+    
+    for (entry = list_first(rewriteconfs); entry; entry = list_next(entry)) {
+	r = (struct rewrite *)entry->data;
+	if (!strcasecmp(r->name, alt1)) {
+	    r1 = r;
+	    break;
+	}
+	if (!r2 && alt2 && !strcasecmp(r->name, alt2))
+	    r2 = r;
+    }
+
+    r = (r1 ? r1 : r2);
+    if (!r)
+	return NULL;
+    r->count++;
+    return r->removeattrs;
+}
+
 void addrewrite(char *value, char **attrs) {
     struct rewrite *new;
     int i, n;
@@ -2564,7 +2633,7 @@ void addrewrite(char *value, char **attrs) {
 }
 
 void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewriteattr = NULL;
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL, *rewriteattr = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confclient_cb called for %s", block);
@@ -2580,6 +2649,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "secret", CONF_STR, &conf->secret,
 		     "tls", CONF_STR, &tls,
 		     "matchcertificateattribute", CONF_STR, &matchcertattr,
+		     "rewrite", CONF_STR, &rewrite,
 		     "rewriteattribute", CONF_STR, &rewriteattr,
 		     NULL
 		     );
@@ -2607,6 +2677,8 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     if (matchcertattr)
 	free(matchcertattr);
     
+    conf->removeattrs = rewrite ? getrewrite(rewrite, NULL) : getrewrite("defaultclient", "default");
+    
     if (rewriteattr) {
 	if (!addrewriteattr(conf, rewriteattr))
 	    debugx(1, DBG_ERR, "error in block %s, invalid RewriteAttributeValue", block);
@@ -2624,7 +2696,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 }
 
 void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *statusserver = NULL;
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *statusserver = NULL, *rewrite = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
@@ -2641,6 +2713,7 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "secret", CONF_STR, &conf->secret,
 		     "tls", CONF_STR, &tls,
 		     "matchcertificateattribute", CONF_STR, &matchcertattr,
+		     "rewrite", CONF_STR, &rewrite,
 		     "StatusServer", CONF_STR, &statusserver,
 		     NULL
 		     );
@@ -2671,6 +2744,8 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	free(tls);
     if (matchcertattr)
 	free(matchcertattr);
+    
+    conf->removeattrs = rewrite ? getrewrite(rewrite, NULL) : getrewrite("defaultserver", "default");
     
     if (!resolvepeer(conf, 0))
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
@@ -2784,6 +2859,7 @@ void getmainconfig(const char *configfile) {
 		     );
     popgconffile(&cfs);
     tlsfree();
+    rewritefree();
     
     if (loglevel) {
 	if (strlen(loglevel) != 1 || *loglevel < '1' || *loglevel > '4')
