@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -56,7 +56,7 @@
 #include "radsecproxy.h"
 
 static struct options options;
-struct list *clconfs, *srvconfs, *realms, *tlsconfs;
+struct list *clconfs, *srvconfs, *realms, *tlsconfs, *rewriteconfs;
 
 static int client_udp_count = 0;
 static int client_tls_count = 0;
@@ -1377,6 +1377,28 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
     return 1;
 }
 
+void removeattrs(uint8_t *buf, uint8_t *rmattrs) {
+    uint8_t *attrs, alen;
+    uint16_t len, rmlen = 0;
+
+    if (!rmattrs)
+	return;
+
+    len = RADLEN(buf) - 20;
+    attrs = buf + 20;
+    while (len > 1) {
+	alen = ATTRLEN(attrs);
+	len -= alen;
+	if (strchr((char *)rmattrs, ATTRTYPE(attrs))) {
+	    memmove(attrs, attrs + alen, len);
+	    rmlen += alen;
+	} else
+	    attrs += alen;
+    }
+    if (rmlen)
+	((uint16_t *)buf)[1] = htons(RADLEN(buf) - rmlen);
+}
+
 /* returns a pointer to the resized attribute value */
 uint8_t *resizeattr(uint8_t **buf, uint8_t newvallen, uint8_t type) {
     uint8_t *attrs, *attr, vallen;
@@ -1396,7 +1418,7 @@ uint8_t *resizeattr(uint8_t **buf, uint8_t newvallen, uint8_t type) {
 
     len += newvallen - vallen;
     if (newvallen > vallen) {
-	new = realloc(*buf, len);
+	new = realloc(*buf, len + 20);
 	if (!new) {
 	    debug(DBG_ERR, "resizeattr: malloc failed");
 	    return NULL;
@@ -1597,6 +1619,7 @@ void radsrv(struct request *rq) {
     if (code != RAD_Access_Request) {
 	switch (code) {
 	case RAD_Accounting_Request:
+	    /* when forwarding accounting, also filter attributes, call removeattrs(rq) */
 	    acclog(attrs, len, rq->from->conf->host);
 	    respondaccounting(rq);
 	    break;
@@ -1609,6 +1632,11 @@ void radsrv(struct request *rq) {
     }
 
     /* code == RAD_Access_Request */
+    if (rq->from->conf->removeattrs) {
+	removeattrs(rq->buf, rq->from->conf->removeattrs);
+	len = RADLEN(rq->buf) - 20;
+    }
+
     attr = attrget(attrs, len, RAD_Attr_User_Name);
     if (!attr) {
 	debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
@@ -1774,6 +1802,11 @@ int replyh(struct server *server, unsigned char *buf) {
 	pthread_mutex_unlock(&server->newrq_mutex);
 	debug(DBG_INFO, "replyh: got status server response from %s", server->conf->host);
 	return 0;
+    }
+
+    if (server->conf->removeattrs) {
+	removeattrs(buf, server->conf->removeattrs);
+	len = RADLEN(buf) - 20;
     }
 
     /* MS MPPE */
@@ -2526,8 +2559,81 @@ int addrewriteattr(struct clsrvconf *conf, char *rewriteattr) {
     return 1;
 }
 
+/* should accept both names and numeric values, only numeric right now */
+uint8_t attrname2val(char *attrname) {
+    int val = 0;
+
+    val = atoi(attrname);
+    return val > 0 && val < 256 ? val : 0;
+}
+
+void rewritefree() {
+    struct list_node *entry;
+    struct rewrite *r;
+
+    for (entry = list_first(rewriteconfs); entry; entry = list_next(entry)) {
+	r = (struct rewrite *)entry->data;
+	if (r->name)
+	    free(r->name);
+	if (!r->count)
+	    free(r->removeattrs);
+    }
+    list_destroy(rewriteconfs);
+    rewriteconfs = NULL;
+}
+
+uint8_t *getrewrite(char *alt1, char *alt2) {
+    struct list_node *entry;
+    struct rewrite *r, *r1 = NULL, *r2 = NULL;
+
+    for (entry = list_first(rewriteconfs); entry; entry = list_next(entry)) {
+	r = (struct rewrite *)entry->data;
+	if (!strcasecmp(r->name, alt1)) {
+	    r1 = r;
+	    break;
+	}
+	if (!r2 && alt2 && !strcasecmp(r->name, alt2))
+	    r2 = r;
+    }
+
+    r = (r1 ? r1 : r2);
+    if (!r)
+	return NULL;
+    r->count++;
+    return r->removeattrs;
+}
+
+void addrewrite(char *value, char **attrs) {
+    struct rewrite *new;
+    int i, n;
+    uint8_t *a;
+
+    n = 0;
+    if (attrs)
+	for (; attrs[n]; n++);
+    a = malloc((n + 1) * sizeof(uint8_t));
+    if (!a)
+	debugx(1, DBG_ERR, "malloc failed");
+
+    for (i = 0; i < n; i++)
+	if (!(a[i] = attrname2val(attrs[i])))
+	    debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", attrs[i]);
+    a[i] = 0;
+
+    new = malloc(sizeof(struct rewrite));
+    if (!new || !list_push(rewriteconfs, new))
+	debugx(1, DBG_ERR, "malloc failed");
+
+    memset(new, 0, sizeof(struct rewrite));
+    new->name = stringcopy(value, 0);
+    if (!new->name)
+	debugx(1, DBG_ERR, "malloc failed");
+    new->removeattrs = a;
+    debug(DBG_DBG, "addrewrite: added rewrite block %s", value);
+}
+
 void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewriteattr = NULL;
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL, *rewriteattr = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confclient_cb called for %s", block);
@@ -2543,6 +2649,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "secret", CONF_STR, &conf->secret,
 		     "tls", CONF_STR, &tls,
 		     "matchcertificateattribute", CONF_STR, &matchcertattr,
+		     "rewrite", CONF_STR, &rewrite,
 		     "rewriteattribute", CONF_STR, &rewriteattr,
 		     NULL
 		     );
@@ -2569,6 +2676,8 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	free(tls);
     if (matchcertattr)
 	free(matchcertattr);
+
+    conf->removeattrs = rewrite ? getrewrite(rewrite, NULL) : getrewrite("defaultclient", "default");
     
     if (rewriteattr) {
 	if (!addrewriteattr(conf, rewriteattr))
@@ -2587,7 +2696,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 }
 
 void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *statusserver = NULL;
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *statusserver = NULL, *rewrite = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
@@ -2604,6 +2713,7 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "secret", CONF_STR, &conf->secret,
 		     "tls", CONF_STR, &tls,
 		     "matchcertificateattribute", CONF_STR, &matchcertattr,
+		     "rewrite", CONF_STR, &rewrite,
 		     "StatusServer", CONF_STR, &statusserver,
 		     NULL
 		     );
@@ -2634,6 +2744,8 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	free(tls);
     if (matchcertattr)
 	free(matchcertattr);
+    
+    conf->removeattrs = rewrite ? getrewrite(rewrite, NULL) : getrewrite("defaultserver", "default");
     
     if (!resolvepeer(conf, 0))
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
@@ -2690,6 +2802,19 @@ void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     free(certkeypwd);
 }
 
+void confrewrite_cb(struct gconffile **cf, char *block, char *opt, char *val) {
+    char **attrs = NULL;
+
+    debug(DBG_DBG, "confrewrite_cb called for %s", block);
+
+    getgenericconfig(cf, block,
+		     "removeAttribute", CONF_MSTR, &attrs,
+		     NULL
+		     );
+    addrewrite(val, attrs);
+    free(attrs);
+}
+
 void getmainconfig(const char *configfile) {
     char *loglevel = NULL;
     struct gconffile *cfs;
@@ -2712,7 +2837,11 @@ void getmainconfig(const char *configfile) {
     tlsconfs = list_create();
     if (!tlsconfs)
 	debugx(1, DBG_ERR, "malloc failed");    
- 
+
+    rewriteconfs = list_create();
+    if (!rewriteconfs)
+	debugx(1, DBG_ERR, "malloc failed");
+    
     getgenericconfig(&cfs, NULL,
 		     "ListenUDP", CONF_STR, &options.listenudp,
 		     "ListenTCP", CONF_STR, &options.listentcp,
@@ -2725,11 +2854,13 @@ void getmainconfig(const char *configfile) {
 		     "Server", CONF_CBK, confserver_cb,
 		     "Realm", CONF_CBK, confrealm_cb,
 		     "TLS", CONF_CBK, conftls_cb,
+		     "Rewrite", CONF_CBK, confrewrite_cb,
 		     NULL
 		     );
     popgconffile(&cfs);
     tlsfree();
-    
+    rewritefree();
+
     if (loglevel) {
 	if (strlen(loglevel) != 1 || *loglevel < '1' || *loglevel > '4')
 	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %s, must be 1, 2, 3 or 4", configfile, loglevel);
