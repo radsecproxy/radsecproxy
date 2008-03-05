@@ -84,7 +84,7 @@ struct clsrvconf {
     char *rewriteattrreplacement;
     uint8_t statusserver;
     SSL_CTX *ssl_ctx;
-    uint8_t *removeattrs;
+    struct rewrite *rewrite;
     struct addrinfo *addrinfo;
     uint8_t prefixlen;
     struct list *clients;
@@ -128,8 +128,13 @@ struct tls {
 };
 
 struct rewrite {
-    char *name;
     uint8_t *removeattrs;
+    uint32_t *removevendorattrs;
+};
+
+struct rewriteconf {
+    char *name;
+    struct rewrite *rewrite;
     int count;
 };
 
