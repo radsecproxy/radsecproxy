@@ -436,13 +436,38 @@ struct client *addclient(struct clsrvconf *conf) {
 }
 
 void removeclient(struct client *client) {
+    struct list_node *entry;
+    
     if (!client || !client->conf->clients)
 	return;
 
+    pthread_mutex_lock(&client->replyq->mutex);
+    for (entry = list_first(client->replyq->replies); entry; entry = list_next(entry))
+	free(((struct reply *)entry)->buf);
+    list_destroy(client->replyq->replies);
+    pthread_mutex_unlock(&client->replyq->mutex);
     list_removedata(client->conf->clients, client);
     free(client);
 }
 
+void removeclientrqs(struct client *client) {
+    struct list_node *entry;
+    struct server *server;
+    struct request *rq;
+    int i;
+    
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
+	server = ((struct clsrvconf *)entry->data)->servers;
+	pthread_mutex_lock(&server->newrq_mutex);
+	for (i = 0; i < MAX_REQUESTS; i++) {
+	    rq = server->requests + i;
+	    if (rq->from == client)
+		rq->from = NULL;
+	}
+	pthread_mutex_unlock(&server->newrq_mutex);
+    }
+}
+		     
 void addserver(struct clsrvconf *conf) {
     if (conf->servers)
 	debugx(1, DBG_ERR, "addserver: currently works with just one server per conf");
@@ -1805,6 +1830,7 @@ int replyh(struct server *server, unsigned char *buf) {
     }
 
     rq = server->requests + i;
+    from = rq->from;
 	
     pthread_mutex_lock(&server->newrq_mutex);
     if (!rq->buf || !rq->tries) {
@@ -1813,6 +1839,12 @@ int replyh(struct server *server, unsigned char *buf) {
 	return 0;
     }
 
+    if (!from) {
+	pthread_mutex_unlock(&server->newrq_mutex);
+	debug(DBG_INFO, "replyh: client gone, ignoring reply");
+	return 0;
+    }
+	
     if (rq->received) {
 	pthread_mutex_unlock(&server->newrq_mutex);
 	debug(DBG_INFO, "replyh: already received, ignoring reply");
@@ -1825,7 +1857,6 @@ int replyh(struct server *server, unsigned char *buf) {
 	return 0;
     }
 	
-    from = rq->from;
     len = RADLEN(buf) - 20;
     attrs = buf + 20;
 
@@ -1943,10 +1974,10 @@ int replyh(struct server *server, unsigned char *buf) {
 	fromsa = rq->fromsa;
     /* once we set received = 1, rq may be reused */
     rq->received = 1;
-    pthread_mutex_unlock(&server->newrq_mutex);
 
     debug(DBG_DBG, "replyh: giving packet back to where it came from");
     sendreply(from, buf, from->conf->type == 'U' ? &fromsa : NULL);
+    pthread_mutex_unlock(&server->newrq_mutex);
     return 1;
 }
 
@@ -2270,6 +2301,7 @@ void *tlsserverrd(void *arg) {
     shutdown(s, SHUT_RDWR);
     close(s);
     debug(DBG_DBG, "tlsserverrd thread for %s exiting", client->conf->host);
+    removeclientrqs(client);
     removeclient(client);
     pthread_exit(NULL);
 }
