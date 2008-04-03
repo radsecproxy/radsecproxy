@@ -79,6 +79,7 @@ struct clsrvconf {
     char *host;
     char *port;
     char *secret;
+    regex_t *certcnregex;
     regex_t *certuriregex;
     regex_t *rewriteattrregex;
     char *rewriteattrreplacement;

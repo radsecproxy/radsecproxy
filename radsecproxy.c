@@ -631,6 +631,45 @@ int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
     return r;
 }
 
+int cnregexp(X509 *cert, char *exact, regex_t *regex) {
+    int loc, l;
+    char *v, *s;
+    X509_NAME *nm;
+    X509_NAME_ENTRY *e;
+    ASN1_STRING *t;
+
+    nm = X509_get_subject_name(cert);
+    loc = -1;
+    for (;;) {
+	loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
+	if (loc == -1)
+	    break;
+	e = X509_NAME_get_entry(nm, loc);
+	t = X509_NAME_ENTRY_get_data(e);
+	v = (char *) ASN1_STRING_data(t);
+	l = ASN1_STRING_length(t);
+	if (l < 0)
+	    continue;
+	if (exact) {
+	    if (l == strlen(exact) && !strncasecmp(exact, v, l))
+		return 1;
+	} else {
+	    s = stringcopy((char *)v, l);
+	    if (!s) {
+		debug(DBG_ERR, "malloc failed");
+		continue;
+	    }
+	    if (regexec(regex, s, 0, NULL, 0)) {
+		free(s);
+		continue;
+	    }
+	    free(s);
+	    return 1;
+	}
+    }
+    return 0;
+}
+
 int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *regex) {
     int loc, i, l, n, r = 0;
     char *s, *v;
@@ -685,12 +724,8 @@ int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *regex) {
 }
 
 int tlsverifycert(SSL *ssl, struct clsrvconf *conf) {
-    int l, loc, r;
+    int r;
     X509 *cert;
-    X509_NAME *nm;
-    X509_NAME_ENTRY *e;
-    ASN1_STRING *s;
-    char *v;
     uint8_t type = 0; /* 0 for DNS, AF_INET for IPv4, AF_INET6 for IPv6 */
     unsigned long error;
     struct in6_addr addr;
@@ -717,51 +752,38 @@ int tlsverifycert(SSL *ssl, struct clsrvconf *conf) {
 	r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, conf->host, NULL);
 	if (r) {
 	    if (r < 0) {
-		X509_free(cert);
 		debug(DBG_DBG, "tlsverifycert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
-		return 0;
+		goto errexit;
 	    }
 	    debug(DBG_DBG, "tlsverifycert: Found subjectaltname matching %s %s", type ? "address" : "host", conf->host);
 	} else {
-	    nm = X509_get_subject_name(cert);
-	    loc = -1;
-	    for (;;) {
-		loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
-		if (loc == -1)
-		    break;
-		e = X509_NAME_get_entry(nm, loc);
-		s = X509_NAME_ENTRY_get_data(e);
-		v = (char *) ASN1_STRING_data(s);
-		l = ASN1_STRING_length(s);
-		if (l < 0)
-		    continue;
-#ifdef DEBUG
-		printfchars(NULL, "cn", NULL, v, l);
-#endif	    
-		if (l == strlen(conf->host) && !strncasecmp(conf->host, v, l)) {
-		    r = 1;
-		    debug(DBG_DBG, "tlsverifycert: Found cn matching host %s", conf->host);
-		    break;
-		}
-	    }
-	    if (!r) {
-		X509_free(cert);
+	    if (!cnregexp(cert, conf->host, NULL)) {
 		debug(DBG_ERR, "tlsverifycert: cn not matching host %s", conf->host);
-		return 0;
-	    }
+		goto errexit;
+	    }		
+	    debug(DBG_DBG, "tlsverifycert: Found cn matching host %s", conf->host);
 	}
     }
+    if (conf->certcnregex) {
+	if (cnregexp(cert, NULL, conf->certcnregex) < 1) {
+	    debug(DBG_DBG, "tlsverifycert: CN not matching regex");
+	    goto errexit;
+	}
+	debug(DBG_DBG, "tlsverifycert: CN matching regex");
+    }
     if (conf->certuriregex) {
-	r = subjectaltnameregexp(cert, GEN_URI, NULL, conf->certuriregex);
-	if (r < 1) {
+	if (subjectaltnameregexp(cert, GEN_URI, NULL, conf->certuriregex) < 1) {
 	    debug(DBG_DBG, "tlsverifycert: subjectaltname URI not matching regex");
-	    X509_free(cert);
-	    return 0;
+	    goto errexit;
 	}
 	debug(DBG_DBG, "tlsverifycert: subjectaltname URI matching regex");
     }
     X509_free(cert);
     return 1;
+    
+ errexit:
+    X509_free(cert);
+    return 0;
 }
 
 void tlsconnect(struct server *server, struct timeval *when, char *text) {
@@ -2583,9 +2605,17 @@ struct gconffile *openconfigfile(const char *filename) {
 
 int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
     char *v;
+    regex_t **r;
     
-    v = matchcertattr + 20;
-    if (strncasecmp(matchcertattr, "SubjectAltName:URI:/", 20) || !*v)
+    if (strncasecmp(matchcertattr, "CN:/", 4)) {
+	r = &conf->certcnregex;
+	v = matchcertattr + 4;
+    } else if (strncasecmp(matchcertattr, "SubjectAltName:URI:/", 20)) {
+	r = &conf->certuriregex;
+	v = matchcertattr + 20;
+    } else
+	return 0;
+    if (!*v)
 	return 0;
     /* regexp, remove optional trailing / if present */
     if (v[strlen(v) - 1] == '/')
@@ -2593,14 +2623,14 @@ int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
     if (!*v)
 	return 0;
 
-    conf->certuriregex = malloc(sizeof(regex_t));
-    if (!conf->certuriregex) {
+    *r = malloc(sizeof(regex_t));
+    if (!*r) {
 	debug(DBG_ERR, "malloc failed");
 	return 0;
     }
-    if (regcomp(conf->certuriregex, v, REG_ICASE | REG_NOSUB)) {
-	free(conf->certuriregex);
-	conf->certuriregex = NULL;
+    if (regcomp(*r, v, REG_ICASE | REG_NOSUB)) {
+	free(*r);
+	*r = NULL;
 	debug(DBG_ERR, "failed to compile regular expression %s", v);
 	return 0;
     }
