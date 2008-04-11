@@ -2075,7 +2075,7 @@ void *clientwr(void *arg) {
 		/* random 0-7 seconds */
 		RAND_bytes(&rnd, 1);
 		rnd /= 32;
-		if (!timeout.tv_sec || timeout.tv_sec - now.tv_sec > lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd)
+		if (!timeout.tv_sec || timeout.tv_sec > lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd)
 		    timeout.tv_sec = lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd;
 	    }   
 	    if (timeout.tv_sec) {
