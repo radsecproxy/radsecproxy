@@ -1852,8 +1852,7 @@ int replyh(struct server *server, unsigned char *buf) {
     }
 
     rq = server->requests + i;
-    from = rq->from;
-	
+
     pthread_mutex_lock(&server->newrq_mutex);
     if (!rq->buf || !rq->tries) {
 	pthread_mutex_unlock(&server->newrq_mutex);
@@ -1861,12 +1860,6 @@ int replyh(struct server *server, unsigned char *buf) {
 	return 0;
     }
 
-    if (!from) {
-	pthread_mutex_unlock(&server->newrq_mutex);
-	debug(DBG_INFO, "replyh: client gone, ignoring reply");
-	return 0;
-    }
-	
     if (rq->received) {
 	pthread_mutex_unlock(&server->newrq_mutex);
 	debug(DBG_INFO, "replyh: already received, ignoring reply");
@@ -1914,6 +1907,13 @@ int replyh(struct server *server, unsigned char *buf) {
 	return 0;
     }
 
+    from = rq->from;
+    if (!from) {
+	pthread_mutex_unlock(&server->newrq_mutex);
+	debug(DBG_INFO, "replyh: client gone, ignoring reply");
+	return 0;
+    }
+	
     if (server->conf->rewrite) {
 	dorewrite(buf, server->conf->rewrite);
 	len = RADLEN(buf) - 20;
