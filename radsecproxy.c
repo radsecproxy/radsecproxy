@@ -806,15 +806,15 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	elapsed = now.tv_sec - server->lastconnecttry.tv_sec;
 	if (server->connectionok) {
 	    server->connectionok = 0;
-	    sleep(10);
-	} else if (elapsed < 5)
-	    sleep(10);
-	else if (elapsed < 300) {
+	    sleep(2);
+	} else if (elapsed < 1)
+	    sleep(2);
+	else if (elapsed < 60) {
 	    debug(DBG_INFO, "tlsconnect: sleeping %lds", elapsed);
 	    sleep(elapsed);
 	} else if (elapsed < 100000) {
-	    debug(DBG_INFO, "tlsconnect: sleeping %ds", 600);
-	    sleep(600);
+	    debug(DBG_INFO, "tlsconnect: sleeping %ds", 60);
+	    sleep(60);
 	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
 	debug(DBG_WARN, "tlsconnect: trying to open TLS connection to %s port %s", server->conf->host, server->conf->port);
@@ -1665,10 +1665,12 @@ void respondreject(struct request *rq, char *message) {
 
 struct server *realm2server(struct realm *realm) {
     struct list_node *entry;
-    struct server *server, *best = NULL;
+    struct server *server, *best = NULL, *first = NULL;
     
     for (entry = list_first(realm->srvconfs); entry; entry = list_next(entry)) {
 	server = ((struct clsrvconf *)entry->data)->servers;
+	if (!first)
+	    first = server;
 	if (!server->connectionok)
 	    continue;
 	if (!server->loststatsrv)
@@ -1680,7 +1682,7 @@ struct server *realm2server(struct realm *realm) {
 	if (server->loststatsrv < best->loststatsrv)
 	    best = server;
     }
-    return best;
+    return best ? best : first;
 }
 
 void radsrv(struct request *rq) {
