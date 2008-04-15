@@ -29,6 +29,7 @@
  *          1 + (2 + 2 * 3) + (2 * 30) + (2 * 30) = 129 threads
 */
 
+#include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -3081,8 +3082,29 @@ int daemon(int a, int b) {
 }
 #endif
 
+void *sighandler(void *arg) {
+    sigset_t sigset;
+    int sig;
+
+    for(;;) {
+        sigfillset(&sigset);
+        sigwait(&sigset, &sig);
+        switch (sig) {
+        case 0:
+            /* completely ignoring this */
+            break;
+        case SIGPIPE:
+            debug(DBG_WARN, "sighandler: got SIGPIPE, TLS write error?");
+            break;
+        default:
+            debug(DBG_WARN, "sighandler: ignoring signal %d", sig);
+        }
+    }
+}
+
 int main(int argc, char **argv) {
-    pthread_t udpserverth, udpaccserverth, udpclient4rdth, udpclient6rdth;
+    pthread_t sigth, udpserverth, udpaccserverth, udpclient4rdth, udpclient6rdth;
+    sigset_t sigset;
     struct list_node *entry;
     uint8_t foreground = 0, pretend = 0, loglevel = 0;
     char *configfile = NULL;
@@ -3120,6 +3142,12 @@ int main(int argc, char **argv) {
     
     debug(DBG_INFO, "radsecproxy revision $Rev$ starting");
 
+    sigemptyset(&sigset);
+    /* exit on all but SIGPIPE, ignore more? */
+    sigaddset(&sigset, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+    pthread_create(&sigth, NULL, sighandler, NULL);
+    
     if (client_udp_count) {
 	udp_server_replyq = newreplyq();
 	if (pthread_create(&udpserverth, NULL, udpserverrd, NULL))
