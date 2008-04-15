@@ -2581,28 +2581,12 @@ void addrealm(char *value, char **servers, char *message) {
     debug(DBG_DBG, "addrealm: added realm %s", value);
 }
 
-struct gconffile *openconfigfile(const char *filename) {
-    FILE *f;
-    char pathname[100], *base = NULL;
+struct gconffile *openconfigfile(const char *file) {
     struct gconffile *cf = NULL;
-    
-    f = pushgconffile(&cf, filename);
-    if (f) {
-	debug(DBG_DBG, "reading config file %s", filename);
-	return cf;
-    }
 
-    if (strlen(filename) + 1 <= sizeof(pathname)) {
-	/* basename() might modify the string */
-	strcpy(pathname, filename);
-	base = basename(pathname);
-	f = pushgconffile(&cf, base);
-    }
-
-    if (!f)
-	debugx(1, DBG_ERR, "could not read config file %s nor %s\n%s", filename, base, strerror(errno));
-    
-    debug(DBG_DBG, "reading config file %s", base);
+    if (!pushgconffile(&cf, file))
+	debugx(1, DBG_ERR, "could not read config file %s\n%s", file, strerror(errno));
+    debug(DBG_DBG, "reading config file %s", file);
     return cf;
 }
 
@@ -3020,7 +3004,6 @@ void getmainconfig(const char *configfile) {
 		     "Rewrite", CONF_CBK, confrewrite_cb,
 		     NULL
 		     );
-    popgconffile(&cfs);
     tlsfree();
     rewritefree();
     

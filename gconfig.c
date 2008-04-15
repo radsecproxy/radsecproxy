@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2007, 2008 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <glob.h>
 #include <sys/types.h>
+#include <libgen.h>
 #include "debug.h"
 #include "util.h"
 #include "gconfig.h"
@@ -77,22 +78,44 @@ FILE *pushgconffile(struct gconffile **cf, const char *path) {
     return f;
 }
 
-FILE *pushgconffiles(struct gconffile **cf, const char *path) {
+FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
     int i;
     FILE *f;
     glob_t globbuf;
+    char *path, *curfile = NULL, *dir;
     
+    /* if cfgpath is relative, make it relative to current config */
+    if (*cfgpath == '/')
+	path = (char *)cfgpath;
+    else {
+	/* dirname may modify its argument */
+	curfile = stringcopy((*cf)->path, 0);
+	if (!curfile)
+	    debugx(1, DBG_ERR, "malloc failed");
+	dir = dirname(curfile);
+	path = malloc(strlen(dir) + strlen(cfgpath) + 2);
+	if (!path)
+	    debugx(1, DBG_ERR, "malloc failed");
+	strcpy(path, dir);
+	path[strlen(dir)] = '/';
+	strcpy(path + strlen(dir) + 1, cfgpath);
+    }
     memset(&globbuf, 0, sizeof(glob_t));
     if (glob(path, 0, NULL, &globbuf)) {
 	debug(DBG_INFO, "could not glob %s", path);
-	return NULL;
+	f = NULL;
+    } else {
+	for (i = globbuf.gl_pathc - 1; i >= 0; i--) {
+	    f = pushgconffile(cf, globbuf.gl_pathv[i]);
+	    if (!f)
+		break;
+	}    
+	globfree(&globbuf);
     }
-    for (i = globbuf.gl_pathc - 1; i >= 0; i--) {
-	f = pushgconffile(cf, globbuf.gl_pathv[i]);
-	if (!f)
-	    break;
-    }    
-    globfree(&globbuf);
+    if (curfile) {
+	free(curfile);
+	free(path);
+    }
     return f;
 }
 
@@ -200,18 +223,18 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    case CONF_STR:
 		str = va_arg(ap, char **);
 		if (!str)
-		    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
+		    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
 		break;
 	    case CONF_MSTR:
 		mstr = va_arg(ap, char ***);
 		if (!mstr)
-		    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
+		    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
 		break;
 	    case CONF_CBK:
 		cbk = va_arg(ap, void (*)(struct gconffile **, char *, char *, char *));
 		break;
 	    default:
-		debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
+		debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
 	    }
 	    if (!strcasecmp(opt, word))
 		break;
@@ -234,9 +257,9 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	switch (type) {
 	case CONF_STR:
 	    if (block)
-		debug(DBG_DBG, "getgeneralconfig: block %s: %s = %s", block, opt, val);
+		debug(DBG_DBG, "getgenericconfig: block %s: %s = %s", block, opt, val);
 	    else 
-		debug(DBG_DBG, "getgeneralconfig: %s = %s", opt, val);
+		debug(DBG_DBG, "getgenericconfig: %s = %s", opt, val);
 	    if (*str)
 		debugx(1, DBG_ERR, "configuration error, option %s already set to %s", opt, *str);
 	    *str = stringcopy(val, 0);
@@ -245,9 +268,9 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    break;
 	case CONF_MSTR:
 	    if (block)
-		debug(DBG_DBG, "getgeneralconfig: block %s: %s = %s", block, opt, val);
+		debug(DBG_DBG, "getgenericconfig: block %s: %s = %s", block, opt, val);
 	    else 
-		debug(DBG_DBG, "getgeneralconfig: %s = %s", opt, val);
+		debug(DBG_DBG, "getgenericconfig: %s = %s", opt, val);
 	    if (*mstr)
 		for (n = 0; (*mstr)[n]; n++);
 	    else
@@ -267,7 +290,7 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    free(optval);
 	    break;
 	default:
-	    debugx(1, DBG_ERR, "getgeneralconfig: internal parameter error");
+	    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
 	}
     }
 }
