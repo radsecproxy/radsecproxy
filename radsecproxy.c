@@ -3070,8 +3070,10 @@ void *sighandler(void *arg) {
     int sig;
 
     for(;;) {
-        sigfillset(&sigset);
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGPIPE);
         sigwait(&sigset, &sig);
+	/* only get SIGPIPE right now, so could simplify below code */
         switch (sig) {
         case 0:
             /* completely ignoring this */
