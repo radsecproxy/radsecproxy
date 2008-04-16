@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -29,6 +29,7 @@
  *          1 + (2 + 2 * 3) + (2 * 30) + (2 * 30) = 129 threads
 */
 
+#include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -2378,8 +2379,31 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
     exit(1);
 }
 
+void *sighandler(void *arg) {
+    sigset_t sigset;
+    int sig;
+
+    for(;;) {
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGPIPE);
+	sigwait(&sigset, &sig);
+	/* only get SIGPIPE right now, so could simplify below code */
+	switch (sig) {
+	case 0:
+	    /* completely ignoring this */
+	    break;
+	case SIGPIPE:
+	    debug(DBG_WARN, "sighandler: got SIGPIPE, TLS write error?");
+	    break;
+	default:
+	    debug(DBG_WARN, "sighandler: ignoring signal %d", sig);
+	}
+    }
+}
+
 int main(int argc, char **argv) {
-    pthread_t udpserverth;
+    pthread_t sigth, udpserverth;
+    sigset_t sigset;
     int i;
     uint8_t foreground = 0, loglevel = 0;
     char *configfile = NULL;
@@ -2413,6 +2437,12 @@ int main(int argc, char **argv) {
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
 	
     debug(DBG_INFO, "radsecproxy 1.0p1 starting");
+
+    sigemptyset(&sigset);
+    /* exit on all but SIGPIPE, ignore more? */
+    sigaddset(&sigset, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+    pthread_create(&sigth, NULL, sighandler, NULL);
 
     if (client_udp_count) {
 	udp_server_listen = server_create('U');
