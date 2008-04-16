@@ -3072,7 +3072,7 @@ void *sighandler(void *arg) {
     for(;;) {
 	sigemptyset(&sigset);
 	sigaddset(&sigset, SIGPIPE);
-        sigwait(&sigset, &sig);
+	sigwait(&sigset, &sig);
 	/* only get SIGPIPE right now, so could simplify below code */
         switch (sig) {
         case 0:
