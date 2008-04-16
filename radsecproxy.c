@@ -1332,7 +1332,7 @@ int rqinqueue(struct server *to, struct client *from, uint8_t id) {
     
     pthread_mutex_lock(&to->newrq_mutex);
     for (i = 0; i < MAX_REQUESTS; i++)
-	if (to->requests[i].buf && to->requests[i].origid == id && to->requests[i].from == from)
+	if (to->requests[i].buf && !to->requests[i].received && to->requests[i].origid == id && to->requests[i].from == from)
 	    break;
     pthread_mutex_unlock(&to->newrq_mutex);
     
