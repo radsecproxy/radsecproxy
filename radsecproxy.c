@@ -2366,7 +2366,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *loglevel, char
 	    *foreground = 1;
 	    break;
 	case 'v':
-		debugx(0, DBG_ERR, "radsecproxy 1.0p1");
+		debugx(0, DBG_ERR, "radsecproxy 1.0p2");
 	default:
 	    goto usage;
 	}
@@ -2436,7 +2436,7 @@ int main(int argc, char **argv) {
     if (!foreground && (daemon(0, 0) < 0))
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
 	
-    debug(DBG_INFO, "radsecproxy 1.0p1 starting");
+    debug(DBG_INFO, "radsecproxy 1.0p2 starting");
 
     sigemptyset(&sigset);
     /* exit on all but SIGPIPE, ignore more? */
