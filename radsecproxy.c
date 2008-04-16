@@ -336,13 +336,11 @@ int prefixmatch(void *a1, void *a2, uint8_t len) {
     return (((uint8_t *)a1)[l] & mask[r]) == (((uint8_t *)a2)[l] & mask[r]);
 }
 
-/* returns the config with matching address, or NULL */
-/* if conf argument is not NULL, we only check that one */
-struct clsrvconf *find_conf(char type, struct sockaddr *addr, struct list *confs, struct clsrvconf *conf) {
+/* check if conf has matching address */
+struct clsrvconf *checkconfaddr(char type, struct sockaddr *addr, struct clsrvconf *conf) {
     struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
     struct addrinfo *res;
-    struct list_node *entry;
     
     if (addr->sa_family == AF_INET6) {
         sa6 = (struct sockaddr_in6 *)addr;
@@ -353,29 +351,45 @@ struct clsrvconf *find_conf(char type, struct sockaddr *addr, struct list *confs
     } else
 	a4 = &((struct sockaddr_in *)addr)->sin_addr;
 
-    if (conf) {
-	if (conf->type == type) {
-	    if (conf->prefixlen == 255) {
-		for (res = conf->addrinfo; res; res = res->ai_next)
-		    if ((a4 && res->ai_family == AF_INET &&
-			 !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
-			(sa6 && res->ai_family == AF_INET6 &&
-			 !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
-			return conf;
-	    } else {
-		res = conf->addrinfo;
-		if (res &&
-		    ((a4 && res->ai_family == AF_INET &&
-		      prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, conf->prefixlen)) ||
-		     (sa6 && res->ai_family == AF_INET6 &&
-		      prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, conf->prefixlen))))
+    if (conf->type == type) {
+	if (conf->prefixlen == 255) {
+	    for (res = conf->addrinfo; res; res = res->ai_next)
+		if ((a4 && res->ai_family == AF_INET &&
+		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
+		    (sa6 && res->ai_family == AF_INET6 &&
+		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
 		    return conf;
-	    }
+	} else {
+	    res = conf->addrinfo;
+	    if (res &&
+		((a4 && res->ai_family == AF_INET &&
+		  prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, conf->prefixlen)) ||
+		 (sa6 && res->ai_family == AF_INET6 &&
+		  prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, conf->prefixlen))))
+		return conf;
 	}
-	return NULL;
     }
+    return NULL;
+}
 
-    for (entry = list_first(confs); entry; entry = list_next(entry)) {	
+/* returns next config with matching address, or NULL */
+struct clsrvconf *find_conf(char type, struct sockaddr *addr, struct list *confs, struct list_node **cur) {
+    struct sockaddr_in6 *sa6 = NULL;
+    struct in_addr *a4 = NULL;
+    struct addrinfo *res;
+    struct list_node *entry;
+    struct clsrvconf *conf;
+    
+    if (addr->sa_family == AF_INET6) {
+        sa6 = (struct sockaddr_in6 *)addr;
+        if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) {
+            a4 = (struct in_addr *)&sa6->sin6_addr.s6_addr[12];
+	    sa6 = NULL;
+	}
+    } else
+	a4 = &((struct sockaddr_in *)addr)->sin_addr;
+
+    for (cur ? list_next(*cur) : list_first(confs); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
 	if (conf->type == type) {
 	    if (conf->prefixlen == 255) {
@@ -383,16 +397,22 @@ struct clsrvconf *find_conf(char type, struct sockaddr *addr, struct list *confs
 		    if ((a4 && res->ai_family == AF_INET &&
 			 !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
 			(sa6 && res->ai_family == AF_INET6 &&
-			 !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
+			 !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16))) {
+			if (cur)
+			    *cur = entry;
 			return conf;
+		    }
 	    } else {
 		res = conf->addrinfo;
 		if (res &&
 		    ((a4 && res->ai_family == AF_INET &&
 		      prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, conf->prefixlen)) ||
 		     (sa6 && res->ai_family == AF_INET6 &&
-		      prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, conf->prefixlen))))
+		      prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, conf->prefixlen)))) {
+		    if (cur)
+			*cur = entry;
 		    return conf;
+		}
 	    }
 	}
     }    
@@ -558,12 +578,12 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 
 	if (client)
 	    if (*client)
-		p = find_conf('U', (struct sockaddr *)&from, NULL, (*client)->conf);
+		p = checkconfaddr('U', (struct sockaddr *)&from, (*client)->conf);
 	    else
 		p = find_conf('U', (struct sockaddr *)&from, clconfs, NULL);
 	else
 	    if (*server)
-		p = find_conf('U', (struct sockaddr *)&from, NULL, (*server)->conf);
+		p = checkconfaddr('U', (struct sockaddr *)&from, (*server)->conf);
 	    else
 		p = find_conf('U', (struct sockaddr *)&from, srvconfs, NULL);
 
@@ -2330,6 +2350,84 @@ void *tlsserverrd(void *arg) {
     removeclient(client);
     pthread_exit(NULL);
 }
+
+/***********************************************
+ *  new tls listening code
+ ***********************************************/
+void *tlsserverrd2(void *arg) {
+    int s;
+    struct sockaddr_storage from;
+    size_t fromlen = sizeof(from);
+    struct clsrvconf *conf;
+    struct list_node *cur = NULL;
+    SSL *ssl = NULL;
+    struct client *client;
+
+    s = *(int *)arg;
+    if (getpeername(s, (struct sockaddr *)&from, &fromlen)) {
+	debug(DBG_DBG, "tlsserverrd: getpeername failed, exiting");
+	goto errexit;
+    }
+    debug(DBG_WARN, "incoming TLS connection from %s", addr2string((struct sockaddr *)&from, fromlen));
+    while ((conf = find_conf('T', (struct sockaddr *)&from, clconfs, &cur))) {
+	if (!ssl) {
+	    ssl = SSL_new(conf->ssl_ctx);
+	    SSL_set_fd(ssl, s);
+	}
+	client = addclient(conf);
+	if (!client) {
+	    debug(DBG_WARN, "Failed to create new client instance");
+	    goto errexit;
+	}
+	/* todo */
+	client->ssl = ssl;
+	/* todo */
+    }
+    debug(DBG_WARN, "ignoring request, no matching TLS client");
+
+ errexit:
+    if (ssl)
+	SSL_free(ssl);
+    shutdown(s, SHUT_RDWR);
+    close(s);
+    pthread_exit(NULL);
+}
+
+int tlslistener2() {
+    pthread_t tlsserverth;
+    int s, snew;
+    struct sockaddr_storage from;
+    size_t fromlen = sizeof(from);
+    struct clsrvconf *listenres;
+
+    listenres = resolve_hostport('T', options.listentcp, DEFAULT_TLS_PORT);
+    if ((s = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
+	debugx(1, DBG_ERR, "tlslistener: socket/bind failed");
+
+    listen(s, 0);
+    debug(DBG_WARN, "listening for incoming TCP on %s:%s", listenres->host ? listenres->host : "*", listenres->port);
+    free(listenres);
+
+    for (;;) {
+	snew = accept(s, (struct sockaddr *)&from, &fromlen);
+	if (snew < 0) {
+	    debug(DBG_WARN, "accept failed");
+	    continue;
+	}
+	if (pthread_create(&tlsserverth, NULL, tlsserverrd2, (void *)&snew)) {
+	    debug(DBG_ERR, "tlslistener: pthread_create failed");
+	    shutdown(snew, SHUT_RDWR);
+	    close(snew);
+	    continue;
+	}
+	pthread_detach(tlsserverth);
+    }
+    return 0;
+}
+
+/***********************************************
+ *  end of new tls listening code
+ ***********************************************/
 
 int tlslistener() {
     pthread_t tlsserverth;
