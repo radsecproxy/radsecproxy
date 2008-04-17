@@ -2458,7 +2458,7 @@ int tlslistener2() {
 	    debug(DBG_WARN, "accept failed");
 	    continue;
 	}
-	if (pthread_create(&tlsserverth, NULL, tlsservernew, (void *)&snew)) {
+	if (pthread_create(&tlsserverth, NULL, tlsservernew2, (void *)&snew)) {
 	    debug(DBG_ERR, "tlslistener: pthread_create failed");
 	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
@@ -3303,7 +3303,7 @@ int main(int argc, char **argv) {
 	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
     
     if (client_tls_count)
-	return tlslistener();
+	return tlslistener2();
     
     /* just hang around doing nothing, anything to do here? */
     for (;;)
