@@ -389,7 +389,7 @@ struct clsrvconf *find_conf(char type, struct sockaddr *addr, struct list *confs
     } else
 	a4 = &((struct sockaddr_in *)addr)->sin_addr;
 
-    for (entry = (cur ? list_next(*cur) : list_first(confs)); entry; entry = list_next(entry)) {
+    for (entry = (*cur ? list_next(*cur) : list_first(confs)); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
 	if (conf->type == type) {
 	    if (conf->prefixlen == 255) {
