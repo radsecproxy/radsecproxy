@@ -744,26 +744,28 @@ int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *regex) {
     return r;
 }
 
-int tlsverifycert(SSL *ssl, struct clsrvconf *conf) {
-    int r;
+X509 *verifytlscert(SSL *ssl) {
     X509 *cert;
-    uint8_t type = 0; /* 0 for DNS, AF_INET for IPv4, AF_INET6 for IPv6 */
     unsigned long error;
-    struct in6_addr addr;
     
     if (SSL_get_verify_result(ssl) != X509_V_OK) {
-	debug(DBG_ERR, "tlsverifycert: basic validation failed");
+	debug(DBG_ERR, "verifytlscert: basic validation failed");
 	while ((error = ERR_get_error()))
-	    debug(DBG_ERR, "tlsverifycert: TLS: %s", ERR_error_string(error, NULL));
-	return 0;
+	    debug(DBG_ERR, "verifytlscert: TLS: %s", ERR_error_string(error, NULL));
+	return NULL;
     }
 
     cert = SSL_get_peer_certificate(ssl);
-    if (!cert) {
-	debug(DBG_ERR, "tlsverifycert: failed to obtain certificate");
-	return 0;
-    }
-
+    if (!cert)
+	debug(DBG_ERR, "verifytlscert: failed to obtain certificate");
+    return cert;
+}
+    
+int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
+    int r;
+    uint8_t type = 0; /* 0 for DNS, AF_INET for IPv4, AF_INET6 for IPv6 */
+    struct in6_addr addr;
+    
     if (conf->prefixlen == 255) {
 	if (inet_pton(AF_INET, conf->host, &addr))
 	    type = AF_INET;
@@ -773,44 +775,40 @@ int tlsverifycert(SSL *ssl, struct clsrvconf *conf) {
 	r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, conf->host, NULL);
 	if (r) {
 	    if (r < 0) {
-		debug(DBG_DBG, "tlsverifycert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
-		goto errexit;
+		debug(DBG_DBG, "verifyconfcert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
+		return 0;
 	    }
-	    debug(DBG_DBG, "tlsverifycert: Found subjectaltname matching %s %s", type ? "address" : "host", conf->host);
+	    debug(DBG_DBG, "verifyconfcert: Found subjectaltname matching %s %s", type ? "address" : "host", conf->host);
 	} else {
 	    if (!cnregexp(cert, conf->host, NULL)) {
-		debug(DBG_ERR, "tlsverifycert: cn not matching host %s", conf->host);
-		goto errexit;
+		debug(DBG_ERR, "verifyconfcert: cn not matching host %s", conf->host);
+		return 0;
 	    }		
-	    debug(DBG_DBG, "tlsverifycert: Found cn matching host %s", conf->host);
+	    debug(DBG_DBG, "verifyconfcert: Found cn matching host %s", conf->host);
 	}
     }
     if (conf->certcnregex) {
 	if (cnregexp(cert, NULL, conf->certcnregex) < 1) {
-	    debug(DBG_DBG, "tlsverifycert: CN not matching regex");
-	    goto errexit;
+	    debug(DBG_DBG, "verifyconfcert: CN not matching regex");
+	    return 0;
 	}
-	debug(DBG_DBG, "tlsverifycert: CN matching regex");
+	debug(DBG_DBG, "verifyconfcert: CN matching regex");
     }
     if (conf->certuriregex) {
 	if (subjectaltnameregexp(cert, GEN_URI, NULL, conf->certuriregex) < 1) {
-	    debug(DBG_DBG, "tlsverifycert: subjectaltname URI not matching regex");
-	    goto errexit;
+	    debug(DBG_DBG, "verifyconfcert: subjectaltname URI not matching regex");
+	    return 0;
 	}
-	debug(DBG_DBG, "tlsverifycert: subjectaltname URI matching regex");
+	debug(DBG_DBG, "verifyconfcert: subjectaltname URI matching regex");
     }
-    X509_free(cert);
     return 1;
-    
- errexit:
-    X509_free(cert);
-    return 0;
 }
 
 void tlsconnect(struct server *server, struct timeval *when, char *text) {
     struct timeval now;
     time_t elapsed;
-
+    X509 *cert;
+    
     debug(DBG_DBG, "tlsconnect called from %s", text);
     pthread_mutex_lock(&server->lock);
     if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
@@ -849,8 +847,16 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	SSL_free(server->ssl);
 	server->ssl = SSL_new(server->conf->ssl_ctx);
 	SSL_set_fd(server->ssl, server->sock);
-	if (SSL_connect(server->ssl) > 0 && tlsverifycert(server->ssl, server->conf))
+	if (SSL_connect(server->ssl) <= 0)
+	    continue;
+	cert = verifytlscert(server->ssl);
+	if (!cert)
+	    continue;
+	if (verifyconfcert(cert, server->conf)) {
+	    X509_free(cert);
 	    break;
+	}
+	X509_free(cert);
     }
     debug(DBG_WARN, "tlsconnect: TLS connection to %s port %s up", server->conf->host, server->conf->port);
     gettimeofday(&server->lastconnecttry, NULL);
@@ -2299,95 +2305,133 @@ void *tlsserverwr(void *arg) {
     }
 }
 
-void *tlsserverrd(void *arg) {
+void tlsserverrd(struct client *client) {
     struct request rq;
+    pthread_t tlsserverwrth;
+    
+    debug(DBG_DBG, "tlsserverrd starting for %s", client->conf->host);
+    
+    if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client)) {
+	debug(DBG_ERR, "tlsserverrd: pthread_create failed");
+	return;
+    }
+
+    for (;;) {
+	memset(&rq, 0, sizeof(struct request));
+	rq.buf = radtlsget(client->ssl);
+	if (!rq.buf)
+	    break;
+	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", client->conf->host);
+	rq.from = client;
+	radsrv(&rq);
+    }
+    
+    debug(DBG_ERR, "tlsserverrd: connection lost");
+    /* stop writer by setting ssl to NULL and give signal in case waiting for data */
+    client->ssl = NULL;
+    pthread_mutex_lock(&client->replyq->mutex);
+    pthread_cond_signal(&client->replyq->cond);
+    pthread_mutex_unlock(&client->replyq->mutex);
+    debug(DBG_DBG, "tlsserverrd: waiting for writer to end");
+    pthread_join(tlsserverwrth, NULL);
+    removeclientrqs(client);
+    debug(DBG_DBG, "tlsserverrd for %s exiting", client->conf->host);
+}
+
+void *tlsservernew(void *arg) {
     unsigned long error;
     int s;
     struct client *client = (struct client *)arg;
-    pthread_t tlsserverwrth;
     SSL *ssl;
+    X509 *cert;
     
-    debug(DBG_DBG, "tlsserverrd starting for %s", client->conf->host);
+    debug(DBG_DBG, "tlsservernew starting for %s", client->conf->host);
     ssl = client->ssl;
 
     if (SSL_accept(ssl) <= 0) {
         while ((error = ERR_get_error()))
-            debug(DBG_ERR, "tlsserverrd: SSL: %s", ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlsservernew: SSL: %s", ERR_error_string(error, NULL));
         debug(DBG_ERR, "SSL_accept failed");
-	goto errexit;
+	goto exit;
     }
-    if (tlsverifycert(client->ssl, client->conf)) {
-	if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client)) {
-	    debug(DBG_ERR, "tlsserverrd: pthread_create failed");
-	    goto errexit;
-	}
-	for (;;) {
-	    memset(&rq, 0, sizeof(struct request));
-	    rq.buf = radtlsget(client->ssl);
-	    if (!rq.buf)
-		break;
-	    debug(DBG_DBG, "tlsserverrd: got Radius message from %s", client->conf->host);
-	    rq.from = client;
-	    radsrv(&rq);
-	}
-	debug(DBG_ERR, "tlsserverrd: connection lost");
-	/* stop writer by setting ssl to NULL and give signal in case waiting for data */
-	client->ssl = NULL;
-	pthread_mutex_lock(&client->replyq->mutex);
-	pthread_cond_signal(&client->replyq->cond);
-	pthread_mutex_unlock(&client->replyq->mutex);
-	debug(DBG_DBG, "tlsserverrd: waiting for writer to end");
-	pthread_join(tlsserverwrth, NULL);
+
+    cert = verifytlscert(ssl);
+    if (!cert)
+	goto exit;
+    if (!verifyconfcert(cert, client->conf)) {
+	X509_free(cert);
+	goto exit;
     }
+    X509_free(cert);
+    tlsserverrd(client);
     
- errexit:
+ exit:
     s = SSL_get_fd(ssl);
     SSL_free(ssl);
     shutdown(s, SHUT_RDWR);
     close(s);
-    debug(DBG_DBG, "tlsserverrd thread for %s exiting", client->conf->host);
-    removeclientrqs(client);
     removeclient(client);
+    debug(DBG_DBG, "tlsservernew thread for %s exiting", client->conf->host);
     pthread_exit(NULL);
 }
 
 /***********************************************
- *  new tls listening code
+ *  new tls server code
  ***********************************************/
-void *tlsserverrd2(void *arg) {
+void *tlsservernew2(void *arg) {
     int s;
     struct sockaddr_storage from;
     size_t fromlen = sizeof(from);
     struct clsrvconf *conf;
     struct list_node *cur = NULL;
     SSL *ssl = NULL;
+    X509 *cert = NULL;
+    unsigned long error;
     struct client *client;
 
     s = *(int *)arg;
     if (getpeername(s, (struct sockaddr *)&from, &fromlen)) {
 	debug(DBG_DBG, "tlsserverrd: getpeername failed, exiting");
-	goto errexit;
+	goto exit;
     }
     debug(DBG_WARN, "incoming TLS connection from %s", addr2string((struct sockaddr *)&from, fromlen));
-    while ((conf = find_conf('T', (struct sockaddr *)&from, clconfs, &cur))) {
-	if (!ssl) {
-	    ssl = SSL_new(conf->ssl_ctx);
-	    SSL_set_fd(ssl, s);
+
+    conf = find_conf('T', (struct sockaddr *)&from, clconfs, &cur);
+    if (conf) {
+	ssl = SSL_new(conf->ssl_ctx);
+	SSL_set_fd(ssl, s);
+
+	if (SSL_accept(ssl) <= 0) {
+	    while ((error = ERR_get_error()))
+		debug(DBG_ERR, "tlsserverrd: SSL: %s", ERR_error_string(error, NULL));
+	    debug(DBG_ERR, "SSL_accept failed");
+	    goto exit;
 	}
-	client = addclient(conf);
-	if (!client) {
-	    debug(DBG_WARN, "Failed to create new client instance");
-	    goto errexit;
+	cert = verifytlscert(ssl);
+	if (!cert)
+	    goto exit;
+    }
+    
+    while (conf) {
+	if (verifyconfcert(cert, conf)) {
+	    X509_free(cert);
+	    client = addclient(conf);
+	    if (client) {
+		client->ssl = ssl;
+		tlsserverrd(client);
+		removeclient(client);
+	    } else
+		debug(DBG_WARN, "Failed to create new client instance");
+	    goto exit;
 	}
-	/* todo */
-	client->ssl = ssl;
-	/* todo */
+	conf = find_conf('T', (struct sockaddr *)&from, clconfs, &cur);
     }
     debug(DBG_WARN, "ignoring request, no matching TLS client");
+    if (cert)
+	X509_free(cert);
 
- errexit:
-    if (ssl)
-	SSL_free(ssl);
+ exit:
+    SSL_free(ssl);
     shutdown(s, SHUT_RDWR);
     close(s);
     pthread_exit(NULL);
@@ -2414,7 +2458,7 @@ int tlslistener2() {
 	    debug(DBG_WARN, "accept failed");
 	    continue;
 	}
-	if (pthread_create(&tlsserverth, NULL, tlsserverrd2, (void *)&snew)) {
+	if (pthread_create(&tlsserverth, NULL, tlsservernew, (void *)&snew)) {
 	    debug(DBG_ERR, "tlslistener: pthread_create failed");
 	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
@@ -2463,16 +2507,16 @@ int tlslistener() {
 	}
 
 	client = addclient(conf);
-
 	if (!client) {
 	    debug(DBG_WARN, "Failed to create new client instance");
 	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
 	    continue;
 	}
+	
 	client->ssl = SSL_new(client->conf->ssl_ctx);
 	SSL_set_fd(client->ssl, snew);
-	if (pthread_create(&tlsserverth, NULL, tlsserverrd, (void *)client)) {
+	if (pthread_create(&tlsserverth, NULL, tlsservernew, (void *)client)) {
 	    debug(DBG_ERR, "tlslistener: pthread_create failed");
 	    SSL_free(client->ssl);
 	    removeclient(client);
