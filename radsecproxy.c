@@ -2736,10 +2736,10 @@ int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
     char *v;
     regex_t **r;
     
-    if (strncasecmp(matchcertattr, "CN:/", 4)) {
+    if (!strncasecmp(matchcertattr, "CN:/", 4)) {
 	r = &conf->certcnregex;
 	v = matchcertattr + 4;
-    } else if (strncasecmp(matchcertattr, "SubjectAltName:URI:/", 20)) {
+    } else if (!strncasecmp(matchcertattr, "SubjectAltName:URI:/", 20)) {
 	r = &conf->certuriregex;
 	v = matchcertattr + 20;
     } else
