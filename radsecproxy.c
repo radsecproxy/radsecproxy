@@ -912,7 +912,45 @@ unsigned char *radtlsget(SSL *ssl) {
     return rad;
 }
 
-int clientradput(struct server *server, unsigned char *rad) {
+int clientradputudp(struct server *server, unsigned char *rad) {
+    size_t len;
+    struct sockaddr_storage sa;
+    struct sockaddr *sap;
+    struct clsrvconf *conf = server->conf;
+    in_port_t *port = NULL;
+    
+    len = RADLEN(rad);
+    
+    if (*rad == RAD_Accounting_Request) {
+	sap = (struct sockaddr *)&sa;
+	memcpy(sap, conf->addrinfo->ai_addr, conf->addrinfo->ai_addrlen);
+    } else
+	sap = conf->addrinfo->ai_addr;
+    
+    switch (sap->sa_family) {
+    case AF_INET:
+	port = &((struct sockaddr_in *)sap)->sin_port;
+	break;
+    case AF_INET6:
+	port = &((struct sockaddr_in6 *)sap)->sin6_port;
+	break;
+    default:
+	return 0;
+    }
+
+    if (*rad == RAD_Accounting_Request)
+	(*port)++;
+    
+    if (sendto(server->sock, rad, len, 0, sap, conf->addrinfo->ai_addrlen) >= 0) {
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, *port);
+	return 1;
+    }
+
+    debug(DBG_WARN, "clientradputudp: send failed");
+    return 0;
+}
+
+int clientradputtls(struct server *server, unsigned char *rad) {
     int cnt;
     size_t len;
     unsigned long error;
@@ -920,26 +958,27 @@ int clientradput(struct server *server, unsigned char *rad) {
     struct clsrvconf *conf = server->conf;
     
     len = RADLEN(rad);
-    if (conf->type == 'U') {
-	if (sendto(server->sock, rad, len, 0, conf->addrinfo->ai_addr, conf->addrinfo->ai_addrlen) >= 0) {
-	    debug(DBG_DBG, "clienradput: sent UDP of length %d to %s port %s", len, conf->host, conf->port);
-	    return 1;
-	}
-	debug(DBG_WARN, "clientradput: send failed");
-	return 0;
-    }
-
     lastconnecttry = server->lastconnecttry;
     while ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
 	while ((error = ERR_get_error()))
-	    debug(DBG_ERR, "clientradput: TLS: %s", ERR_error_string(error, NULL));
-	tlsconnect(server, &lastconnecttry, "clientradput");
+	    debug(DBG_ERR, "clientradputtls: TLS: %s", ERR_error_string(error, NULL));
+	tlsconnect(server, &lastconnecttry, "clientradputtls");
 	lastconnecttry = server->lastconnecttry;
     }
 
     server->connectionok = 1;
-    debug(DBG_DBG, "clientradput: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->host);
+    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->host);
     return 1;
+}
+
+int clientradput(struct server *server, unsigned char *rad) {
+    switch (server->conf->type) {
+    case 'U':
+	return clientradputudp(server, rad);
+    case 'T':
+	return clientradputtls(server, rad);
+    }
+    return 0;
 }
 
 int radsign(unsigned char *rad, unsigned char *sec) {
@@ -1375,16 +1414,16 @@ struct realm *id2realm(char *id, uint8_t len) {
     return NULL;
 }
 
-int rqinqueue(struct server *to, struct client *from, uint8_t id) {
-    int i;
+int rqinqueue(struct server *to, struct client *from, uint8_t id, uint8_t code) {
+    struct request *rq = to->requests, *end;
     
     pthread_mutex_lock(&to->newrq_mutex);
-    for (i = 0; i < MAX_REQUESTS; i++)
-	if (to->requests[i].buf && !to->requests[i].received && to->requests[i].origid == id && to->requests[i].from == from)
+    for (end = rq + MAX_REQUESTS; rq < end; rq++)
+	if (rq->buf && !rq->received && rq->origid == id && rq->from == from && *rq->buf == code)
 	    break;
     pthread_mutex_unlock(&to->newrq_mutex);
     
-    return i < MAX_REQUESTS;
+    return rq < end;
 }
 
 int attrvalidate(unsigned char *attrs, int length) {
@@ -1621,6 +1660,16 @@ int rewriteusername(struct request *rq, char *in) {
     return 1;
 }
 
+const char *radmsgtype2string(uint8_t code) {
+    static const char *rad_msg_names[] = {
+	"", "Access-Request", "Access-Accept", "Access-Reject",
+	"Accounting-Request", "Accounting-Response", "", "",
+	"", "", "", "Access-Challenge",
+	"Status-Server", "Status-Client"
+    };
+    return code < 14 && *rad_msg_names[code] ? rad_msg_names[code] : "Unknown";
+}
+
 void acclog(unsigned char *attrs, int length, char *host) {
     unsigned char *attr;
     char username[256];
@@ -1690,11 +1739,11 @@ void respondreject(struct request *rq, char *message) {
     sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL);
 }
 
-struct server *realm2server(struct realm *realm) {
+struct server *chooseserver(struct list *srvconfs) {
     struct list_node *entry;
     struct server *server, *best = NULL, *first = NULL;
     
-    for (entry = list_first(realm->srvconfs); entry; entry = list_next(entry)) {
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	server = ((struct clsrvconf *)entry->data)->servers;
 	if (!first)
 	    first = server;
@@ -1729,8 +1778,7 @@ void radsrv(struct request *rq) {
     
     if (code != RAD_Access_Request && code != RAD_Status_Server && code != RAD_Accounting_Request) {
 	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
-	freerqdata(rq);
-	return;
+	goto exit;
     }
 
     len -= 20;
@@ -1738,33 +1786,22 @@ void radsrv(struct request *rq) {
 
     if (!attrvalidate(attrs, len)) {
 	debug(DBG_WARN, "radsrv: attribute validation failed, ignoring packet");
-	freerqdata(rq);
-	return;
+	goto exit;
     }
 
     attr = attrget(attrs, len, RAD_Attr_Message_Authenticator);
     if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(rq->buf, ATTRVAL(attr), rq->from->conf->secret))) {
 	debug(DBG_WARN, "radsrv: message authentication failed");
-	freerqdata(rq);
-	return;
+	goto exit;
     }
 
-    if (code != RAD_Access_Request) {
-	switch (code) {
-	case RAD_Accounting_Request:
-	    /* when forwarding accounting, also filter attributes, call removeattrs(rq) */
-	    acclog(attrs, len, rq->from->conf->host);
-	    respondaccounting(rq);
-	    break;
-	case RAD_Status_Server:
-	    respondstatusserver(rq);
-	    break;
-	}
-	freerqdata(rq);
-	return;
+    if (code == RAD_Status_Server) {
+	respondstatusserver(rq);
+	goto exit;
     }
+    
+    /* below: code == RAD_Access_Request || code == RAD_Accounting_Request */
 
-    /* code == RAD_Access_Request */
     if (rq->from->conf->rewrite) {
 	dorewrite(rq->buf, rq->from->conf->rewrite);
 	len = RADLEN(rq->buf) - 20;
@@ -1772,9 +1809,12 @@ void radsrv(struct request *rq) {
     
     attr = attrget(attrs, len, RAD_Attr_User_Name);
     if (!attr) {
-	debug(DBG_WARN, "radsrv: ignoring request, no username attribute");
-	freerqdata(rq);
-	return;
+	if (code == RAD_Accounting_Request) {
+	    acclog(attrs, len, rq->from->conf->host);
+	    respondaccounting(rq);
+	} else
+	    debug(DBG_WARN, "radsrv: ignoring access request, no username attribute");
+	goto exit;
     }
     memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
     username[ATTRVALLEN(attr)] = '\0';
@@ -1782,8 +1822,7 @@ void radsrv(struct request *rq) {
     if (rq->from->conf->rewriteattrregex) {
 	if (!rewriteusername(rq, username)) {
 	    debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
-	    freerqdata(rq);
-	    return;
+	    goto exit;
 	}
 	len = RADLEN(rq->buf) - 20;
 	auth = (uint8_t *)(rq->buf + 4);
@@ -1791,37 +1830,34 @@ void radsrv(struct request *rq) {
     }
 
     if (rq->origusername)
-	debug(DBG_DBG, "Access Request with username: %s (originally %s)", username, rq->origusername);
+	debug(DBG_DBG, "%s with username: %s (originally %s)", radmsgtype2string(code), username, rq->origusername);
     else
-	debug(DBG_DBG, "Access Request with username: %s", username);
-	
+	debug(DBG_DBG, "%s with username: %s", radmsgtype2string(code), username);
+    
     realm = id2realm(username, strlen(username));
     if (!realm) {
 	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
-	freerqdata(rq);
-	return;
+	goto exit;
     }
 	
-    to = realm2server(realm);
-    if (to && rqinqueue(to, rq->from, id)) {
-	debug(DBG_INFO, "radsrv: already got request from host %s with id %d, ignoring", rq->from->conf->host, id);
-	freerqdata(rq);
-	return;
-    }
-
+    to = chooseserver(code == RAD_Access_Request ? realm->srvconfs : realm->accsrvconfs);
     if (!to) {
 	if (realm->message) {
 	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, username);
 	    respondreject(rq, realm->message);
 	}
-	freerqdata(rq);
-	return;
+	goto exit;
     }
     
+    if (rqinqueue(to, rq->from, id, code)) {
+	debug(DBG_INFO, "radsrv: already got %s from host %s with id %d, ignoring",
+	      radmsgtype2string(code), rq->from->conf->host, id);
+	goto exit;
+    }
+
     if (!RAND_bytes(newauth, 16)) {
 	debug(DBG_WARN, "radsrv: failed to generate random auth");
-	freerqdata(rq);
-	return;
+	goto exit;
     }
 
 #ifdef DEBUG
@@ -1831,25 +1867,25 @@ void radsrv(struct request *rq) {
     attr = attrget(attrs, len, RAD_Attr_User_Password);
     if (attr) {
 	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", ATTRVALLEN(attr));
-	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->conf->secret, to->conf->secret, auth, newauth)) {
-	    freerqdata(rq);
-	    return;
-	}
+	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->conf->secret, to->conf->secret, auth, newauth))
+	    goto exit;
     }
     
     attr = attrget(attrs, len, RAD_Attr_Tunnel_Password);
     if (attr) {
 	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", ATTRVALLEN(attr));
-	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->conf->secret, to->conf->secret, auth, newauth)) {
-	    freerqdata(rq);
-	    return;
-	}
+	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->conf->secret, to->conf->secret, auth, newauth))
+	    goto exit;
     }
 
     rq->origid = id;
     memcpy(rq->origauth, auth, 16);
     memcpy(auth, newauth, 16);
     sendrq(to, rq);
+    return;
+    
+ exit:
+    freerqdata(rq);
 }
 
 int replyh(struct server *server, unsigned char *buf) {
@@ -1865,20 +1901,12 @@ int replyh(struct server *server, unsigned char *buf) {
 	
     i = buf[1]; /* i is the id */
 
-    switch (*buf) {
-    case RAD_Access_Accept:
-	debug(DBG_DBG, "got Access Accept with id %d", i);
-	break;
-    case RAD_Access_Reject:
-	debug(DBG_DBG, "got Access Reject with id %d", i);
-	break;
-    case RAD_Access_Challenge:
-	debug(DBG_DBG, "got Access Challenge with id %d", i);
-	break;
-    default:
-	debug(DBG_INFO, "replyh: discarding, only accept access accept, access reject and access challenge messages");
+    if (*buf != RAD_Access_Accept && *buf != RAD_Access_Reject && *buf != RAD_Access_Challenge
+	&& *buf != RAD_Accounting_Response) {
+	debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(*buf));
 	return 0;
     }
+    debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(*buf), i);
 
     rq = server->requests + i;
 
@@ -1971,24 +1999,16 @@ int replyh(struct server *server, unsigned char *buf) {
 	return 0;
     }
 	
-    if (*buf == RAD_Access_Accept || *buf == RAD_Access_Reject) {
+    if (*buf == RAD_Access_Accept || *buf == RAD_Access_Reject || *buf == RAD_Accounting_Response) {
 	attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_User_Name);
-	/* we know the attribute exists */
-	memcpy(tmp, ATTRVAL(attr), ATTRVALLEN(attr));
-	tmp[ATTRVALLEN(attr)] = '\0';
-	switch (*buf) {
-	case RAD_Access_Accept:
+	if (attr) {
+	    memcpy(tmp, ATTRVAL(attr), ATTRVALLEN(attr));
+	    tmp[ATTRVALLEN(attr)] = '\0';
 	    if (rq->origusername)
-		debug(DBG_INFO, "Access Accept for %s (originally %s) from %s", tmp, rq->origusername, server->conf->host);
+		debug(DBG_INFO, "%s for %s (originally %s) from %s", radmsgtype2string(*buf), tmp,
+		      rq->origusername, server->conf->host);
 	    else
-		debug(DBG_INFO, "Access Accept for %s from %s", tmp, server->conf->host);
-	    break;
-	case RAD_Access_Reject:
-	    if (rq->origusername)
-		debug(DBG_INFO, "Access Reject for %s (originally %s) from %s", tmp, rq->origusername, server->conf->host);
-	    else
-		debug(DBG_INFO, "Access Reject for %s from %s", tmp, server->conf->host);
-	    break;
+		debug(DBG_INFO, "%s for %s from %s", radmsgtype2string(*buf), tmp, server->conf->host);
 	}
     }
 	
@@ -2646,12 +2666,39 @@ SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
     return t->ctx;
 }
 
-void addrealm(char *value, char **servers, char *message) {
+struct list *addsrvconfs(char *value, char **names) {
+    struct list *conflist;
+    int n;
+    struct list_node *entry;
+    struct clsrvconf *conf;
+    
+    if (!names || !*names)
+	return NULL;
+    
+    conflist = list_create();
+    if (!conflist)
+	debugx(1, DBG_ERR, "malloc failed");
+    
+    for (n = 0; names[n]; n++) {
+	for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
+	    conf = (struct clsrvconf *)entry->data;
+	    if (!strcasecmp(names[n], conf->name))
+		break;
+	}
+	if (!entry)
+	    debugx(1, DBG_ERR, "addsrvconfs failed for realm %s, no server named %s", value, names[n]);
+	if (!list_push(conflist, conf))
+	    debugx(1, DBG_ERR, "malloc failed");
+	debug(DBG_DBG, "addsrvconfs: added server %s for realm %s", conf->name, value);
+    }
+
+    return conflist;
+}
+
+void addrealm(char *value, char **servers, char **accservers, char *message) {
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
-    struct list_node *entry;
-    struct clsrvconf *conf;
     
     if (*value == '/') {
 	/* regexp, remove optional trailing / if present */
@@ -2698,25 +2745,9 @@ void addrealm(char *value, char **servers, char *message) {
 	debugx(1, DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
     if (regex)
 	free(regex);
-    
-    if (servers && *servers) {
-	realm->srvconfs = list_create();
-	if (!realm->srvconfs)
-	    debugx(1, DBG_ERR, "malloc failed");
-	for (n = 0; servers[n]; n++) {
-	    for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
-		conf = (struct clsrvconf *)entry->data;
-		if (!strcasecmp(servers[n], conf->name))
-		    break;
-	    }
-	    if (!entry)
-		debugx(1, DBG_ERR, "addrealm failed, no server %s", servers[n]);
-	    if (!list_push(realm->srvconfs, conf))
-		debugx(1, DBG_ERR, "malloc failed");
-	    debug(DBG_DBG, "addrealm: added server %s for realm %s", conf->name, value);
-	}
-    } else
-	realm->srvconfs = NULL;
+
+    realm->srvconfs = addsrvconfs(value, servers);
+    realm->accsrvconfs = addsrvconfs(value, accservers);
     
     if (!list_push(realms, realm))
 	debugx(1, DBG_ERR, "malloc failed");
@@ -3053,18 +3084,20 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 }
 
 void confrealm_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char **servers = NULL, *msg = NULL;
+    char **servers = NULL, **accservers = NULL, *msg = NULL;
     
     debug(DBG_DBG, "confrealm_cb called for %s", block);
     
     getgenericconfig(cf, block,
 		     "server", CONF_MSTR, &servers,
+		     "accountingServer", CONF_MSTR, &accservers,
 		     "ReplyMessage", CONF_STR, &msg,
 		     NULL
 		     );
 
-    addrealm(val, servers, msg);
+    addrealm(val, servers, accservers, msg);
     free(servers);
+    free(accservers);
 }
 
 void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {

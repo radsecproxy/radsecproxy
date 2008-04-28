@@ -120,6 +120,7 @@ struct realm {
     char *message;
     regex_t regex;
     struct list *srvconfs;
+    struct list *accsrvconfs;
 };
 
 struct tls {
