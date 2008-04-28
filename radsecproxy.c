@@ -939,10 +939,10 @@ int clientradputudp(struct server *server, unsigned char *rad) {
     }
 
     if (*rad == RAD_Accounting_Request)
-	(*port)++;
+	*port = htons(ntohs(*port) + 1);
     
     if (sendto(server->sock, rad, len, 0, sap, conf->addrinfo->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, *port);
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, ntohs(*port));
 	return 1;
     }
 
