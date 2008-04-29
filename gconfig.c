@@ -153,6 +153,7 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
     char line[1024];
     /* initialise lots of stuff to avoid stupid compiler warnings */
     char *tokens[3], *s, *opt = NULL, *val = NULL, *word, *optval, **str = NULL, ***mstr = NULL;
+    uint8_t *bln;
     int type = 0, tcount, conftype = 0, n;
     void (*cbk)(struct gconffile **, char *, char *, char *) = NULL;
 
@@ -230,6 +231,11 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 		if (!mstr)
 		    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
 		break;
+	    case CONF_BLN:
+		bln = va_arg(ap, uint8_t *);
+		if (!bln)
+		    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
+		break;
 	    case CONF_CBK:
 		cbk = va_arg(ap, void (*)(struct gconffile **, char *, char *, char *));
 		break;
@@ -247,7 +253,7 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    debugx(1, DBG_ERR, "configuration error, unknown option %s", opt);
 	}
 
-	if (((type == CONF_STR || type == CONF_MSTR) && conftype != CONF_STR) ||
+	if (((type == CONF_STR || type == CONF_MSTR || type == CONF_BLN) && conftype != CONF_STR) ||
 	    (type == CONF_CBK && conftype != CONF_CBK)) {
 	    if (block)
 		debugx(1, DBG_ERR, "configuration error in block %s, wrong syntax for option %s", block, opt);
@@ -256,10 +262,6 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 
 	switch (type) {
 	case CONF_STR:
-	    if (block)
-		debug(DBG_DBG, "getgenericconfig: block %s: %s = %s", block, opt, val);
-	    else 
-		debug(DBG_DBG, "getgenericconfig: %s = %s", opt, val);
 	    if (*str)
 		debugx(1, DBG_ERR, "configuration error, option %s already set to %s", opt, *str);
 	    *str = stringcopy(val, 0);
@@ -267,10 +269,6 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 		debugx(1, DBG_ERR, "malloc failed");
 	    break;
 	case CONF_MSTR:
-	    if (block)
-		debug(DBG_DBG, "getgenericconfig: block %s: %s = %s", block, opt, val);
-	    else 
-		debug(DBG_DBG, "getgenericconfig: %s = %s", opt, val);
 	    if (*mstr)
 		for (n = 0; (*mstr)[n]; n++);
 	    else
@@ -281,6 +279,16 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    (*mstr)[n] = stringcopy(val, 0);
 	    (*mstr)[n + 1] = NULL;
 	    break;
+	case CONF_BLN:
+	    if (!strcasecmp(val, "on"))
+		*bln = 1;
+	    else if (!strcasecmp(val, "off"))
+		*bln = 0;
+	    else if (block)
+		debugx(1, DBG_ERR, "configuration error in block %s, value for option %s must be on or off, not %s", block, opt, val);
+	    else
+		debugx(1, DBG_ERR, "configuration error, value for option %s must be on or off, not %s", opt, val);
+	    break;
 	case CONF_CBK:
 	    optval = malloc(strlen(opt) + strlen(val) + 2);
 	    if (!optval)
@@ -288,9 +296,13 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    sprintf(optval, "%s %s", opt, val);
 	    cbk(cf, optval, opt, val);
 	    free(optval);
-	    break;
+	    continue;
 	default:
 	    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
 	}
+	if (block)
+	    debug(DBG_DBG, "getgenericconfig: block %s: %s = %s", block, opt, val);
+	else 
+	    debug(DBG_DBG, "getgenericconfig: %s = %s", opt, val);
     }
 }

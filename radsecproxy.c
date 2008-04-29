@@ -766,7 +766,7 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     uint8_t type = 0; /* 0 for DNS, AF_INET for IPv4, AF_INET6 for IPv6 */
     struct in6_addr addr;
     
-    if (conf->prefixlen == 255) {
+    if (conf->certnamecheck && conf->prefixlen == 255) {
 	if (inet_pton(AF_INET, conf->host, &addr))
 	    type = AF_INET;
 	else if (inet_pton(AF_INET6, conf->host, &addr))
@@ -2960,6 +2960,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     if (!conf || !list_push(clconfs, conf))
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
+    conf->certnamecheck = 1;
     
     getgenericconfig(cf, block,
 		     "type", CONF_STR, &type,
@@ -2967,6 +2968,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "secret", CONF_STR, &conf->secret,
 		     "tls", CONF_STR, &tls,
 		     "matchcertificateattribute", CONF_STR, &matchcertattr,
+		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 		     "rewrite", CONF_STR, &rewrite,
 		     "rewriteattribute", CONF_STR, &rewriteattr,
 		     NULL
@@ -3014,7 +3016,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 }
 
 void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *statusserver = NULL, *rewrite = NULL;
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
@@ -3023,6 +3025,7 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     if (!conf || !list_push(srvconfs, conf))
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
+    conf->certnamecheck = 1;
     
     getgenericconfig(cf, block,
 		     "type", CONF_STR, &type,
@@ -3030,9 +3033,10 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "port", CONF_STR, &conf->port,
 		     "secret", CONF_STR, &conf->secret,
 		     "tls", CONF_STR, &tls,
-		     "matchcertificateattribute", CONF_STR, &matchcertattr,
+		     "MatchCertificateAttribute", CONF_STR, &matchcertattr,
 		     "rewrite", CONF_STR, &rewrite,
-		     "StatusServer", CONF_STR, &statusserver,
+		     "StatusServer", CONF_BLN, &conf->statusserver,
+		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 		     NULL
 		     );
 
@@ -3072,14 +3076,6 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	if (conf->type == 'U')
 	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for UDP", block);
 	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
-    }
-    
-    if (statusserver) {
-	if (!strcasecmp(statusserver, "on"))
-	    conf->statusserver = 1;
-	else if (strcasecmp(statusserver, "off"))
-	    debugx(1, DBG_ERR, "error in block %s, StatusServer is %s, must be on or off", block, statusserver);
-	free(statusserver);
     }
 }
 
