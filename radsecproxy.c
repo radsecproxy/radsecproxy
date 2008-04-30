@@ -2785,7 +2785,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     NULL
 		     );
 
-    /* leave conf->name to be NULL for clients */
+    conf->name = stringcopy(val, 0);
     if (!conf->host)
 	conf->host = stringcopy(val, 0);
     
