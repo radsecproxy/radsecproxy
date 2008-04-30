@@ -719,7 +719,7 @@ int tlsverifycert(SSL *ssl, struct clsrvconf *conf) {
 	if (r) {
 	    if (r < 0) {
 		X509_free(cert);
-		debug(DBG_DBG, "tlsverifycert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
+		debug(DBG_WARN, "tlsverifycert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
 		return 0;
 	    }
 	    debug(DBG_DBG, "tlsverifycert: Found subjectaltname matching %s %s", type ? "address" : "host", conf->host);
@@ -747,7 +747,7 @@ int tlsverifycert(SSL *ssl, struct clsrvconf *conf) {
 	    }
 	    if (!r) {
 		X509_free(cert);
-		debug(DBG_ERR, "tlsverifycert: cn not matching host %s", conf->host);
+		debug(DBG_WARN, "tlsverifycert: cn not matching host %s", conf->host);
 		return 0;
 	    }
 	}
@@ -1978,7 +1978,7 @@ int replyh(struct server *server, unsigned char *buf) {
     /* once we set received = 1, rq may be reused */
     rq->received = 1;
 
-    debug(DBG_DBG, "replyh: passing reply to client %s", from->conf->name);
+    debug(DBG_INFO, "replyh: passing reply to client %s", from->conf->name);
     sendreply(from, buf, from->conf->type == 'U' ? &fromsa : NULL);
     pthread_mutex_unlock(&server->newrq_mutex);
     return 1;
