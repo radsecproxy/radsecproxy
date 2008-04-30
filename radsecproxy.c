@@ -1884,7 +1884,7 @@ int replyh(struct server *server, unsigned char *buf) {
     if (*rq->buf == RAD_Status_Server) {
 	rq->received = 1;
 	pthread_mutex_unlock(&server->newrq_mutex);
-	debug(DBG_INFO, "replyh: got status server response from %s", server->conf->host);
+	debug(DBG_DBG, "replyh: got status server response from %s", server->conf->host);
 	return 0;
     }
 
