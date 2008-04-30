@@ -2046,7 +2046,7 @@ int replyh(struct server *server, unsigned char *buf) {
     /* once we set received = 1, rq may be reused */
     rq->received = 1;
 
-    debug(DBG_DBG, "replyh: giving packet back to where it came from");
+    debug(DBG_DBG, "replyh: passing reply to client %s", from->conf->name);
     sendreply(from, buf, from->conf->type == 'U' ? &fromsa : NULL);
     pthread_mutex_unlock(&server->newrq_mutex);
     return 1;
