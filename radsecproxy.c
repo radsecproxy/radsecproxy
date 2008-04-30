@@ -775,13 +775,13 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
 	r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, conf->host, NULL);
 	if (r) {
 	    if (r < 0) {
-		debug(DBG_DBG, "verifyconfcert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
+		debug(DBG_WARN, "verifyconfcert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
 		return 0;
 	    }
 	    debug(DBG_DBG, "verifyconfcert: Found subjectaltname matching %s %s", type ? "address" : "host", conf->host);
 	} else {
 	    if (!cnregexp(cert, conf->host, NULL)) {
-		debug(DBG_ERR, "verifyconfcert: cn not matching host %s", conf->host);
+		debug(DBG_WARN, "verifyconfcert: cn not matching host %s", conf->host);
 		return 0;
 	    }		
 	    debug(DBG_DBG, "verifyconfcert: Found cn matching host %s", conf->host);
@@ -789,14 +789,14 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     }
     if (conf->certcnregex) {
 	if (cnregexp(cert, NULL, conf->certcnregex) < 1) {
-	    debug(DBG_DBG, "verifyconfcert: CN not matching regex");
+	    debug(DBG_WARN, "verifyconfcert: CN not matching regex");
 	    return 0;
 	}
 	debug(DBG_DBG, "verifyconfcert: CN matching regex");
     }
     if (conf->certuriregex) {
 	if (subjectaltnameregexp(cert, GEN_URI, NULL, conf->certuriregex) < 1) {
-	    debug(DBG_DBG, "verifyconfcert: subjectaltname URI not matching regex");
+	    debug(DBG_WARN, "verifyconfcert: subjectaltname URI not matching regex");
 	    return 0;
 	}
 	debug(DBG_DBG, "verifyconfcert: subjectaltname URI matching regex");
@@ -2046,7 +2046,7 @@ int replyh(struct server *server, unsigned char *buf) {
     /* once we set received = 1, rq may be reused */
     rq->received = 1;
 
-    debug(DBG_DBG, "replyh: passing reply to client %s", from->conf->name);
+    debug(DBG_INFO, "replyh: passing reply to client %s", from->conf->name);
     sendreply(from, buf, from->conf->type == 'U' ? &fromsa : NULL);
     pthread_mutex_unlock(&server->newrq_mutex);
     return 1;
