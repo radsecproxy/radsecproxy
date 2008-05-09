@@ -2754,15 +2754,6 @@ void addrealm(char *value, char **servers, char **accservers, char *message) {
     debug(DBG_DBG, "addrealm: added realm %s", value);
 }
 
-struct gconffile *openconfigfile(const char *file) {
-    struct gconffile *cf = NULL;
-
-    if (!pushgconffile(&cf, file))
-	debugx(1, DBG_ERR, "could not read config file %s\n%s", file, strerror(errno));
-    debug(DBG_DBG, "reading config file %s", file);
-    return cf;
-}
-
 int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
     char *v;
     regex_t **r;
@@ -3215,8 +3206,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8
 	return;
 
  usage:
-    debug(DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ] [ -p ] [ -v ]", argv[0]);
-    exit(1);
+    debugx(1, DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ] [ -p ] [ -v ]", argv[0]);
 }
 
 #ifdef SYS_SOLARIS9

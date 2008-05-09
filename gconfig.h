@@ -8,7 +8,9 @@ struct gconffile {
     FILE *file;
 };
 
+void getconfigline(struct gconffile **cf, char *block, char **opt, char **val, int *conftype);
 void getgenericconfig(struct gconffile **cf, char *block, ...);
 FILE *pushgconffile(struct gconffile **cf, const char *path);
 FILE *pushgconffiles(struct gconffile **cf, const char *path);
 FILE *popgconffile(struct gconffile **cf);
+struct gconffile *openconfigfile(const char *file);

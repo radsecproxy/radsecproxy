@@ -13,6 +13,7 @@
 #include <glob.h>
 #include <sys/types.h>
 #include <libgen.h>
+#include <errno.h>
 #include "debug.h"
 #include "util.h"
 #include "gconfig.h"
@@ -138,6 +139,15 @@ FILE *popgconffile(struct gconffile **cf) {
     return (*cf)[0].file;
 }
 
+struct gconffile *openconfigfile(const char *file) {
+    struct gconffile *cf = NULL;
+
+    if (!pushgconffile(&cf, file))
+	debugx(1, DBG_ERR, "could not read config file %s\n%s", file, strerror(errno));
+    debug(DBG_DBG, "reading config file %s", file);
+    return cf;
+}
+
 /* Parses config with following syntax:
  * One of these:
  * option-name value
@@ -148,17 +158,19 @@ FILE *popgconffile(struct gconffile **cf) {
  *     ...
  * }
  */
-void getgenericconfig(struct gconffile **cf, char *block, ...) {
-    va_list ap;
-    char line[1024];
-    /* initialise lots of stuff to avoid stupid compiler warnings */
-    char *tokens[3], *s, *opt = NULL, *val = NULL, *word, *optval, **str = NULL, ***mstr = NULL;
-    uint8_t *bln;
-    int type = 0, tcount, conftype = 0, n;
-    void (*cbk)(struct gconffile **, char *, char *, char *) = NULL;
 
+void getconfigline(struct gconffile **cf, char *block, char **opt, char **val, int *conftype) {
+    char line[1024];
+    char *tokens[3], *s;
+    int tcount;
+    
+    *opt = NULL;
+    *val = NULL;
+    *conftype = 0;
+    
     if (!cf || !*cf || !(*cf)->file)
 	return;
+
     for (;;) {
 	if (!fgets(line, 1024, (*cf)->file)) {
 	    if (popgconffile(cf))
@@ -181,35 +193,51 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 		return;
 	    debugx(1, DBG_ERR, "configuration error, found } with no matching {");
 	}
-
-	switch (tcount) {
-	case 2:
-	    opt = tokens[0];
-	    val = tokens[1];
-	    conftype = CONF_STR;
+	break;
+    }
+    
+    switch (tcount) {
+    case 2:
+	*opt = tokens[0];
+	*val = tokens[1];
+	*conftype = CONF_STR;
+	break;
+    case 3:
+	if (tokens[1][0] == '=' && tokens[1][1] == '\0') {
+	    *opt = tokens[0];
+	    *val = tokens[2];
+	    *conftype = CONF_STR;
 	    break;
-	case 3:
-	    if (tokens[1][0] == '=' && tokens[1][1] == '\0') {
-		opt = tokens[0];
-		val = tokens[2];
-		conftype = CONF_STR;
-		break;
-	    }
-	    if (tokens[2][0] == '{' && tokens[2][1] == '\0') {
-		opt = tokens[0];
-		val = tokens[1];
-		conftype = CONF_CBK;
-		break;
-	    }
-	    /* fall through */
-	default:
-	    if (block)
-		debugx(1, DBG_ERR, "configuration error in block %s, line starting with %s", block, tokens[0]);
-	    debugx(1, DBG_ERR, "configuration error, syntax error in line starting with %s", tokens[0]);
 	}
+	if (tokens[2][0] == '{' && tokens[2][1] == '\0') {
+	    *opt = tokens[0];
+	    *val = tokens[1];
+	    *conftype = CONF_CBK;
+	    break;
+	}
+	/* fall through */
+    default:
+	if (block)
+	    debugx(1, DBG_ERR, "configuration error in block %s, line starting with %s", block, tokens[0]);
+	debugx(1, DBG_ERR, "configuration error, syntax error in line starting with %s", tokens[0]);
+    }
 
-	if (!*val)
-	    debugx(1, DBG_ERR, "configuration error, option %s needs a non-empty value", opt);
+    if (!**val)
+	debugx(1, DBG_ERR, "configuration error, option %s needs a non-empty value", *opt);
+    return;
+}
+
+void getgenericconfig(struct gconffile **cf, char *block, ...) {
+    va_list ap;
+    char *opt, *val, *word, *optval, **str = NULL, ***mstr = NULL;
+    uint8_t *bln;
+    int type = 0, conftype = 0, n;
+    void (*cbk)(struct gconffile **, char *, char *, char *) = NULL;
+
+    for (;;) {
+	getconfigline(cf, block, &opt, &val, &conftype);
+	if (!opt)
+	    return;
 
 	if (conftype == CONF_STR && !strcasecmp(opt, "include")) {
 	    if (!pushgconffiles(cf, val))
