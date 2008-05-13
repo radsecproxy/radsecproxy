@@ -6,10 +6,12 @@
 #include "gconfig.h"
 
 void listconfig(struct gconffile **cf, char *block, int compact) {
-    char *opt, *val;
+    char *opt = NULL, *val = NULL;
     int conftype;
 
     for (;;) {
+	free(opt);
+	free(val);
 	getconfigline(cf, block, &opt, &val, &conftype);
 	if (!opt)
 	    return;

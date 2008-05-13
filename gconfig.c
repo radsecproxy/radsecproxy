@@ -18,6 +18,14 @@
 #include "util.h"
 #include "gconfig.h"
 
+char *mystringcopyx(const char *s) {
+    char *t;
+    t = stringcopy(s, 0);
+    if (!t)
+	debugx(1, DBG_ERR, "malloc failed");
+    return t;
+}
+
 /* returns NULL on error, where to continue parsing if token and ok. E.g. "" will return token with empty string */
 char *strtokenquote(char *s, char **token, char *del, char *quote, char *comment) {
     char *t = s, *q, *r;
@@ -74,7 +82,7 @@ FILE *pushgconffile(struct gconffile **cf, const char *path) {
 	memmove(newcf + 1, newcf, sizeof(struct gconffile) * (i + 1));
     }
     newcf[0].file = f;
-    newcf[0].path = stringcopy(path, 0);
+    newcf[0].path = mystringcopyx(path);
     *cf = newcf;
     return f;
 }
@@ -90,9 +98,7 @@ FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
 	path = (char *)cfgpath;
     else {
 	/* dirname may modify its argument */
-	curfile = stringcopy((*cf)->path, 0);
-	if (!curfile)
-	    debugx(1, DBG_ERR, "malloc failed");
+	curfile = mystringcopyx((*cf)->path);
 	dir = dirname(curfile);
 	path = malloc(strlen(dir) + strlen(cfgpath) + 2);
 	if (!path)
@@ -129,6 +135,7 @@ FILE *popgconffile(struct gconffile **cf) {
     if (i && (*cf)[0].file) {
 	fclose((*cf)[0].file);
 	debug(DBG_DBG, "closing config file %s", (*cf)[0].path);
+	free((*cf)[0].path);
     }
     if (i < 2) {
 	free(*cf);
@@ -198,20 +205,20 @@ void getconfigline(struct gconffile **cf, char *block, char **opt, char **val, i
     
     switch (tcount) {
     case 2:
-	*opt = tokens[0];
-	*val = tokens[1];
+	*opt = mystringcopyx(tokens[0]);
+	*val = mystringcopyx(tokens[1]);
 	*conftype = CONF_STR;
 	break;
     case 3:
 	if (tokens[1][0] == '=' && tokens[1][1] == '\0') {
-	    *opt = tokens[0];
-	    *val = tokens[2];
+	    *opt = mystringcopyx(tokens[0]);
+	    *val = mystringcopyx(tokens[2]);
 	    *conftype = CONF_STR;
 	    break;
 	}
 	if (tokens[2][0] == '{' && tokens[2][1] == '\0') {
-	    *opt = tokens[0];
-	    *val = tokens[1];
+	    *opt = mystringcopyx(tokens[0]);
+	    *val = mystringcopyx(tokens[1]);
 	    *conftype = CONF_CBK;
 	    break;
 	}
@@ -229,12 +236,13 @@ void getconfigline(struct gconffile **cf, char *block, char **opt, char **val, i
 
 void getgenericconfig(struct gconffile **cf, char *block, ...) {
     va_list ap;
-    char *opt, *val, *word, *optval, **str = NULL, ***mstr = NULL;
+    char *opt = NULL, *val, *word, *optval, **str = NULL, ***mstr = NULL;
     uint8_t *bln;
     int type = 0, conftype = 0, n;
     void (*cbk)(struct gconffile **, char *, char *, char *) = NULL;
 
     for (;;) {
+	free(opt);
 	getconfigline(cf, block, &opt, &val, &conftype);
 	if (!opt)
 	    return;
@@ -242,6 +250,7 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	if (conftype == CONF_STR && !strcasecmp(opt, "include")) {
 	    if (!pushgconffiles(cf, val))
 		debugx(1, DBG_ERR, "failed to include config file %s", val);
+	    free(val);
 	    continue;
 	}
 	    
@@ -292,9 +301,7 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	case CONF_STR:
 	    if (*str)
 		debugx(1, DBG_ERR, "configuration error, option %s already set to %s", opt, *str);
-	    *str = stringcopy(val, 0);
-	    if (!*str)
-		debugx(1, DBG_ERR, "malloc failed");
+	    *str = val;
 	    break;
 	case CONF_MSTR:
 	    if (*mstr)
@@ -304,7 +311,7 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    *mstr = realloc(*mstr, sizeof(char *) * (n + 2));
 	    if (!*mstr)
 		debugx(1, DBG_ERR, "malloc failed");
-	    (*mstr)[n] = stringcopy(val, 0);
+	    (*mstr)[n] = val;
 	    (*mstr)[n + 1] = NULL;
 	    break;
 	case CONF_BLN:
@@ -323,6 +330,7 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 		debugx(1, DBG_ERR, "malloc failed");
 	    sprintf(optval, "%s %s", opt, val);
 	    cbk(cf, optval, opt, val);
+	    free(val);
 	    free(optval);
 	    continue;
 	default:
@@ -332,5 +340,7 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    debug(DBG_DBG, "getgenericconfig: block %s: %s = %s", block, opt, val);
 	else 
 	    debug(DBG_DBG, "getgenericconfig: %s = %s", opt, val);
+	if (type == CONF_BLN)
+	    free(val);
     }
 }
