@@ -1842,7 +1842,7 @@ void radsrv(struct request *rq) {
 	
     to = chooseserver(code == RAD_Access_Request ? realm->srvconfs : realm->accsrvconfs);
     if (!to) {
-	if (realm->message) {
+	if (realm->message && code == RAD_Access_Request) {
 	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, username);
 	    respondreject(rq, realm->message);
 	}
