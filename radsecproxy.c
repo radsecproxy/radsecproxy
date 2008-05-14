@@ -2820,9 +2820,12 @@ void addrewrite(char *value, char **attrs, char **vattrs) {
 	if (!a)
 	    debugx(1, DBG_ERR, "malloc failed");
     
-	for (i = 0; i < n; i++)
+	for (i = 0; i < n; i++) {
 	    if (!(a[i] = attrname2val(attrs[i])))
 		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", attrs[i]);
+	    free(attrs[i]);
+	}
+	free(attrs);
 	a[i] = 0;
     }
     
@@ -2833,9 +2836,12 @@ void addrewrite(char *value, char **attrs, char **vattrs) {
 	if (!va)
 	    debugx(1, DBG_ERR, "malloc failed");
     
-	for (p = va, i = 0; i < n; i++, p += 2)
+	for (p = va, i = 0; i < n; i++, p += 2) {
 	    if (!vattrname2val(vattrs[i], p, p + 1))
 		debugx(1, DBG_ERR, "addrewrite: invalid vendor attribute %s", vattrs[i]);
+	    free(vattrs[i]);
+	}
+	free(vattrs);
 	*p = 0;
     }
     
@@ -3037,8 +3043,6 @@ void confrewrite_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     NULL
 		     );
     addrewrite(val, attrs, vattrs);
-    free(attrs);
-    free(vattrs);
 }
 
 void getmainconfig(const char *configfile) {
