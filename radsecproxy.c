@@ -64,8 +64,8 @@ static int client_tls_count = 0;
 static int server_udp_count = 0;
 static int server_tls_count = 0;
 
-static struct clsrvconf *srcudpres = NULL;
-static struct clsrvconf *srctcpres = NULL;
+static struct addrinfo *srcudpres = NULL;
+static struct addrinfo *srctcpres = NULL;
 
 static struct replyq *udp_server_replyq = NULL;
 static int udp_server_sock = -1;
@@ -304,13 +304,21 @@ struct clsrvconf *resolve_hostport(char type, char *lconf, char *default_port) {
     return conf;
 }
 
+void freeclsrvres(struct clsrvconf *res) {
+    free(res->host);
+    free(res->port);
+    if (res->addrinfo)
+	freeaddrinfo(res->addrinfo);
+    free(res);
+}
+
 int connecttcp(struct addrinfo *addrinfo) {
     int s;
     struct addrinfo *res;
 
     s = -1;
     for (res = addrinfo; res; res = res->ai_next) {
-	s = bindtoaddr(srctcpres->addrinfo, res->ai_family, 1, 1);
+	s = bindtoaddr(srctcpres, res->ai_family, 1, 1);
         if (s < 0) {
             debug(DBG_WARN, "connecttoserver: socket failed");
             continue;
@@ -490,6 +498,8 @@ void removeclientrqs(struct client *client) {
 }
 		     
 void addserver(struct clsrvconf *conf) {
+    struct clsrvconf *res;
+    
     if (conf->servers)
 	debugx(1, DBG_ERR, "addserver: currently works with just one server per conf");
     
@@ -500,12 +510,16 @@ void addserver(struct clsrvconf *conf) {
     conf->servers->conf = conf;
 
     if (conf->type == 'U') {
-	if (!srcudpres)
-	    srcudpres = resolve_hostport('U', options.sourceudp, NULL);
+	if (!srcudpres) {
+	    res = resolve_hostport('U', options.sourceudp, NULL);
+	    srcudpres = res->addrinfo;
+	    res->addrinfo = NULL;
+	    freeclsrvres(res);
+	}
 	switch (conf->addrinfo->ai_family) {
 	case AF_INET:
 	    if (udp_client4_sock < 0) {
-		udp_client4_sock = bindtoaddr(srcudpres->addrinfo, AF_INET, 0, 1);
+		udp_client4_sock = bindtoaddr(srcudpres, AF_INET, 0, 1);
 		if (udp_client4_sock < 0)
 		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
 	    }
@@ -513,7 +527,7 @@ void addserver(struct clsrvconf *conf) {
 	    break;
 	case AF_INET6:
 	    if (udp_client6_sock < 0) {
-		udp_client6_sock = bindtoaddr(srcudpres->addrinfo, AF_INET6, 0, 1);
+		udp_client6_sock = bindtoaddr(srcudpres, AF_INET6, 0, 1);
 		if (udp_client6_sock < 0)
 		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
 	    }
@@ -524,8 +538,12 @@ void addserver(struct clsrvconf *conf) {
 	}
 	
     } else {
-	if (!srctcpres)
-	    srctcpres = resolve_hostport('T', options.sourcetcp, NULL);
+	if (!srctcpres) {
+	    res = resolve_hostport('T', options.sourcetcp, NULL);
+	    srctcpres = res->addrinfo;
+	    res->addrinfo = NULL;
+	    freeclsrvres(res);
+	}
 	conf->servers->sock = -1;
     }
     
@@ -2251,7 +2269,7 @@ void *udpserverrd(void *arg) {
 
     debug(DBG_WARN, "udpserverrd: listening for UDP on %s:%s",
 	  listenres->host ? listenres->host : "*", listenres->port);
-    free(listenres);
+    freeclsrvres(listenres);
     
     if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	debugx(1, DBG_ERR, "pthread_create failed");
@@ -2273,7 +2291,7 @@ void *udpaccserverrd(void *arg) {
 
     debug(DBG_WARN, "udpaccserverrd: listening for UDP on %s:%s",
 	  listenres->host ? listenres->host : "*", listenres->port);
-    free(listenres);
+    freeclsrvres(listenres);
     
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
@@ -2468,9 +2486,9 @@ int tlslistener2() {
     if ((s = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
 	debugx(1, DBG_ERR, "tlslistener: socket/bind failed");
 
-    listen(s, 0);
     debug(DBG_WARN, "listening for incoming TCP on %s:%s", listenres->host ? listenres->host : "*", listenres->port);
-    free(listenres);
+    freeclsrvres(listenres);
+    listen(s, 0);
 
     for (;;) {
 	snew = accept(s, (struct sockaddr *)&from, &fromlen);
@@ -2687,11 +2705,12 @@ struct list *addsrvconfs(char *value, char **names) {
 	}
 	if (!entry)
 	    debugx(1, DBG_ERR, "addsrvconfs failed for realm %s, no server named %s", value, names[n]);
+	free(names[n]);
 	if (!list_push(conflist, conf))
 	    debugx(1, DBG_ERR, "malloc failed");
 	debug(DBG_DBG, "addsrvconfs: added server %s for realm %s", conf->name, value);
     }
-
+    free(names);
     return conflist;
 }
 
@@ -3083,8 +3102,6 @@ void confrealm_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     );
 
     addrealm(val, servers, accservers, msg);
-    free(servers);
-    free(accservers);
 }
 
 void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {
@@ -3265,23 +3282,25 @@ int main(int argc, char **argv) {
 	options.loglevel = loglevel;
     else if (options.loglevel)
 	debug_set_level(options.loglevel);
-    if (foreground)
+    if (foreground) {
+	free(options.logdestination);
 	options.logdestination = NULL;
-    else {
+   } else {
 	if (!options.logdestination)
 	    options.logdestination = "x-syslog:///";
 	debug_set_destination(options.logdestination);
+	free(options.logdestination);
     }
 
-    if (pretend)
-	debugx(0, DBG_ERR, "All OK so far; exiting since only pretending");
-    
     if (!list_first(clconfs))
 	debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");
     if (!list_first(srvconfs))
 	debugx(1, DBG_ERR, "No servers configured, nothing to do, exiting");
     if (!list_first(realms))
 	debugx(1, DBG_ERR, "No realms configured, nothing to do, exiting");
+
+    if (pretend)
+	debugx(0, DBG_ERR, "All OK so far; exiting since only pretending");
 
     if (!foreground && (daemon(0, 0) < 0))
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
@@ -3311,7 +3330,7 @@ int main(int argc, char **argv) {
     }
     /* srcudpres no longer needed, while srctcpres is needed later */
     if (srcudpres) {
-	free(srcudpres);
+	freeaddrinfo(srcudpres);
 	srcudpres = NULL;
     }
     if (udp_client4_sock >= 0)
