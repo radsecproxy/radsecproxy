@@ -8,5 +8,12 @@
 	Server failover support
 	Rewriting of username attribute
 	Source address and port can be specified for requests
-	
-	
+2008-05-14 1.1-beta
+	No longer looks for radsecproxy.conf in current directory
+	Rewrite block that allows removal of specified attributes
+	certificateNameCheck option for disabling CN/SubjectAltName check
+	matchCertificateAttribute now also supports CN matching
+	Forwarding of accounting messages, accountingServer option for realms
+	Supports multiple client blocks for same source address with different
+	     certificate checks
+	Removed weekday from log timestamps
