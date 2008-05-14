@@ -2377,46 +2377,6 @@ void tlsserverrd(struct client *client) {
 }
 
 void *tlsservernew(void *arg) {
-    unsigned long error;
-    int s;
-    struct client *client = (struct client *)arg;
-    SSL *ssl;
-    X509 *cert;
-    
-    debug(DBG_DBG, "tlsservernew starting for %s", client->conf->host);
-    ssl = client->ssl;
-
-    if (SSL_accept(ssl) <= 0) {
-        while ((error = ERR_get_error()))
-            debug(DBG_ERR, "tlsservernew: SSL: %s", ERR_error_string(error, NULL));
-        debug(DBG_ERR, "SSL_accept failed");
-	goto exit;
-    }
-
-    cert = verifytlscert(ssl);
-    if (!cert)
-	goto exit;
-    if (!verifyconfcert(cert, client->conf)) {
-	X509_free(cert);
-	goto exit;
-    }
-    X509_free(cert);
-    tlsserverrd(client);
-    
- exit:
-    s = SSL_get_fd(ssl);
-    SSL_free(ssl);
-    shutdown(s, SHUT_RDWR);
-    close(s);
-    removeclient(client);
-    debug(DBG_DBG, "tlsservernew thread for %s exiting", client->conf->host);
-    pthread_exit(NULL);
-}
-
-/***********************************************
- *  new tls server code
- ***********************************************/
-void *tlsservernew2(void *arg) {
     int s;
     struct sockaddr_storage from;
     size_t fromlen = sizeof(from);
@@ -2475,7 +2435,7 @@ void *tlsservernew2(void *arg) {
     pthread_exit(NULL);
 }
 
-int tlslistener2() {
+int tlslistener() {
     pthread_t tlsserverth;
     int s, snew;
     struct sockaddr_storage from;
@@ -2496,68 +2456,8 @@ int tlslistener2() {
 	    debug(DBG_WARN, "accept failed");
 	    continue;
 	}
-	if (pthread_create(&tlsserverth, NULL, tlsservernew2, (void *)&snew)) {
+	if (pthread_create(&tlsserverth, NULL, tlsservernew, (void *)&snew)) {
 	    debug(DBG_ERR, "tlslistener: pthread_create failed");
-	    shutdown(snew, SHUT_RDWR);
-	    close(snew);
-	    continue;
-	}
-	pthread_detach(tlsserverth);
-    }
-    return 0;
-}
-
-/***********************************************
- *  end of new tls listening code
- ***********************************************/
-
-int tlslistener() {
-    pthread_t tlsserverth;
-    int s, snew;
-    struct sockaddr_storage from;
-    size_t fromlen = sizeof(from);
-    struct clsrvconf *conf;
-    struct client *client;
-    struct clsrvconf *listenres;
-    
-    listenres = resolve_hostport('T', options.listentcp, DEFAULT_TLS_PORT);
-    if ((s = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
-        debugx(1, DBG_ERR, "tlslistener: socket/bind failed");
-    
-    listen(s, 0);
-    debug(DBG_WARN, "listening for incoming TCP on %s:%s", listenres->host ? listenres->host : "*", listenres->port);
-    free(listenres);
-    
-    for (;;) {
-	snew = accept(s, (struct sockaddr *)&from, &fromlen);
-	if (snew < 0) {
-	    debug(DBG_WARN, "accept failed");
-	    continue;
-	}
-	debug(DBG_WARN, "incoming TLS connection from %s", addr2string((struct sockaddr *)&from, fromlen));
-
-	conf = find_conf('T', (struct sockaddr *)&from, clconfs, NULL);
-	if (!conf) {
-	    debug(DBG_WARN, "ignoring request, not a known TLS client");
-	    shutdown(snew, SHUT_RDWR);
-	    close(snew);
-	    continue;
-	}
-
-	client = addclient(conf);
-	if (!client) {
-	    debug(DBG_WARN, "Failed to create new client instance");
-	    shutdown(snew, SHUT_RDWR);
-	    close(snew);
-	    continue;
-	}
-	
-	client->ssl = SSL_new(client->conf->ssl_ctx);
-	SSL_set_fd(client->ssl, snew);
-	if (pthread_create(&tlsserverth, NULL, tlsservernew, (void *)client)) {
-	    debug(DBG_ERR, "tlslistener: pthread_create failed");
-	    SSL_free(client->ssl);
-	    removeclient(client);
 	    shutdown(snew, SHUT_RDWR);
 	    close(snew);
 	    continue;
@@ -3341,7 +3241,7 @@ int main(int argc, char **argv) {
 	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
     
     if (client_tls_count)
-	return tlslistener2();
+	return tlslistener();
     
     /* just hang around doing nothing, anything to do here? */
     for (;;)
