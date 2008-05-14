@@ -121,7 +121,7 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
 	    gettimeofday(&now, NULL);
 	    ctime_r(&now.tv_sec, timebuf);
 	    timebuf[strlen(timebuf) - 1] = '\0';
-	    fprintf(debug_file, "%s: ", timebuf);
+	    fprintf(debug_file, "%s: ", timebuf + 4);
 	    free(timebuf);
 	}
 	vfprintf(debug_file, format, ap);

@@ -79,10 +79,12 @@ struct clsrvconf {
     char *host;
     char *port;
     char *secret;
+    regex_t *certcnregex;
     regex_t *certuriregex;
     regex_t *rewriteattrregex;
     char *rewriteattrreplacement;
     uint8_t statusserver;
+    uint8_t certnamecheck;
     SSL_CTX *ssl_ctx;
     struct rewrite *rewrite;
     struct addrinfo *addrinfo;
@@ -119,6 +121,7 @@ struct realm {
     char *message;
     regex_t regex;
     struct list *srvconfs;
+    struct list *accsrvconfs;
 };
 
 struct tls {

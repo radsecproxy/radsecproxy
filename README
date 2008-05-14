@@ -1,4 +1,4 @@
-This is radsecproxy 1.1-alpha.
+This is radsecproxy 1.1-beta.
 
 radsecproxy is a generic RADIUS proxy that can support various
 RADIUS clients over UDP or TLS (RadSec).
@@ -8,11 +8,10 @@ It should build on most Linux and BSD platforms by simply typing
 unsupported.
 
 To use it you need to create a config file which normally is
-called "/etc/radsecproxy.conf". If this is not found, the
-proxy will look for radsecproxy.conf in the current directory.
-You can also specify the location with the "-c" command line
-option (see below). For further instructions, please see the
-enclosed example file and the documentation at
+called "/etc/radsecproxy.conf". You can also specify the location
+with the "-c" command line option (see below). For further
+instructions, please see the enclosed example file and the
+documentation at
 http://software.uninett.no/radsecproxy/?page=documentation
 
 There are five options that may be specified on the command line.
@@ -38,4 +37,4 @@ let me know if you feel left out.
 For more information, feedback etc. please see the information
 at http://software.uninett.no/radsecproxy/
 
-Stig Venaas <venaas@uninett.no> -- 2007.12.24
+Stig Venaas <venaas@uninett.no> -- 2008.05.14

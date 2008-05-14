@@ -6,5 +6,9 @@ all: radsecproxy
 
 radsecproxy: $(OBJ)
 	$(CC) $(CFLAGS) $(OBJ) $(LDFLAGS) -o radsecproxy
+
+catgconf: util.o debug.o gconfig.o catgconf.o
+	$(CC) $(CFLAGS) util.o debug.o gconfig.o catgconf.o -o catgconf
+
 clean:
-	rm -f $(OBJ) radsecproxy
+	rm -f $(OBJ) catgconf.o radsecproxy catgconf
