@@ -606,7 +606,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 		p = find_conf('U', (struct sockaddr *)&from, srvconfs, NULL);
 
 	if (!p) {
-	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer, ignoring");
+	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
 	    continue;
 	}
 	
