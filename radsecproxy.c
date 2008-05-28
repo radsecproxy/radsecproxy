@@ -40,6 +40,7 @@
 #endif
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <arpa/inet.h>
 #include <regex.h>
 #include <libgen.h>
@@ -79,7 +80,8 @@ extern char *optarg;
 
 /* minimum required declarations to avoid reordering code */
 void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id);
-    
+void dynamicconfig(struct server *server);
+
 /* callbacks for making OpenSSL thread safe */
 unsigned long ssl_thread_id() {
         return (unsigned long)pthread_self();
@@ -507,6 +509,7 @@ void freeserver(struct server *server, uint8_t destroymutex) {
 	return;
     
     free(server->requests);
+    free(server->dynamiclookuparg);
     if (destroymutex) {
 	pthread_mutex_destroy(&server->lock);
 	pthread_cond_destroy(&server->newrq_cond);
@@ -1809,6 +1812,8 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	server = (struct clsrvconf *)entry->data;
+	if (!server->servers)
+	    return server;
 	if (!first)
 	    first = server;
 	if (!server->servers->connectionok)
@@ -2159,6 +2164,7 @@ void *tlsclientrd(void *arg) {
     }
 }
 
+/* code for removing state not finished */
 void *clientwr(void *arg) {
     struct server *server = (struct server *)arg;
     struct request *rq;
@@ -2169,10 +2175,25 @@ void *clientwr(void *arg) {
     struct timespec timeout;
     struct request statsrvrq;
     unsigned char statsrvbuf[38];
+    struct clsrvconf *conf;
+
+    conf = server->conf;
+    
+    if (server->dynamiclookuparg) {
+	dynamicconfig(server);
+	conf = server->conf;
+	if (!conf)
+	    goto errexit;
+    }
+
+    if (!conf->addrinfo && !resolvepeer(conf, 0)) {
+	debug(DBG_WARN, "failed to resolve host %s port %s", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
+	goto errexit;
+    }
 
     memset(&timeout, 0, sizeof(struct timespec));
     
-    if (server->conf->statusserver) {
+    if (conf->statusserver) {
 	memset(&statsrvrq, 0, sizeof(struct request));
 	memset(statsrvbuf, 0, sizeof(statsrvbuf));
 	statsrvbuf[0] = RAD_Status_Server;
@@ -2182,20 +2203,22 @@ void *clientwr(void *arg) {
 	gettimeofday(&lastsend, NULL);
     }
     
-    if (server->conf->type == 'U') {
+    if (conf->type == 'U') {
 	server->connectionok = 1;
     } else {
 	tlsconnect(server, NULL, "new client");
 	server->connectionok = 1;
-	if (pthread_create(&tlsclientrdth, NULL, tlsclientrd, (void *)server))
-	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
+	if (pthread_create(&tlsclientrdth, NULL, tlsclientrd, (void *)server)) {
+	    debug(DBG_ERR, "clientwr: pthread_create failed");
+	    goto errexit;
+	}
     }
     
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->newrq) {
 	    gettimeofday(&now, NULL);
-	    if (server->conf->statusserver) {
+	    if (conf->statusserver) {
 		/* random 0-7 seconds */
 		RAND_bytes(&rnd, 1);
 		rnd /= 32;
@@ -2252,7 +2275,7 @@ void *clientwr(void *arg) {
 			      ? 1 : REQUEST_RETRIES)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		if (*rq->buf == RAD_Status_Server) {
-		    debug(DBG_WARN, "clientwr: no status server response, %s dead?", server->conf->host);
+		    debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->host);
 		    if (server->loststatsrv < 255)
 			server->loststatsrv++;
 		}
@@ -2265,7 +2288,7 @@ void *clientwr(void *arg) {
             pthread_mutex_unlock(&server->newrq_mutex);
 
 	    rq->expiry.tv_sec = now.tv_sec +
-		(*rq->buf == RAD_Status_Server || server->conf->type == 'T'
+		(*rq->buf == RAD_Status_Server || conf->type == 'T'
 		 ? REQUEST_EXPIRY : REQUEST_EXPIRY / REQUEST_RETRIES);
 	    if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rq->expiry.tv_sec;
@@ -2273,7 +2296,7 @@ void *clientwr(void *arg) {
 	    clientradput(server, server->requests[i].buf);
 	    gettimeofday(&lastsend, NULL);
 	}
-	if (server->conf->statusserver) {
+	if (conf->statusserver) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - lastsend.tv_sec >= STATUS_SERVER_PERIOD) {
 		if (!RAND_bytes(statsrvbuf + 4, 16)) {
@@ -2286,12 +2309,32 @@ void *clientwr(void *arg) {
 		    continue;
 		}
 		memcpy(statsrvrq.buf, statsrvbuf, sizeof(statsrvbuf));
-		debug(DBG_DBG, "clientwr: sending status server to %s", server->conf->host);
+		debug(DBG_DBG, "clientwr: sending status server to %s", conf->host);
 		lastsend.tv_sec = now.tv_sec;
 		sendrq(server, &statsrvrq);
 	    }
 	}
     }
+ errexit:
+    /* this code needs more work */
+    if (server->dynamiclookuparg) {
+	/* remove subrealms using this server */
+	/* need to free server->conf etc */
+	if (conf) {
+	    free(conf->host);
+	    free(conf->name);
+	    if (conf->addrinfo) {
+		freeaddrinfo(conf->addrinfo);
+		conf->addrinfo = NULL;
+	    }
+	    /* add this once realm removal in place
+	    free(conf);
+	    server->conf = NULL;
+	    */
+	}
+    }
+    freeserver(server, 1);
+    return NULL;
 }
 
 void *udpserverwr(void *arg) {
@@ -2681,10 +2724,16 @@ void freerealm(struct realm *realm) {
     if (!realm)
 	return;
     free(realm->name);
-    if (realm->srvconfs)
+    if (realm->srvconfs) {
+	/* emptying list without freeing data */
+	while (list_shift(realm->srvconfs));
 	list_destroy(realm->srvconfs);
-    if (realm->accsrvconfs)
+    }
+    if (realm->accsrvconfs) {
+	/* emptying list without freeing data */
+	while (list_shift(realm->accsrvconfs));
 	list_destroy(realm->accsrvconfs);
+    }
     free(realm);
 }
 
@@ -2758,11 +2807,11 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
 	    goto errexit;
     }
 
-    if (!pthread_mutex_init(&realm->subrealms_mutex, NULL)) {
+    if (pthread_mutex_init(&realm->subrealms_mutex, NULL)) {
 	debug(DBG_ERR, "mutex init failed");
 	goto errexit;
     }
-    
+
     if (!list_push(realmlist, realm)) {
 	debug(DBG_ERR, "malloc failed");
 	pthread_mutex_destroy(&realm->subrealms_mutex);
@@ -2820,6 +2869,10 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
     if (!addserver(srvconf))
 	goto errexit;
 
+    if (!realm->subrealms)
+	realm->subrealms = list_create();
+    if (!realm->subrealms)
+	goto errexit;
     newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, NULL);
     if (!newrealm)
 	goto errexit;
@@ -2836,11 +2889,15 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
 	goto errexit;
     }
 
+    srvconf->servers->dynamiclookuparg = stringcopy(realmname, 0);
+
     if (pthread_create(&srvconf->servers->clientth, NULL, clientwr, (void *)(srvconf->servers))) {
 	debug(DBG_ERR, "pthread_create failed");
 	goto errexit;
     }
 
+    goto exit;
+    
  errexit:
     if (newrealm) {
 	list_removedata(realm->subrealms, newrealm);
@@ -2852,6 +2909,61 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
 
  exit:
     pthread_mutex_unlock(&realm->subrealms_mutex);
+}
+
+void dynamicconfig(struct server *server) {
+    int n, fd[2];
+    pid_t pid;
+    char *host, *s, line[1024];
+    struct clsrvconf *conf = server->conf;
+    
+    /* for now we only learn hostname/address */
+    debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
+
+    if (pipe(fd) > 0) {
+	debug(DBG_ERR, "dynamicconfig: pipe error");
+	goto errexit;
+    }
+    pid = fork();
+    if (pid < 0) {
+	debug(DBG_ERR, "dynamicconfig: fork error");
+	goto errexit;
+    } else if (pid == 0) {
+	/* child */
+	close(fd[0]);
+	if (fd[1] != STDOUT_FILENO) {
+	    if (dup2(fd[1], STDOUT_FILENO) != STDOUT_FILENO)
+		debugx(1, DBG_ERR, "dynamicconfig: dup2 error for command %s", conf->dynamiclookupcommand);
+	    close(fd[1]);
+	}
+	if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
+	    debugx(1, DBG_ERR, "dynamicconfig: exec error for command %s", conf->dynamiclookupcommand);
+    }
+
+    close(fd[1]);
+    n = read(fd[0], line, 1024);
+    debug(DBG_DBG, "dynamicconfig: command output: %s", line);
+    close(fd[0]);
+    if (waitpid(pid, NULL, 0) < 0) {
+	debug(DBG_ERR, "dynamicconfig: wait error");
+	goto errexit;
+    }
+    debug(DBG_DBG, "dynamicconfig: after exec");
+
+    for (s = line; *s && strchr(" \t\r\n", *s); s++);
+    for (host = s; *s && !strchr(" \t\r\n", *s); s++);
+    *s = '\0';
+    if (!*host) {
+	debug(DBG_ERR, "dynamicconfig: invalid dynamic hostname/address");
+	goto errexit;
+    }
+    conf->name = stringcopy(host, 0);
+    conf->host = stringcopy(host, 0);
+    return;
+    
+ errexit:    
+    server->conf = NULL;
+    debug(DBG_WARN, "dynamicconfig: failed to obtain dynamic server config");
 }
 
 int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
@@ -3426,10 +3538,10 @@ int main(int argc, char **argv) {
     }
     if (udp_client4_sock >= 0)
 	if (pthread_create(&udpclient4rdth, NULL, udpclientrd, (void *)&udp_client4_sock))
-	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
+	    debugx(1, DBG_ERR, "pthread_create failed");
     if (udp_client6_sock >= 0)
 	if (pthread_create(&udpclient6rdth, NULL, udpclientrd, (void *)&udp_client6_sock))
-	    debugx(1, DBG_ERR, "clientwr: pthread_create failed");
+	    debugx(1, DBG_ERR, "pthread_create failed");
     
     if (client_tls_count)
 	return tlslistener();
