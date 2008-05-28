@@ -474,7 +474,9 @@ void removeclient(struct client *client) {
     for (entry = list_first(client->replyq->replies); entry; entry = list_next(entry))
 	free(((struct reply *)entry)->buf);
     list_destroy(client->replyq->replies);
+    pthread_cond_destroy(&client->replyq->cond);
     pthread_mutex_unlock(&client->replyq->mutex);
+    pthread_mutex_destroy(&client->replyq->mutex);
     list_removedata(client->conf->clients, client);
     free(client);
 }

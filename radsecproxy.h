@@ -97,7 +97,6 @@ struct client {
     struct clsrvconf *conf;
     SSL *ssl;
     struct replyq *replyq;
-    struct client *next;
 };
 
 struct server {
