@@ -77,6 +77,9 @@ static long *ssl_lock_count;
 extern int optind;
 extern char *optarg;
 
+/* minimum required declarations to avoid reordering code */
+void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id);
+    
 /* callbacks for making OpenSSL thread safe */
 unsigned long ssl_thread_id() {
         return (unsigned long)pthread_self();
@@ -474,7 +477,9 @@ void removeclient(struct client *client) {
     for (entry = list_first(client->replyq->replies); entry; entry = list_next(entry))
 	free(((struct reply *)entry)->buf);
     list_destroy(client->replyq->replies);
+    pthread_cond_destroy(&client->replyq->cond);
     pthread_mutex_unlock(&client->replyq->mutex);
+    pthread_mutex_destroy(&client->replyq->mutex);
     list_removedata(client->conf->clients, client);
     free(client);
 }
@@ -496,16 +501,32 @@ void removeclientrqs(struct client *client) {
 	pthread_mutex_unlock(&server->newrq_mutex);
     }
 }
-		     
-void addserver(struct clsrvconf *conf) {
+
+void freeserver(struct server *server, uint8_t destroymutex) {
+    if (!server)
+	return;
+    
+    free(server->requests);
+    if (destroymutex) {
+	pthread_mutex_destroy(&server->lock);
+	pthread_cond_destroy(&server->newrq_cond);
+	pthread_mutex_destroy(&server->newrq_mutex);
+    }
+    free(server);
+}
+
+int addserver(struct clsrvconf *conf) {
     struct clsrvconf *res;
     
-    if (conf->servers)
-	debugx(1, DBG_ERR, "addserver: currently works with just one server per conf");
-    
+    if (conf->servers) {
+	debug(DBG_ERR, "addserver: currently works with just one server per conf");
+	return 0;
+    }
     conf->servers = malloc(sizeof(struct server));
-    if (!conf->servers)
-	debugx(1, DBG_ERR, "malloc failed");
+    if (!conf->servers) {
+	debug(DBG_ERR, "malloc failed");
+	return 0;
+    }
     memset(conf->servers, 0, sizeof(struct server));
     conf->servers->conf = conf;
 
@@ -547,13 +568,34 @@ void addserver(struct clsrvconf *conf) {
 	conf->servers->sock = -1;
     }
     
-    pthread_mutex_init(&conf->servers->lock, NULL);
     conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct request));
-    if (!conf->servers->requests)
-	debugx(1, DBG_ERR, "malloc failed");
+    if (!conf->servers->requests) {
+	debug(DBG_ERR, "malloc failed");
+	goto errexit;
+    }
+    if (pthread_mutex_init(&conf->servers->lock, NULL)) {
+	debug(DBG_ERR, "mutex init failed");
+	goto errexit;
+    }
     conf->servers->newrq = 0;
-    pthread_mutex_init(&conf->servers->newrq_mutex, NULL);
-    pthread_cond_init(&conf->servers->newrq_cond, NULL);
+    if (pthread_mutex_init(&conf->servers->newrq_mutex, NULL)) {
+	debug(DBG_ERR, "mutex init failed");
+	pthread_mutex_destroy(&conf->servers->lock);
+	goto errexit;
+    }
+    if (pthread_cond_init(&conf->servers->newrq_cond, NULL)) {
+	debug(DBG_ERR, "mutex init failed");
+	pthread_mutex_destroy(&conf->servers->newrq_mutex);
+	pthread_mutex_destroy(&conf->servers->lock);
+	goto errexit;
+    }
+
+    return 1;
+    
+ errexit:
+    freeserver(conf->servers, 0);
+    conf->servers = NULL;
+    return 0;
 }
 
 /* exactly one of client and server must be non-NULL */
@@ -1418,15 +1460,19 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     return 1;
 }
 
-struct realm *id2realm(char *id, uint8_t len) {
+struct realm *id2realm(struct list *realmlist, char *id) {
     struct list_node *entry;
-    struct realm *realm;
-    
-    for (entry = list_first(realms); entry; entry = list_next(entry)) {
+    struct realm *realm, *subrealm = NULL;
+
+    /* need to do locking for subrealms and check subrealm timers */
+    for (entry = list_first(realmlist); entry; entry = list_next(entry)) {
 	realm = (struct realm *)entry->data;
 	if (!regexec(&realm->regex, id, 0, NULL, 0)) {
-	    debug(DBG_DBG, "found matching realm: %s", realm->name);
-	    return realm;
+	    pthread_mutex_lock(&realm->subrealms_mutex);
+	    if (realm->subrealms)
+		subrealm = id2realm(realm->subrealms, id);
+	    pthread_mutex_unlock(&realm->subrealms_mutex);
+	    return subrealm ? subrealm : realm;
 	}
     }
     return NULL;
@@ -1757,28 +1803,41 @@ void respondreject(struct request *rq, char *message) {
     sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL);
 }
 
-struct server *chooseserver(struct list *srvconfs) {
+struct clsrvconf *choosesrvconf(struct list *srvconfs) {
     struct list_node *entry;
-    struct server *server, *best = NULL, *first = NULL;
-    
+    struct clsrvconf *server, *best = NULL, *first = NULL;
+
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
-	server = ((struct clsrvconf *)entry->data)->servers;
+	server = (struct clsrvconf *)entry->data;
 	if (!first)
 	    first = server;
-	if (!server->connectionok)
+	if (!server->servers->connectionok)
 	    continue;
-	if (!server->loststatsrv)
+	if (!server->servers->loststatsrv)
 	    return server;
 	if (!best) {
 	    best = server;
 	    continue;
 	}
-	if (server->loststatsrv < best->loststatsrv)
+	if (server->servers->loststatsrv < best->servers->loststatsrv)
 	    best = server;
     }
     return best ? best : first;
 }
 
+struct server *findserver(struct realm **realm, char *id, uint8_t acc) {
+    struct clsrvconf *srvconf;
+    
+    *realm = id2realm(realms, id);
+    if (!*realm)
+	return NULL;
+    debug(DBG_DBG, "found matching realm: %s", (*realm)->name);
+    srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
+    if (!acc && !srvconf->servers)
+	adddynamicrealmserver(*realm, srvconf, id);
+    return srvconf->servers;
+}
+			  
 void radsrv(struct request *rq) {
     uint8_t code, id, *auth, *attrs, *attr;
     uint16_t len;
@@ -1852,13 +1911,11 @@ void radsrv(struct request *rq) {
     else
 	debug(DBG_DBG, "%s with username: %s", radmsgtype2string(code), username);
     
-    realm = id2realm(username, strlen(username));
+    to = findserver(&realm, username, code == RAD_Accounting_Request);
     if (!realm) {
 	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
 	goto exit;
     }
-	
-    to = chooseserver(code == RAD_Access_Request ? realm->srvconfs : realm->accsrvconfs);
     if (!to) {
 	if (realm->message && code == RAD_Access_Request) {
 	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, username);
@@ -2594,27 +2651,44 @@ struct list *addsrvconfs(char *value, char **names) {
 	return NULL;
     
     conflist = list_create();
-    if (!conflist)
-	debugx(1, DBG_ERR, "malloc failed");
-    
+    if (!conflist) {
+	debug(DBG_ERR, "malloc failed");
+	return NULL;
+    }
+
     for (n = 0; names[n]; n++) {
 	for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	    conf = (struct clsrvconf *)entry->data;
 	    if (!strcasecmp(names[n], conf->name))
 		break;
 	}
-	if (!entry)
-	    debugx(1, DBG_ERR, "addsrvconfs failed for realm %s, no server named %s", value, names[n]);
-	free(names[n]);
-	if (!list_push(conflist, conf))
-	    debugx(1, DBG_ERR, "malloc failed");
+	if (!entry) {
+	    debug(DBG_ERR, "addsrvconfs failed for realm %s, no server named %s", value, names[n]);
+	    list_destroy(conflist);
+	    return NULL;
+	}
+	if (!list_push(conflist, conf)) {
+	    debug(DBG_ERR, "malloc failed");
+	    list_destroy(conflist);
+	    return NULL;
+	}
 	debug(DBG_DBG, "addsrvconfs: added server %s for realm %s", conf->name, value);
     }
-    free(names);
     return conflist;
 }
 
-void addrealm(char *value, char **servers, char **accservers, char *message) {
+void freerealm(struct realm *realm) {
+    if (!realm)
+	return;
+    free(realm->name);
+    if (realm->srvconfs)
+	list_destroy(realm->srvconfs);
+    if (realm->accsrvconfs)
+	list_destroy(realm->accsrvconfs);
+    free(realm);
+}
+
+struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char *message) {
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
@@ -2643,34 +2717,141 @@ void addrealm(char *value, char **servers, char **accservers, char *message) {
 		regex[n] = '\0';
 	    }
 	}
-	if (!regex)
-	    debugx(1, DBG_ERR, "malloc failed");
+	if (!regex) {
+	    debug(DBG_ERR, "malloc failed");
+	    goto exit;
+	}
 	debug(DBG_DBG, "addrealm: constructed regexp %s from %s", regex, value);
     }
 
     realm = malloc(sizeof(struct realm));
-    if (!realm)
-	debugx(1, DBG_ERR, "malloc failed");
-    
+    if (!realm) {
+	debug(DBG_ERR, "malloc failed");
+	goto exit;
+    }
     memset(realm, 0, sizeof(struct realm));
     realm->name = stringcopy(value, 0);
-    if (!realm->name)
-	debugx(1, DBG_ERR, "malloc failed");
-    if (message && strlen(message) > 253)
-	debugx(1, DBG_ERR, "ReplyMessage can be at most 253 bytes");
+    if (!realm->name) {
+	debug(DBG_ERR, "malloc failed");
+	goto errexit;
+    }
+    if (message && strlen(message) > 253) {
+	debug(DBG_ERR, "ReplyMessage can be at most 253 bytes");
+	goto errexit;
+    }
     realm->message = message;
     
-    if (regcomp(&realm->regex, regex ? regex : value + 1, REG_ICASE | REG_NOSUB))
-	debugx(1, DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
-    if (regex)
-	free(regex);
-
-    realm->srvconfs = addsrvconfs(value, servers);
-    realm->accsrvconfs = addsrvconfs(value, accservers);
+    if (regcomp(&realm->regex, regex ? regex : value + 1, REG_ICASE | REG_NOSUB)) {
+	debug(DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
+	goto errexit;
+    }
     
-    if (!list_push(realms, realm))
-	debugx(1, DBG_ERR, "malloc failed");
+    if (servers && *servers) {
+	realm->srvconfs = addsrvconfs(value, servers);
+	if (!realm->srvconfs)
+	    goto errexit;
+    }
+    
+    if (accservers && *accservers) {
+	realm->accsrvconfs = addsrvconfs(value, accservers);
+	if (!realm->accsrvconfs)
+	    goto errexit;
+    }
+
+    if (!pthread_mutex_init(&realm->subrealms_mutex, NULL)) {
+	debug(DBG_ERR, "mutex init failed");
+	goto errexit;
+    }
+    
+    if (!list_push(realmlist, realm)) {
+	debug(DBG_ERR, "malloc failed");
+	pthread_mutex_destroy(&realm->subrealms_mutex);
+	goto errexit;
+    }
+    
     debug(DBG_DBG, "addrealm: added realm %s", value);
+    goto exit;
+
+ errexit:
+    freerealm(realm);
+    realm = NULL;
+    
+ exit:
+    free(regex);
+    if (servers) {
+	for (n = 0; servers[n]; n++)
+	    free(servers[n]);
+	free(servers);
+    }
+    if (accservers) {
+	for (n = 0; accservers[n]; n++)
+	    free(accservers[n]);
+	free(accservers);
+    }
+    return realm;
+}
+
+void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id) {
+    struct clsrvconf *srvconf;
+    struct realm *newrealm = NULL;
+    char *realmname;
+    
+    if (!conf->dynamiclookupcommand)
+	return;
+
+    /* create dynamic for the realm (string after last @, exit if nothing after @ */
+    realmname = strrchr(id, '@');
+    if (!realmname)
+	return;
+    realmname++;
+    if (!*realmname)
+	return;
+    
+    pthread_mutex_lock(&realm->subrealms_mutex);
+    /* exit if we now already got a matching subrealm */
+    if (id2realm(realm->subrealms, id))
+	goto exit;
+    srvconf = malloc(sizeof(struct clsrvconf));
+    if (!srvconf) {
+	debug(DBG_ERR, "malloc failed");
+	goto exit;
+    }
+    *srvconf = *conf;
+    if (!addserver(srvconf))
+	goto errexit;
+
+    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, NULL);
+    if (!newrealm)
+	goto errexit;
+
+    /* add server and accserver to newrealm */
+    newrealm->srvconfs = list_create();
+    if (!newrealm->srvconfs || !list_push(newrealm->srvconfs, srvconf)) {
+	debug(DBG_ERR, "malloc failed");
+	goto errexit;
+    }
+    newrealm->accsrvconfs = list_create();
+    if (!newrealm->accsrvconfs || !list_push(newrealm->accsrvconfs, srvconf)) {
+	debug(DBG_ERR, "malloc failed");
+	goto errexit;
+    }
+
+    if (pthread_create(&srvconf->servers->clientth, NULL, clientwr, (void *)(srvconf->servers))) {
+	debug(DBG_ERR, "pthread_create failed");
+	goto errexit;
+    }
+
+ errexit:
+    if (newrealm) {
+	list_removedata(realm->subrealms, newrealm);
+	freerealm(newrealm);
+    }
+    freeserver(srvconf->servers, 1);
+    free(srvconf);
+    debug(DBG_ERR, "failed to create dynamic server");
+
+ exit:
+    pthread_mutex_unlock(&realm->subrealms_mutex);
 }
 
 int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
@@ -2953,6 +3134,7 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "rewrite", CONF_STR, &rewrite,
 		     "StatusServer", CONF_BLN, &conf->statusserver,
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+		     "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
 		     NULL
 		     );
 
@@ -2985,7 +3167,7 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     
     conf->rewrite = rewrite ? getrewrite(rewrite, NULL) : getrewrite("defaultserver", "default");
     
-    if (!resolvepeer(conf, 0))
+    if (!conf->dynamiclookupcommand && !resolvepeer(conf, 0))
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
     
     if (!conf->secret) {
@@ -3007,7 +3189,7 @@ void confrealm_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     NULL
 		     );
 
-    addrealm(val, servers, accservers, msg);
+    addrealm(realms, val, servers, accservers, msg);
 }
 
 void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {
@@ -3175,6 +3357,7 @@ int main(int argc, char **argv) {
     struct list_node *entry;
     uint8_t foreground = 0, pretend = 0, loglevel = 0;
     char *configfile = NULL;
+    struct clsrvconf *srvconf;
     
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
@@ -3227,9 +3410,13 @@ int main(int argc, char **argv) {
     }
     
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
-	addserver((struct clsrvconf *)entry->data);
-	if (pthread_create(&((struct clsrvconf *)entry->data)->servers->clientth, NULL, clientwr,
-			   (void *)((struct clsrvconf *)entry->data)->servers))
+	srvconf = (struct clsrvconf *)entry->data;
+	if (srvconf->dynamiclookupcommand)
+	    continue;
+	if (!addserver(srvconf))
+	    debugx(1, DBG_ERR, "failed to add server");
+	if (pthread_create(&srvconf->servers->clientth, NULL, clientwr,
+			   (void *)(srvconf->servers)))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
     /* srcudpres no longer needed, while srctcpres is needed later */

@@ -83,6 +83,7 @@ struct clsrvconf {
     regex_t *certuriregex;
     regex_t *rewriteattrregex;
     char *rewriteattrreplacement;
+    char *dynamiclookupcommand;
     uint8_t statusserver;
     uint8_t certnamecheck;
     SSL_CTX *ssl_ctx;
@@ -97,7 +98,6 @@ struct client {
     struct clsrvconf *conf;
     SSL *ssl;
     struct replyq *replyq;
-    struct client *next;
 };
 
 struct server {
@@ -120,6 +120,8 @@ struct realm {
     char *name;
     char *message;
     regex_t regex;
+    pthread_mutex_t subrealms_mutex;
+    struct list *subrealms;
     struct list *srvconfs;
     struct list *accsrvconfs;
 };
