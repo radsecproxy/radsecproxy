@@ -18,14 +18,6 @@
 #include "util.h"
 #include "gconfig.h"
 
-char *mystringcopyx(const char *s) {
-    char *t;
-    t = stringcopy(s, 0);
-    if (!t)
-	debugx(1, DBG_ERR, "malloc failed");
-    return t;
-}
-
 /* returns NULL on error, where to continue parsing if token and ok. E.g. "" will return token with empty string */
 char *strtokenquote(char *s, char **token, char *del, char *quote, char *comment) {
     char *t = s, *q, *r;
@@ -60,6 +52,7 @@ char *strtokenquote(char *s, char **token, char *del, char *quote, char *comment
 FILE *pushgconffile(struct gconffile **cf, const char *path) {
     int i;
     struct gconffile *newcf;
+    char *pathcopy;
     FILE *f;
 
     f = fopen(path, "r");
@@ -68,28 +61,39 @@ FILE *pushgconffile(struct gconffile **cf, const char *path) {
 	return NULL;
     }
     debug(DBG_DBG, "opened config file %s", path);
+
+    pathcopy = stringcopy(path, 0);
+    if (!pathcopy)
+	goto errmalloc;
+    
     if (!*cf) {
 	newcf = malloc(sizeof(struct gconffile) * 2);
 	if (!newcf)
-	    debugx(1, DBG_ERR, "malloc failed");
+	    goto errmalloc;
 	newcf[1].file = NULL;
 	newcf[1].path = NULL;
     } else {
 	for (i = 0; (*cf)[i].path; i++);
 	newcf = realloc(*cf, sizeof(struct gconffile) * (i + 2));
 	if (!newcf)
-	    debugx(1, DBG_ERR, "malloc failed");
+	    goto errmalloc;
 	memmove(newcf + 1, newcf, sizeof(struct gconffile) * (i + 1));
     }
     newcf[0].file = f;
-    newcf[0].path = mystringcopyx(path);
+    newcf[0].path = pathcopy;
     *cf = newcf;
     return f;
+    
+ errmalloc:
+    free(pathcopy);
+    fclose(f);
+    debug(DBG_ERR, "malloc failed");
+    return NULL;
 }
 
 FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
     int i;
-    FILE *f;
+    FILE *f = NULL;
     glob_t globbuf;
     char *path, *curfile = NULL, *dir;
     
@@ -98,11 +102,17 @@ FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
 	path = (char *)cfgpath;
     else {
 	/* dirname may modify its argument */
-	curfile = mystringcopyx((*cf)->path);
+	curfile = stringcopy((*cf)->path, 0);
+	if (!curfile) {
+	    debug(DBG_ERR, "malloc failed");
+	    goto exit;
+	}
 	dir = dirname(curfile);
 	path = malloc(strlen(dir) + strlen(cfgpath) + 2);
-	if (!path)
-	    debugx(1, DBG_ERR, "malloc failed");
+	if (!path) {
+	    debug(DBG_ERR, "malloc failed");
+	    goto exit;
+	}
 	strcpy(path, dir);
 	path[strlen(dir)] = '/';
 	strcpy(path + strlen(dir) + 1, cfgpath);
@@ -110,15 +120,17 @@ FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
     memset(&globbuf, 0, sizeof(glob_t));
     if (glob(path, 0, NULL, &globbuf)) {
 	debug(DBG_INFO, "could not glob %s", path);
-	f = NULL;
-    } else {
-	for (i = globbuf.gl_pathc - 1; i >= 0; i--) {
-	    f = pushgconffile(cf, globbuf.gl_pathv[i]);
-	    if (!f)
-		break;
-	}    
-	globfree(&globbuf);
+	goto exit;
     }
+
+    for (i = globbuf.gl_pathc - 1; i >= 0; i--) {
+	f = pushgconffile(cf, globbuf.gl_pathv[i]);
+	if (!f)
+	    break;
+    }    
+    globfree(&globbuf);
+
+ exit:    
     if (curfile) {
 	free(curfile);
 	free(path);
@@ -149,8 +161,10 @@ FILE *popgconffile(struct gconffile **cf) {
 struct gconffile *openconfigfile(const char *file) {
     struct gconffile *cf = NULL;
 
-    if (!pushgconffile(&cf, file))
-	debugx(1, DBG_ERR, "could not read config file %s\n%s", file, strerror(errno));
+    if (!pushgconffile(&cf, file)) {
+	debug(DBG_ERR, "could not read config file %s\n%s", file, strerror(errno));
+	return NULL;
+    }
     debug(DBG_DBG, "reading config file %s", file);
     return cf;
 }
@@ -166,7 +180,7 @@ struct gconffile *openconfigfile(const char *file) {
  * }
  */
 
-void getconfigline(struct gconffile **cf, char *block, char **opt, char **val, int *conftype) {
+int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, int *conftype) {
     char line[1024];
     char *tokens[3], *s;
     int tcount;
@@ -176,19 +190,21 @@ void getconfigline(struct gconffile **cf, char *block, char **opt, char **val, i
     *conftype = 0;
     
     if (!cf || !*cf || !(*cf)->file)
-	return;
+	return 1;
 
     for (;;) {
 	if (!fgets(line, 1024, (*cf)->file)) {
 	    if (popgconffile(cf))
 		continue;
-	    return;
+	    return 1;
 	}
 	s = line;
 	for (tcount = 0; tcount < 3; tcount++) {
 	    s = strtokenquote(s, &tokens[tcount], " \t\r\n", "\"'", tcount ? NULL : "#");
-	    if (!s)
-		debugx(1, DBG_ERR, "Syntax error in line starting with: %s", line);
+	    if (!s) {
+		debug(DBG_ERR, "Syntax error in line starting with: %s", line);
+		return 0;
+	    }
 	    if (!tokens[tcount])
 		break;
 	}
@@ -197,59 +213,91 @@ void getconfigline(struct gconffile **cf, char *block, char **opt, char **val, i
 
 	if (**tokens == '}') {
 	    if (block)
-		return;
-	    debugx(1, DBG_ERR, "configuration error, found } with no matching {");
+		return 1;
+	    debug(DBG_ERR, "configuration error, found } with no matching {");
+	    return 0;
 	}
 	break;
     }
     
     switch (tcount) {
     case 2:
-	*opt = mystringcopyx(tokens[0]);
-	*val = mystringcopyx(tokens[1]);
+	*opt = stringcopy(tokens[0], 0);
+	if (!*opt)
+	    goto errmalloc;
+	*val = stringcopy(tokens[1], 0);
+	if (!*val)
+	    goto errmalloc;
 	*conftype = CONF_STR;
 	break;
     case 3:
 	if (tokens[1][0] == '=' && tokens[1][1] == '\0') {
-	    *opt = mystringcopyx(tokens[0]);
-	    *val = mystringcopyx(tokens[2]);
+	    *opt = stringcopy(tokens[0], 0);
+	    if (!*opt)
+		goto errmalloc;
+	    *val = stringcopy(tokens[2], 0);
+	    if (!*val)
+		goto errmalloc;
 	    *conftype = CONF_STR;
 	    break;
 	}
 	if (tokens[2][0] == '{' && tokens[2][1] == '\0') {
-	    *opt = mystringcopyx(tokens[0]);
-	    *val = mystringcopyx(tokens[1]);
+	    *opt = stringcopy(tokens[0], 0);
+	    if (!*opt)
+		goto errmalloc;
+	    *val = stringcopy(tokens[1], 0);
+	    if (!*val)
+		goto errmalloc;
 	    *conftype = CONF_CBK;
 	    break;
 	}
 	/* fall through */
     default:
 	if (block)
-	    debugx(1, DBG_ERR, "configuration error in block %s, line starting with %s", block, tokens[0]);
-	debugx(1, DBG_ERR, "configuration error, syntax error in line starting with %s", tokens[0]);
+	    debug(DBG_ERR, "configuration error in block %s, line starting with %s", block, tokens[0]);
+	else
+	    debug(DBG_ERR, "configuration error, syntax error in line starting with %s", tokens[0]);
+	return 0;
     }
 
-    if (!**val)
-	debugx(1, DBG_ERR, "configuration error, option %s needs a non-empty value", *opt);
-    return;
+    if (**val)
+	return 1;
+    
+    debug(DBG_ERR, "configuration error, option %s needs a non-empty value", *opt);
+    goto errexit;
+
+ errmalloc:
+    debug(DBG_ERR, "malloc failed");
+ errexit:    
+    free(*opt);
+    *opt = NULL;
+    free(*val);
+    *val = NULL;
+    return 0;
 }
 
-void getgenericconfig(struct gconffile **cf, char *block, ...) {
+/* returns 1 if ok, 0 on error */
+/* caller must free returned values also on error */
+int getgenericconfig(struct gconffile **cf, char *block, ...) {
     va_list ap;
-    char *opt = NULL, *val, *word, *optval, **str = NULL, ***mstr = NULL;
+    char *opt = NULL, *val, *word, *optval, **str = NULL, ***mstr = NULL, **newmstr;
     uint8_t *bln;
     int type = 0, conftype = 0, n;
-    void (*cbk)(struct gconffile **, char *, char *, char *) = NULL;
+    void (*cbk)(struct gconffile **, void *, char *, char *, char *) = NULL;
+    void *cbkarg = NULL;
 
     for (;;) {
 	free(opt);
-	getconfigline(cf, block, &opt, &val, &conftype);
+	if (!getconfigline(cf, block, &opt, &val, &conftype))
+	    return 0;
 	if (!opt)
-	    return;
+	    return 1;
 
 	if (conftype == CONF_STR && !strcasecmp(opt, "include")) {
-	    if (!pushgconffiles(cf, val))
-		debugx(1, DBG_ERR, "failed to include config file %s", val);
+	    if (!pushgconffiles(cf, val)) {
+		debug(DBG_ERR, "failed to include config file %s", val);
+		goto errexit;
+	    }
 	    free(val);
 	    continue;
 	}
@@ -261,23 +309,26 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    case CONF_STR:
 		str = va_arg(ap, char **);
 		if (!str)
-		    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
+		    goto errparam;
 		break;
 	    case CONF_MSTR:
 		mstr = va_arg(ap, char ***);
 		if (!mstr)
-		    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
+		    goto errparam;
 		break;
 	    case CONF_BLN:
 		bln = va_arg(ap, uint8_t *);
 		if (!bln)
-		    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
+		    goto errparam;
 		break;
 	    case CONF_CBK:
-		cbk = va_arg(ap, void (*)(struct gconffile **, char *, char *, char *));
+		cbk = va_arg(ap, void (*)(struct gconffile **, void *, char *, char *, char *));
+		if (!cbk)
+		    goto errparam;
+		cbkarg = va_arg(ap, void *);
 		break;
 	    default:
-		debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
+		goto errparam;
 	    }
 	    if (!strcasecmp(opt, word))
 		break;
@@ -286,21 +337,25 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	
 	if (!word) {
 	    if (block)
-		debugx(1, DBG_ERR, "configuration error in block %s, unknown option %s", block, opt);
-	    debugx(1, DBG_ERR, "configuration error, unknown option %s", opt);
+		debug(DBG_ERR, "configuration error in block %s, unknown option %s", block, opt);
+	    debug(DBG_ERR, "configuration error, unknown option %s", opt);
+	    goto errexit;
 	}
 
 	if (((type == CONF_STR || type == CONF_MSTR || type == CONF_BLN) && conftype != CONF_STR) ||
 	    (type == CONF_CBK && conftype != CONF_CBK)) {
 	    if (block)
-		debugx(1, DBG_ERR, "configuration error in block %s, wrong syntax for option %s", block, opt);
-	    debugx(1, DBG_ERR, "configuration error, wrong syntax for option %s", opt);
+		debug(DBG_ERR, "configuration error in block %s, wrong syntax for option %s", block, opt);
+	    debug(DBG_ERR, "configuration error, wrong syntax for option %s", opt);
+	    goto errexit;
 	}
 
 	switch (type) {
 	case CONF_STR:
-	    if (*str)
-		debugx(1, DBG_ERR, "configuration error, option %s already set to %s", opt, *str);
+	    if (*str) {
+		debug(DBG_ERR, "configuration error, option %s already set to %s", opt, *str);
+		goto errexit;
+	    }
 	    *str = val;
 	    break;
 	case CONF_MSTR:
@@ -308,33 +363,41 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 		for (n = 0; (*mstr)[n]; n++);
 	    else
 		n = 0;
-	    *mstr = realloc(*mstr, sizeof(char *) * (n + 2));
-	    if (!*mstr)
-		debugx(1, DBG_ERR, "malloc failed");
-	    (*mstr)[n] = val;
-	    (*mstr)[n + 1] = NULL;
+	    newmstr = realloc(*mstr, sizeof(char *) * (n + 2));
+	    if (!newmstr) {
+		debug(DBG_ERR, "malloc failed");
+		goto errexit;
+	    }
+	    newmstr[n] = val;
+	    newmstr[n + 1] = NULL;
+	    *mstr = newmstr;
 	    break;
 	case CONF_BLN:
 	    if (!strcasecmp(val, "on"))
 		*bln = 1;
 	    else if (!strcasecmp(val, "off"))
 		*bln = 0;
-	    else if (block)
-		debugx(1, DBG_ERR, "configuration error in block %s, value for option %s must be on or off, not %s", block, opt, val);
-	    else
-		debugx(1, DBG_ERR, "configuration error, value for option %s must be on or off, not %s", opt, val);
+	    else {
+		if (block)
+		    debug(DBG_ERR, "configuration error in block %s, value for option %s must be on or off, not %s", block, opt, val);
+		else
+		    debug(DBG_ERR, "configuration error, value for option %s must be on or off, not %s", opt, val);
+		goto errexit;
+	    }
 	    break;
 	case CONF_CBK:
 	    optval = malloc(strlen(opt) + strlen(val) + 2);
-	    if (!optval)
-		debugx(1, DBG_ERR, "malloc failed");
+	    if (!optval) {
+		debug(DBG_ERR, "malloc failed");
+		goto errexit;
+	    }
 	    sprintf(optval, "%s %s", opt, val);
-	    cbk(cf, optval, opt, val);
+	    cbk(cf, cbkarg, optval, opt, val);
 	    free(val);
 	    free(optval);
 	    continue;
 	default:
-	    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
+	    goto errparam;
 	}
 	if (block)
 	    debug(DBG_DBG, "getgenericconfig: block %s: %s = %s", block, opt, val);
@@ -343,4 +406,11 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	if (type == CONF_BLN)
 	    free(val);
     }
+
+ errparam:
+    debug(DBG_ERR, "getgenericconfig: internal parameter error");
+ errexit:
+    free(opt);
+    free(val);
+    return 0;
 }

@@ -3159,7 +3159,7 @@ void addrewrite(char *value, char **attrs, char **vattrs) {
     debug(DBG_DBG, "addrewrite: added rewrite block %s", value);
 }
 
-void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
+void confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL, *rewriteattr = NULL;
     struct clsrvconf *conf;
     
@@ -3171,7 +3171,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     memset(conf, 0, sizeof(struct clsrvconf));
     conf->certnamecheck = 1;
     
-    getgenericconfig(cf, block,
+    if (!getgenericconfig(cf, block,
 		     "type", CONF_STR, &type,
 		     "host", CONF_STR, &conf->host,
 		     "secret", CONF_STR, &conf->secret,
@@ -3181,8 +3181,9 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "rewrite", CONF_STR, &rewrite,
 		     "rewriteattribute", CONF_STR, &rewriteattr,
 		     NULL
-		     );
-
+			  ))
+	debugx(1, DBG_ERR, "configuration error");
+    
     conf->name = stringcopy(val, 0);
     if (!conf->host)
 	conf->host = stringcopy(val, 0);
@@ -3224,7 +3225,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     }
 }
 
-void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
+void confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL;
     struct clsrvconf *conf;
     
@@ -3236,7 +3237,7 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     memset(conf, 0, sizeof(struct clsrvconf));
     conf->certnamecheck = 1;
     
-    getgenericconfig(cf, block,
+    if (!getgenericconfig(cf, block,
 		     "type", CONF_STR, &type,
 		     "host", CONF_STR, &conf->host,
 		     "port", CONF_STR, &conf->port,
@@ -3248,7 +3249,8 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 		     "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
 		     NULL
-		     );
+			  ))
+	debugx(1, DBG_ERR, "configuration error");
 
     conf->name = stringcopy(val, 0);
     if (!conf->host)
@@ -3289,34 +3291,36 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     }
 }
 
-void confrealm_cb(struct gconffile **cf, char *block, char *opt, char *val) {
+void confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char **servers = NULL, **accservers = NULL, *msg = NULL;
     
     debug(DBG_DBG, "confrealm_cb called for %s", block);
     
-    getgenericconfig(cf, block,
+    if (!getgenericconfig(cf, block,
 		     "server", CONF_MSTR, &servers,
 		     "accountingServer", CONF_MSTR, &accservers,
 		     "ReplyMessage", CONF_STR, &msg,
 		     NULL
-		     );
+			  ))
+	debugx(1, DBG_ERR, "configuration error");
 
     addrealm(realms, val, servers, accservers, msg);
 }
 
-void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {
+void conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char *cacertfile = NULL, *cacertpath = NULL, *certfile = NULL, *certkeyfile = NULL, *certkeypwd = NULL;
     
     debug(DBG_DBG, "conftls_cb called for %s", block);
     
-    getgenericconfig(cf, block,
+    if (!getgenericconfig(cf, block,
 		     "CACertificateFile", CONF_STR, &cacertfile,
 		     "CACertificatePath", CONF_STR, &cacertpath,
 		     "CertificateFile", CONF_STR, &certfile,
 		     "CertificateKeyFile", CONF_STR, &certkeyfile,
 		     "CertificateKeyPassword", CONF_STR, &certkeypwd,
 		     NULL
-		     );
+			  ))
+	debugx(1, DBG_ERR, "configuration error");
     
     tlsadd(val, cacertfile, cacertpath, certfile, certkeyfile, certkeypwd);
     free(cacertfile);
@@ -3326,16 +3330,17 @@ void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     free(certkeypwd);
 }
 
-void confrewrite_cb(struct gconffile **cf, char *block, char *opt, char *val) {
+void confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char **attrs = NULL, **vattrs = NULL;
     
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
     
-    getgenericconfig(cf, block,
+    if (!getgenericconfig(cf, block,
 		     "removeAttribute", CONF_MSTR, &attrs,
 		     "removeVendorAttribute", CONF_MSTR, &vattrs,
 		     NULL
-		     );
+			  ))
+	debugx(1, DBG_ERR, "configuration error");
     addrewrite(val, attrs, vattrs);
 }
 
@@ -3366,21 +3371,22 @@ void getmainconfig(const char *configfile) {
     if (!rewriteconfs)
 	debugx(1, DBG_ERR, "malloc failed");    
  
-    getgenericconfig(&cfs, NULL,
-		     "ListenUDP", CONF_STR, &options.listenudp,
-		     "ListenTCP", CONF_STR, &options.listentcp,
-		     "ListenAccountingUDP", CONF_STR, &options.listenaccudp,
-		     "SourceUDP", CONF_STR, &options.sourceudp,
-		     "SourceTCP", CONF_STR, &options.sourcetcp,
-		     "LogLevel", CONF_STR, &loglevel,
-		     "LogDestination", CONF_STR, &options.logdestination,
-		     "Client", CONF_CBK, confclient_cb,
-		     "Server", CONF_CBK, confserver_cb,
-		     "Realm", CONF_CBK, confrealm_cb,
-		     "TLS", CONF_CBK, conftls_cb,
-		     "Rewrite", CONF_CBK, confrewrite_cb,
-		     NULL
-		     );
+    if (!getgenericconfig(&cfs, NULL,
+			  "ListenUDP", CONF_STR, &options.listenudp,
+			  "ListenTCP", CONF_STR, &options.listentcp,
+			  "ListenAccountingUDP", CONF_STR, &options.listenaccudp,
+			  "SourceUDP", CONF_STR, &options.sourceudp,
+			  "SourceTCP", CONF_STR, &options.sourcetcp,
+			  "LogLevel", CONF_STR, &loglevel,
+			  "LogDestination", CONF_STR, &options.logdestination,
+			  "Client", CONF_CBK, confclient_cb, NULL,
+			  "Server", CONF_CBK, confserver_cb, NULL,
+			  "Realm", CONF_CBK, confrealm_cb, NULL,
+			  "TLS", CONF_CBK, conftls_cb, NULL,
+			  "Rewrite", CONF_CBK, confrewrite_cb, NULL,
+			  NULL
+			  ))
+	debugx(1, DBG_ERR, "configuration error");
     tlsfree();
     rewritefree();
     
