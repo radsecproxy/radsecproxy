@@ -49,6 +49,28 @@ char *strtokenquote(char *s, char **token, char *del, char *quote, char *comment
     return t + 1;
 }
 
+int pushgconfdata(struct gconffile **cf, const char *data) {
+    int i;
+    struct gconffile *newcf;
+
+    if (!*cf) {
+	newcf = malloc(sizeof(struct gconffile) * 2);
+	if (!newcf)
+	    return 0;
+	memset(newcf, 0, sizeof(struct gconffile) * 2);
+    } else {
+	for (i = 0; (*cf)[i].data || (*cf)[i].path; i++);
+	newcf = realloc(*cf, sizeof(struct gconffile) * (i + 2));
+	if (!newcf)
+	    return 0;
+	memmove(newcf + 1, newcf, sizeof(struct gconffile) * (i + 1));
+	memset(newcf, 0, sizeof(struct gconffile));
+    }
+    newcf[0].data = data;
+    *cf = newcf;
+    return 1;
+}
+
 FILE *pushgconffile(struct gconffile **cf, const char *path) {
     int i;
     struct gconffile *newcf;
@@ -70,14 +92,14 @@ FILE *pushgconffile(struct gconffile **cf, const char *path) {
 	newcf = malloc(sizeof(struct gconffile) * 2);
 	if (!newcf)
 	    goto errmalloc;
-	newcf[1].file = NULL;
-	newcf[1].path = NULL;
+	memset(newcf, 0, sizeof(struct gconffile) * 2);
     } else {
-	for (i = 0; (*cf)[i].path; i++);
+	for (i = 0; (*cf)[i].data || (*cf)[i].path; i++);
 	newcf = realloc(*cf, sizeof(struct gconffile) * (i + 2));
 	if (!newcf)
 	    goto errmalloc;
 	memmove(newcf + 1, newcf, sizeof(struct gconffile) * (i + 1));
+	memset(newcf, 0, sizeof(struct gconffile));
     }
     newcf[0].file = f;
     newcf[0].path = pathcopy;
@@ -138,24 +160,45 @@ FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
     return f;
 }
 
-FILE *popgconffile(struct gconffile **cf) {
+int popgconffile(struct gconffile **cf) {
     int i;
 
     if (!*cf)
-	return NULL;
-    for (i = 0; (*cf)[i].path; i++);
+	return 0;
+    for (i = 0; (*cf)[i].data || (*cf)[i].path; i++);
     if (i && (*cf)[0].file) {
 	fclose((*cf)[0].file);
-	debug(DBG_DBG, "closing config file %s", (*cf)[0].path);
-	free((*cf)[0].path);
+	if ((*cf)[0].path) {
+	    debug(DBG_DBG, "closing config file %s", (*cf)[0].path);
+	    free((*cf)[0].path);
+	}
     }
     if (i < 2) {
 	free(*cf);
 	*cf = NULL;
-	return NULL;
+	return 0;
     }
     memmove(*cf, *cf + 1, sizeof(struct gconffile) * i);
-    return (*cf)[0].file;
+    return 1;
+}
+
+void freegconf(struct gconffile **cf) {
+    int i;
+
+    if (!*cf)
+	return;
+    
+    for (i = 0; (*cf)[i].data || (*cf)[i].path; i++) {
+	if ((*cf)[i].file) {
+	    fclose((*cf)[i].file);
+	    if ((*cf)[i].path) {
+		debug(DBG_DBG, "closing config file %s", (*cf)[i].path);
+		free((*cf)[i].path);
+	    }
+	}
+    }
+    free(*cf);
+    *cf = NULL;
 }
 
 struct gconffile *openconfigfile(const char *file) {
@@ -180,6 +223,31 @@ struct gconffile *openconfigfile(const char *file) {
  * }
  */
 
+int getlinefromcf(struct gconffile *cf, char *line, const size_t size) {
+    size_t i, pos;
+    
+    if (!cf)
+	return 0;
+    
+    if (cf->file)
+	return fgets(line, size, cf->file) ? 1 : 0;
+    else if (cf->data) {
+	pos = cf->datapos;
+	if (!cf->data[pos])
+	    return 0;
+	for (i = pos; cf->data[i] && cf->data[i] != '\n'; i++);
+	if (cf->data[i] == '\n')
+	    i++;
+	if (i - pos > size - 1)
+	    i = size - 1 + pos;
+	memcpy(line, cf->data + pos, i - pos);
+	line[i - pos] = '\0';
+	cf->datapos = i;
+	return 1;
+    }
+    return 0;
+}
+
 int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, int *conftype) {
     char line[1024];
     char *tokens[3], *s;
@@ -189,11 +257,11 @@ int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, in
     *val = NULL;
     *conftype = 0;
     
-    if (!cf || !*cf || !(*cf)->file)
+    if (!cf || !*cf || (!(*cf)->file && !(*cf)->data))
 	return 1;
 
     for (;;) {
-	if (!fgets(line, 1024, (*cf)->file)) {
+	if (!getlinefromcf(*cf, line, 1024)) {
 	    if (popgconffile(cf))
 		continue;
 	    return 1;
