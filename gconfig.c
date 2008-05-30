@@ -112,9 +112,6 @@ FILE *pushgconffile(struct gconffile **cf, FILE *file, const char *description) 
 }
 
 FILE *pushgconfpath(struct gconffile **cf, const char *path) {
-    int i;
-    struct gconffile *newcf;
-    char *pathcopy;
     FILE *f;
 
     f = fopen(path, "r");
@@ -359,7 +356,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
     char *opt = NULL, *val, *word, *optval, **str = NULL, ***mstr = NULL, **newmstr;
     uint8_t *bln;
     int type = 0, conftype = 0, n;
-    void (*cbk)(struct gconffile **, void *, char *, char *, char *) = NULL;
+    int (*cbk)(struct gconffile **, void *, char *, char *, char *) = NULL;
     void *cbkarg = NULL;
 
     for (;;) {
@@ -398,7 +395,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 		    goto errparam;
 		break;
 	    case CONF_CBK:
-		cbk = va_arg(ap, void (*)(struct gconffile **, void *, char *, char *, char *));
+		cbk = va_arg(ap, int (*)(struct gconffile **, void *, char *, char *, char *));
 		if (!cbk)
 		    goto errparam;
 		cbkarg = va_arg(ap, void *);
@@ -468,7 +465,10 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 		goto errexit;
 	    }
 	    sprintf(optval, "%s %s", opt, val);
-	    cbk(cf, cbkarg, optval, opt, val);
+	    if (!cbk(cf, cbkarg, optval, opt, val)) {
+		free(optval);
+		goto errexit;
+	    }
 	    free(val);
 	    free(optval);
 	    continue;

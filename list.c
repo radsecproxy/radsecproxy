@@ -13,6 +13,9 @@ struct list *list_create() {
 /* frees all memory associated with the list */
 void list_destroy(struct list *list) {
     struct list_node *node, *next;
+
+    if (!list)
+	return;
     
     for (node = list->first; node; node = next) {
 	free(node->data);
