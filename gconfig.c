@@ -71,21 +71,19 @@ int pushgconfdata(struct gconffile **cf, const char *data) {
     return 1;
 }
 
-FILE *pushgconffile(struct gconffile **cf, const char *path) {
+FILE *pushgconffile(struct gconffile **cf, FILE *file, const char *description) {
     int i;
     struct gconffile *newcf;
-    char *pathcopy;
-    FILE *f;
+    char *desc;
 
-    f = fopen(path, "r");
-    if (!f) {
-        debug(DBG_INFO, "could not read config file %s", path);
+    if (!file) {
+        debug(DBG_INFO, "could not read config from %s", description);
 	return NULL;
     }
-    debug(DBG_DBG, "opened config file %s", path);
+    debug(DBG_DBG, "reading config from %s", description);
 
-    pathcopy = stringcopy(path, 0);
-    if (!pathcopy)
+    desc = stringcopy(description, 0);
+    if (!desc)
 	goto errmalloc;
     
     if (!*cf) {
@@ -101,19 +99,29 @@ FILE *pushgconffile(struct gconffile **cf, const char *path) {
 	memmove(newcf + 1, newcf, sizeof(struct gconffile) * (i + 1));
 	memset(newcf, 0, sizeof(struct gconffile));
     }
-    newcf[0].file = f;
-    newcf[0].path = pathcopy;
+    newcf[0].file = file;
+    newcf[0].path = desc;
     *cf = newcf;
-    return f;
+    return file;
     
  errmalloc:
-    free(pathcopy);
-    fclose(f);
+    free(desc);
+    fclose(file);
     debug(DBG_ERR, "malloc failed");
     return NULL;
 }
 
-FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
+FILE *pushgconfpath(struct gconffile **cf, const char *path) {
+    int i;
+    struct gconffile *newcf;
+    char *pathcopy;
+    FILE *f;
+
+    f = fopen(path, "r");
+    return pushgconffile(cf, f, path);
+}
+
+FILE *pushgconfpaths(struct gconffile **cf, const char *cfgpath) {
     int i;
     FILE *f = NULL;
     glob_t globbuf;
@@ -146,7 +154,7 @@ FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
     }
 
     for (i = globbuf.gl_pathc - 1; i >= 0; i--) {
-	f = pushgconffile(cf, globbuf.gl_pathv[i]);
+	f = pushgconfpath(cf, globbuf.gl_pathv[i]);
 	if (!f)
 	    break;
     }    
@@ -160,7 +168,7 @@ FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
     return f;
 }
 
-int popgconffile(struct gconffile **cf) {
+int popgconf(struct gconffile **cf) {
     int i;
 
     if (!*cf)
@@ -204,7 +212,7 @@ void freegconf(struct gconffile **cf) {
 struct gconffile *openconfigfile(const char *file) {
     struct gconffile *cf = NULL;
 
-    if (!pushgconffile(&cf, file)) {
+    if (!pushgconfpath(&cf, file)) {
 	debug(DBG_ERR, "could not read config file %s\n%s", file, strerror(errno));
 	return NULL;
     }
@@ -262,7 +270,7 @@ int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, in
 
     for (;;) {
 	if (!getlinefromcf(*cf, line, 1024)) {
-	    if (popgconffile(cf))
+	    if (popgconf(cf))
 		continue;
 	    return 1;
 	}
@@ -362,7 +370,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    return 1;
 
 	if (conftype == CONF_STR && !strcasecmp(opt, "include")) {
-	    if (!pushgconffiles(cf, val)) {
+	    if (!pushgconfpaths(cf, val)) {
 		debug(DBG_ERR, "failed to include config file %s", val);
 		goto errexit;
 	    }

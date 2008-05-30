@@ -2911,11 +2911,54 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
     pthread_mutex_unlock(&realm->subrealms_mutex);
 }
 
+void dynconfserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL;
+    struct clsrvconf *conf, *resconf;
+    
+    debug(DBG_DBG, "dynconfserver_cb called for %s", block);
+
+    conf = malloc(sizeof(struct clsrvconf));
+    if (!conf) {
+	debugx(1, DBG_ERR, "malloc failed");
+	return;
+    }
+    memset(conf, 0, sizeof(struct clsrvconf));
+    conf->certnamecheck = 1;
+    
+    if (!getgenericconfig(cf, block,
+		     "type", CONF_STR, &type,
+		     "host", CONF_STR, &conf->host,
+		     "port", CONF_STR, &conf->port,
+		     "secret", CONF_STR, &conf->secret,
+		     "tls", CONF_STR, &tls,
+		     "MatchCertificateAttribute", CONF_STR, &matchcertattr,
+		     "rewrite", CONF_STR, &rewrite,
+		     "StatusServer", CONF_BLN, &conf->statusserver,
+		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+		     "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
+		     NULL
+			  ))
+	debugx(1, DBG_ERR, "configuration error");
+
+    conf->name = stringcopy(val, 0);
+    if (!conf->host)
+	conf->host = stringcopy(val, 0);
+    /* need to copy other params */
+    /* any params used from template needs to be duplicated */
+    resconf = (struct clsrvconf *)arg;
+    resconf->name = conf->name;
+    conf->name = NULL;
+    resconf->host = conf->host;
+    conf->host = NULL;
+    /* free conf here */
+    return;
+}
+
 void dynamicconfig(struct server *server) {
-    int n, fd[2];
+    int ok, fd[2];
     pid_t pid;
-    char *host, *s, line[1024];
     struct clsrvconf *conf = server->conf;
+    struct gconffile *cf = NULL;
     
     /* for now we only learn hostname/address */
     debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
@@ -2941,26 +2984,21 @@ void dynamicconfig(struct server *server) {
     }
 
     close(fd[1]);
-    n = read(fd[0], line, 1024);
-    debug(DBG_DBG, "dynamicconfig: command output: %s", line);
-    close(fd[0]);
+    pushgconffile(&cf, fdopen(fd[0], "r"), conf->dynamiclookupcommand);
+    ok = getgenericconfig(&cf, NULL,
+			  "Server", CONF_CBK, dynconfserver_cb, (void *)conf,
+			  NULL
+			  );
+    freegconf(&cf);
+	
     if (waitpid(pid, NULL, 0) < 0) {
 	debug(DBG_ERR, "dynamicconfig: wait error");
 	goto errexit;
     }
-    debug(DBG_DBG, "dynamicconfig: after exec");
 
-    for (s = line; *s && strchr(" \t\r\n", *s); s++);
-    for (host = s; *s && !strchr(" \t\r\n", *s); s++);
-    *s = '\0';
-    if (!*host) {
-	debug(DBG_ERR, "dynamicconfig: invalid dynamic hostname/address");
-	goto errexit;
-    }
-    conf->name = stringcopy(host, 0);
-    conf->host = stringcopy(host, 0);
-    return;
-    
+    if (ok)
+	return;
+
  errexit:    
     server->conf = NULL;
     debug(DBG_WARN, "dynamicconfig: failed to obtain dynamic server config");

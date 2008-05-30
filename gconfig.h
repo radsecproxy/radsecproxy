@@ -13,8 +13,9 @@ struct gconffile {
 int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, int *conftype);
 int getgenericconfig(struct gconffile **cf, char *block, ...);
 int pushgconfdata(struct gconffile **cf, const char *data);
-FILE *pushgconffile(struct gconffile **cf, const char *path);
-FILE *pushgconffiles(struct gconffile **cf, const char *path);
+FILE *pushgconfpath(struct gconffile **cf, const char *path);
+FILE *pushgconffile(struct gconffile **cf, FILE *file, const char *description);
+FILE *pushgconfpaths(struct gconffile **cf, const char *path);
 int popgconf(struct gconffile **cf);
 void freegconf(struct gconffile **cf);
 struct gconffile *openconfigfile(const char *file);
