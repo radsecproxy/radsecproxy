@@ -2842,7 +2842,7 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
     if (!*realmname)
 	return;
     for (s = realmname; *s; s++)
-	if (*s != '-' && !isalnum(*s))
+	if (*s != '.' && *s != '-' && !isalnum(*s))
 	    return;
     
     pthread_mutex_lock(&realm->subrealms_mutex);
