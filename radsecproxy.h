@@ -75,12 +75,17 @@ struct replyq {
 
 struct clsrvconf {
     char *name;
+    char *conftype;
     char type; /* U for UDP, T for TLS */
     char *host;
     char *port;
     char *secret;
+    char *tls;
+    char *matchcertattr;
     regex_t *certcnregex;
     regex_t *certuriregex;
+    char *confrewrite;
+    char *rewriteattr;
     regex_t *rewriteattrregex;
     char *rewriteattrreplacement;
     char *dynamiclookupcommand;
@@ -130,7 +135,6 @@ struct realm {
 struct tls {
     char *name;
     SSL_CTX *ctx;
-    int count;
 };
 
 struct rewrite {
@@ -141,7 +145,6 @@ struct rewrite {
 struct rewriteconf {
     char *name;
     struct rewrite *rewrite;
-    int count;
 };
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])

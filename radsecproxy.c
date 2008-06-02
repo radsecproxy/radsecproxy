@@ -81,8 +81,7 @@ extern char *optarg;
 /* minimum required declarations to avoid reordering code */
 void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id);
 void dynamicconfig(struct server *server);
-int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr);
-struct rewrite *getrewrite(char *alt1, char *alt2);
+int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
     
 /* callbacks for making OpenSSL thread safe */
 unsigned long ssl_thread_id() {
@@ -2646,23 +2645,7 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
     if (!new->name)
 	debugx(1, DBG_ERR, "malloc failed");
     new->ctx = ctx;
-    new->count = 0;
     debug(DBG_DBG, "tlsadd: added TLS context %s", value);
-}
-
-void tlsfree() {
-    struct list_node *entry;
-    struct tls *t;
-    
-    for (entry = list_first(tlsconfs); entry; entry = list_next(entry)) {
-	t = (struct tls *)entry->data;
-	if (t->name)
-	    free(t->name);
-	if (!t->count)
-	    SSL_CTX_free(t->ctx);
-    }
-    list_destroy(tlsconfs);
-    tlsconfs = NULL;
 }
 
 SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
@@ -2682,7 +2665,6 @@ SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
     t = (t1 ? t1 : t2);
     if (!t)
 	return NULL;
-    t->count++;
     return t->ctx;
 }
 
@@ -2913,126 +2895,6 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
     pthread_mutex_unlock(&realm->subrealms_mutex);
 }
 
-void freeclsrvconf(struct clsrvconf *conf) {
-    free(conf->name);
-    free(conf->host);
-    free(conf->port);
-    free(conf->secret);
-    if (conf->certcnregex)
-	regfree(conf->certcnregex);
-    if (conf->certuriregex)
-	regfree(conf->certuriregex);
-    if (conf->rewriteattrregex)
-	regfree(conf->rewriteattrregex);
-    free(conf->rewriteattrreplacement);
-    free(conf->dynamiclookupcommand);
-    if (conf->ssl_ctx)
-	SSL_CTX_free(conf->ssl_ctx);
-    free(conf->rewrite);
-    if (conf->addrinfo)
-	freeaddrinfo(conf->addrinfo);
-    list_destroy(conf->clients);
-    free(conf->servers);
-    free(conf);
-}
-
-int dynconfserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL;
-    struct clsrvconf *conf, *resconf;
-    
-    debug(DBG_DBG, "dynconfserver_cb called for %s", block);
-
-    conf = malloc(sizeof(struct clsrvconf));
-    if (!conf) {
-	debug(DBG_ERR, "malloc failed");
-	return 0;
-    }
-    memset(conf, 0, sizeof(struct clsrvconf));
-    
-    resconf = (struct clsrvconf *)arg;
-    conf->statusserver = resconf->statusserver;
-    conf->certnamecheck = resconf->certnamecheck;
-    
-    if (!getgenericconfig(cf, block,
-		     "type", CONF_STR, &type,
-		     "host", CONF_STR, &conf->host,
-		     "port", CONF_STR, &conf->port,
-		     "secret", CONF_STR, &conf->secret,
-		     "tls", CONF_STR, &tls,
-		     "MatchCertificateAttribute", CONF_STR, &matchcertattr,
-		     "rewrite", CONF_STR, &rewrite,
-		     "StatusServer", CONF_BLN, &conf->statusserver,
-		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
-		     NULL
-			  )) {
-	free(type);
-	freeclsrvconf(conf);
-	debug(DBG_ERR, "configuration error");
-	return 0;
-    }
-
-    if (type && strcasecmp(type, "tls")) {
-	free(type);
-	freeclsrvconf(conf);
-	debug(DBG_ERR, "Only type TLS supported for dynamic servers for now");
-	return 0;
-    }
-
-    /* need to handle possible stringcopy() failure */
-    conf->name = stringcopy(val, 0);
-    if (!conf->host)
-	conf->host = stringcopy(val, 0);
-    resconf->name = conf->name;
-    /* ignoring type, leaving as T */
-    free(type);
-    resconf->host = conf->host;
-    resconf->port = conf->port ? conf->port : stringcopy(resconf->port, 0);
-    resconf->secret = conf->secret ? conf->secret : stringcopy(resconf->secret, 0);
-
-    if (tls) {
-	if (resconf->ssl_ctx)
-	    SSL_CTX_free(resconf->ssl_ctx);
-	resconf->ssl_ctx = tlsgetctx(tls, NULL);
-	free(tls);
-	if (!resconf->ssl_ctx) {
-	    debug(DBG_ERR, "error in block %s, no tls context defined", block);
-	    free(matchcertattr);
-	    free(rewrite);
-	    free(conf);
-	    return 0;
-	}
-    }
-    if (matchcertattr) {
-	if (resconf->certcnregex)
-	    regfree(resconf->certcnregex);
-	if (resconf->certuriregex)
-	    regfree(resconf->certuriregex);
-	if (!addmatchcertattr(resconf, matchcertattr)) {
-	    debug(DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
-	    free(matchcertattr);
-	    free(rewrite);
-	    free(conf);
-	    return 0;
-	}	    
-	free(matchcertattr);
-    }
-
-    if (rewrite) {
-	free(resconf->rewrite);
-        resconf->rewrite = getrewrite(rewrite, NULL);
-	free(rewrite);
-    }
-    
-    resconf->statusserver = conf->statusserver;
-    resconf->certnamecheck = conf->certnamecheck;
-    if (resconf->addrinfo) {
-	freeaddrinfo(resconf->addrinfo);
-	resconf->addrinfo = NULL;
-    }
-    free(conf);
-    return 1;
-}
-
 void dynamicconfig(struct server *server) {
     int ok, fd[2];
     pid_t pid;
@@ -3065,7 +2927,7 @@ void dynamicconfig(struct server *server) {
     close(fd[1]);
     pushgconffile(&cf, fdopen(fd[0], "r"), conf->dynamiclookupcommand);
     ok = getgenericconfig(&cf, NULL,
-			  "Server", CONF_CBK, dynconfserver_cb, (void *)conf,
+			  "Server", CONF_CBK, confserver_cb, (void *)conf,
 			  NULL
 			  );
     freegconf(&cf);
@@ -3083,16 +2945,16 @@ void dynamicconfig(struct server *server) {
     debug(DBG_WARN, "dynamicconfig: failed to obtain dynamic server config");
 }
 
-int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
+int addmatchcertattr(struct clsrvconf *conf) {
     char *v;
     regex_t **r;
     
-    if (!strncasecmp(matchcertattr, "CN:/", 4)) {
+    if (!strncasecmp(conf->matchcertattr, "CN:/", 4)) {
 	r = &conf->certcnregex;
-	v = matchcertattr + 4;
-    } else if (!strncasecmp(matchcertattr, "SubjectAltName:URI:/", 20)) {
+	v = conf->matchcertattr + 4;
+    } else if (!strncasecmp(conf->matchcertattr, "SubjectAltName:URI:/", 20)) {
 	r = &conf->certuriregex;
-	v = matchcertattr + 20;
+	v = conf->matchcertattr + 20;
     } else
 	return 0;
     if (!*v)
@@ -3117,11 +2979,11 @@ int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
     return 1;
 }
 
-int addrewriteattr(struct clsrvconf *conf, char *rewriteattr) {
+int addrewriteattr(struct clsrvconf *conf) {
     char *v, *w;
     
-    v = rewriteattr + 11;
-    if (strncasecmp(rewriteattr, "User-Name:/", 11) || !*v)
+    v = conf->rewriteattr + 11;
+    if (strncasecmp(conf->rewriteattr, "User-Name:/", 11) || !*v)
 	return 0;
     /* regexp, remove optional trailing / if present */
     if (v[strlen(v) - 1] == '/')
@@ -3180,21 +3042,6 @@ int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
     return *type >= 0 && *type < 256;
 }
 
-void rewritefree() {
-    struct list_node *entry;
-    struct rewriteconf *r;
-    
-    for (entry = list_first(rewriteconfs); entry; entry = list_next(entry)) {
-	r = (struct rewriteconf *)entry->data;
-	if (r->name)
-	    free(r->name);
-	if (!r->count)
-	    free(r->rewrite);
-    }
-    list_destroy(rewriteconfs);
-    rewriteconfs = NULL;
-}
-
 struct rewrite *getrewrite(char *alt1, char *alt2) {
     struct list_node *entry;
     struct rewriteconf *r, *r1 = NULL, *r2 = NULL;
@@ -3212,7 +3059,6 @@ struct rewrite *getrewrite(char *alt1, char *alt2) {
     r = (r1 ? r1 : r2);
     if (!r)
 	return NULL;
-    r->count++;
     return r->rewrite;
 }
 
@@ -3276,8 +3122,70 @@ void addrewrite(char *value, char **attrs, char **vattrs) {
     debug(DBG_DBG, "addrewrite: added rewrite block %s", value);
 }
 
+void freeclsrvconf(struct clsrvconf *conf) {
+    free(conf->name);
+    free(conf->conftype);
+    free(conf->host);
+    free(conf->port);
+    free(conf->secret);
+    free(conf->tls);
+    free(conf->matchcertattr);
+    if (conf->certcnregex)
+	regfree(conf->certcnregex);
+    if (conf->certuriregex)
+	regfree(conf->certuriregex);
+    free(conf->confrewrite);
+    free(conf->rewriteattr);
+    if (conf->rewriteattrregex)
+	regfree(conf->rewriteattrregex);
+    free(conf->rewriteattrreplacement);
+    free(conf->dynamiclookupcommand);
+    if (conf->ssl_ctx)
+	SSL_CTX_free(conf->ssl_ctx);
+    free(conf->rewrite);
+    if (conf->addrinfo)
+	freeaddrinfo(conf->addrinfo);
+    list_destroy(conf->clients);
+    free(conf->servers);
+    free(conf);
+}
+
+int mergeconfstring(char **dst, char **src) {
+    char *t;
+    
+    if (*src) {
+	*dst = *src;
+	*src = NULL;
+	return 1;
+    }
+    if (*dst) {
+	t = stringcopy(*dst, 0);
+	if (!t) {
+	    debug(DBG_ERR, "malloc failed");
+	    return 0;
+	}
+	*dst = t;
+    }
+    return 1;
+}
+
+/* assumes dst is a shallow copy */
+int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
+    if (!mergeconfstring(&dst->name, &src->name) ||
+	!mergeconfstring(&dst->conftype, &src->conftype) ||
+	!mergeconfstring(&dst->host, &src->host) ||
+	!mergeconfstring(&dst->port, &src->port) ||
+	!mergeconfstring(&dst->secret, &src->secret) ||
+	!mergeconfstring(&dst->tls, &src->tls) ||
+	!mergeconfstring(&dst->matchcertattr, &src->matchcertattr) ||
+	!mergeconfstring(&dst->confrewrite, &src->confrewrite))
+	return 0;
+    dst->statusserver = src->statusserver;
+    dst->certnamecheck = src->certnamecheck;
+    return 1;
+}
+		   
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL, *rewriteattr = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confclient_cb called for %s", block);
@@ -3289,14 +3197,14 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->certnamecheck = 1;
     
     if (!getgenericconfig(cf, block,
-		     "type", CONF_STR, &type,
+		     "type", CONF_STR, &conf->conftype,
 		     "host", CONF_STR, &conf->host,
 		     "secret", CONF_STR, &conf->secret,
-		     "tls", CONF_STR, &tls,
-		     "matchcertificateattribute", CONF_STR, &matchcertattr,
+		     "tls", CONF_STR, &conf->tls,
+		     "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
-		     "rewrite", CONF_STR, &rewrite,
-		     "rewriteattribute", CONF_STR, &rewriteattr,
+		     "rewrite", CONF_STR, &conf->confrewrite,
+		     "rewriteattribute", CONF_STR, &conf->rewriteattr,
 		     NULL
 			  ))
 	debugx(1, DBG_ERR, "configuration error");
@@ -3305,31 +3213,25 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (!conf->host)
 	conf->host = stringcopy(val, 0);
     
-    if (type && !strcasecmp(type, "udp")) {
+    if (conf->conftype && !strcasecmp(conf->conftype, "udp")) {
 	conf->type = 'U';
 	client_udp_count++;
-    } else if (type && !strcasecmp(type, "tls")) {
-	conf->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultclient", "default");
+    } else if (conf->conftype && !strcasecmp(conf->conftype, "tls")) {
+	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->tls, NULL) : tlsgetctx("defaultclient", "default");
 	if (!conf->ssl_ctx)
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
-	if (matchcertattr && !addmatchcertattr(conf, matchcertattr))
+	if (conf->matchcertattr && !addmatchcertattr(conf))
 	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
 	conf->type = 'T';
 	client_tls_count++;
     } else
 	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
-    free(type);
-    if (tls)
-	free(tls);
-    if (matchcertattr)
-	free(matchcertattr);
     
-    conf->rewrite = rewrite ? getrewrite(rewrite, NULL) : getrewrite("defaultclient", "default");
+    conf->rewrite = conf->confrewrite ? getrewrite(conf->confrewrite, NULL) : getrewrite("defaultclient", "default");
     
-    if (rewriteattr) {
-	if (!addrewriteattr(conf, rewriteattr))
+    if (conf->rewriteattr) {
+	if (!addrewriteattr(conf))
 	    debugx(1, DBG_ERR, "error in block %s, invalid RewriteAttributeValue", block);
-	free(rewriteattr);
     }
     
     if (!resolvepeer(conf, 0))
@@ -3343,71 +3245,138 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     return 1;
 }
 
+int compileserverconfig(struct clsrvconf *conf, const char *block) {
+    switch (conf->type) {
+    case 'U':
+	if (!conf->port)
+	    conf->port = stringcopy(DEFAULT_UDP_PORT, 0);
+	break;
+    case 'T':
+    	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->tls, NULL) : tlsgetctx("defaultserver", "default");
+	if (!conf->ssl_ctx) {
+	    debug(DBG_ERR, "error in block %s, no tls context defined", block);
+	    return 0;
+	}
+	if (conf->matchcertattr && !addmatchcertattr(conf)) {
+	    debug(DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+	    return 0;
+	}
+	if (!conf->port)
+	    conf->port = stringcopy(DEFAULT_TLS_PORT, 0);
+	break;
+    }
+    
+    conf->rewrite = conf->confrewrite ? getrewrite(conf->confrewrite, NULL) : getrewrite("defaultserver", "default");
+    
+    if (!conf->secret) {
+	if (conf->type == 'U')
+	    debug(DBG_ERR, "error in block %s, secret must be specified for UDP", block);
+	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
+	if (!conf->secret) {
+	    debug(DBG_ERR, "malloc failed");
+	    return 0;
+	}
+    }
+    
+    if (!conf->dynamiclookupcommand && !resolvepeer(conf, 0)) {
+	debug(DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
+	return 0;
+    }
+    return 1;
+}
+			
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL;
-    struct clsrvconf *conf;
+    struct clsrvconf *conf, *resconf;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
     conf = malloc(sizeof(struct clsrvconf));
-    if (!conf || !list_push(srvconfs, conf))
-	debugx(1, DBG_ERR, "malloc failed");
+    if (!conf) {
+	debug(DBG_ERR, "malloc failed");
+	return 0;
+    }
     memset(conf, 0, sizeof(struct clsrvconf));
-    conf->certnamecheck = 1;
+    resconf = (struct clsrvconf *)arg;
+    if (resconf) {
+	conf->statusserver = resconf->statusserver;
+	conf->certnamecheck = resconf->certnamecheck;
+    } else
+	conf->certnamecheck = 1;
     
     if (!getgenericconfig(cf, block,
-		     "type", CONF_STR, &type,
+		     "type", CONF_STR, &conf->conftype,
 		     "host", CONF_STR, &conf->host,
 		     "port", CONF_STR, &conf->port,
 		     "secret", CONF_STR, &conf->secret,
-		     "tls", CONF_STR, &tls,
-		     "MatchCertificateAttribute", CONF_STR, &matchcertattr,
-		     "rewrite", CONF_STR, &rewrite,
+		     "tls", CONF_STR, &conf->tls,
+		     "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
+		     "rewrite", CONF_STR, &conf->confrewrite,
 		     "StatusServer", CONF_BLN, &conf->statusserver,
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 		     "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
 		     NULL
-			  ))
-	debugx(1, DBG_ERR, "configuration error");
-
+			  )) {
+	debug(DBG_ERR, "configuration error");
+	goto errexit;
+    }
+    
     conf->name = stringcopy(val, 0);
-    if (!conf->host)
+    if (!conf->name) {
+        debug(DBG_ERR, "malloc failed");
+	goto errexit;
+    }
+    if (!conf->host) {
 	conf->host = stringcopy(val, 0);
-    
-    if (type && !strcasecmp(type, "udp")) {
+	if (!conf->host) {
+            debug(DBG_ERR, "malloc failed");
+	    goto errexit;
+        }
+    }
+
+    if (resconf) {
+	if (!mergesrvconf(resconf, conf))
+	    goto errexit;
+	free(conf);
+	conf = resconf;
+    }
+
+    if (conf->conftype && !strcasecmp(conf->conftype, "udp"))
 	conf->type = 'U';
-	server_udp_count++;
-	if (!conf->port)
-	    conf->port = stringcopy(DEFAULT_UDP_PORT, 0);
-    } else if (type && !strcasecmp(type, "tls")) {
-	conf->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultserver", "default");
-	if (!conf->ssl_ctx)
-	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
-	if (matchcertattr && !addmatchcertattr(conf, matchcertattr))
-	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
-	if (!conf->port)
-	    conf->port = stringcopy(DEFAULT_TLS_PORT, 0);
+    else if (conf->conftype && !strcasecmp(conf->conftype, "tls"))
 	conf->type = 'T';
+    else {
+	debug(DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
+	goto errexit;
+    }
+    
+    if (resconf || !conf->dynamiclookupcommand) {
+	if (!compileserverconfig(conf, block))
+	    goto errexit;
+    }
+    
+    if (resconf)
+	return 1;
+	
+    switch (conf->type) {
+    case 'U':
+	server_udp_count++;
+	break;
+    case 'T':
 	server_tls_count++;
-    } else
-	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
-    free(type);
-    if (tls)
-	free(tls);
-    if (matchcertattr)
-	free(matchcertattr);
+	break;
+    default:
+	goto errexit;
+    }
     
-    conf->rewrite = rewrite ? getrewrite(rewrite, NULL) : getrewrite("defaultserver", "default");
-    
-    if (!conf->dynamiclookupcommand && !resolvepeer(conf, 0))
-	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
-    
-    if (!conf->secret) {
-	if (conf->type == 'U')
-	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for UDP", block);
-	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
+    if (!list_push(srvconfs, conf)) {
+	debug(DBG_ERR, "malloc failed");
+	goto errexit;
     }
     return 1;
+
+ errexit:    
+    freeclsrvconf(conf);
+    return 0;
 }
 
 int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
@@ -3509,8 +3478,6 @@ void getmainconfig(const char *configfile) {
 			  NULL
 			  ))
 	debugx(1, DBG_ERR, "configuration error");
-    tlsfree();
-    rewritefree();
     
     if (loglevel) {
 	if (strlen(loglevel) != 1 || *loglevel < '1' || *loglevel > '4')
