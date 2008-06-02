@@ -40,6 +40,7 @@
 #endif
 #include <sys/time.h>
 #include <sys/types.h>
+#include <ctype.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
 #include <regex.h>
@@ -2827,7 +2828,8 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
 void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id) {
     struct clsrvconf *srvconf;
     struct realm *newrealm = NULL;
-    char *realmname;
+    char *realmname, *s;
+
     
     if (!conf->dynamiclookupcommand)
 	return;
@@ -2839,6 +2841,9 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
     realmname++;
     if (!*realmname)
 	return;
+    for (s = realmname; *s; s++)
+	if (*s != '-' && !isalnum(*s))
+	    return;
     
     pthread_mutex_lock(&realm->subrealms_mutex);
     /* exit if we now already got a matching subrealm */
