@@ -2901,7 +2901,7 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
 }
 
 void dynamicconfig(struct server *server) {
-    int ok, fd[2];
+    int ok, fd[2], status;
     pid_t pid;
     struct clsrvconf *conf = server->conf;
     struct gconffile *cf = NULL;
@@ -2937,8 +2937,13 @@ void dynamicconfig(struct server *server) {
 			  );
     freegconf(&cf);
 	
-    if (waitpid(pid, NULL, 0) < 0) {
+    if (waitpid(pid, &status, 0) < 0) {
 	debug(DBG_ERR, "dynamicconfig: wait error");
+	goto errexit;
+    }
+    
+    if (status) {
+	debug(DBG_INFO, "dynamicconfig: command exited with status %d", WEXITSTATUS(status));
 	goto errexit;
     }
 
