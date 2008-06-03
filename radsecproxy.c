@@ -1739,17 +1739,56 @@ const char *radmsgtype2string(uint8_t code) {
     return code < 14 && *rad_msg_names[code] ? rad_msg_names[code] : "Unknown";
 }
 
+void char2hex(char *h, unsigned char c) {
+    static const char hexdigits[] = { '0', '1', '2', '3', '4', '5', '6', '7',
+				      '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+    h[0] = hexdigits[c / 16];
+    h[1] = hexdigits[c % 16];
+    return;
+}
+
+char *radattr2ascii(char *ascii, size_t len, unsigned char *attr) {
+    int i, l;
+    char *s, *d;
+
+    if (!attr || len == 1) {
+	*ascii = '\0';
+	return ascii;
+    }
+
+    l = ATTRVALLEN(attr);
+    s = (char *)ATTRVAL(attr);
+    d = ascii;
+
+    for (i = 0; i < l; i++) {
+	if (s[i] > 31 && s[i] < 127) {
+	    *d++ = s[i];
+	    if (d - ascii == len - 1)
+		break;
+	} else {
+	    if (d - ascii > len - 4)
+		break;
+	    *d++ = '%';
+	    char2hex(d, s[i]);
+	    d += 2;
+	    if (d - ascii == len - 1)
+		break;
+	}
+    }
+    *d = '\0';
+    return ascii;
+}
+
 void acclog(unsigned char *attrs, int length, char *host) {
     unsigned char *attr;
-    char username[256];
+    char username[760];
     
     attr = attrget(attrs, length, RAD_Attr_User_Name);
     if (!attr) {
 	debug(DBG_INFO, "acclog: accounting-request from %s without username attribute", host);
 	return;
     }
-    memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
-    username[ATTRVALLEN(attr)] = '\0';
+    radattr2ascii(username, sizeof(username), attr);
     debug(DBG_INFO, "acclog: accounting-request from %s with username: %s", host, username);
 }
 	
@@ -1849,7 +1888,7 @@ void radsrv(struct request *rq) {
     uint8_t code, id, *auth, *attrs, *attr;
     uint16_t len;
     struct server *to = NULL;
-    char username[256];
+    char username[254], userascii[760];
     unsigned char newauth[16];
     struct realm *realm = NULL;
     
@@ -1902,6 +1941,7 @@ void radsrv(struct request *rq) {
     }
     memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
     username[ATTRVALLEN(attr)] = '\0';
+    radattr2ascii(userascii, sizeof(userascii), attr);
 
     if (rq->from->conf->rewriteattrregex) {
 	if (!rewriteusername(rq, username)) {
@@ -1913,10 +1953,7 @@ void radsrv(struct request *rq) {
 	attrs = rq->buf + 20;
     }
 
-    if (rq->origusername)
-	debug(DBG_DBG, "%s with username: %s (originally %s)", radmsgtype2string(code), username, rq->origusername);
-    else
-	debug(DBG_DBG, "%s with username: %s", radmsgtype2string(code), username);
+    debug(DBG_DBG, "%s with username: %s", radmsgtype2string(code), userascii);
     
     to = findserver(&realm, username, code == RAD_Accounting_Request);
     if (!realm) {
@@ -1925,7 +1962,7 @@ void radsrv(struct request *rq) {
     }
     if (!to) {
 	if (realm->message && code == RAD_Access_Request) {
-	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, username);
+	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, userascii);
 	    respondreject(rq, realm->message);
 	}
 	goto exit;
@@ -1982,7 +2019,7 @@ int replyh(struct server *server, unsigned char *buf) {
     int i, len, sublen;
     unsigned char *messageauth, *subattrs, *attrs, *attr, *username;
     struct sockaddr_storage fromsa;
-    char tmp[256];
+    char tmp[760], stationid[760];
     
     server->connectionok = 1;
     server->loststatsrv = 0;
@@ -2090,13 +2127,14 @@ int replyh(struct server *server, unsigned char *buf) {
     if (*buf == RAD_Access_Accept || *buf == RAD_Access_Reject || *buf == RAD_Accounting_Response) {
 	attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_User_Name);
 	if (attr) {
-	    memcpy(tmp, ATTRVAL(attr), ATTRVALLEN(attr));
-	    tmp[ATTRVALLEN(attr)] = '\0';
-	    if (rq->origusername)
-		debug(DBG_INFO, "%s for %s (originally %s) from %s", radmsgtype2string(*buf), tmp,
-		      rq->origusername, server->conf->host);
-	    else
-		debug(DBG_INFO, "%s for %s from %s", radmsgtype2string(*buf), tmp, server->conf->host);
+	    radattr2ascii(tmp, sizeof(tmp), attr);
+	    attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_Calling_Station_Id);
+	    if (attr) {
+		radattr2ascii(stationid, sizeof(stationid), attr);
+		debug(DBG_INFO, "%s for user %s stationid %s from %s",
+		      radmsgtype2string(*buf), tmp, stationid, server->conf->host);
+	    } else
+		debug(DBG_INFO, "%s for user %s from %s", radmsgtype2string(*buf), tmp, server->conf->host);
 	}
     }
 	
