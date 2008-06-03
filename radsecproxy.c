@@ -1931,6 +1931,12 @@ void radsrv(struct request *rq) {
 	goto exit;
     }
     
+    if (options.rpf && !strcmp(rq->from->conf->name, to->conf->name)) {
+	debug(DBG_INFO, "radsrv: RPF failed, not forwarding request from client %s to server %s, discarding",
+	      rq->from->conf->name, to->conf->name);
+	goto exit;
+    }
+
     if (rqinqueue(to, rq->from, id, code)) {
 	debug(DBG_INFO, "radsrv: already got %s from host %s with id %d, ignoring",
 	      radmsgtype2string(code), rq->from->conf->host, id);
@@ -3480,6 +3486,7 @@ void getmainconfig(const char *configfile) {
 			  "SourceTCP", CONF_STR, &options.sourcetcp,
 			  "LogLevel", CONF_STR, &loglevel,
 			  "LogDestination", CONF_STR, &options.logdestination,
+			  "RPFCheck", CONF_BLN, &options.rpf,
 			  "Client", CONF_CBK, confclient_cb, NULL,
 			  "Server", CONF_CBK, confserver_cb, NULL,
 			  "Realm", CONF_CBK, confrealm_cb, NULL,
