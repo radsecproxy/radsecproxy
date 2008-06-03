@@ -1,4 +1,4 @@
-#!/bin/sh
+#! /bin/sh
 #
 # PROVIDE: radsecproxy
 # REQUIRE: network
@@ -14,12 +14,12 @@ rcvar=${name}
 command="/usr/pkg/sbin/${name}"
 command_args="-c /usr/pkg/etc/${name}.conf"
 
-restart_precmd="$command -p $command_args"
+restart_precmd="${command} -p ${command_args}"
 
 if [ -f /etc/rc.subr ]
 then
-	load_rc_config $name
-	run_rc_command "$1"
+	load_rc_config ${name}
+	run_rc_command "${1}"
 else
 	echo -n ' ${name}'
 	exec ${command} ${command_args}
