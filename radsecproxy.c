@@ -1906,8 +1906,8 @@ void radsrv(struct request *rq) {
 	goto exit;
     }
     
-    if (options.rpf && !strcmp(rq->from->conf->name, to->conf->name)) {
-	debug(DBG_INFO, "radsrv: RPF failed, not forwarding request from client %s to server %s, discarding",
+    if (options.loopprevention && !strcmp(rq->from->conf->name, to->conf->name)) {
+	debug(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s to server %s, discarding",
 	      rq->from->conf->name, to->conf->name);
 	goto exit;
     }
@@ -3126,7 +3126,7 @@ void getmainconfig(const char *configfile) {
 		     "SourceTCP", CONF_STR, &options.sourcetcp,
 		     "LogLevel", CONF_STR, &loglevel,
 		     "LogDestination", CONF_STR, &options.logdestination,
-		     "RPFCheck", CONF_BLN, &options.rpf,
+		     "LoopPrevention", CONF_BLN, &options.loopprevention,
 		     "Client", CONF_CBK, confclient_cb,
 		     "Server", CONF_CBK, confserver_cb,
 		     "Realm", CONF_CBK, confrealm_cb,
