@@ -32,6 +32,7 @@
 #define RAD_Attr_User_Password 2
 #define RAD_Attr_Reply_Message 18
 #define RAD_Attr_Vendor_Specific 26
+#define RAD_Attr_Calling_Station_Id 31
 #define RAD_Attr_Tunnel_Password 69
 #define RAD_Attr_Message_Authenticator 80
 
