@@ -46,6 +46,7 @@ struct options {
     char *sourcetcp;
     char *logdestination;
     uint8_t loglevel;
+    uint8_t rpf;
 };
 
 /* requests that our client will send */
