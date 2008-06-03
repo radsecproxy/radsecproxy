@@ -14,6 +14,8 @@ rcvar=${name}
 command="/usr/pkg/sbin/${name}"
 command_args="-c /usr/pkg/etc/${name}.conf"
 
+restart_precmd="$command -p $command_args"
+
 if [ -f /etc/rc.subr ]
 then
 	load_rc_config $name
