@@ -85,7 +85,8 @@ int dynamicconfig(struct server *server);
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 void freerealm(struct realm *realm);
 void freeclsrvconf(struct clsrvconf *conf);
-    
+void freerqdata(struct request *rq);
+
 /* callbacks for making OpenSSL thread safe */
 unsigned long ssl_thread_id() {
         return (unsigned long)pthread_self();
@@ -509,10 +510,17 @@ void removeclientrqs(struct client *client) {
 }
 
 void freeserver(struct server *server, uint8_t destroymutex) {
+    struct request *rq, *end;
+
     if (!server)
 	return;
-    
-    free(server->requests);
+
+    if(server->requests) {
+	rq = server->requests;
+	for (end = rq + MAX_REQUESTS; rq < end; rq++)
+	    freerqdata(rq);
+	free(server->requests);
+    }
     free(server->dynamiclookuparg);
     if (destroymutex) {
 	pthread_mutex_destroy(&server->lock);
@@ -871,7 +879,7 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     return 1;
 }
 
-void tlsconnect(struct server *server, struct timeval *when, char *text) {
+int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval now;
     time_t elapsed;
     X509 *cert;
@@ -882,7 +890,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	/* already reconnected, nothing to do */
 	debug(DBG_DBG, "tlsconnect(%s): seems already reconnected", text);
 	pthread_mutex_unlock(&server->lock);
-	return;
+	return 1;
     }
 
     debug(DBG_DBG, "tlsconnect %s", text);
@@ -890,6 +898,14 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
     for (;;) {
 	gettimeofday(&now, NULL);
 	elapsed = now.tv_sec - server->lastconnecttry.tv_sec;
+	if (timeout && server->lastconnecttry.tv_sec && elapsed > timeout) {
+	    debug(DBG_DBG, "tlsconnect: timeout");
+	    if (server->sock >= 0)
+		close(server->sock);
+	    SSL_free(server->ssl);
+	    pthread_mutex_unlock(&server->lock);
+	    return 0;
+	}
 	if (server->connectionok) {
 	    server->connectionok = 0;
 	    sleep(2);
@@ -928,6 +944,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
     debug(DBG_WARN, "tlsconnect: TLS connection to %s port %s up", server->conf->host, server->conf->port);
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
+    return 1;
 }
 
 unsigned char *radtlsget(SSL *ssl) {
@@ -1029,7 +1046,7 @@ int clientradputtls(struct server *server, unsigned char *rad) {
     while ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "clientradputtls: TLS: %s", ERR_error_string(error, NULL));
-	tlsconnect(server, &lastconnecttry, "clientradputtls");
+	tlsconnect(server, &lastconnecttry, 0, "clientradputtls");
 	lastconnecttry = server->lastconnecttry;
     }
 
@@ -2254,7 +2271,7 @@ void *tlsclientrd(void *arg) {
 	lastconnecttry = server->lastconnecttry;
 	buf = radtlsget(server->ssl);
 	if (!buf) {
-	    tlsconnect(server, &lastconnecttry, "clientrd");
+	    tlsconnect(server, &lastconnecttry, 0, "clientrd");
 	    continue;
 	}
 
@@ -2268,19 +2285,21 @@ void *clientwr(void *arg) {
     struct server *server = (struct server *)arg;
     struct request *rq;
     pthread_t tlsclientrdth;
-    int i;
+    int i, dynconffail = 0;
     uint8_t rnd;
     struct timeval now, lastsend;
     struct timespec timeout;
     struct request statsrvrq;
     unsigned char statsrvbuf[38];
     struct clsrvconf *conf;
-
+    
     conf = server->conf;
     
-    if (server->dynamiclookuparg && !dynamicconfig(server))
+    if (server->dynamiclookuparg && !dynamicconfig(server)) {
+	dynconffail = 1;
 	goto errexit;
-
+    }
+    
     if (!conf->addrinfo && !resolvepeer(conf, 0)) {
 	debug(DBG_WARN, "failed to resolve host %s port %s", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
 	goto errexit;
@@ -2301,14 +2320,15 @@ void *clientwr(void *arg) {
     if (conf->type == 'U') {
 	server->connectionok = 1;
     } else {
-	tlsconnect(server, NULL, "new client");
+	if (!tlsconnect(server, NULL, server->dynamiclookuparg ? 6 : 0, "clientwr"))
+	    goto errexit;
 	server->connectionok = 1;
 	if (pthread_create(&tlsclientrdth, NULL, tlsclientrd, (void *)server)) {
 	    debug(DBG_ERR, "clientwr: pthread_create failed");
 	    goto errexit;
 	}
     }
-    
+
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->newrq) {
@@ -2414,7 +2434,10 @@ void *clientwr(void *arg) {
     conf->servers = NULL;
     if (server->dynamiclookuparg) {
 	removeserversubrealms(realms, conf);
-	freeclsrvconf(conf);
+	if (dynconffail)
+	    free(conf);
+	else
+	    freeclsrvconf(conf);
     }
     freeserver(server, 1);
     return NULL;
@@ -3242,12 +3265,10 @@ void freeclsrvconf(struct clsrvconf *conf) {
 	regfree(conf->rewriteattrregex);
     free(conf->rewriteattrreplacement);
     free(conf->dynamiclookupcommand);
-    if (conf->ssl_ctx)
-	SSL_CTX_free(conf->ssl_ctx);
     free(conf->rewrite);
     if (conf->addrinfo)
 	freeaddrinfo(conf->addrinfo);
-    /* not touching clients and servers */
+    /* not touching ssl_ctx, clients and servers */
     free(conf);
 }
 
@@ -3279,7 +3300,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	!mergeconfstring(&dst->secret, &src->secret) ||
 	!mergeconfstring(&dst->tls, &src->tls) ||
 	!mergeconfstring(&dst->matchcertattr, &src->matchcertattr) ||
-	!mergeconfstring(&dst->confrewrite, &src->confrewrite))
+	!mergeconfstring(&dst->confrewrite, &src->confrewrite) ||
+	!mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand))
 	return 0;
     dst->statusserver = src->statusserver;
     dst->certnamecheck = src->certnamecheck;
@@ -3439,6 +3461,10 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    goto errexit;
 	free(conf);
 	conf = resconf;
+	if (conf->dynamiclookupcommand) {
+	    free(conf->dynamiclookupcommand);
+	    conf->dynamiclookupcommand = NULL;
+	}
     }
 
     if (conf->conftype && !strcasecmp(conf->conftype, "udp"))
