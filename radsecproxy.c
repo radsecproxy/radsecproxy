@@ -2411,6 +2411,7 @@ void *clientwr(void *arg) {
 	}
     }
  errexit:
+    conf->servers = NULL;
     if (server->dynamiclookuparg) {
 	removeserversubrealms(realms, conf);
 	freeclsrvconf(conf);
@@ -3246,8 +3247,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->rewrite);
     if (conf->addrinfo)
 	freeaddrinfo(conf->addrinfo);
-    list_destroy(conf->clients);
-    free(conf->servers);
+    /* not touching clients and servers */
     free(conf);
 }
 
