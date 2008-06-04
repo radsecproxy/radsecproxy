@@ -1879,6 +1879,8 @@ struct server *findserver(struct realm **realm, char *id, uint8_t acc) {
 	return NULL;
     debug(DBG_DBG, "found matching realm: %s", (*realm)->name);
     srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
+    if (!srvconf)
+	return NULL;
     if (!acc && !srvconf->servers)
 	adddynamicrealmserver(*realm, srvconf, id);
     return srvconf->servers;
@@ -2886,7 +2888,7 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
     if (!*realmname)
 	return;
     for (s = realmname; *s; s++)
-	if (*s != '.' && *s != '-' && !isalnum(*s))
+	if (*s != '.' && *s != '-' && !isalnum((int)*s))
 	    return;
     
     pthread_mutex_lock(&realm->subrealms_mutex);
