@@ -2440,7 +2440,7 @@ void *clientwr(void *arg) {
 	    freeclsrvconf(conf);
     }
     freeserver(server, 1);
-    return NULL;
+    pthread_exit(NULL);
 }
 
 void *udpserverwr(void *arg) {
