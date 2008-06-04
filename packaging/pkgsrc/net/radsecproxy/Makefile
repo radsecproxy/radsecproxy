@@ -17,10 +17,18 @@ RCD_SCRIPTS=	radsecproxy
 
 INSTALLATION_DIRS=	sbin ${PKGMANDIR}/man1 ${PKGMANDIR}/man5 ${EGDIR}
 
+do-patch:
+	${SED} 's%\(^all: .*\)%& catgconf%1' ${WRKSRC}/Makefile > ${WRKSRC}/Makefile.tmp
+	mv ${WRKSRC}/Makefile.tmp ${WRKSRC}/Makefile
+	for f in ${WRKSRC}/* ; do \
+		${SED} 's%\(/etc/radsecproxy.conf\)%/usr/pkg&%g' < $${f} > $${f}.tmp ; mv $${f}.tmp $${f} ; \
+	done
+
 do-install:
 	${INSTALL_MAN} ${WRKSRC}/radsecproxy.1 ${PREFIX}/${PKGMANDIR}/man1
 	${INSTALL_MAN} ${WRKSRC}/radsecproxy.conf.5 ${PREFIX}/${PKGMANDIR}/man5
 	${INSTALL_PROGRAM} ${WRKSRC}/radsecproxy ${PREFIX}/sbin
+	${INSTALL_PROGRAM} ${WRKSRC}/catgconf ${PREFIX}/sbin/radsecproxy-catgconf
 	${INSTALL_DATA_DIR} ${PREFIX}/share/doc/radsecproxy
 	${INSTALL_DATA} ${WRKSRC}/README ${PREFIX}/share/doc/radsecproxy
 	${INSTALL_DATA} ${WRKSRC}/AUTHORS ${PREFIX}/share/doc/radsecproxy
