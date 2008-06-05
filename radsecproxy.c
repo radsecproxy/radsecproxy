@@ -2440,7 +2440,7 @@ void *clientwr(void *arg) {
 	    freeclsrvconf(conf);
     }
     freeserver(server, 1);
-    pthread_exit(NULL);
+    return NULL;
 }
 
 void *udpserverwr(void *arg) {
@@ -2942,7 +2942,7 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
     struct clsrvconf *srvconf;
     struct realm *newrealm = NULL;
     char *realmname, *s;
-
+    pthread_t clientth;
     
     if (!conf->dynamiclookupcommand)
 	return;
@@ -2993,17 +2993,21 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
 
     srvconf->servers->dynamiclookuparg = stringcopy(realmname, 0);
 
-    if (pthread_create(&srvconf->servers->clientth, NULL, clientwr, (void *)(srvconf->servers))) {
+    if (pthread_create(&clientth, NULL, clientwr, (void *)(srvconf->servers))) {
 	debug(DBG_ERR, "pthread_create failed");
 	goto errexit;
     }
-
+    pthread_detach(clientth);
     goto exit;
     
  errexit:
     if (newrealm) {
 	list_removedata(realm->subrealms, newrealm);
 	freerealm(newrealm);
+	if (!list_first(realm->subrealms)) {
+	    list_destroy(realm->subrealms);
+	    realm->subrealms = NULL;
+	}
     }
     freeserver(srvconf->servers, 1);
     free(srvconf);
