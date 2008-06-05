@@ -903,6 +903,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	    if (server->sock >= 0)
 		close(server->sock);
 	    SSL_free(server->ssl);
+	    server->ssl = NULL;
 	    pthread_mutex_unlock(&server->lock);
 	    return 0;
 	}
@@ -1046,6 +1047,8 @@ int clientradputtls(struct server *server, unsigned char *rad) {
     while ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "clientradputtls: TLS: %s", ERR_error_string(error, NULL));
+	if (server->dynamiclookuparg)
+	    return 0;
 	tlsconnect(server, &lastconnecttry, 0, "clientradputtls");
 	lastconnecttry = server->lastconnecttry;
     }
@@ -2271,6 +2274,10 @@ void *tlsclientrd(void *arg) {
 	lastconnecttry = server->lastconnecttry;
 	buf = radtlsget(server->ssl);
 	if (!buf) {
+	    if (server->dynamiclookuparg) {
+		server->clientrdgone = 1;
+		return NULL;
+	    }
 	    tlsconnect(server, &lastconnecttry, 0, "clientrd");
 	    continue;
 	}
@@ -2333,7 +2340,7 @@ void *clientwr(void *arg) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->newrq) {
 	    gettimeofday(&now, NULL);
-	    if (conf->statusserver) {
+	    if (conf->statusserver || server->dynamiclookuparg) {
 		/* random 0-7 seconds */
 		RAND_bytes(&rnd, 1);
 		rnd /= 32;
@@ -2357,6 +2364,10 @@ void *clientwr(void *arg) {
 	pthread_mutex_unlock(&server->newrq_mutex);
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
+	    if (server->clientrdgone) {
+		pthread_join(tlsclientrdth, NULL);
+		goto errexit;
+	    }
 	    pthread_mutex_lock(&server->newrq_mutex);
 	    while (i < MAX_REQUESTS && !server->requests[i].buf)
 		i++;

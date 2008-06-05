@@ -113,6 +113,7 @@ struct server {
     SSL *ssl;
     pthread_mutex_t lock;
     pthread_t clientth;
+    uint8_t clientrdgone;
     struct timeval lastconnecttry;
     uint8_t connectionok;
     uint8_t loststatsrv;
