@@ -89,7 +89,7 @@ FILE *pushgconffile(struct gconffile **cf, const char *path) {
 
 FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
     int i;
-    FILE *f;
+    FILE *f = NULL;
     glob_t globbuf;
     char *path, *curfile = NULL, *dir;
     
@@ -108,10 +108,9 @@ FILE *pushgconffiles(struct gconffile **cf, const char *cfgpath) {
 	strcpy(path + strlen(dir) + 1, cfgpath);
     }
     memset(&globbuf, 0, sizeof(glob_t));
-    if (glob(path, 0, NULL, &globbuf)) {
+    if (glob(path, 0, NULL, &globbuf))
 	debug(DBG_INFO, "could not glob %s", path);
-	f = NULL;
-    } else {
+    else {
 	for (i = globbuf.gl_pathc - 1; i >= 0; i--) {
 	    f = pushgconffile(cf, globbuf.gl_pathv[i]);
 	    if (!f)
@@ -237,7 +236,7 @@ void getconfigline(struct gconffile **cf, char *block, char **opt, char **val, i
 void getgenericconfig(struct gconffile **cf, char *block, ...) {
     va_list ap;
     char *opt = NULL, *val, *word, *optval, **str = NULL, ***mstr = NULL;
-    uint8_t *bln;
+    uint8_t *bln = NULL;
     int type = 0, conftype = 0, n;
     void (*cbk)(struct gconffile **, char *, char *, char *) = NULL;
 

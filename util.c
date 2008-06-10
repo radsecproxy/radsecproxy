@@ -100,7 +100,7 @@ char *addr2string(struct sockaddr *addr, socklen_t len) {
 
 int connectport(int type, char *host, char *port) {
     struct addrinfo hints, *res0, *res;
-    int s;
+    int s = -1;
     
     memset(&hints, 0, sizeof(hints));
     hints.ai_socktype = type;

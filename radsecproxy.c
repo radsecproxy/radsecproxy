@@ -2632,7 +2632,7 @@ struct list *addsrvconfs(char *value, char **names) {
     struct list *conflist;
     int n;
     struct list_node *entry;
-    struct clsrvconf *conf;
+    struct clsrvconf *conf = NULL;
     
     if (!names || !*names)
 	return NULL;
