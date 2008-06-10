@@ -116,7 +116,7 @@ struct server {
     uint8_t clientrdgone;
     struct timeval lastconnecttry;
     uint8_t connectionok;
-    uint8_t loststatsrv;
+    uint8_t lostrqs;
     char *dynamiclookuparg;
     int nextid;
     struct request *requests;

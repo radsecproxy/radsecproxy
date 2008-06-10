@@ -1930,13 +1930,13 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
 	    first = server;
 	if (!server->servers->connectionok)
 	    continue;
-	if (!server->servers->loststatsrv)
+	if (!server->servers->lostrqs)
 	    return server;
 	if (!best) {
 	    best = server;
 	    continue;
 	}
-	if (server->servers->loststatsrv < best->servers->loststatsrv)
+	if (server->servers->lostrqs < best->servers->lostrqs)
 	    best = server;
     }
     return best ? best : first;
@@ -2095,7 +2095,7 @@ int replyh(struct server *server, unsigned char *buf) {
     char tmp[760], stationid[760];
     
     server->connectionok = 1;
-    server->loststatsrv = 0;
+    server->lostrqs = 0;
 	
     i = buf[1]; /* i is the id */
 
@@ -2400,11 +2400,9 @@ void *clientwr(void *arg) {
 	    if (rq->tries == (*rq->buf == RAD_Status_Server || server->conf->type == 'T'
 			      ? 1 : REQUEST_RETRIES)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
-		if (*rq->buf == RAD_Status_Server) {
-		    debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->host);
-		    if (server->loststatsrv < 255)
-			server->loststatsrv++;
-		}
+		debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->host);
+		if (server->lostrqs < 255)
+		    server->lostrqs++;
 		freerqdata(rq);
 		/* setting this to NULL means that it can be reused */
 		rq->buf = NULL;
