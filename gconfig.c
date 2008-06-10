@@ -354,7 +354,7 @@ int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, in
 int getgenericconfig(struct gconffile **cf, char *block, ...) {
     va_list ap;
     char *opt = NULL, *val, *word, *optval, **str = NULL, ***mstr = NULL, **newmstr;
-    uint8_t *bln;
+    uint8_t *bln = NULL;
     int type = 0, conftype = 0, n;
     int (*cbk)(struct gconffile **, void *, char *, char *, char *) = NULL;
     void *cbkarg = NULL;
