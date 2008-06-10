@@ -3231,15 +3231,9 @@ int main(int argc, char **argv) {
 	options.loglevel = loglevel;
     else if (options.loglevel)
 	debug_set_level(options.loglevel);
-    if (foreground) {
-	free(options.logdestination);
-	options.logdestination = NULL;
-   } else {
-	if (!options.logdestination)
-	    options.logdestination = "x-syslog:///";
-	debug_set_destination(options.logdestination);
-	free(options.logdestination);
-    }
+    if (!foreground)
+	debug_set_destination(options.logdestination ? options.logdestination : "x-syslog:///");
+    free(options.logdestination);
 
     if (!list_first(clconfs))
 	debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");
