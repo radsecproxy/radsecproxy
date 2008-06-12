@@ -19,6 +19,7 @@
 #define REQUEST_RETRIES 3
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
+#define IDLE_TIMEOUT 300
 #define RAD_Access_Request 1
 #define RAD_Access_Accept 2
 #define RAD_Access_Reject 3
@@ -115,6 +116,7 @@ struct server {
     pthread_t clientth;
     uint8_t clientrdgone;
     struct timeval lastconnecttry;
+    struct timeval lastreply;
     uint8_t connectionok;
     uint8_t lostrqs;
     char *dynamiclookuparg;

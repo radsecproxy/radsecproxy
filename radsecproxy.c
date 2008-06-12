@@ -40,6 +40,7 @@
 #endif
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <ctype.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
@@ -948,21 +949,57 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
     return 1;
 }
 
-unsigned char *radtlsget(SSL *ssl) {
+/* timeout in seconds, 0 means no timeout (blocking), returns when num bytes have been read, or timeout */
+/* returns 0 on timeout, -1 on error and num if ok */
+int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout) {
+    int s, ndesc, cnt, len;
+    fd_set readfds, writefds;
+    struct timeval timer;
+    
+    s = SSL_get_fd(ssl);
+    if (s < 0)
+	return -1;
+    /* make socket non-blocking? */
+    for (len = 0; len < num; len += cnt) {
+	FD_ZERO(&readfds);
+	FD_SET(s, &readfds);
+	writefds = readfds;
+	if (timeout) {
+	    timer.tv_sec = timeout;
+	    timer.tv_usec = 0;
+	}
+	ndesc = select(s + 1, &readfds, &writefds, NULL, timeout ? &timer : NULL);
+	if (ndesc < 1)
+	    return ndesc;
+
+	cnt = SSL_read(ssl, buf + len, num - len);
+	if (cnt <= 0)
+	    switch (SSL_get_error(ssl, cnt)) {
+	    case SSL_ERROR_WANT_READ:
+	    case SSL_ERROR_WANT_WRITE:
+		cnt = 0;
+		continue;
+	    case SSL_ERROR_ZERO_RETURN:
+		/* remote end sent close_notify, send one back */
+		SSL_shutdown(ssl);
+		/* fall through */
+	    default:
+		return -1;
+	    }
+    }
+    return num;
+}
+
+/* timeout in seconds, 0 means no timeout (blocking) */
+unsigned char *radtlsget(SSL *ssl, int timeout) {
     int cnt, total, len;
     unsigned char buf[4], *rad;
 
     for (;;) {
-	for (total = 0; total < 4; total += cnt) {
-	    cnt = SSL_read(ssl, buf + total, 4 - total);
-	    if (cnt <= 0) {
-		debug(DBG_ERR, "radtlsget: connection lost");
-		if (SSL_get_error(ssl, cnt) == SSL_ERROR_ZERO_RETURN) {
-		    /* remote end sent close_notify, send one back */
-		    SSL_shutdown(ssl);
-		}
-		return NULL;
-	    }
+	cnt = sslreadtimeout(ssl, buf, 4, timeout);
+	if (cnt < 1) {
+	    debug(DBG_DBG, cnt ? "radtlsget: connection lost" : "radtlsget: timeout");
+	    return NULL;
 	}
 
 	len = RADLEN(buf);
@@ -972,21 +1009,15 @@ unsigned char *radtlsget(SSL *ssl) {
 	    continue;
 	}
 	memcpy(rad, buf, 4);
-
-	for (; total < len; total += cnt) {
-	    cnt = SSL_read(ssl, rad + total, len - total);
-	    if (cnt <= 0) {
-		debug(DBG_ERR, "radtlsget: connection lost");
-		if (SSL_get_error(ssl, cnt) == SSL_ERROR_ZERO_RETURN) {
-		    /* remote end sent close_notify, send one back */
-		    SSL_shutdown(ssl);
-		}
-		free(rad);
-		return NULL;
-	    }
+	
+	cnt = sslreadtimeout(ssl, rad + 4, len - 4, timeout);
+	if (cnt < 1) {
+	    debug(DBG_DBG, cnt ? "radtlsget: connection lost" : "radtlsget: timeout");
+	    free(rad);
+	    return NULL;
 	}
-    
-	if (total >= 20)
+	
+	if (len >= 20)
 	    break;
 	
 	free(rad);
@@ -2162,6 +2193,8 @@ int replyh(struct server *server, unsigned char *buf) {
 	return 0;
     }
 
+    gettimeofday(&server->lastreply, NULL);
+    
     from = rq->from;
     if (!from) {
 	pthread_mutex_unlock(&server->newrq_mutex);
@@ -2267,24 +2300,31 @@ void *udpclientrd(void *arg) {
 void *tlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
-    struct timeval lastconnecttry;
+    struct timeval now, lastconnecttry;
     
     for (;;) {
 	/* yes, lastconnecttry is really necessary */
 	lastconnecttry = server->lastconnecttry;
-	buf = radtlsget(server->ssl);
+	buf = radtlsget(server->ssl, server->dynamiclookuparg ? IDLE_TIMEOUT : 0);
 	if (!buf) {
-	    if (server->dynamiclookuparg) {
-		server->clientrdgone = 1;
-		return NULL;
-	    }
+	    if (server->dynamiclookuparg)
+		break;
 	    tlsconnect(server, &lastconnecttry, 0, "clientrd");
 	    continue;
 	}
 
 	if (!replyh(server, buf))
 	    free(buf);
+	if (server->dynamiclookuparg) {
+	    gettimeofday(&now, NULL);
+	    if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
+		debug(DBG_INFO, "clientrd: idle timeout for %s", server->conf->name);
+		break;
+	    }
+	}
     }
+    server->clientrdgone = 1;
+    return NULL;
 }
 
 /* code for removing state not finished */
@@ -2340,21 +2380,14 @@ void *clientwr(void *arg) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->newrq) {
 	    gettimeofday(&now, NULL);
-	    if (conf->statusserver || server->dynamiclookuparg) {
-		/* random 0-7 seconds */
-		RAND_bytes(&rnd, 1);
-		rnd /= 32;
-		if (!timeout.tv_sec || timeout.tv_sec > lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd)
-		    timeout.tv_sec = lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd;
-	    }   
-	    if (timeout.tv_sec) {
-		debug(DBG_DBG, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
-		pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
-		timeout.tv_sec = 0;
-	    } else {
-		debug(DBG_DBG, "clientwr: waiting for new request");
-		pthread_cond_wait(&server->newrq_cond, &server->newrq_mutex);
-	    }
+	    /* random 0-7 seconds */
+	    RAND_bytes(&rnd, 1);
+	    rnd /= 32;
+	    if (!timeout.tv_sec || timeout.tv_sec > lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd)
+		timeout.tv_sec = lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd;
+	    debug(DBG_DBG, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
+	    pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
+	    timeout.tv_sec = 0;
 	}
 	if (server->newrq) {
 	    debug(DBG_DBG, "clientwr: got new request");
@@ -2571,7 +2604,7 @@ void tlsserverrd(struct client *client) {
 
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
-	rq.buf = radtlsget(client->ssl);
+	rq.buf = radtlsget(client->ssl, 0);
 	if (!rq.buf)
 	    break;
 	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", client->conf->host);
