@@ -2383,9 +2383,15 @@ void *clientwr(void *arg) {
 	    /* random 0-7 seconds */
 	    RAND_bytes(&rnd, 1);
 	    rnd /= 32;
-	    if (!timeout.tv_sec || timeout.tv_sec > lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd)
-		timeout.tv_sec = lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd;
-	    debug(DBG_DBG, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
+	    if (conf->statusserver) {
+		if (!timeout.tv_sec || timeout.tv_sec > lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd)
+		    timeout.tv_sec = lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd;
+	    } else {
+		if (!timeout.tv_sec || timeout.tv_sec > now.tv_sec + STATUS_SERVER_PERIOD + rnd)
+		    timeout.tv_sec = now.tv_sec + STATUS_SERVER_PERIOD + rnd;
+	    }
+	    if (timeout.tv_sec > now.tv_sec)
+		debug(DBG_DBG, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
 	    pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
 	    timeout.tv_sec = 0;
 	}
