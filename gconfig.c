@@ -235,8 +235,9 @@ void getconfigline(struct gconffile **cf, char *block, char **opt, char **val, i
 
 void getgenericconfig(struct gconffile **cf, char *block, ...) {
     va_list ap;
-    char *opt = NULL, *val, *word, *optval, **str = NULL, ***mstr = NULL;
+    char *opt = NULL, *val, *word, *optval, **str = NULL, ***mstr = NULL, *endptr;
     uint8_t *bln = NULL;
+    long int *lint = NULL;
     int type = 0, conftype = 0, n;
     void (*cbk)(struct gconffile **, char *, char *, char *) = NULL;
 
@@ -272,6 +273,11 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 		if (!bln)
 		    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
 		break;
+	    case CONF_LINT:
+		lint = va_arg(ap, long int *);
+		if (!lint)
+		    debugx(1, DBG_ERR, "getgenericconfig: internal parameter error");
+		break;
 	    case CONF_CBK:
 		cbk = va_arg(ap, void (*)(struct gconffile **, char *, char *, char *));
 		break;
@@ -289,7 +295,7 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    debugx(1, DBG_ERR, "configuration error, unknown option %s", opt);
 	}
 
-	if (((type == CONF_STR || type == CONF_MSTR || type == CONF_BLN) && conftype != CONF_STR) ||
+	if (((type == CONF_STR || type == CONF_MSTR || type == CONF_BLN || type == CONF_LINT) && conftype != CONF_STR) ||
 	    (type == CONF_CBK && conftype != CONF_CBK)) {
 	    if (block)
 		debugx(1, DBG_ERR, "configuration error in block %s, wrong syntax for option %s", block, opt);
@@ -323,6 +329,16 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    else
 		debugx(1, DBG_ERR, "configuration error, value for option %s must be on or off, not %s", opt, val);
 	    break;
+	case CONF_LINT:
+	    endptr = NULL;
+	    *lint = strtol(val, &endptr, 0);
+	    if (*lint == LONG_MIN || *lint == LONG_MAX || !endptr || endptr == val || *endptr != '\0') {
+		if (block)
+		    debugx(1, DBG_ERR, "configuration error in block %s, value for option %s must be an integer, not %s", block, opt, val);
+		else
+		    debugx(1, DBG_ERR, "configuration error, value for option %s must be an integer, not %s", opt, val);
+	    }
+	    break;
 	case CONF_CBK:
 	    optval = malloc(strlen(opt) + strlen(val) + 2);
 	    if (!optval)
@@ -339,7 +355,7 @@ void getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    debug(DBG_DBG, "getgenericconfig: block %s: %s = %s", block, opt, val);
 	else 
 	    debug(DBG_DBG, "getgenericconfig: %s = %s", opt, val);
-	if (type == CONF_BLN)
+	if (type == CONF_BLN || type == CONF_LINT)
 	    free(val);
     }
 }
