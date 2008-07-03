@@ -2390,16 +2390,21 @@ void *clientwr(void *arg) {
 		if (!timeout.tv_sec || timeout.tv_sec > now.tv_sec + STATUS_SERVER_PERIOD + rnd)
 		    timeout.tv_sec = now.tv_sec + STATUS_SERVER_PERIOD + rnd;
 	    }
+#if 0	    
 	    if (timeout.tv_sec > now.tv_sec)
 		debug(DBG_DBG, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
+#endif	    
 	    pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
 	    timeout.tv_sec = 0;
 	}
 	if (server->newrq) {
 	    debug(DBG_DBG, "clientwr: got new request");
 	    server->newrq = 0;
-	} else
+	}
+#if 0	
+	else
 	    debug(DBG_DBG, "clientwr: request timer expired, processing request queue");
+#endif	
 	pthread_mutex_unlock(&server->newrq_mutex);
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
@@ -2436,8 +2441,8 @@ void *clientwr(void *arg) {
 		continue;
 	    }
 
-	    if (rq->tries == (*rq->buf == RAD_Status_Server || server->conf->type == 'T'
-			      ? 1 : REQUEST_RETRIES)) {
+	    if (rq->tries == (*rq->buf == RAD_Status_Server || conf->type == 'T'
+			      ? 1 : conf->retrycount + 1)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->host);
 		if (server->lostrqs < 255)
@@ -2452,7 +2457,7 @@ void *clientwr(void *arg) {
 
 	    rq->expiry.tv_sec = now.tv_sec +
 		(*rq->buf == RAD_Status_Server || conf->type == 'T'
-		 ? REQUEST_EXPIRY : REQUEST_EXPIRY / REQUEST_RETRIES);
+		 ? conf->retrydelay * (conf->retrycount + 1) : conf->retrydelay);
 	    if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rq->expiry.tv_sec;
 	    rq->tries++;
@@ -3357,6 +3362,10 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	return 0;
     dst->statusserver = src->statusserver;
     dst->certnamecheck = src->certnamecheck;
+    if (src->retrydelay != 255)
+	dst->retrydelay = src->retrydelay;
+    if (src->retrycount != 255)
+	dst->retrycount = src->retrycount;
     return 1;
 }
 		   
@@ -3440,6 +3449,11 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	    conf->port = stringcopy(DEFAULT_TLS_PORT, 0);
 	break;
     }
+
+    if (conf->retrydelay == 255)
+	conf->retrydelay = REQUEST_RETRY_DELAY;
+    if (conf->retrycount == 255)
+	conf->retrycount = REQUEST_RETRY_COUNT;
     
     conf->rewrite = conf->confrewrite ? getrewrite(conf->confrewrite, NULL) : getrewrite("defaultserver", "default");
     
@@ -3462,6 +3476,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 			
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *resconf;
+    long int retrydelay = LONG_MIN, retrycount = LONG_MIN;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
@@ -3477,19 +3492,21 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	conf->certnamecheck = resconf->certnamecheck;
     } else
 	conf->certnamecheck = 1;
-    
+
     if (!getgenericconfig(cf, block,
-		     "type", CONF_STR, &conf->conftype,
-		     "host", CONF_STR, &conf->host,
-		     "port", CONF_STR, &conf->port,
-		     "secret", CONF_STR, &conf->secret,
-		     "tls", CONF_STR, &conf->tls,
-		     "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
-		     "rewrite", CONF_STR, &conf->confrewrite,
-		     "StatusServer", CONF_BLN, &conf->statusserver,
-		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
-		     "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
-		     NULL
+			  "type", CONF_STR, &conf->conftype,
+			  "host", CONF_STR, &conf->host,
+			  "port", CONF_STR, &conf->port,
+			  "secret", CONF_STR, &conf->secret,
+			  "tls", CONF_STR, &conf->tls,
+			  "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
+			  "rewrite", CONF_STR, &conf->confrewrite,
+			  "StatusServer", CONF_BLN, &conf->statusserver,
+			  "RetryDelay", CONF_LINT, &retrydelay,
+			  "RetryCount", CONF_LINT, &retrycount,
+			  "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+			  "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
+			  NULL
 			  )) {
 	debug(DBG_ERR, "configuration error");
 	goto errexit;
@@ -3507,7 +3524,25 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    goto errexit;
         }
     }
-
+    
+    if (retrydelay != LONG_MIN) {
+	if (retrydelay < 1 || retrydelay > 60) {
+	    debug(DBG_ERR, "error in block %s, value of option RetryDelay is %d, must be 1-60", block, retrydelay);
+	    goto errexit;
+	}
+	conf->retrydelay = (uint8_t)retrydelay;
+    } else
+	conf->retrydelay = 255;
+    
+    if (retrycount != LONG_MIN) {
+	if (retrycount < 0 || retrycount > 10) {
+	    debug(DBG_ERR, "error in block %s, value of option RetryCount is %d, must be 0-10", block, retrycount);
+	    goto errexit;
+	}
+	conf->retrycount = (uint8_t)retrycount;
+    } else
+	conf->retrycount = 255;
+    
     if (resconf) {
 	if (!mergesrvconf(resconf, conf))
 	    goto errexit;
