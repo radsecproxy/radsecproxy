@@ -2238,7 +2238,7 @@ void *clientwr(void *arg) {
 	    }
 
 	    if (rq->tries == (*rq->buf == RAD_Status_Server || server->conf->type == 'T'
-			      ? 1 : REQUEST_RETRIES)) {
+			      ? 1 : server->conf->retrycount + 1)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		debug(DBG_WARN, "clientwr: no server response, %s dead?", server->conf->host);
 		if (server->lostrqs < 255)
@@ -2253,7 +2253,7 @@ void *clientwr(void *arg) {
 
 	    rq->expiry.tv_sec = now.tv_sec +
 		(*rq->buf == RAD_Status_Server || server->conf->type == 'T'
-		 ? REQUEST_EXPIRY : REQUEST_EXPIRY / REQUEST_RETRIES);
+		 ? server->conf->retrydelay * (server->conf->retrycount + 1) : server->conf->retrydelay);
 	    if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rq->expiry.tv_sec;
 	    rq->tries++;
@@ -2977,6 +2977,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 
 void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL;
+    long int retrydelay = LONG_MIN, retrycount = LONG_MIN;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
@@ -2996,6 +2997,8 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "MatchCertificateAttribute", CONF_STR, &matchcertattr,
 		     "rewrite", CONF_STR, &rewrite,
 		     "StatusServer", CONF_BLN, &conf->statusserver,
+		     "RetryDelay", CONF_LINT, &retrydelay,
+		     "RetryCount", CONF_LINT, &retrycount,
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 		     NULL
 		     );
@@ -3026,6 +3029,20 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	free(tls);
     if (matchcertattr)
 	free(matchcertattr);
+
+    if (retrydelay != LONG_MIN) {
+	if (retrydelay < 1 || retrydelay > 60)
+	    debugx(1, DBG_ERR, "error in block %s, value of option RetryDelay is %d, must be 1-60", block, retrydelay);
+	conf->retrydelay = (uint8_t)retrydelay;
+    } else
+	conf->retrydelay = REQUEST_RETRY_DELAY;
+
+    if (retrycount != LONG_MIN) {
+	if (retrycount < 0 || retrycount > 10)
+	    debugx(1, DBG_ERR, "error in block %s, value of option RetryCount is %d, must be 0-10", block, retrycount);
+	conf->retrycount = (uint8_t)retrycount;
+    } else
+	conf->retrycount = REQUEST_RETRY_COUNT;
     
     conf->rewrite = rewrite ? getrewrite(rewrite, NULL) : getrewrite("defaultserver", "default");
     
