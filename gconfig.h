@@ -2,6 +2,7 @@
 #define CONF_CBK 2
 #define CONF_MSTR 3
 #define CONF_BLN 4
+#define CONF_LINT 5
 
 struct gconffile {
     char *path;

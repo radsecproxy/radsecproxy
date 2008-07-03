@@ -353,8 +353,9 @@ int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, in
 /* caller must free returned values also on error */
 int getgenericconfig(struct gconffile **cf, char *block, ...) {
     va_list ap;
-    char *opt = NULL, *val, *word, *optval, **str = NULL, ***mstr = NULL, **newmstr;
+    char *opt = NULL, *val, *word, *optval, **str = NULL, ***mstr = NULL, **newmstr, *endptr;
     uint8_t *bln = NULL;
+    long int *lint = NULL;
     int type = 0, conftype = 0, n;
     int (*cbk)(struct gconffile **, void *, char *, char *, char *) = NULL;
     void *cbkarg = NULL;
@@ -394,6 +395,11 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 		if (!bln)
 		    goto errparam;
 		break;
+	    case CONF_LINT:
+		lint = va_arg(ap, long int *);
+		if (!lint)
+		    goto errparam;
+		break;
 	    case CONF_CBK:
 		cbk = va_arg(ap, int (*)(struct gconffile **, void *, char *, char *, char *));
 		if (!cbk)
@@ -415,7 +421,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    goto errexit;
 	}
 
-	if (((type == CONF_STR || type == CONF_MSTR || type == CONF_BLN) && conftype != CONF_STR) ||
+	if (((type == CONF_STR || type == CONF_MSTR || type == CONF_BLN || type == CONF_LINT) && conftype != CONF_STR) ||
 	    (type == CONF_CBK && conftype != CONF_CBK)) {
 	    if (block)
 		debug(DBG_ERR, "configuration error in block %s, wrong syntax for option %s", block, opt);
@@ -458,6 +464,17 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 		goto errexit;
 	    }
 	    break;
+	case CONF_LINT:
+	    endptr = NULL;
+	    *lint = strtol(val, &endptr, 0);
+	    if (*lint == LONG_MIN || *lint == LONG_MAX || !endptr || endptr == val || *endptr != '\0') {
+		if (block)
+		    debug(DBG_ERR, "configuration error in block %s, value for option %s must be an integer, not %s", block, opt, val);
+		else
+		    debug(DBG_ERR, "configuration error, value for option %s must be an integer, not %s", opt, val);
+		goto errexit;
+	    }
+	    break;
 	case CONF_CBK:
 	    optval = malloc(strlen(opt) + strlen(val) + 2);
 	    if (!optval) {
@@ -479,7 +496,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    debug(DBG_DBG, "getgenericconfig: block %s: %s = %s", block, opt, val);
 	else 
 	    debug(DBG_DBG, "getgenericconfig: %s = %s", opt, val);
-	if (type == CONF_BLN)
+	if (type == CONF_BLN || type == CONF_LINT)
 	    free(val);
     }
 
