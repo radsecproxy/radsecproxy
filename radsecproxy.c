@@ -3090,7 +3090,7 @@ void confrewrite_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 }
 
 void getmainconfig(const char *configfile) {
-    char *loglevel = NULL;
+    long int loglevel = LONG_MIN;
     struct gconffile *cfs;
 
     cfs = openconfigfile(configfile);
@@ -3122,7 +3122,7 @@ void getmainconfig(const char *configfile) {
 		     "ListenAccountingUDP", CONF_STR, &options.listenaccudp,
 		     "SourceUDP", CONF_STR, &options.sourceudp,
 		     "SourceTCP", CONF_STR, &options.sourcetcp,
-		     "LogLevel", CONF_STR, &loglevel,
+		     "LogLevel", CONF_LINT, &loglevel,
 		     "LogDestination", CONF_STR, &options.logdestination,
 		     "LoopPrevention", CONF_BLN, &options.loopprevention,
 		     "Client", CONF_CBK, confclient_cb,
@@ -3135,11 +3135,10 @@ void getmainconfig(const char *configfile) {
     tlsfree();
     rewritefree();
     
-    if (loglevel) {
-	if (strlen(loglevel) != 1 || *loglevel < '1' || *loglevel > '4')
-	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %s, must be 1, 2, 3 or 4", configfile, loglevel);
-	options.loglevel = *loglevel - '0';
-	free(loglevel);
+    if (loglevel != LONG_MIN) {
+	if (loglevel < 1 || loglevel > 4)
+	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %d, must be 1, 2, 3 or 4", configfile, loglevel);
+	options.loglevel = (uint8_t)loglevel;
     }
 }
 
