@@ -35,6 +35,7 @@
 #include <netdb.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 #ifdef SYS_SOLARIS9
 #include <fcntl.h>
 #endif
