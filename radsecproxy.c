@@ -1911,6 +1911,9 @@ void radsrv(struct request *rq) {
 	if (realm->message && code == RAD_Access_Request) {
 	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, userascii);
 	    respondreject(rq, realm->message);
+	} else if (realm->accresp && code == RAD_Accounting_Request) {
+	    acclog(attrs, len, rq->from->conf->host);
+	    respondaccounting(rq);
 	}
 	goto exit;
     }
@@ -2675,7 +2678,7 @@ struct list *addsrvconfs(char *value, char **names) {
     return conflist;
 }
 
-void addrealm(char *value, char **servers, char **accservers, char *message) {
+void addrealm(char *value, char **servers, char **accservers, char *message, uint8_t accresp) {
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
@@ -2720,7 +2723,8 @@ void addrealm(char *value, char **servers, char **accservers, char *message) {
     if (message && strlen(message) > 253)
 	debugx(1, DBG_ERR, "ReplyMessage can be at most 253 bytes");
     realm->message = message;
-    
+    realm->accresp = accresp;
+
     if (regcomp(&realm->regex, regex ? regex : value + 1, REG_ICASE | REG_NOSUB))
 	debugx(1, DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
     if (regex)
@@ -3075,6 +3079,7 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 
 void confrealm_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     char **servers = NULL, **accservers = NULL, *msg = NULL;
+    uint8_t accresp = 0;
     
     debug(DBG_DBG, "confrealm_cb called for %s", block);
     
@@ -3082,10 +3087,11 @@ void confrealm_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "server", CONF_MSTR, &servers,
 		     "accountingServer", CONF_MSTR, &accservers,
 		     "ReplyMessage", CONF_STR, &msg,
+		     "AccountingResponse", CONF_BLN, &accresp,
 		     NULL
 		     );
 
-    addrealm(val, servers, accservers, msg);
+    addrealm(val, servers, accservers, msg, accresp);
 }
 
 void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {

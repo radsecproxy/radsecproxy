@@ -122,6 +122,7 @@ struct server {
 struct realm {
     char *name;
     char *message;
+    uint8_t accresp;
     regex_t regex;
     struct list *srvconfs;
     struct list *accsrvconfs;
