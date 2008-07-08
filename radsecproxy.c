@@ -2077,6 +2077,9 @@ void radsrv(struct request *rq) {
 	if (realm->message && code == RAD_Access_Request) {
 	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, userascii);
 	    respondreject(rq, realm->message);
+	} else if (realm->accresp && code == RAD_Accounting_Request) {
+	    acclog(attrs, len, rq->from->conf->host);
+	    respondaccounting(rq);
 	}
 	goto exit;
     }
@@ -2901,7 +2904,7 @@ void freerealm(struct realm *realm) {
     free(realm);
 }
 
-struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char *message) {
+struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char *message, uint8_t accresp) {
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
@@ -2962,6 +2965,7 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
 	goto errexit;
     }
     realm->message = message;
+    realm->accresp = accresp;
     
     if (regcomp(&realm->regex, regex ? regex : value + 1, REG_ICASE | REG_NOSUB)) {
 	debug(DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
@@ -3045,7 +3049,7 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
 	realm->subrealms = list_create();
     if (!realm->subrealms)
 	goto errexit;
-    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, NULL);
+    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, NULL, 0);
     if (!newrealm)
 	goto errexit;
 
@@ -3612,6 +3616,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char **servers = NULL, **accservers = NULL, *msg = NULL;
+    uint8_t accresp = 0;
     
     debug(DBG_DBG, "confrealm_cb called for %s", block);
     
@@ -3619,11 +3624,12 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
 		     "server", CONF_MSTR, &servers,
 		     "accountingServer", CONF_MSTR, &accservers,
 		     "ReplyMessage", CONF_STR, &msg,
+		     "AccountingResponse", CONF_BLN, &accresp,
 		     NULL
 			  ))
 	debugx(1, DBG_ERR, "configuration error");
 
-    addrealm(realms, val, servers, accservers, msg);
+    addrealm(realms, val, servers, accservers, msg, accresp);
     return 1;
 }
 

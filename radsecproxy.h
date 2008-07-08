@@ -132,6 +132,7 @@ struct server {
 struct realm {
     char *name;
     char *message;
+    uint8_t accresp;
     regex_t regex;
     pthread_mutex_t subrealms_mutex;
     struct list *subrealms;
