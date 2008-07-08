@@ -1861,6 +1861,14 @@ void radsrv(struct request *rq) {
     
     /* below: code == RAD_Access_Request || code == RAD_Accounting_Request */
 
+    if (code == RAD_Accounting_Request) {
+	memset(newauth, 0, 16);
+	if (!validauth(rq->buf, newauth, (unsigned char *)rq->from->conf->secret)) {
+	    debug(DBG_WARN, "radsrv: Accounting-Request message authentication failed");
+	    goto exit;
+	}
+    }
+    
     if (rq->from->conf->rewrite) {
 	dorewrite(rq->buf, rq->from->conf->rewrite);
 	len = RADLEN(rq->buf) - 20;
@@ -1918,9 +1926,11 @@ void radsrv(struct request *rq) {
 	goto exit;
     }
 
-    if (!RAND_bytes(newauth, 16)) {
-	debug(DBG_WARN, "radsrv: failed to generate random auth");
-	goto exit;
+    if (code != RAD_Accounting_Request) {
+	if (!RAND_bytes(newauth, 16)) {
+	    debug(DBG_WARN, "radsrv: failed to generate random auth");
+	    goto exit;
+	}
     }
 
 #ifdef DEBUG
@@ -1943,7 +1953,13 @@ void radsrv(struct request *rq) {
 
     rq->origid = id;
     memcpy(rq->origauth, auth, 16);
-    memcpy(auth, newauth, 16);
+    if (code == RAD_Accounting_Request) {
+	if (!radsign(rq->buf, (unsigned char *)to->conf->secret)) {
+	    debug(DBG_WARN, "radsrv: failed to sign Accounting-Request message");
+	    goto exit;
+	}
+    } else
+	memcpy(auth, newauth, 16);
     sendrq(to, rq);
     return;
     
