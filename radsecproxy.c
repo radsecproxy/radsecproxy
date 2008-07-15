@@ -2529,7 +2529,8 @@ void *udpserverwr(void *arg) {
 	}
 	pthread_mutex_unlock(&replyq->mutex);
 
-	if (sendto(udp_server_sock, reply->buf, RADLEN(reply->buf), 0,
+	if (sendto(*(uint8_t *)reply->buf == RAD_Accounting_Response ? udp_accserver_sock : udp_server_sock,
+		   reply->buf, RADLEN(reply->buf), 0,
 		   (struct sockaddr *)&reply->tosa, SOCKADDR_SIZE(reply->tosa)) < 0)
 	    debug(DBG_WARN, "sendudp: send failed");
 	free(reply->buf);
