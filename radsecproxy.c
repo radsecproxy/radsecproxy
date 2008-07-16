@@ -2751,6 +2751,7 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
     struct tls *new;
     SSL_CTX *ctx;
     STACK_OF(X509_NAME) *calist;
+    X509_STORE *x509_s;
     int i;
     unsigned long error;
     
@@ -2814,6 +2815,9 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
     
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
+
+    x509_s = SSL_CTX_get_cert_store(ctx);
+    X509_STORE_set_flags(x509_s, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
 
     new = malloc(sizeof(struct tls));
     if (!new || !list_push(tlsconfs, new))
