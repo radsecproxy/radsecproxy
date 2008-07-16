@@ -135,6 +135,13 @@ This can be used to specify source address and/or source port that the proxy
 will use for sending TCP client messages (e.g. Access Request).
 .sp
 .TP
+\fBLoopPrevention\fR
+This can be set to \fBon\fR or \fBoff\fR with \fBoff\fR being the default. When
+this is enabled, a request will never be sent to a server named the same as the
+client it was received from. I.e., the names of the client block and the server
+block are compared. Note that this only gives limited protection against loops.
+.sp
+.TP
 \fBInclude\fR
 This is not a normal configuration option; it can be specified multiple times.
 It can both be used as a basic option and inside blocks. For the full description,
@@ -267,7 +274,8 @@ The proxy will match against the blocks in the order they are specified, using
 the first match if any. If no realm matches, the proxy will simply ignore the
 request. Each realm block specifies what the server should do when a match is
 found. A realm block may contain none, one or multiple \fBserver\fR options,
-and optionally a \fBreplyMessage\fR option. We will discuss these later.
+and similarly \fBaccountingServer\fR options. There are also \fBreplyMessage\fR
+and \fBAccountingResponse\fR options. We will discuss these later.
 .sp
 
 .TP
@@ -334,6 +342,14 @@ When sending reject messages, the proxy will check if the option
 \fBreplyMessage\fR is set for the realm. If it is, it will add a replyMessage
 attribute to the reject message with this value. Note that you need to quote
 the message if it contains white space.
+.sp
+If there is no \fBaccountingserver\fR option, the proxy will normally do
+nothing, ignoring accounting requests. There is however an option called
+\fBAccountingResponse\fR. If this is set to \fBon\fR, the proxy will log
+some of the accounting information and send an Accounting-Response back.
+This is useful if you do not care much about accounting, but want to stop
+clients from retransmitting accounting requests. By default this option
+is set to \fBoff\fR.
 .sp
 
 .SH "TLS BLOCK"
