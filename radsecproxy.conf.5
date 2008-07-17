@@ -251,7 +251,9 @@ block is only used as a descriptive name for the administrator.
 .sp
 The allowed options in a server block are \fBhost\fR, \fBport\fR, \fBtype\fR,
 \fBsecret\fR, \fBtls\fR, \fBcertificatenamecheck\fR,
-\fBmatchcertificateattribute\fR, \fBrewrite\fR and \fBstatusserver\fR.
+\fBmatchcertificateattribute\fR, \fBrewrite\fR, \fBstatusserver\fR,
+\fBretrycount\fR and \fBretrydelay\fR.
+
 We already discussed the \fBhost\fR option.
 The \fBport\fR option allows you to specify which port number the server uses.
 The values of \fBtype\fR, \fBsecret\fR, \fBtls\fR, \fBcertificatenamecheck\fR,
@@ -265,6 +267,10 @@ for this server. The value must be either \fBon\fR or \fBoff\fR. The default
 when not specified, is \fBoff\fR. If statusserver is enabled, the proxy will
 during idle periods send regular status-server messages to the server to verify
 that it is alive. This should only be enabled if the server supports it.
+.sp
+The options \fBretrycount\fR and \fBretrydelay\fR can be used to specify how
+many times the proxy should retry sending a request and how long it should
+wait between each retry. The defaults are 2 retries and a delay of 5s.
 
 .SH "REALM BLOCK"
 When the proxy receives an \fBAccess Request\fR it needs to figure out to which
@@ -372,8 +378,9 @@ also have say a client block refer to a default, even \fBdefaultserver\fR
 if you really want to.
 .sp
 The available TLS block options are \fBCACertificateFile\fR,
-\fBCACertificatePath\fR, \fBCertificateFile\fR, \fBCertificateKeyFile\fR
-and \fBCertificateKeyPassword\fR. When doing RADIUS over TLS, both the
+\fBCACertificatePath\fR, \fBCertificateFile\fR, \fBCertificateKeyFile\fR,
+\fBCertificateKeyPassword\fR and \fBCRLCheck\fR. When doing RADIUS over
+TLS, both the
 client and the server present certificates, and they are both verified
 by the peer. Hence you must always specify \fBCertificateFile\fR and
 \fBCertificateKeyFile\fR options, as well as \fBCertificateKeyPassword\fR
@@ -382,7 +389,8 @@ if a password is needed to decrypt the private key. Note that
 certificates, or send a chain of certificates to a peer, you also always
 need to specify \fBCACertificateFile\fR or \fBCACertificatePath\fR. Note
 that you may specify both, in which case the certificates in
-\fBCACertificateFile\fR are checked first.
+\fBCACertificateFile\fR are checked first. By default CRLs are not
+checked. This can be changed by setting \fBCRLCheck\fR to \fBon\fR.
 
 .SH "REWRITE BLOCK"
 The rewrite block specifies rules that may rewrite RADIUS messages. It
