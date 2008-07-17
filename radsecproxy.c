@@ -993,7 +993,7 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout) {
 
 /* timeout in seconds, 0 means no timeout (blocking) */
 unsigned char *radtlsget(SSL *ssl, int timeout) {
-    int cnt, total, len;
+    int cnt, len;
     unsigned char buf[4], *rad;
 
     for (;;) {
@@ -1025,7 +1025,7 @@ unsigned char *radtlsget(SSL *ssl, int timeout) {
 	debug(DBG_WARN, "radtlsget: packet smaller than minimum radius size");
     }
     
-    debug(DBG_DBG, "radtlsget: got %d bytes", total);
+    debug(DBG_DBG, "radtlsget: got %d bytes", len);
     return rad;
 }
 
