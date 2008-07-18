@@ -1247,10 +1247,9 @@ void sendrq(struct server *to, struct request *rq) {
 	    if (!to->requests[i].buf)
 		break;
 	if (i == to->nextid) {
-	    debug(DBG_WARN, "No room in queue, dropping request");
+	    debug(DBG_WARN, "sendrq: no room in queue, dropping request");
 	    freerqdata(rq);
-	    pthread_mutex_unlock(&to->newrq_mutex);
-	    return;
+	    goto exit;
 	}
     }
     
@@ -1259,8 +1258,15 @@ void sendrq(struct server *to, struct request *rq) {
     attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_Message_Authenticator);
     if (attr && !createmessageauth(rq->buf, ATTRVAL(attr), to->conf->secret)) {
 	freerqdata(rq);
-	pthread_mutex_unlock(&to->newrq_mutex);
-	return;
+	goto exit;
+    }
+    
+    if (*(uint8_t *)rq->buf == RAD_Accounting_Request) {
+	if (!radsign(rq->buf, (unsigned char *)to->conf->secret)) {
+	    debug(DBG_WARN, "sendrq: failed to sign Accounting-Request message");
+	    freerqdata(rq);
+	    goto exit;
+	}
     }
 
     debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->conf->host);
@@ -1269,9 +1275,10 @@ void sendrq(struct server *to, struct request *rq) {
 
     if (!to->newrq) {
 	to->newrq = 1;
-	debug(DBG_DBG, "signalling client writer");
+	debug(DBG_DBG, "sendrq: signalling client writer");
 	pthread_cond_signal(&to->newrq_cond);
     }
+ exit:
     pthread_mutex_unlock(&to->newrq_mutex);
 }
 
@@ -2123,13 +2130,7 @@ void radsrv(struct request *rq) {
 
     rq->origid = id;
     memcpy(rq->origauth, auth, 16);
-    if (code == RAD_Accounting_Request) {
-	if (!radsign(rq->buf, (unsigned char *)to->conf->secret)) {
-	    debug(DBG_WARN, "radsrv: failed to sign Accounting-Request message");
-	    goto exit;
-	}
-    } else
-	memcpy(auth, newauth, 16);
+    memcpy(auth, newauth, 16);
     sendrq(to, rq);
     return;
     
