@@ -41,9 +41,9 @@
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
 
 struct options {
-    char *listenudp;
-    char *listentcp;
-    char *listenaccudp;
+    char **listenudp;
+    char **listentcp;
+    char **listenaccudp;
     char *sourceudp;
     char *sourcetcp;
     char *logdestination;
@@ -78,7 +78,7 @@ struct replyq {
     pthread_cond_t cond;
 };
 
-struct udpserverrdarg {
+struct listenerarg {
     int s;
     uint8_t acconly;
 };

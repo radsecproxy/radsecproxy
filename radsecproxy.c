@@ -2547,42 +2547,19 @@ void *udpserverwr(void *arg) {
 
 void *udpserverrd(void *arg) {
     struct request rq;
-    struct udpserverrdarg *rdarg = (struct udpserverrdarg *)arg;
+    struct listenerarg *larg = (struct listenerarg *)arg;
     
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
-	rq.buf = radudpget(rdarg->s, &rq.from, NULL, &rq.fromsa);
-	if (rdarg->acconly && *rq.buf != RAD_Accounting_Request) {
+	rq.buf = radudpget(larg->s, &rq.from, NULL, &rq.fromsa);
+	if (larg->acconly && *rq.buf != RAD_Accounting_Request) {
 	    debug(DBG_INFO, "udpserverrd: got something other than accounting-request, ignoring");
 	    freerqdata(&rq);
 	    continue;
 	}
-	rq.fromudpsock = rdarg->s;
+	rq.fromudpsock = larg->s;
 	radsrv(&rq);
     }
-}
-
-void createudplisteners(char *arg, uint8_t acconly) {
-    pthread_t th;
-    struct clsrvconf *listenres;
-    struct udpserverrdarg *rdarg;
-
-    rdarg = malloc(sizeof(struct udpserverrdarg));
-    if (!rdarg)
-	debugx(1, DBG_ERR, "malloc failed");
-
-    listenres = resolve_hostport('U', arg, DEFAULT_UDP_PORT);
-    if ((rdarg->s = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
-	debugx(1, DBG_ERR, "createudplisteners: socket/bind failed");
-
-    debug(DBG_WARN, "createudplisteners: listening for UDP on %s:%s",
-	  listenres->host ? listenres->host : "*", listenres->port);
-    freeclsrvres(listenres);
-
-    rdarg->acconly = acconly;
-    if (pthread_create(&th, NULL, udpserverrd, (void *)rdarg))
-	debugx(1, DBG_ERR, "pthread_create failed");
-    pthread_detach(th);
 }
 
 void *tlsserverwr(void *arg) {
@@ -2715,36 +2692,87 @@ void *tlsservernew(void *arg) {
     pthread_exit(NULL);
 }
 
-int tlslistener() {
+void *tlslistener(void *arg) {
     pthread_t tlsserverth;
-    int s, snew;
+    int s;
     struct sockaddr_storage from;
     size_t fromlen = sizeof(from);
-    struct clsrvconf *listenres;
+    struct listenerarg *larg = (struct listenerarg *)arg;
 
-    listenres = resolve_hostport('T', options.listentcp, DEFAULT_TLS_PORT);
-    if ((s = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
-	debugx(1, DBG_ERR, "tlslistener: socket/bind failed");
-
-    debug(DBG_WARN, "listening for incoming TCP on %s:%s", listenres->host ? listenres->host : "*", listenres->port);
-    freeclsrvres(listenres);
-    listen(s, 0);
+    listen(larg->s, 0);
 
     for (;;) {
-	snew = accept(s, (struct sockaddr *)&from, &fromlen);
-	if (snew < 0) {
+	s = accept(larg->s, (struct sockaddr *)&from, &fromlen);
+	if (s < 0) {
 	    debug(DBG_WARN, "accept failed");
 	    continue;
 	}
-	if (pthread_create(&tlsserverth, NULL, tlsservernew, (void *)&snew)) {
+	if (pthread_create(&tlsserverth, NULL, tlsservernew, (void *)&s)) {
 	    debug(DBG_ERR, "tlslistener: pthread_create failed");
-	    shutdown(snew, SHUT_RDWR);
-	    close(snew);
+	    shutdown(s, SHUT_RDWR);
+	    close(s);
 	    continue;
 	}
 	pthread_detach(tlsserverth);
     }
-    return 0;
+    return NULL;
+}
+
+void createlistener(char type, char *arg, uint8_t acconly) {
+    pthread_t th;
+    struct clsrvconf *listenres;
+    struct addrinfo *res;
+    struct listenerarg *larg = NULL;
+    int s = -1, on = 1;
+    
+    listenres = resolve_hostport(type, arg, type == 'T' ? DEFAULT_TLS_PORT : DEFAULT_UDP_PORT);
+    if (!listenres)
+	debugx(1, DBG_ERR, "createlistener: failed to resolve %s", arg);
+    
+    for (res = listenres->addrinfo; res; res = res->ai_next) {
+        s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        if (s < 0) {
+            debug(DBG_WARN, "createlistener: socket failed");
+            continue;
+        }
+	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+#ifdef IPV6_V6ONLY
+	if (res->ai_family == AF_INET6)
+	    setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
+#endif		
+	if (bind(s, res->ai_addr, res->ai_addrlen)) {
+	    debug(DBG_WARN, "createlistener: bind failed");
+	    close(s);
+	    s = -1;
+	    continue;
+	}
+
+	larg = malloc(sizeof(struct listenerarg));
+        if (!larg)
+            debugx(1, DBG_ERR, "malloc failed");
+        larg->s = s;
+        larg->acconly = acconly;
+	if (pthread_create(&th, NULL, type == 'T' ? tlslistener : udpserverrd, (void *)larg))
+            debugx(1, DBG_ERR, "pthread_create failed");
+	pthread_detach(th);
+    }
+    if (!larg)
+	debugx(1, DBG_ERR, "createlistener: socket/bind failed");
+    
+    debug(DBG_WARN, "createlistener: listening for %s%s on %s:%s",
+	  type == 'T' ? "TLS" : "UDP", acconly ? " accounting" : "",
+	  listenres->host ? listenres->host : "*", listenres->port);
+    freeclsrvres(listenres);
+}
+
+void createlisteners(char type, char **args, uint8_t acconly) {
+    int i;
+
+    if (args)
+	for (i = 0; args[i]; i++)
+	    createlistener(type, args[i], acconly);
+    else
+	createlistener(type, NULL, acconly);
 }
 
 void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, char *certkeyfile, char *certkeypwd, uint8_t crlcheck) {
@@ -3709,9 +3737,9 @@ void getmainconfig(const char *configfile) {
 	debugx(1, DBG_ERR, "malloc failed");    
  
     if (!getgenericconfig(&cfs, NULL,
-			  "ListenUDP", CONF_STR, &options.listenudp,
-			  "ListenTCP", CONF_STR, &options.listentcp,
-			  "ListenAccountingUDP", CONF_STR, &options.listenaccudp,
+			  "ListenUDP", CONF_MSTR, &options.listenudp,
+			  "ListenTCP", CONF_MSTR, &options.listentcp,
+			  "ListenAccountingUDP", CONF_MSTR, &options.listenaccudp,
 			  "SourceUDP", CONF_STR, &options.sourceudp,
 			  "SourceTCP", CONF_STR, &options.sourcetcp,
 			  "LogLevel", CONF_LINT, &loglevel,
@@ -3851,9 +3879,9 @@ int main(int argc, char **argv) {
 	udp_server_replyq = newreplyq();
 	if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
-	createudplisteners(options.listenudp, 0);
+	createlisteners('U', options.listenudp, 0);
 	if (options.listenaccudp)
-	    createudplisteners(options.listenaccudp, 1);
+	    createlisteners('U', options.listenaccudp, 1);
     }
     
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
@@ -3879,7 +3907,7 @@ int main(int argc, char **argv) {
 	    debugx(1, DBG_ERR, "pthread_create failed");
     
     if (client_tls_count)
-	return tlslistener();
+	createlisteners('T', options.listentcp, 0);
     
     /* just hang around doing nothing, anything to do here? */
     for (;;)
