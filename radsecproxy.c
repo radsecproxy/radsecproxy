@@ -2261,9 +2261,17 @@ void *clientwr(void *arg) {
 	    if (rq->tries == (*rq->buf == RAD_Status_Server || server->conf->type == 'T'
 			      ? 1 : server->conf->retrycount + 1)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
-		debug(DBG_WARN, "clientwr: no server response, %s dead?", server->conf->host);
-		if (server->lostrqs < 255)
-		    server->lostrqs++;
+		if (server->conf->statusserver) {
+		    if (*rq->buf == RAD_Status_Server) {
+			debug(DBG_WARN, "clientwr: no status server response, %s dead?", server->conf->host);
+			if (server->lostrqs < 255)
+			    server->lostrqs++;
+		    }
+                } else {
+		    debug(DBG_WARN, "clientwr: no server response, %s dead?", server->conf->host);
+		    if (server->lostrqs < 255)
+			server->lostrqs++;
+		}
 		freerqdata(rq);
 		/* setting this to NULL means that it can be reused */
 		rq->buf = NULL;
