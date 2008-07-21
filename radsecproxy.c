@@ -175,7 +175,7 @@ int resolvepeer(struct clsrvconf *conf, int ai_flags) {
 	*slash = '\0';
     }
     memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype = (conf->type == 'T' ? SOCK_STREAM : SOCK_DGRAM);
+    hints.ai_socktype = (conf->type == RAD_UDP ? SOCK_DGRAM : SOCK_STREAM);
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = ai_flags;
     if (!conf->host && !conf->port) {
@@ -293,7 +293,7 @@ char *parsehostport(char *s, struct clsrvconf *conf, char *default_port) {
     return p;
 }
 
-struct clsrvconf *resolve_hostport(char type, char *lconf, char *default_port) {
+struct clsrvconf *resolve_hostport(uint8_t type, char *lconf, char *default_port) {
     struct clsrvconf *conf;
 
     conf = malloc(sizeof(struct clsrvconf));
@@ -355,7 +355,7 @@ int prefixmatch(void *a1, void *a2, uint8_t len) {
 }
 
 /* check if conf has matching address */
-struct clsrvconf *checkconfaddr(char type, struct sockaddr *addr, struct clsrvconf *conf) {
+struct clsrvconf *checkconfaddr(uint8_t type, struct sockaddr *addr, struct clsrvconf *conf) {
     struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
     struct addrinfo *res;
@@ -391,7 +391,7 @@ struct clsrvconf *checkconfaddr(char type, struct sockaddr *addr, struct clsrvco
 }
 
 /* returns next config with matching address, or NULL */
-struct clsrvconf *find_conf(char type, struct sockaddr *addr, struct list *confs, struct list_node **cur) {
+struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *confs, struct list_node **cur) {
     struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
     struct addrinfo *res;
@@ -468,7 +468,7 @@ struct client *addclient(struct clsrvconf *conf) {
     
     memset(new, 0, sizeof(struct client));
     new->conf = conf;
-    new->replyq = conf->type == 'T' ? newreplyq() : udp_server_replyq;
+    new->replyq = conf->type == RAD_UDP ? udp_server_replyq : newreplyq();
 
     list_push(conf->clients, new);
     return new;
@@ -545,9 +545,9 @@ int addserver(struct clsrvconf *conf) {
     memset(conf->servers, 0, sizeof(struct server));
     conf->servers->conf = conf;
 
-    if (conf->type == 'U') {
+    if (conf->type == RAD_UDP) {
 	if (!srcudpres) {
-	    res = resolve_hostport('U', options.sourceudp, NULL);
+	    res = resolve_hostport(RAD_UDP, options.sourceudp, NULL);
 	    srcudpres = res->addrinfo;
 	    res->addrinfo = NULL;
 	    freeclsrvres(res);
@@ -575,7 +575,7 @@ int addserver(struct clsrvconf *conf) {
 	
     } else {
 	if (!srctcpres) {
-	    res = resolve_hostport('T', options.sourcetcp, NULL);
+	    res = resolve_hostport(RAD_TLS, options.sourcetcp, NULL);
 	    srctcpres = res->addrinfo;
 	    res->addrinfo = NULL;
 	    freeclsrvres(res);
@@ -653,14 +653,14 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 
 	if (client)
 	    if (*client)
-		p = checkconfaddr('U', (struct sockaddr *)&from, (*client)->conf);
+		p = checkconfaddr(RAD_UDP, (struct sockaddr *)&from, (*client)->conf);
 	    else
-		p = find_conf('U', (struct sockaddr *)&from, clconfs, NULL);
+		p = find_conf(RAD_UDP, (struct sockaddr *)&from, clconfs, NULL);
 	else
 	    if (*server)
-		p = checkconfaddr('U', (struct sockaddr *)&from, (*server)->conf);
+		p = checkconfaddr(RAD_UDP, (struct sockaddr *)&from, (*server)->conf);
 	    else
-		p = find_conf('U', (struct sockaddr *)&from, srvconfs, NULL);
+		p = find_conf(RAD_UDP, (struct sockaddr *)&from, srvconfs, NULL);
 
 	if (!p) {
 	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
@@ -1090,9 +1090,9 @@ int clientradputtls(struct server *server, unsigned char *rad) {
 
 int clientradput(struct server *server, unsigned char *rad) {
     switch (server->conf->type) {
-    case 'U':
+    case RAD_UDP:
 	return clientradputudp(server, rad);
-    case 'T':
+    case RAD_TLS:
 	return clientradputtls(server, rad);
     }
     return 0;
@@ -1906,7 +1906,7 @@ void respondaccounting(struct request *rq) {
 
     resp = malloc(20);
     if (!resp) {
-	debug(DBG_ERR, "respondstatusserver: malloc failed");
+	debug(DBG_ERR, "respondaccounting: malloc failed");
 	return;
     }
     memcpy(resp, rq->buf, 20);
@@ -1914,7 +1914,7 @@ void respondaccounting(struct request *rq) {
     resp[2] = 0;
     resp[3] = 20;
     debug(DBG_DBG, "respondaccounting: responding to %s", rq->from->conf->host);
-    sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL, rq->fromudpsock);
+    sendreply(rq->from, resp, &rq->fromsa, rq->fromudpsock);
 }
 
 void respondstatusserver(struct request *rq) {
@@ -1930,7 +1930,7 @@ void respondstatusserver(struct request *rq) {
     resp[2] = 0;
     resp[3] = 20;
     debug(DBG_DBG, "respondstatusserver: responding to %s", rq->from->conf->host);
-    sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL, rq->fromudpsock);
+    sendreply(rq->from, resp, &rq->fromsa, rq->fromudpsock);
 }
 
 void respondreject(struct request *rq, char *message) {
@@ -1953,7 +1953,7 @@ void respondreject(struct request *rq, char *message) {
 	resp[21] = len - 20;
 	memcpy(resp + 22, message, len - 22);
     }
-    sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL, rq->fromudpsock);
+    sendreply(rq->from, resp, &rq->fromsa, rq->fromudpsock);
 }
 
 struct clsrvconf *choosesrvconf(struct list *srvconfs) {
@@ -2293,13 +2293,12 @@ int replyh(struct server *server, unsigned char *buf) {
 	debug(DBG_DBG, "replyh: computed messageauthattr");
     }
 
-    if (from->conf->type == 'U')
-	fromsa = rq->fromsa;
+    fromsa = rq->fromsa; /* only needed for UDP */
     /* once we set received = 1, rq may be reused */
     rq->received = 1;
 
     debug(DBG_INFO, "replyh: passing reply to client %s", from->conf->name);
-    sendreply(from, buf, from->conf->type == 'U' ? &fromsa : NULL, rq->fromudpsock);
+    sendreply(from, buf, &fromsa, rq->fromudpsock);
     pthread_mutex_unlock(&server->newrq_mutex);
     return 1;
 }
@@ -2384,7 +2383,7 @@ void *clientwr(void *arg) {
 	gettimeofday(&lastsend, NULL);
     }
     
-    if (conf->type == 'U') {
+    if (conf->type == RAD_UDP) {
 	server->connectionok = 1;
     } else {
 	if (!tlsconnect(server, NULL, server->dynamiclookuparg ? 6 : 0, "clientwr"))
@@ -2461,7 +2460,7 @@ void *clientwr(void *arg) {
 		continue;
 	    }
 
-	    if (rq->tries == (*rq->buf == RAD_Status_Server || conf->type == 'T'
+	    if (rq->tries == (*rq->buf == RAD_Status_Server || conf->type != RAD_UDP
 			      ? 1 : conf->retrycount + 1)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		if (conf->statusserver) {
@@ -2484,7 +2483,7 @@ void *clientwr(void *arg) {
             pthread_mutex_unlock(&server->newrq_mutex);
 
 	    rq->expiry.tv_sec = now.tv_sec +
-		(*rq->buf == RAD_Status_Server || conf->type == 'T'
+		(*rq->buf == RAD_Status_Server || conf->type != RAD_UDP
 		 ? conf->retrydelay * (conf->retrycount + 1) : conf->retrydelay);
 	    if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rq->expiry.tv_sec;
@@ -2651,7 +2650,7 @@ void *tlsservernew(void *arg) {
     }
     debug(DBG_WARN, "incoming TLS connection from %s", addr2string((struct sockaddr *)&from, fromlen));
 
-    conf = find_conf('T', (struct sockaddr *)&from, clconfs, &cur);
+    conf = find_conf(RAD_TLS, (struct sockaddr *)&from, clconfs, &cur);
     if (conf) {
 	ssl = SSL_new(conf->ssl_ctx);
 	SSL_set_fd(ssl, s);
@@ -2679,7 +2678,7 @@ void *tlsservernew(void *arg) {
 		debug(DBG_WARN, "Failed to create new client instance");
 	    goto exit;
 	}
-	conf = find_conf('T', (struct sockaddr *)&from, clconfs, &cur);
+	conf = find_conf(RAD_TLS, (struct sockaddr *)&from, clconfs, &cur);
     }
     debug(DBG_WARN, "ignoring request, no matching TLS client");
     if (cert)
@@ -2718,14 +2717,14 @@ void *tlslistener(void *arg) {
     return NULL;
 }
 
-void createlistener(char type, char *arg, uint8_t acconly) {
+void createlistener(uint8_t type, char *arg, uint8_t acconly) {
     pthread_t th;
     struct clsrvconf *listenres;
     struct addrinfo *res;
     struct listenerarg *larg = NULL;
     int s = -1, on = 1;
     
-    listenres = resolve_hostport(type, arg, type == 'T' ? DEFAULT_TLS_PORT : DEFAULT_UDP_PORT);
+    listenres = resolve_hostport(type, arg, type == RAD_TLS ? DEFAULT_TLS_PORT : DEFAULT_UDP_PORT);
     if (!listenres)
 	debugx(1, DBG_ERR, "createlistener: failed to resolve %s", arg);
     
@@ -2752,7 +2751,7 @@ void createlistener(char type, char *arg, uint8_t acconly) {
             debugx(1, DBG_ERR, "malloc failed");
         larg->s = s;
         larg->acconly = acconly;
-	if (pthread_create(&th, NULL, type == 'T' ? tlslistener : udpserverrd, (void *)larg))
+	if (pthread_create(&th, NULL, type == RAD_UDP ? udpserverrd : tlslistener, (void *)larg))
             debugx(1, DBG_ERR, "pthread_create failed");
 	pthread_detach(th);
     }
@@ -2760,12 +2759,12 @@ void createlistener(char type, char *arg, uint8_t acconly) {
 	debugx(1, DBG_ERR, "createlistener: socket/bind failed");
     
     debug(DBG_WARN, "createlistener: listening for %s%s on %s:%s",
-	  type == 'T' ? "TLS" : "UDP", acconly ? " accounting" : "",
+	  type == RAD_UDP ? "UDP" : "TCP", acconly ? " accounting" : "",
 	  listenres->host ? listenres->host : "*", listenres->port);
     freeclsrvres(listenres);
 }
 
-void createlisteners(char type, char **args, uint8_t acconly) {
+void createlisteners(uint8_t type, char **args, uint8_t acconly) {
     int i;
 
     if (args)
@@ -3454,7 +3453,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	conf->host = stringcopy(val, 0);
     
     if (conf->conftype && !strcasecmp(conf->conftype, "udp")) {
-	conf->type = 'U';
+	conf->type = RAD_UDP;
 	client_udp_count++;
     } else if (conf->conftype && !strcasecmp(conf->conftype, "tls")) {
 	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->tls, NULL) : tlsgetctx("defaultclient", "default");
@@ -3462,7 +3461,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
 	if (conf->matchcertattr && !addmatchcertattr(conf))
 	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
-	conf->type = 'T';
+	conf->type = RAD_TLS;
 	client_tls_count++;
     } else
 	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
@@ -3478,8 +3477,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
     
     if (!conf->secret) {
-	if (conf->type == 'U')
-	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for UDP", block);
+	if (conf->type != RAD_TLS)
+	    debugx(1, DBG_ERR, "error in block %s, secret must be specified when not TLS", block);
 	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
     }
     return 1;
@@ -3487,11 +3486,11 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
     switch (conf->type) {
-    case 'U':
+    case RAD_UDP:
 	if (!conf->port)
 	    conf->port = stringcopy(DEFAULT_UDP_PORT, 0);
 	break;
-    case 'T':
+    case RAD_TLS:
     	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->tls, NULL) : tlsgetctx("defaultserver", "default");
 	if (!conf->ssl_ctx) {
 	    debug(DBG_ERR, "error in block %s, no tls context defined", block);
@@ -3512,10 +3511,9 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	conf->retrycount = REQUEST_RETRY_COUNT;
     
     conf->rewrite = conf->confrewrite ? getrewrite(conf->confrewrite, NULL) : getrewrite("defaultserver", "default");
-    
     if (!conf->secret) {
-	if (conf->type == 'U')
-	    debug(DBG_ERR, "error in block %s, secret must be specified for UDP", block);
+	if (conf->type != RAD_TLS)
+	    debug(DBG_ERR, "error in block %s, secret must be specified when not TLS", block);
 	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
 	if (!conf->secret) {
 	    debug(DBG_ERR, "malloc failed");
@@ -3611,9 +3609,9 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 
     if (conf->conftype && !strcasecmp(conf->conftype, "udp"))
-	conf->type = 'U';
+	conf->type = RAD_UDP;
     else if (conf->conftype && !strcasecmp(conf->conftype, "tls"))
-	conf->type = 'T';
+	conf->type = RAD_TLS;
     else {
 	debug(DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
 	goto errexit;
@@ -3628,10 +3626,10 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	return 1;
 	
     switch (conf->type) {
-    case 'U':
+    case RAD_UDP:
 	server_udp_count++;
 	break;
-    case 'T':
+    case RAD_TLS:
 	server_tls_count++;
 	break;
     default:
@@ -3879,9 +3877,9 @@ int main(int argc, char **argv) {
 	udp_server_replyq = newreplyq();
 	if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
-	createlisteners('U', options.listenudp, 0);
+	createlisteners(RAD_UDP, options.listenudp, 0);
 	if (options.listenaccudp)
-	    createlisteners('U', options.listenaccudp, 1);
+	    createlisteners(RAD_UDP, options.listenaccudp, 1);
     }
     
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
@@ -3907,7 +3905,7 @@ int main(int argc, char **argv) {
 	    debugx(1, DBG_ERR, "pthread_create failed");
     
     if (client_tls_count)
-	createlisteners('T', options.listentcp, 0);
+	createlisteners(RAD_TLS, options.listentcp, 0);
     
     /* just hang around doing nothing, anything to do here? */
     for (;;)

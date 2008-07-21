@@ -29,6 +29,9 @@
 #define RAD_Status_Server 12
 #define RAD_Status_Client 13
 
+#define RAD_UDP 0
+#define RAD_TLS 1
+
 #define RAD_Attr_User_Name 1
 #define RAD_Attr_User_Password 2
 #define RAD_Attr_Reply_Message 18
@@ -86,7 +89,7 @@ struct listenerarg {
 struct clsrvconf {
     char *name;
     char *conftype;
-    char type; /* U for UDP, T for TLS */
+    uint8_t type; /* RAD_UDP/RAD_TLS */
     char *host;
     char *port;
     char *secret;
