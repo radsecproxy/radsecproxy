@@ -1259,7 +1259,7 @@ void sendrq(struct server *to, struct request *rq) {
 	goto exit;
     }
     
-    if (*(uint8_t *)rq->buf == RAD_Accounting_Request) {
+    if (*rq->buf == RAD_Accounting_Request) {
 	if (!radsign(rq->buf, (unsigned char *)to->conf->secret)) {
 	    debug(DBG_WARN, "sendrq: failed to sign Accounting-Request message");
 	    freerqdata(rq);
@@ -2552,7 +2552,7 @@ void *udpserverrd(void *arg) {
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
 	rq.buf = radudpget(rdarg->s, &rq.from, NULL, &rq.fromsa);
-	if (rdarg->acconly && *(uint8_t *)rq.buf != RAD_Accounting_Request) {
+	if (rdarg->acconly && *rq.buf != RAD_Accounting_Request) {
 	    debug(DBG_INFO, "udpserverrd: got something other than accounting-request, ignoring");
 	    freerqdata(&rq);
 	    continue;
