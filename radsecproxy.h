@@ -62,18 +62,25 @@ struct request {
     uint8_t origid; /* used by servwr */
     char origauth[16]; /* used by servwr */
     struct sockaddr_storage fromsa; /* used by udpservwr */
+    int fromudpsock; /* used by udpservwr */
 };
 
 /* replies that a server will send */
 struct reply {
     unsigned char *buf;
     struct sockaddr_storage tosa; /* used by udpservwr */
+    int toudpsock; /* used by udpservwr */
 };
 
 struct replyq {
     struct list *replies;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
+};
+
+struct udpserverrdarg {
+    int s;
+    uint8_t acconly;
 };
 
 struct clsrvconf {

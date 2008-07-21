@@ -72,8 +72,6 @@ static struct addrinfo *srcudpres = NULL;
 static struct addrinfo *srctcpres = NULL;
 
 static struct replyq *udp_server_replyq = NULL;
-static int udp_server_sock = -1;
-static int udp_accserver_sock = -1;
 static int udp_client4_sock = -1;
 static int udp_client6_sock = -1;
 static pthread_mutex_t *ssl_locks;
@@ -1282,7 +1280,7 @@ void sendrq(struct server *to, struct request *rq) {
     pthread_mutex_unlock(&to->newrq_mutex);
 }
 
-void sendreply(struct client *to, unsigned char *buf, struct sockaddr_storage *tosa) {
+void sendreply(struct client *to, unsigned char *buf, struct sockaddr_storage *tosa, int toudpsock) {
     struct reply *reply;
     uint8_t first;
     
@@ -1302,6 +1300,7 @@ void sendreply(struct client *to, unsigned char *buf, struct sockaddr_storage *t
     reply->buf = buf;
     if (tosa)
 	reply->tosa = *tosa;
+    reply->toudpsock = toudpsock;
     
     pthread_mutex_lock(&to->replyq->mutex);
 
@@ -1915,7 +1914,7 @@ void respondaccounting(struct request *rq) {
     resp[2] = 0;
     resp[3] = 20;
     debug(DBG_DBG, "respondaccounting: responding to %s", rq->from->conf->host);
-    sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL);
+    sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL, rq->fromudpsock);
 }
 
 void respondstatusserver(struct request *rq) {
@@ -1931,7 +1930,7 @@ void respondstatusserver(struct request *rq) {
     resp[2] = 0;
     resp[3] = 20;
     debug(DBG_DBG, "respondstatusserver: responding to %s", rq->from->conf->host);
-    sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL);
+    sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL, rq->fromudpsock);
 }
 
 void respondreject(struct request *rq, char *message) {
@@ -1954,7 +1953,7 @@ void respondreject(struct request *rq, char *message) {
 	resp[21] = len - 20;
 	memcpy(resp + 22, message, len - 22);
     }
-    sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL);
+    sendreply(rq->from, resp, rq->from->conf->type == 'U' ? &rq->fromsa : NULL, rq->fromudpsock);
 }
 
 struct clsrvconf *choosesrvconf(struct list *srvconfs) {
@@ -2300,7 +2299,7 @@ int replyh(struct server *server, unsigned char *buf) {
     rq->received = 1;
 
     debug(DBG_INFO, "replyh: passing reply to client %s", from->conf->name);
-    sendreply(from, buf, from->conf->type == 'U' ? &fromsa : NULL);
+    sendreply(from, buf, from->conf->type == 'U' ? &fromsa : NULL, rq->fromudpsock);
     pthread_mutex_unlock(&server->newrq_mutex);
     return 1;
 }
@@ -2465,9 +2464,17 @@ void *clientwr(void *arg) {
 	    if (rq->tries == (*rq->buf == RAD_Status_Server || conf->type == 'T'
 			      ? 1 : conf->retrycount + 1)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
-		debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->host);
-		if (server->lostrqs < 255)
-		    server->lostrqs++;
+		if (conf->statusserver) {
+		    if (*rq->buf == RAD_Status_Server) {
+			debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->host);
+			if (server->lostrqs < 255)
+			    server->lostrqs++;
+		    }
+                } else {
+		    debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->host);
+		    if (server->lostrqs < 255)
+			server->lostrqs++;
+		}
 		freerqdata(rq);
 		/* setting this to NULL means that it can be reused */
 		rq->buf = NULL;
@@ -2530,8 +2537,7 @@ void *udpserverwr(void *arg) {
 	}
 	pthread_mutex_unlock(&replyq->mutex);
 
-	if (sendto(*(uint8_t *)reply->buf == RAD_Accounting_Response ? udp_accserver_sock : udp_server_sock,
-		   reply->buf, RADLEN(reply->buf), 0,
+	if (sendto(reply->toudpsock, reply->buf, RADLEN(reply->buf), 0,
 		   (struct sockaddr *)&reply->tosa, SOCKADDR_SIZE(reply->tosa)) < 0)
 	    debug(DBG_WARN, "sendudp: send failed");
 	free(reply->buf);
@@ -2541,49 +2547,42 @@ void *udpserverwr(void *arg) {
 
 void *udpserverrd(void *arg) {
     struct request rq;
-    pthread_t udpserverwrth;
-    struct clsrvconf *listenres;
-
-    listenres = resolve_hostport('U', options.listenudp, DEFAULT_UDP_PORT);
-    if ((udp_server_sock = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
-	debugx(1, DBG_ERR, "udpserverrd: socket/bind failed");
-
-    debug(DBG_WARN, "udpserverrd: listening for UDP on %s:%s",
-	  listenres->host ? listenres->host : "*", listenres->port);
-    freeclsrvres(listenres);
-    
-    if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
-	debugx(1, DBG_ERR, "pthread_create failed");
+    struct udpserverrdarg *rdarg = (struct udpserverrdarg *)arg;
     
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
-	rq.buf = radudpget(udp_server_sock, &rq.from, NULL, &rq.fromsa);
+	rq.buf = radudpget(rdarg->s, &rq.from, NULL, &rq.fromsa);
+	if (rdarg->acconly && *(uint8_t *)rq.buf != RAD_Accounting_Request) {
+	    debug(DBG_INFO, "udpserverrd: got something other than accounting-request, ignoring");
+	    freerqdata(&rq);
+	    continue;
+	}
+	rq.fromudpsock = rdarg->s;
 	radsrv(&rq);
     }
 }
 
-void *udpaccserverrd(void *arg) {
-    struct request rq;
+void createudplisteners(char *arg, uint8_t acconly) {
+    pthread_t th;
     struct clsrvconf *listenres;
-    
-    listenres = resolve_hostport('U', options.listenaccudp, DEFAULT_UDP_PORT);
-    if ((udp_accserver_sock = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
-	debugx(1, DBG_ERR, "udpserverrd: socket/bind failed");
+    struct udpserverrdarg *rdarg;
 
-    debug(DBG_WARN, "udpaccserverrd: listening for UDP on %s:%s",
+    rdarg = malloc(sizeof(struct udpserverrdarg));
+    if (!rdarg)
+	debugx(1, DBG_ERR, "malloc failed");
+
+    listenres = resolve_hostport('U', arg, DEFAULT_UDP_PORT);
+    if ((rdarg->s = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
+	debugx(1, DBG_ERR, "createudplisteners: socket/bind failed");
+
+    debug(DBG_WARN, "createudplisteners: listening for UDP on %s:%s",
 	  listenres->host ? listenres->host : "*", listenres->port);
     freeclsrvres(listenres);
-    
-    for (;;) {
-	memset(&rq, 0, sizeof(struct request));
-	rq.buf = radudpget(udp_accserver_sock, &rq.from, NULL, &rq.fromsa);
-	if (*(uint8_t *)rq.buf == RAD_Accounting_Request) {
-	    radsrv(&rq);
-	    continue;
-	}
-	debug(DBG_INFO, "udpaccserverrd: got something other than accounting-request, ignoring");
-	freerqdata(&rq);
-    }
+
+    rdarg->acconly = acconly;
+    if (pthread_create(&th, NULL, udpserverrd, (void *)rdarg))
+	debugx(1, DBG_ERR, "pthread_create failed");
+    pthread_detach(th);
 }
 
 void *tlsserverwr(void *arg) {
@@ -3806,7 +3805,7 @@ void *sighandler(void *arg) {
 }
 
 int main(int argc, char **argv) {
-    pthread_t sigth, udpserverth, udpaccserverth, udpclient4rdth, udpclient6rdth;
+    pthread_t sigth, udpclient4rdth, udpclient6rdth, udpserverwrth;
     sigset_t sigset;
     struct list_node *entry;
     uint8_t foreground = 0, pretend = 0, loglevel = 0;
@@ -3850,11 +3849,11 @@ int main(int argc, char **argv) {
     
     if (client_udp_count) {
 	udp_server_replyq = newreplyq();
-	if (pthread_create(&udpserverth, NULL, udpserverrd, NULL))
+	if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
+	createudplisteners(options.listenudp, 0);
 	if (options.listenaccudp)
-	    if (pthread_create(&udpaccserverth, NULL, udpaccserverrd, NULL))
-		debugx(1, DBG_ERR, "pthread_create failed");
+	    createudplisteners(options.listenaccudp, 1);
     }
     
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
