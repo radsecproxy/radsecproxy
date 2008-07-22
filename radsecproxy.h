@@ -12,8 +12,6 @@
 
 /* MAX_REQUESTS must be 256 due to Radius' 8 bit ID field */
 #define MAX_REQUESTS 256
-#define DEFAULT_UDP_PORT "1812"
-#define DEFAULT_TLS_PORT "2083"
 #define REQUEST_RETRY_INTERVAL 5
 #define REQUEST_RETRY_COUNT 2
 #define MAX_CERT_DEPTH 5
@@ -169,6 +167,8 @@ struct rewriteconf {
 struct protodefs {
     char *name;
     char *secretdefault;
+    uint8_t socktype;
+    char *portdefault;
     uint8_t retrycountdefault;
     uint8_t retrycountmax;
     uint8_t retryintervaldefault;

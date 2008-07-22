@@ -85,6 +85,8 @@ void freerqdata(struct request *rq);
 static const struct protodefs protodefs[] = {
     {   "udp", /* UDP, assuming RAD_UDP defined as 0 */
 	NULL, /* secretdefault */
+	SOCK_DGRAM, /* socktype */
+	"1812", /* portdefault */
 	REQUEST_RETRY_COUNT, /* retrycountdefault */
 	10, /* retrycountmax */
 	REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
@@ -92,6 +94,8 @@ static const struct protodefs protodefs[] = {
     },
     {   "tls", /* TLS, assuming RAD_TLS defined as 1 */
 	"mysecret", /* secretdefault */
+	SOCK_STREAM, /* socktype */
+	"2083", /* portdefault */
 	0, /* retrycountdefault */
 	0, /* retrycountmax */
 	REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
@@ -99,6 +103,8 @@ static const struct protodefs protodefs[] = {
     },
     {   "tcp", /* TCP, assuming RAD_TCP defined as 2 */
 	NULL, /* secretdefault */
+	SOCK_STREAM, /* socktype */
+	"1812", /* portdefault */
 	0, /* retrycountdefault */
 	0, /* retrycountmax */
 	REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
@@ -203,12 +209,12 @@ int resolvepeer(struct clsrvconf *conf, int ai_flags) {
 	*slash = '\0';
     }
     memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype = (conf->type == RAD_UDP ? SOCK_DGRAM : SOCK_STREAM);
+    hints.ai_socktype = conf->pdef->socktype;
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = ai_flags;
     if (!conf->host && !conf->port) {
 	/* getaddrinfo() doesn't like host and port to be NULL */
-	if (getaddrinfo(conf->host, DEFAULT_UDP_PORT, &hints, &addrinfo)) {
+	if (getaddrinfo(conf->host, conf->pdef->portdefault, &hints, &addrinfo)) {
 	    debug(DBG_WARN, "resolvepeer: can't resolve (null) port (null)");
 	    return 0;
 	}
@@ -329,6 +335,7 @@ struct clsrvconf *resolve_hostport(uint8_t type, char *lconf, char *default_port
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
     conf->type = type;
+    conf->pdef = &protodefs[conf->type];
     if (lconf) {
 	parsehostport(lconf, conf, default_port);
 	if (!strcmp(conf->host, "*")) {
@@ -2765,7 +2772,7 @@ void createlistener(uint8_t type, char *arg, uint8_t acconly) {
     struct listenerarg *larg = NULL;
     int s = -1, on = 1;
     
-    listenres = resolve_hostport(type, arg, type == RAD_TLS ? DEFAULT_TLS_PORT : DEFAULT_UDP_PORT);
+    listenres = resolve_hostport(type, arg, protodefs[type].portdefault);
     if (!listenres)
 	debugx(1, DBG_ERR, "createlistener: failed to resolve %s", arg);
     
@@ -3531,12 +3538,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 }
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
-    switch (conf->type) {
-    case RAD_UDP:
-	if (!conf->port)
-	    conf->port = stringcopy(DEFAULT_UDP_PORT, 0);
-	break;
-    case RAD_TLS:
+    if (conf->type == RAD_TLS) {
     	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->tls, NULL) : tlsgetctx("defaultserver", "default");
 	if (!conf->ssl_ctx) {
 	    debug(DBG_ERR, "error in block %s, no tls context defined", block);
@@ -3546,11 +3548,16 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	    debug(DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
 	    return 0;
 	}
-	if (!conf->port)
-	    conf->port = stringcopy(DEFAULT_TLS_PORT, 0);
-	break;
     }
 
+    if (!conf->port) {
+	conf->port = stringcopy(conf->pdef->portdefault, 0);
+	if (!conf->port) {
+	    debug(DBG_ERR, "malloc failed");
+	    return 0;
+	}
+    }
+    
     if (conf->retryinterval == 255)
 	conf->retryinterval = protodefs[conf->type].retryintervaldefault;
     if (conf->retrycount == 255)
