@@ -87,6 +87,21 @@ void freerealm(struct realm *realm);
 void freeclsrvconf(struct clsrvconf *conf);
 void freerqdata(struct request *rq);
 
+static const struct protodefs protodefs[] = {
+    {   /* UDP, assuming RAD_UDP defined as 0 */
+	REQUEST_RETRY_COUNT, /* retrycountdefault */
+	10, /* retrycountmax */
+	REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
+	60 /* retryintervalmax */
+    },
+    {   /* TLS, assuming RAD_TLS defined as 1 */
+	0, /* retrycountdefault */
+	0, /* retrycountmax */
+	REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
+	60 /* retryintervalmax */
+    }
+};
+
 /* callbacks for making OpenSSL thread safe */
 unsigned long ssl_thread_id() {
         return (unsigned long)pthread_self();
@@ -2460,8 +2475,7 @@ void *clientwr(void *arg) {
 		continue;
 	    }
 
-	    if (rq->tries == (*rq->buf == RAD_Status_Server || conf->type != RAD_UDP
-			      ? 1 : conf->retrycount + 1)) {
+	    if (rq->tries == (*rq->buf == RAD_Status_Server ? 1 : conf->retrycount + 1)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		if (conf->statusserver) {
 		    if (*rq->buf == RAD_Status_Server) {
@@ -2482,9 +2496,7 @@ void *clientwr(void *arg) {
 	    }
             pthread_mutex_unlock(&server->newrq_mutex);
 
-	    rq->expiry.tv_sec = now.tv_sec +
-		(*rq->buf == RAD_Status_Server || conf->type != RAD_UDP
-		 ? conf->retrydelay * (conf->retrycount + 1) : conf->retrydelay);
+	    rq->expiry.tv_sec = now.tv_sec + conf->retryinterval;
 	    if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rq->expiry.tv_sec;
 	    rq->tries++;
@@ -3417,8 +3429,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	return 0;
     dst->statusserver = src->statusserver;
     dst->certnamecheck = src->certnamecheck;
-    if (src->retrydelay != 255)
-	dst->retrydelay = src->retrydelay;
+    if (src->retryinterval != 255)
+	dst->retryinterval = src->retryinterval;
     if (src->retrycount != 255)
 	dst->retrycount = src->retrycount;
     return 1;
@@ -3505,10 +3517,10 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	break;
     }
 
-    if (conf->retrydelay == 255)
-	conf->retrydelay = REQUEST_RETRY_DELAY;
+    if (conf->retryinterval == 255)
+	conf->retryinterval = protodefs[conf->type].retryintervaldefault;
     if (conf->retrycount == 255)
-	conf->retrycount = REQUEST_RETRY_COUNT;
+	conf->retrycount = protodefs[conf->type].retrycountdefault;
     
     conf->rewrite = conf->confrewrite ? getrewrite(conf->confrewrite, NULL) : getrewrite("defaultserver", "default");
     if (!conf->secret) {
@@ -3530,7 +3542,8 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 			
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *resconf;
-    long int retrydelay = LONG_MIN, retrycount = LONG_MIN;
+    const struct protodefs *pdef;
+    long int retryinterval = LONG_MIN, retrycount = LONG_MIN;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
@@ -3556,7 +3569,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
 			  "rewrite", CONF_STR, &conf->confrewrite,
 			  "StatusServer", CONF_BLN, &conf->statusserver,
-			  "RetryDelay", CONF_LINT, &retrydelay,
+			  "RetryInterval", CONF_LINT, &retryinterval,
 			  "RetryCount", CONF_LINT, &retrycount,
 			  "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 			  "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
@@ -3579,18 +3592,28 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         }
     }
     
-    if (retrydelay != LONG_MIN) {
-	if (retrydelay < 1 || retrydelay > 60) {
-	    debug(DBG_ERR, "error in block %s, value of option RetryDelay is %d, must be 1-60", block, retrydelay);
+    if (conf->conftype && !strcasecmp(conf->conftype, "udp"))
+	conf->type = RAD_UDP;
+    else if (conf->conftype && !strcasecmp(conf->conftype, "tls"))
+	conf->type = RAD_TLS;
+    else {
+	debug(DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
+	goto errexit;
+    }
+    pdef = &protodefs[conf->type];
+    
+    if (retryinterval != LONG_MIN) {
+	if (retryinterval < 1 || retryinterval > pdef->retryintervalmax) {
+	    debug(DBG_ERR, "error in block %s, value of option RetryInterval is %d, must be 1-%d", block, retryinterval, pdef->retryintervalmax);
 	    goto errexit;
 	}
-	conf->retrydelay = (uint8_t)retrydelay;
+	conf->retryinterval = (uint8_t)retryinterval;
     } else
-	conf->retrydelay = 255;
+	conf->retryinterval = 255;
     
     if (retrycount != LONG_MIN) {
-	if (retrycount < 0 || retrycount > 10) {
-	    debug(DBG_ERR, "error in block %s, value of option RetryCount is %d, must be 0-10", block, retrycount);
+	if (retrycount < 0 || retrycount > pdef->retrycountmax) {
+	    debug(DBG_ERR, "error in block %s, value of option RetryCount is %d, must be 0-%d", block, pdef->retrycountmax);
 	    goto errexit;
 	}
 	conf->retrycount = (uint8_t)retrycount;
@@ -3608,15 +3631,6 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	}
     }
 
-    if (conf->conftype && !strcasecmp(conf->conftype, "udp"))
-	conf->type = RAD_UDP;
-    else if (conf->conftype && !strcasecmp(conf->conftype, "tls"))
-	conf->type = RAD_TLS;
-    else {
-	debug(DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
-	goto errexit;
-    }
-    
     if (resconf || !conf->dynamiclookupcommand) {
 	if (!compileserverconfig(conf, block))
 	    goto errexit;
