@@ -63,11 +63,6 @@
 static struct options options;
 struct list *clconfs, *srvconfs, *realms, *tlsconfs, *rewriteconfs;
 
-static int client_udp_count = 0;
-static int client_tls_count = 0;
-static int server_udp_count = 0;
-static int server_tls_count = 0;
-
 static struct addrinfo *srcudpres = NULL;
 static struct addrinfo *srctcpres = NULL;
 
@@ -88,20 +83,38 @@ void freeclsrvconf(struct clsrvconf *conf);
 void freerqdata(struct request *rq);
 
 static const struct protodefs protodefs[] = {
-    {   /* UDP, assuming RAD_UDP defined as 0 */
+    {   "udp", /* UDP, assuming RAD_UDP defined as 0 */
+	NULL, /* secretdefault */
 	REQUEST_RETRY_COUNT, /* retrycountdefault */
 	10, /* retrycountmax */
 	REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
 	60 /* retryintervalmax */
     },
-    {   /* TLS, assuming RAD_TLS defined as 1 */
+    {   "tls", /* TLS, assuming RAD_TLS defined as 1 */
+	"mysecret", /* secretdefault */
 	0, /* retrycountdefault */
 	0, /* retrycountmax */
 	REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
 	60 /* retryintervalmax */
+    },
+    {   "tcp", /* TCP, assuming RAD_TCP defined as 2 */
+	NULL, /* secretdefault */
+	0, /* retrycountdefault */
+	0, /* retrycountmax */
+	REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
+	60 /* retryintervalmax */
+    },
+    {   NULL
     }
 };
 
+uint8_t protoname2int(const char *name) {
+    int i;
+
+    for (i = 0; protodefs[i].name && strcasecmp(protodefs[i].name, name); i++);
+    return i;
+}
+    
 /* callbacks for making OpenSSL thread safe */
 unsigned long ssl_thread_id() {
         return (unsigned long)pthread_self();
@@ -447,6 +460,22 @@ struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *co
 		    return conf;
 		}
 	    }
+	}
+    }    
+    return NULL;
+}
+
+/* returns next config of given type, or NULL */
+struct clsrvconf *find_conf_type(uint8_t type, struct list *confs, struct list_node **cur) {
+    struct list_node *entry;
+    struct clsrvconf *conf;
+    
+    for (entry = (cur && *cur ? list_next(*cur) : list_first(confs)); entry; entry = list_next(entry)) {
+	conf = (struct clsrvconf *)entry->data;
+	if (conf->type == type) {
+	    if (cur)
+		*cur = entry;
+	    return conf;
 	}
     }    
     return NULL;
@@ -3373,7 +3402,6 @@ void addrewrite(char *value, char **attrs, char **vattrs) {
 
 void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->name);
-    free(conf->conftype);
     free(conf->host);
     free(conf->port);
     free(conf->secret);
@@ -3418,7 +3446,6 @@ int mergeconfstring(char **dst, char **src) {
 /* assumes dst is a shallow copy */
 int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     if (!mergeconfstring(&dst->name, &src->name) ||
-	!mergeconfstring(&dst->conftype, &src->conftype) ||
 	!mergeconfstring(&dst->host, &src->host) ||
 	!mergeconfstring(&dst->port, &src->port) ||
 	!mergeconfstring(&dst->secret, &src->secret) ||
@@ -3427,6 +3454,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	!mergeconfstring(&dst->confrewrite, &src->confrewrite) ||
 	!mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand))
 	return 0;
+    if (src->pdef)
+	dst->pdef = src->pdef;
     dst->statusserver = src->statusserver;
     dst->certnamecheck = src->certnamecheck;
     if (src->retryinterval != 255)
@@ -3435,9 +3464,10 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	dst->retrycount = src->retrycount;
     return 1;
 }
-		   
+
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf;
+    char *conftype = NULL;
     
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -3448,7 +3478,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->certnamecheck = 1;
     
     if (!getgenericconfig(cf, block,
-		     "type", CONF_STR, &conf->conftype,
+		     "type", CONF_STR, &conftype,
 		     "host", CONF_STR, &conf->host,
 		     "secret", CONF_STR, &conf->secret,
 		     "tls", CONF_STR, &conf->tls,
@@ -3463,20 +3493,22 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->name = stringcopy(val, 0);
     if (!conf->host)
 	conf->host = stringcopy(val, 0);
+
+    if (!conftype)
+	debugx(1, DBG_ERR, "error in block %s, option type missing", block);
+    conf->type = protoname2int(conftype);
+    conf->pdef = &protodefs[conf->type];
+    if (!conf->pdef->name)
+	debugx(1, DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
+    free(conftype);
     
-    if (conf->conftype && !strcasecmp(conf->conftype, "udp")) {
-	conf->type = RAD_UDP;
-	client_udp_count++;
-    } else if (conf->conftype && !strcasecmp(conf->conftype, "tls")) {
+    if (conf->type == RAD_TLS) {
 	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->tls, NULL) : tlsgetctx("defaultclient", "default");
 	if (!conf->ssl_ctx)
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
 	if (conf->matchcertattr && !addmatchcertattr(conf))
 	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
-	conf->type = RAD_TLS;
-	client_tls_count++;
-    } else
-	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
+    }
     
     conf->rewrite = conf->confrewrite ? getrewrite(conf->confrewrite, NULL) : getrewrite("defaultclient", "default");
     
@@ -3489,9 +3521,11 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
     
     if (!conf->secret) {
-	if (conf->type != RAD_TLS)
-	    debugx(1, DBG_ERR, "error in block %s, secret must be specified when not TLS", block);
-	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
+	if (!conf->pdef->secretdefault)
+	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
+	conf->secret = stringcopy(conf->pdef->secretdefault, 0);
+	if (!conf->secret)
+	    debugx(1, DBG_ERR, "malloc failed");
     }
     return 1;
 }
@@ -3523,10 +3557,13 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	conf->retrycount = protodefs[conf->type].retrycountdefault;
     
     conf->rewrite = conf->confrewrite ? getrewrite(conf->confrewrite, NULL) : getrewrite("defaultserver", "default");
+
     if (!conf->secret) {
-	if (conf->type != RAD_TLS)
-	    debug(DBG_ERR, "error in block %s, secret must be specified when not TLS", block);
-	conf->secret = stringcopy(DEFAULT_TLS_SECRET, 0);
+	if (!conf->pdef->secretdefault) {
+	    debug(DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
+	    return 0;
+	}
+	conf->secret = stringcopy(conf->pdef->secretdefault, 0);
 	if (!conf->secret) {
 	    debug(DBG_ERR, "malloc failed");
 	    return 0;
@@ -3542,7 +3579,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 			
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *resconf;
-    const struct protodefs *pdef;
+    char *conftype = NULL;
     long int retryinterval = LONG_MIN, retrycount = LONG_MIN;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
@@ -3561,7 +3598,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	conf->certnamecheck = 1;
 
     if (!getgenericconfig(cf, block,
-			  "type", CONF_STR, &conf->conftype,
+			  "type", CONF_STR, &conftype,
 			  "host", CONF_STR, &conf->host,
 			  "port", CONF_STR, &conf->port,
 			  "secret", CONF_STR, &conf->secret,
@@ -3591,20 +3628,21 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    goto errexit;
         }
     }
-    
-    if (conf->conftype && !strcasecmp(conf->conftype, "udp"))
-	conf->type = RAD_UDP;
-    else if (conf->conftype && !strcasecmp(conf->conftype, "tls"))
-	conf->type = RAD_TLS;
-    else {
-	debug(DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
+
+    if (!conftype)
+	debugx(1, DBG_ERR, "error in block %s, option type missing", block);
+    conf->type = protoname2int(conftype);
+    conf->pdef = &protodefs[conf->type];
+    if (!conf->pdef->name) {
+	debug(DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
+	free(conftype);
 	goto errexit;
     }
-    pdef = &protodefs[conf->type];
-    
+    free(conftype);
+	    
     if (retryinterval != LONG_MIN) {
-	if (retryinterval < 1 || retryinterval > pdef->retryintervalmax) {
-	    debug(DBG_ERR, "error in block %s, value of option RetryInterval is %d, must be 1-%d", block, retryinterval, pdef->retryintervalmax);
+	if (retryinterval < 1 || retryinterval > conf->pdef->retryintervalmax) {
+	    debug(DBG_ERR, "error in block %s, value of option RetryInterval is %d, must be 1-%d", block, retryinterval, conf->pdef->retryintervalmax);
 	    goto errexit;
 	}
 	conf->retryinterval = (uint8_t)retryinterval;
@@ -3612,8 +3650,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	conf->retryinterval = 255;
     
     if (retrycount != LONG_MIN) {
-	if (retrycount < 0 || retrycount > pdef->retrycountmax) {
-	    debug(DBG_ERR, "error in block %s, value of option RetryCount is %d, must be 0-%d", block, pdef->retrycountmax);
+	if (retrycount < 0 || retrycount > conf->pdef->retrycountmax) {
+	    debug(DBG_ERR, "error in block %s, value of option RetryCount is %d, must be 0-%d", block, retrycount, conf->pdef->retrycountmax);
 	    goto errexit;
 	}
 	conf->retrycount = (uint8_t)retrycount;
@@ -3639,17 +3677,6 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (resconf)
 	return 1;
 	
-    switch (conf->type) {
-    case RAD_UDP:
-	server_udp_count++;
-	break;
-    case RAD_TLS:
-	server_tls_count++;
-	break;
-    default:
-	goto errexit;
-    }
-    
     if (!list_push(srvconfs, conf)) {
 	debug(DBG_ERR, "malloc failed");
 	goto errexit;
@@ -3751,6 +3778,7 @@ void getmainconfig(const char *configfile) {
     if (!getgenericconfig(&cfs, NULL,
 			  "ListenUDP", CONF_MSTR, &options.listenudp,
 			  "ListenTCP", CONF_MSTR, &options.listentcp,
+			  "ListenTLS", CONF_MSTR, &options.listentls,
 			  "ListenAccountingUDP", CONF_MSTR, &options.listenaccudp,
 			  "SourceUDP", CONF_STR, &options.sourceudp,
 			  "SourceTCP", CONF_STR, &options.sourcetcp,
@@ -3886,8 +3914,8 @@ int main(int argc, char **argv) {
     sigaddset(&sigset, SIGPIPE);
     pthread_sigmask(SIG_BLOCK, &sigset, NULL);
     pthread_create(&sigth, NULL, sighandler, NULL);
-    
-    if (client_udp_count) {
+
+    if (find_conf_type(RAD_UDP, clconfs, NULL)) {
 	udp_server_replyq = newreplyq();
 	if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
@@ -3918,8 +3946,8 @@ int main(int argc, char **argv) {
 	if (pthread_create(&udpclient6rdth, NULL, udpclientrd, (void *)&udp_client6_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     
-    if (client_tls_count)
-	createlisteners(RAD_TLS, options.listentcp, 0);
+    if (find_conf_type(RAD_TLS, clconfs, NULL))
+	createlisteners(RAD_TLS, options.listentls, 0);
     
     /* just hang around doing nothing, anything to do here? */
     for (;;)

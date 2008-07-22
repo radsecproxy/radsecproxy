@@ -12,7 +12,6 @@
 
 /* MAX_REQUESTS must be 256 due to Radius' 8 bit ID field */
 #define MAX_REQUESTS 256
-#define DEFAULT_TLS_SECRET "mysecret"
 #define DEFAULT_UDP_PORT "1812"
 #define DEFAULT_TLS_PORT "2083"
 #define REQUEST_RETRY_INTERVAL 5
@@ -31,6 +30,7 @@
 
 #define RAD_UDP 0
 #define RAD_TLS 1
+#define RAD_TCP 2
 
 #define RAD_Attr_User_Name 1
 #define RAD_Attr_User_Password 2
@@ -46,6 +46,7 @@
 struct options {
     char **listenudp;
     char **listentcp;
+    char **listentls;
     char **listenaccudp;
     char *sourceudp;
     char *sourcetcp;
@@ -88,8 +89,8 @@ struct listenerarg {
 
 struct clsrvconf {
     char *name;
-    char *conftype;
-    uint8_t type; /* RAD_UDP/RAD_TLS */
+    uint8_t type; /* RAD_UDP/RAD_TLS/RAD_TCP */
+    const struct protodefs *pdef;
     char *host;
     char *port;
     char *secret;
@@ -166,6 +167,8 @@ struct rewriteconf {
 };
 
 struct protodefs {
+    char *name;
+    char *secretdefault;
     uint8_t retrycountdefault;
     uint8_t retrycountmax;
     uint8_t retryintervaldefault;
