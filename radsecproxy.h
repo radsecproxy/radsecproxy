@@ -15,7 +15,7 @@
 #define DEFAULT_TLS_SECRET "mysecret"
 #define DEFAULT_UDP_PORT "1812"
 #define DEFAULT_TLS_PORT "2083"
-#define REQUEST_RETRY_DELAY 5
+#define REQUEST_RETRY_INTERVAL 5
 #define REQUEST_RETRY_COUNT 2
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
@@ -86,7 +86,7 @@ struct clsrvconf {
     regex_t *rewriteattrregex;
     char *rewriteattrreplacement;
     uint8_t statusserver;
-    uint8_t retrydelay;
+    uint8_t retryinterval;
     uint8_t retrycount;
     uint8_t certnamecheck;
     SSL_CTX *ssl_ctx;

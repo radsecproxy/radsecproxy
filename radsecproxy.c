@@ -2282,7 +2282,7 @@ void *clientwr(void *arg) {
 
 	    rq->expiry.tv_sec = now.tv_sec +
 		(*rq->buf == RAD_Status_Server || server->conf->type == 'T'
-		 ? server->conf->retrydelay * (server->conf->retrycount + 1) : server->conf->retrydelay);
+		 ? server->conf->retryinterval * (server->conf->retrycount + 1) : server->conf->retryinterval);
 	    if (!timeout.tv_sec || rq->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rq->expiry.tv_sec;
 	    rq->tries++;
@@ -3014,7 +3014,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 
 void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL;
-    long int retrydelay = LONG_MIN, retrycount = LONG_MIN;
+    long int retryinterval = LONG_MIN, retrycount = LONG_MIN;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
@@ -3034,7 +3034,7 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "MatchCertificateAttribute", CONF_STR, &matchcertattr,
 		     "rewrite", CONF_STR, &rewrite,
 		     "StatusServer", CONF_BLN, &conf->statusserver,
-		     "RetryDelay", CONF_LINT, &retrydelay,
+		     "RetryInterval", CONF_LINT, &retryinterval,
 		     "RetryCount", CONF_LINT, &retrycount,
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 		     NULL
@@ -3067,12 +3067,12 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     if (matchcertattr)
 	free(matchcertattr);
 
-    if (retrydelay != LONG_MIN) {
-	if (retrydelay < 1 || retrydelay > 60)
-	    debugx(1, DBG_ERR, "error in block %s, value of option RetryDelay is %d, must be 1-60", block, retrydelay);
-	conf->retrydelay = (uint8_t)retrydelay;
+    if (retryinterval != LONG_MIN) {
+	if (retryinterval < 1 || retryinterval > 60)
+	    debugx(1, DBG_ERR, "error in block %s, value of option RetryInterval is %d, must be 1-60", block, retryinterval);
+	conf->retryinterval = (uint8_t)retryinterval;
     } else
-	conf->retrydelay = REQUEST_RETRY_DELAY;
+	conf->retryinterval = REQUEST_RETRY_INTERVAL;
 
     if (retrycount != LONG_MIN) {
 	if (retrycount < 0 || retrycount > 10)

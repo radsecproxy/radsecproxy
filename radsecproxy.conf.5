@@ -252,7 +252,7 @@ block is only used as a descriptive name for the administrator.
 The allowed options in a server block are \fBhost\fR, \fBport\fR, \fBtype\fR,
 \fBsecret\fR, \fBtls\fR, \fBcertificatenamecheck\fR,
 \fBmatchcertificateattribute\fR, \fBrewrite\fR, \fBstatusserver\fR,
-\fBretrycount\fR and \fBretrydelay\fR.
+\fBretrycount\fR and \fBretryinterval\fR.
 
 We already discussed the \fBhost\fR option.
 The \fBport\fR option allows you to specify which port number the server uses.
@@ -268,9 +268,9 @@ when not specified, is \fBoff\fR. If statusserver is enabled, the proxy will
 during idle periods send regular status-server messages to the server to verify
 that it is alive. This should only be enabled if the server supports it.
 .sp
-The options \fBretrycount\fR and \fBretrydelay\fR can be used to specify how
+The options \fBretrycount\fR and \fBretryinterval\fR can be used to specify how
 many times the proxy should retry sending a request and how long it should
-wait between each retry. The defaults are 2 retries and a delay of 5s.
+wait between each retry. The defaults are 2 retries and an interval of 5s.
 
 .SH "REALM BLOCK"
 When the proxy receives an \fBAccess Request\fR it needs to figure out to which
