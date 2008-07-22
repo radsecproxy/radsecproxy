@@ -62,8 +62,6 @@ struct list *clconfs, *srvconfs, *realms, *tlsconfs, *rewriteconfs;
 
 static int client_udp_count = 0;
 static int client_tls_count = 0;
-static int server_udp_count = 0;
-static int server_tls_count = 0;
 
 static struct addrinfo *srcudpres = NULL;
 static struct addrinfo *srctcpres = NULL;
@@ -3046,7 +3044,6 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     
     if (type && !strcasecmp(type, "udp")) {
 	conf->type = 'U';
-	server_udp_count++;
 	if (!conf->port)
 	    conf->port = stringcopy(DEFAULT_UDP_PORT, 0);
     } else if (type && !strcasecmp(type, "tls")) {
@@ -3058,7 +3055,6 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	if (!conf->port)
 	    conf->port = stringcopy(DEFAULT_TLS_PORT, 0);
 	conf->type = 'T';
-	server_tls_count++;
     } else
 	debugx(1, DBG_ERR, "error in block %s, type must be set to UDP or TLS", block);
     free(type);
