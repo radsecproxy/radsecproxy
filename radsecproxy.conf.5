@@ -104,20 +104,25 @@ option is ignored if \fB-f\fR is specified on the command line.
 .TP
 \fBListenUDP\fR
 Normally the proxy will listen to the standard RADIUS UDP port \fB1812\fR if
-configured to handle UDP clients. On most systems it will do this for all of the
-system's IP addresses (both IPv4 and IPv6). On some systems however, it may respond
-to only IPv4 or only IPv6. To specify an alternate port you may use a value of
+configured to handle UDP clients. To specify an alternate port you may use a
+value of
 the form \fB*:port\fR where port is any valid port number. If you also want to
 specify a specific address you can do e.g. \fB192.168.1.1:1812\fR or
 \fB[2001:db8::1]:1812\fR. The port may be omitted if you want the default one
 (like in these examples). These examples are equivalent to \fB192.168.1.1\fR and
 \fB2001:db8::1\fR. Note that you must use brackets around the IPv6 address if
-you specify port number.
+you specify port number. The option may be specified multiple times to listen
+to multiple addresses and/or ports.
 .sp
 .TP
 \fBListenTCP\fR
 This is similar to the \fBListenUDP\fR option, except that it used for receiving
-connections from TCP clients. The default port number is \fB2083\fR.
+connections from TCP clients. The default port number is \fB1812\fR.
+.sp
+.TP
+\fBListenTLS\fR
+This is similar to the \fBListenUDP\fR option, except that it used for receiving
+connections from TLS clients. The default port number is \fB2083\fR.
 .sp
 .TP
 \fBListenAccountingUDP\fR
