@@ -2368,11 +2368,11 @@ void *udpaccserverrd(void *arg) {
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
 	rq.buf = radudpget(udp_accserver_sock, &rq.from, NULL, &rq.fromsa);
-	if (*(uint8_t *)rq.buf == RAD_Accounting_Request) {
+	if (*rq.buf == RAD_Accounting_Request || *rq.buf == RAD_Status_Server) {
 	    radsrv(&rq);
 	    continue;
 	}
-	debug(DBG_INFO, "udpaccserverrd: got something other than accounting-request, ignoring");
+	debug(DBG_INFO, "udpaccserverrd: accepting only accounting-request and status-server, ignoring");
 	freerqdata(&rq);
     }
 }
