@@ -48,6 +48,7 @@ struct options {
     char **listenaccudp;
     char *sourceudp;
     char *sourcetcp;
+    char *sourcetls;
     char *logdestination;
     uint8_t loglevel;
     uint8_t loopprevention;
@@ -175,6 +176,10 @@ struct protodefs {
     uint8_t retryintervaldefault;
     uint8_t retryintervalmax;
     void *(*listener)(void*);
+    char **srcaddrport;
+    int (*connecter)(struct server *, struct timeval *, int, char *);
+    void *(*clientreader)(void*);
+    int (*clientradput)(struct server *, unsigned char *);
 };
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
