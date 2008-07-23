@@ -137,7 +137,12 @@ will use for sending UDP client messages (e.g. Access Request).
 .TP
 \fBSourceTCP\fR
 This can be used to specify source address and/or source port that the proxy
-will use for sending TCP client messages (e.g. Access Request).
+will use for TCP connections.
+.sp
+.TP
+\fBSourceTLS\fR
+This can be used to specify source address and/or source port that the proxy
+will use for TLS connections.
 .sp
 .TP
 \fBLoopPrevention\fR
@@ -196,7 +201,7 @@ The allowed options in a client block are \fBhost\fR, \fBtype\fR, \fBsecret\fR,
 \fBtls\fR, \fBcertificatenamecheck\fR, \fBmatchcertificateattribute\fR,
 \fBrewrite\fR and \fBrewriteattribute\fR. We already
 discussed the \fBhost\fR option.
-The value of \fBtype\fR must be either \fBudp\fR or \fBtls\fR. The value of
+The value of \fBtype\fR must be one of \fBudp\fR, \fBtcp\fR or \fBtls\fR. The value of
 \fBsecret\fR is the shared RADIUS key used with this client. If the secret
 contains whitespace, the value must be quoted. This option is optional for TLS.
 .sp
