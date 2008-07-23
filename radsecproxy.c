@@ -30,6 +30,7 @@
 */
 
 /* Bugs:
+ * TCP accounting not yet supported
  * We are not removing client requests from dynamic servers, see removeclientrqs()
  */
 
