@@ -2767,8 +2767,8 @@ void *udpserverrd(void *arg) {
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
 	rq.buf = radudpget(larg->s, &rq.from, NULL, &rq.fromsa);
-	if (larg->acconly && *rq.buf != RAD_Accounting_Request) {
-	    debug(DBG_INFO, "udpserverrd: got something other than accounting-request, ignoring");
+	if (larg->acconly && *rq.buf != RAD_Accounting_Request && *rq.buf != RAD_Status_Server) {
+	    debug(DBG_INFO, "udpserverrd: accepting only accounting-request and status-server, ignoring");
 	    freerqdata(&rq);
 	    continue;
 	}
