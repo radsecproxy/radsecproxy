@@ -1,4 +1,4 @@
-#Master config file, must be in /etc/radsecproxy or proxy's current directory
+#Master config file, must be in /etc/radsecproxy or specified with -c option
 #	All possible config options are listed below
 
 # First you may define any global options, these are:
@@ -9,6 +9,12 @@
 #listenUDP		localhost
 #listenTCP		10.10.10.10:2084
 #ListenTCP		[2001:700:1:7:215:f2ff:fe35:307d]:2084
+# To listen to the default or other Accounting port for UDP you need e.g.
+#ListenAccountingUDP	*:1813
+
+# To specify a certain address/port for UDP/TLS requests you can use e.g.
+#SourceUDP		127.0.0.1:33000
+#SourceTCP		*:33001
 # Optional log level. 3 is default, 1 is less, 4 is more
 #LogLevel		3
 #Optional LogDestinatinon, else stderr used for logging
@@ -19,6 +25,9 @@
 # LOG_LOCAL0, ..., LOG_LOCAL7
 #LogDestination         x-syslog:///
 #LogDestination         x-syslog:///log_local2
+
+#There is an option for doing some simple loop prevention
+#LoopPrevention		on
 
 #If we have TLS clients or servers we must define at least one tls block.
 #You can name them whatever you like and then reference them by name when
@@ -40,6 +49,8 @@ tls default {
     CertificateKeyFile	/etc/hostcertkey/host.example.com.key.pem
     # Optionally specify password if key is encrypted (not very secure)
     CertificateKeyPassword	"follow the white rabbit"
+    # Optionally enable CRL checking
+    # CRLCheck on
 }
 
 #If you want one cert for all clients and another for all servers, use
@@ -85,6 +96,8 @@ server 127.0.0.1 {
 }
 realm	eduroam.cc {
 	server	127.0.0.1
+# If also want to use this server for accounting, specify
+#	accountingServer 127.0.0.1
 }
 
 server 2001:db8::1 {
@@ -110,12 +123,13 @@ realm /@example\.com$ {
 }
 # One can define a realm without servers, the proxy will then reject
 # and requests matching this. Optionally one can specify ReplyMessage
-# attribute to be included in the reject message.
-# 
+# attribute to be included in the reject message. One can also use
+# AccountingResponse option to specify that the proxy should send such.
 realm /\.com$ {
 }
 realm /^anonymous$ {
         replymessage "No Access"
+#	AccountingResponse On
 }
 # The realm below is equivalent to /.*
 realm * {

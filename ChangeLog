@@ -17,3 +17,10 @@
 	Supports multiple client blocks for same source address with different
 	     certificate checks
 	Removed weekday from log timestamps
+2008-07-24 1.1
+	Logging stationid attribute
+	Added LoopPrevention option
+	Failover also without status-server
+	Options for RetryCount and RetryInterval
+	Working accounting and AccountingResponse option
+	CRL checking and option for enabling it
