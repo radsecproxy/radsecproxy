@@ -115,6 +115,7 @@ struct clsrvconf {
 
 struct client {
     struct clsrvconf *conf;
+    int s; /* for tcp */
     SSL *ssl;
     struct replyq *replyq;
 };
@@ -173,6 +174,7 @@ struct protodefs {
     uint8_t retrycountmax;
     uint8_t retryintervaldefault;
     uint8_t retryintervalmax;
+    void *(*listener)(void*);
 };
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
