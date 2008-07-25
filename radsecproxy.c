@@ -142,7 +142,7 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
 int resolvepeer(struct clsrvconf *conf, int ai_flags) {
     struct addrinfo hints, *addrinfo, *res;
     char *slash, *s;
-    int plen;
+    int plen = 0;
 
     slash = conf->host ? strchr(conf->host, '/') : NULL;
     if (slash) {
