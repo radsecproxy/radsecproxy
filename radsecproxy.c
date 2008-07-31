@@ -2194,8 +2194,9 @@ struct server *findserver(struct realm **realm, char *id, uint8_t acc) {
 	adddynamicrealmserver(*realm, srvconf, id);
     return srvconf->servers;
 }
-			  
-void radsrv(struct request *rq) {
+
+/* returns 0 if validation/authentication fails, else 1 */
+int radsrv(struct request *rq) {
     uint8_t code, id, *auth, *attrs, *attr;
     uint16_t len;
     struct server *to = NULL;
@@ -2220,13 +2221,13 @@ void radsrv(struct request *rq) {
 
     if (!attrvalidate(attrs, len)) {
 	debug(DBG_WARN, "radsrv: attribute validation failed, ignoring packet");
-	goto exit;
+	goto errvalauth;
     }
 
     attr = attrget(attrs, len, RAD_Attr_Message_Authenticator);
     if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(rq->buf, ATTRVAL(attr), rq->from->conf->secret))) {
 	debug(DBG_WARN, "radsrv: message authentication failed");
-	goto exit;
+	goto errvalauth;
     }
 
     if (code == RAD_Status_Server) {
@@ -2240,7 +2241,7 @@ void radsrv(struct request *rq) {
 	memset(newauth, 0, 16);
 	if (!validauth(rq->buf, newauth, (unsigned char *)rq->from->conf->secret)) {
 	    debug(DBG_WARN, "radsrv: Accounting-Request message authentication failed");
-	    goto exit;
+	    goto errvalauth;
 	}
     }
     
@@ -2331,10 +2332,15 @@ void radsrv(struct request *rq) {
     memcpy(rq->origauth, auth, 16);
     memcpy(auth, newauth, 16);
     sendrq(to, rq);
-    return;
+    return 1;
     
  exit:
     freerqdata(rq);
+    return 1;
+
+ errvalauth:
+    freerqdata(rq);
+    return 0;
 }
 
 int replyh(struct server *server, unsigned char *buf) {
@@ -2826,14 +2832,18 @@ void tlsserverrd(struct client *client) {
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
 	rq.buf = radtlsget(client->ssl, 0);
-	if (!rq.buf)
+	if (!rq.buf) {
+	    debug(DBG_ERR, "tlsserverrd: connection from %s lost", client->conf->host);
 	    break;
+	}
 	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", client->conf->host);
 	rq.from = client;
-	radsrv(&rq);
+	if (!radsrv(&rq)) {
+	    debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", client->conf->host);
+	    break;
+	}
     }
     
-    debug(DBG_ERR, "tlsserverrd: connection lost");
     /* stop writer by setting ssl to NULL and give signal in case waiting for data */
     client->ssl = NULL;
     pthread_mutex_lock(&client->replyq->mutex);
@@ -2980,14 +2990,18 @@ void tcpserverrd(struct client *client) {
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
 	rq.buf = radtcpget(client->s, 0);
-	if (!rq.buf)
+	if (!rq.buf) {
+	    debug(DBG_ERR, "tcpserverrd: connection from %s lost", client->conf->host);
 	    break;
+	}
 	debug(DBG_DBG, "tcpserverrd: got Radius message from %s", client->conf->host);
 	rq.from = client;
-	radsrv(&rq);
+	if (!radsrv(&rq)) {
+	    debug(DBG_ERR, "tcpserverrd: message authentication/validation failed, closing connection from %s", client->conf->host);
+	    break;
+	}
     }
-    
-    debug(DBG_ERR, "tcpserverrd: connection lost");
+
     /* stop writer by setting s to -1 and give signal in case waiting for data */
     client->s = -1;
     pthread_mutex_lock(&client->replyq->mutex);
