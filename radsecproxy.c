@@ -2763,19 +2763,15 @@ void *udpserverwr(void *arg) {
 
 void *udpserverrd(void *arg) {
     struct request rq;
-    struct listenerarg *larg = (struct listenerarg *)arg;
+    int *sp = (int *)arg;
     
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
-	rq.buf = radudpget(larg->s, &rq.from, NULL, &rq.fromsa);
-	if (larg->acconly && *rq.buf != RAD_Accounting_Request && *rq.buf != RAD_Status_Server) {
-	    debug(DBG_INFO, "udpserverrd: accepting only accounting-request and status-server, ignoring");
-	    freerqdata(&rq);
-	    continue;
-	}
-	rq.fromudpsock = larg->s;
+	rq.buf = radudpget(*sp, &rq.from, NULL, &rq.fromsa);
+	rq.fromudpsock = *sp;
 	radsrv(&rq);
     }
+    free(sp);
 }
 
 void *tlsserverwr(void *arg) {
@@ -2910,15 +2906,14 @@ void *tlsservernew(void *arg) {
 
 void *tlslistener(void *arg) {
     pthread_t tlsserverth;
-    int s;
+    int s, *sp = (int *)arg;
     struct sockaddr_storage from;
     size_t fromlen = sizeof(from);
-    struct listenerarg *larg = (struct listenerarg *)arg;
 
-    listen(larg->s, 0);
+    listen(*sp, 0);
 
     for (;;) {
-	s = accept(larg->s, (struct sockaddr *)&from, &fromlen);
+	s = accept(*sp, (struct sockaddr *)&from, &fromlen);
 	if (s < 0) {
 	    debug(DBG_WARN, "accept failed");
 	    continue;
@@ -2931,6 +2926,7 @@ void *tlslistener(void *arg) {
 	}
 	pthread_detach(tlsserverth);
     }
+    free(sp);
     return NULL;
 }
 
@@ -3037,15 +3033,14 @@ void *tcpservernew(void *arg) {
 
 void *tcplistener(void *arg) {
     pthread_t tcpserverth;
-    int s;
+    int s, *sp = (int *)arg;
     struct sockaddr_storage from;
     size_t fromlen = sizeof(from);
-    struct listenerarg *larg = (struct listenerarg *)arg;
 
-    listen(larg->s, 0);
+    listen(*sp, 0);
 
     for (;;) {
-	s = accept(larg->s, (struct sockaddr *)&from, &fromlen);
+	s = accept(*sp, (struct sockaddr *)&from, &fromlen);
 	if (s < 0) {
 	    debug(DBG_WARN, "accept failed");
 	    continue;
@@ -3058,15 +3053,15 @@ void *tcplistener(void *arg) {
 	}
 	pthread_detach(tcpserverth);
     }
+    free(sp);
     return NULL;
 }
 
-void createlistener(uint8_t type, char *arg, uint8_t acconly) {
+void createlistener(uint8_t type, char *arg) {
     pthread_t th;
     struct clsrvconf *listenres;
     struct addrinfo *res;
-    struct listenerarg *larg = NULL;
-    int s = -1, on = 1;
+    int s = -1, on = 1, *sp = NULL;
     
     listenres = resolve_hostport(type, arg, protodefs[type].portdefault);
     if (!listenres)
@@ -3090,32 +3085,29 @@ void createlistener(uint8_t type, char *arg, uint8_t acconly) {
 	    continue;
 	}
 
-	larg = malloc(sizeof(struct listenerarg));
-        if (!larg)
+	sp = malloc(sizeof(int));
+        if (!sp)
             debugx(1, DBG_ERR, "malloc failed");
-        larg->s = s;
-        larg->acconly = acconly;
-	if (pthread_create(&th, NULL, protodefs[type].listener, (void *)larg))
+	if (pthread_create(&th, NULL, protodefs[type].listener, (void *)sp))
             debugx(1, DBG_ERR, "pthread_create failed");
 	pthread_detach(th);
     }
-    if (!larg)
+    if (!sp)
 	debugx(1, DBG_ERR, "createlistener: socket/bind failed");
     
-    debug(DBG_WARN, "createlistener: listening for %s%s on %s:%s", protodefs[type].name,
-	  acconly ? " accounting" : "",
+    debug(DBG_WARN, "createlistener: listening for %s on %s:%s", protodefs[type].name,
 	  listenres->host ? listenres->host : "*", listenres->port);
     freeclsrvres(listenres);
 }
 
-void createlisteners(uint8_t type, char **args, uint8_t acconly) {
+void createlisteners(uint8_t type, char **args) {
     int i;
 
     if (args)
 	for (i = 0; args[i]; i++)
-	    createlistener(type, args[i], acconly);
+	    createlistener(type, args[i]);
     else
-	createlistener(type, NULL, acconly);
+	createlistener(type, NULL);
 }
 
 void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, char *certkeyfile, char *certkeypwd, uint8_t crlcheck) {
@@ -4223,9 +4215,9 @@ int main(int argc, char **argv) {
 	udp_server_replyq = newreplyq();
 	if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
-	createlisteners(RAD_UDP, options.listenudp, 0);
+	createlisteners(RAD_UDP, options.listenudp);
 	if (options.listenaccudp)
-	    createlisteners(RAD_UDP, options.listenaccudp, 1);
+	    createlisteners(RAD_UDP, options.listenaccudp);
     }
     
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
@@ -4251,10 +4243,10 @@ int main(int argc, char **argv) {
 	    debugx(1, DBG_ERR, "pthread_create failed");
     
     if (find_conf_type(RAD_TCP, clconfs, NULL))
-	createlisteners(RAD_TCP, options.listentcp, 0);
+	createlisteners(RAD_TCP, options.listentcp);
     
     if (find_conf_type(RAD_TLS, clconfs, NULL))
-	createlisteners(RAD_TLS, options.listentls, 0);
+	createlisteners(RAD_TLS, options.listentls);
     
     /* just hang around doing nothing, anything to do here? */
     for (;;)

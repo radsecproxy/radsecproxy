@@ -81,11 +81,6 @@ struct replyq {
     pthread_cond_t cond;
 };
 
-struct listenerarg {
-    int s;
-    uint8_t acconly;
-};
-
 struct clsrvconf {
     char *name;
     uint8_t type; /* RAD_UDP/RAD_TLS/RAD_TCP */
