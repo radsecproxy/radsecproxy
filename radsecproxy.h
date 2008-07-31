@@ -129,6 +129,7 @@ struct server {
     uint8_t lostrqs;
     char *dynamiclookuparg;
     int nextid;
+    struct timeval lastrcv;
     struct request *requests;
     uint8_t newrq;
     pthread_mutex_t newrq_mutex;

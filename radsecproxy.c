@@ -2411,7 +2411,9 @@ int replyh(struct server *server, unsigned char *buf) {
 	memcpy(buf + 4, tmp, 16);
 	debug(DBG_DBG, "replyh: message auth ok");
     }
-	
+    
+    gettimeofday(&server->lastrcv, NULL);
+    
     if (*rq->buf == RAD_Status_Server) {
 	rq->received = 1;
 	pthread_mutex_unlock(&server->newrq_mutex);
@@ -2580,7 +2582,7 @@ void *clientwr(void *arg) {
     pthread_t clientrdth;
     int i, dynconffail = 0;
     uint8_t rnd;
-    struct timeval now, lastsend;
+    struct timeval now;
     struct timespec timeout;
     struct request statsrvrq;
     unsigned char statsrvbuf[38];
@@ -2607,7 +2609,7 @@ void *clientwr(void *arg) {
 	statsrvbuf[3] = 38;
 	statsrvbuf[20] = RAD_Attr_Message_Authenticator;
 	statsrvbuf[21] = 18;
-	gettimeofday(&lastsend, NULL);
+	gettimeofday(&server->lastrcv, NULL);
     }
 
     if (conf->pdef->connecter) {
@@ -2629,8 +2631,8 @@ void *clientwr(void *arg) {
 	    RAND_bytes(&rnd, 1);
 	    rnd /= 32;
 	    if (conf->statusserver) {
-		if (!timeout.tv_sec || timeout.tv_sec > lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd)
-		    timeout.tv_sec = lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd;
+		if (!timeout.tv_sec || timeout.tv_sec > server->lastrcv.tv_sec + STATUS_SERVER_PERIOD + rnd)
+		    timeout.tv_sec = server->lastrcv.tv_sec + STATUS_SERVER_PERIOD + rnd;
 	    } else {
 		if (!timeout.tv_sec || timeout.tv_sec > now.tv_sec + STATUS_SERVER_PERIOD + rnd)
 		    timeout.tv_sec = now.tv_sec + STATUS_SERVER_PERIOD + rnd;
@@ -2712,11 +2714,10 @@ void *clientwr(void *arg) {
 		timeout.tv_sec = rq->expiry.tv_sec;
 	    rq->tries++;
 	    conf->pdef->clientradput(server, server->requests[i].buf);
-	    gettimeofday(&lastsend, NULL);
 	}
 	if (conf->statusserver) {
 	    gettimeofday(&now, NULL);
-	    if (now.tv_sec - lastsend.tv_sec >= STATUS_SERVER_PERIOD) {
+	    if (now.tv_sec - server->lastrcv.tv_sec >= STATUS_SERVER_PERIOD) {
 		if (!RAND_bytes(statsrvbuf + 4, 16)) {
 		    debug(DBG_WARN, "clientwr: failed to generate random auth");
 		    continue;
@@ -2728,7 +2729,6 @@ void *clientwr(void *arg) {
 		}
 		memcpy(statsrvrq.buf, statsrvbuf, sizeof(statsrvbuf));
 		debug(DBG_DBG, "clientwr: sending status server to %s", conf->host);
-		lastsend.tv_sec = now.tv_sec;
 		sendrq(server, &statsrvrq);
 	    }
 	}
