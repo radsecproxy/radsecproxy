@@ -696,84 +696,6 @@ int addserver(struct clsrvconf *conf) {
 /* return from in sa if not NULL */
 unsigned char *radudpget(int s, struct client **client, struct server **server, struct sockaddr_storage *sa) {
     int cnt, len;
-    unsigned char buf[65536], *rad;
-    struct sockaddr_storage from;
-    socklen_t fromlen = sizeof(from);
-    struct clsrvconf *p;
-    struct list_node *node;
-    
-    for (;;) {
-	cnt = recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr *)&from, &fromlen);
-	if (cnt == -1) {
-	    debug(DBG_WARN, "radudpget: recv failed");
-	    continue;
-	}
-	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
-
-	if (cnt < 20) {
-	    debug(DBG_WARN, "radudpget: packet too small");
-	    continue;
-	}
-    
-	len = RADLEN(buf);
-	if (len < 20) {
-	    debug(DBG_WARN, "radudpget: length too small");
-	    continue;
-	}
-
-	if (cnt < len) {
-	    debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
-	    continue;
-	}
-	if (cnt > len)
-	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
-
-	if (client)
-	    if (*client)
-		p = checkconfaddr(RAD_UDP, (struct sockaddr *)&from, (*client)->conf);
-	    else
-		p = find_conf(RAD_UDP, (struct sockaddr *)&from, clconfs, NULL);
-	else
-	    if (*server)
-		p = checkconfaddr(RAD_UDP, (struct sockaddr *)&from, (*server)->conf);
-	    else
-		p = find_conf(RAD_UDP, (struct sockaddr *)&from, srvconfs, NULL);
-
-	if (!p) {
-	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
-	    continue;
-	}
-	
-	rad = malloc(len);
-	if (!rad) {
-	    debug(DBG_ERR, "radudpget: malloc failed");
-	    continue;
-	}
-	
-	if (client && !*client) {
-	    node = list_first(p->clients);
-	    *client = node ? (struct client *)node->data : addclient(p);
-	    if (!*client) {
-		free(rad);
-		continue;
-	    }
-	} else if (server && !*server)
-	    *server = p->servers;
-	
-	break;
-    }
-    memcpy(rad, buf, len);
-    if (sa)
-	*sa = from;
-    return rad;
-}
-
-/* exactly one of client and server must be non-NULL */
-/* should probably take peer list (client(s) or server(s)) as argument instead */
-/* if *peer == NULL we return who we received from, else require it to be from peer */
-/* return from in sa if not NULL */
-unsigned char *radudpget2(int s, struct client **client, struct server **server, struct sockaddr_storage *sa) {
-    int cnt, len;
     unsigned char buf[4], *rad;
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
@@ -3181,6 +3103,7 @@ void createlistener(uint8_t type, char *arg) {
 	sp = malloc(sizeof(int));
         if (!sp)
             debugx(1, DBG_ERR, "malloc failed");
+	*sp = s;
 	if (pthread_create(&th, NULL, protodefs[type].listener, (void *)sp))
             debugx(1, DBG_ERR, "pthread_create failed");
 	pthread_detach(th);
