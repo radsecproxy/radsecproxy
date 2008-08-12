@@ -140,6 +140,20 @@ static const struct protodefs protodefs[] = {
 	tcpclientrd, /* clientreader */
 	clientradputtcp /* clientradput */
     },
+    {   "dtls", /* DTLS, assuming RAD_DTLS defined as 3 */
+	NULL, /* secretdefault */
+	SOCK_DGRAM, /* socktype */
+	"1812", /* portdefault */
+	REQUEST_RETRY_COUNT, /* retrycountdefault */
+	10, /* retrycountmax */
+	REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
+	60, /* retryintervalmax */
+	udpserverrd, /* listener */
+	&options.sourceudp, /* srcaddrport */
+	NULL, /* connecter */
+	udpclientrd, /* clientreader */
+	clientradputudp /* clientradput */
+    },
     {   NULL
     }
 };
@@ -615,6 +629,7 @@ void freeserver(struct server *server, uint8_t destroymutex) {
 
 int addserver(struct clsrvconf *conf) {
     struct clsrvconf *res;
+    uint8_t type;
     
     if (conf->servers) {
 	debug(DBG_ERR, "addserver: currently works with just one server per conf");
@@ -628,14 +643,18 @@ int addserver(struct clsrvconf *conf) {
     memset(conf->servers, 0, sizeof(struct server));
     conf->servers->conf = conf;
 
-    if (!srcprotores[conf->type]) {
-	res = resolve_hostport(conf->type, *conf->pdef->srcaddrport, NULL);
-	srcprotores[conf->type] = res->addrinfo;
+    type = conf->type;
+    if (type == RAD_DTLS)
+	type = RAD_UDP;
+    
+    if (!srcprotores[type]) {
+	res = resolve_hostport(type, *conf->pdef->srcaddrport, NULL);
+	srcprotores[type] = res->addrinfo;
 	res->addrinfo = NULL;
 	freeclsrvres(res);
     }
 
-    if (conf->type == RAD_UDP) {
+    if (type == RAD_UDP) {
 	switch (conf->addrinfo->ai_family) {
 	case AF_INET:
 	    if (udp_client4_sock < 0) {

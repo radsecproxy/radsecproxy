@@ -29,6 +29,7 @@
 #define RAD_UDP 0
 #define RAD_TLS 1
 #define RAD_TCP 2
+#define RAD_DTLS 3
 
 #define RAD_Attr_User_Name 1
 #define RAD_Attr_User_Password 2
