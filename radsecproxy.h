@@ -156,7 +156,8 @@ struct tls {
     char *certkeyfile;
     char *certkeypwd;
     uint8_t crlcheck;
-    SSL_CTX *ctx;
+    SSL_CTX *tlsctx;
+    SSL_CTX *dtlsctx;
 };
 
 struct rewrite {

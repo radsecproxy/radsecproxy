@@ -3146,8 +3146,8 @@ void createlisteners(uint8_t type, char **args) {
 	createlistener(type, NULL);
 }
 
-SSL_CTX *tlscreatectx(struct tls *conf) {
-    SSL_CTX *ctx;
+SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
+    SSL_CTX *ctx = NULL;
     STACK_OF(X509_NAME) *calist;
     X509_STORE *x509_s;
     int i;
@@ -3173,7 +3173,15 @@ SSL_CTX *tlscreatectx(struct tls *conf) {
 	    RAND_seed((unsigned char *)&pid, sizeof(pid));
 	}
     }
-    ctx = SSL_CTX_new(TLSv1_method());
+
+    switch (type) {
+    case RAD_TLS:
+	ctx = SSL_CTX_new(TLSv1_method());
+	break;
+    case RAD_DTLS:
+	ctx = SSL_CTX_new(DTLSv1_method());
+	break;
+    }
     if (!ctx) {
 	debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
 	return NULL;
@@ -3226,10 +3234,11 @@ SSL_CTX *tlscreatectx(struct tls *conf) {
     return ctx;
 }
 
-SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
+SSL_CTX *tlsgetctx(uint8_t type, char *alt1, char *alt2) {
     struct list_node *entry;
     struct tls *t, *t1 = NULL, *t2 = NULL;
-
+    SSL_CTX *ctx = NULL;
+    
     pthread_mutex_lock(&tlsconfs_lock);
     
     for (entry = list_first(tlsconfs); entry; entry = list_next(entry)) {
@@ -3243,15 +3252,25 @@ SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
     }
 
     t = (t1 ? t1 : t2);
-    if (!t) {
-	pthread_mutex_unlock(&tlsconfs_lock);
-	return NULL;
-    }
+    if (!t)
+	goto exit;
 
-    if (!t->ctx)
-	t->ctx = tlscreatectx(t);
+    switch (type) {
+    case RAD_TLS:
+	if (!t->tlsctx)
+	    t->tlsctx = tlscreatectx(RAD_TLS, t);
+	ctx = t->tlsctx;
+	break;
+    case RAD_DTLS:
+	if (!t->dtlsctx)
+	    t->dtlsctx = tlscreatectx(RAD_DTLS, t);
+	ctx = t->dtlsctx;
+	break;
+    }
+    
+ exit:
     pthread_mutex_unlock(&tlsconfs_lock);
-    return t->ctx;
+    return ctx;
 }
 
 struct list *addsrvconfs(char *value, char **names) {
@@ -3837,8 +3856,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	debugx(1, DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
     free(conftype);
     
-    if (conf->type == RAD_TLS) {
-	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->tls, NULL) : tlsgetctx("defaultclient", "default");
+    if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
+	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->type, conf->tls, NULL) : tlsgetctx(conf->type, "defaultclient", "default");
 	if (!conf->ssl_ctx)
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
 	if (conf->matchcertattr && !addmatchcertattr(conf))
@@ -3866,8 +3885,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 }
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
-    if (conf->type == RAD_TLS) {
-    	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->tls, NULL) : tlsgetctx("defaultserver", "default");
+    if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
+    	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->type, conf->tls, NULL) : tlsgetctx(conf->type, "defaultserver", "default");
 	if (!conf->ssl_ctx) {
 	    debug(DBG_ERR, "error in block %s, no tls context defined", block);
 	    return 0;
