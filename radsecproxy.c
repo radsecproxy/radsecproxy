@@ -73,7 +73,8 @@ static struct addrinfo *srcprotores[3] = { NULL, NULL, NULL };
 static struct replyq *udp_server_replyq = NULL;
 static int udp_client4_sock = -1;
 static int udp_client6_sock = -1;
-static pthread_mutex_t *ssl_locks;
+static pthread_mutex_t tlsconfs_lock;
+static pthread_mutex_t *ssl_locks = NULL;
 static long *ssl_lock_count;
 extern int optind;
 extern char *optarg;
@@ -3145,19 +3146,12 @@ void createlisteners(uint8_t type, char **args) {
 	createlistener(type, NULL);
 }
 
-void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, char *certkeyfile, char *certkeypwd, uint8_t crlcheck) {
-    struct tls *new;
+SSL_CTX *tlscreatectx(struct tls *conf) {
     SSL_CTX *ctx;
     STACK_OF(X509_NAME) *calist;
     X509_STORE *x509_s;
     int i;
     unsigned long error;
-    
-    if (!certfile || !certkeyfile)
-	debugx(1, DBG_ERR, "TLSCertificateFile and TLSCertificateKeyFile must be specified in TLS context %s", value);
-
-    if (!cacertfile && !cacertpath)
-	debugx(1, DBG_ERR, "CA Certificate file or path need to be specified in TLS context %s", value);
 
     if (!ssl_locks) {
 	ssl_locks = malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
@@ -3180,25 +3174,32 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
 	}
     }
     ctx = SSL_CTX_new(TLSv1_method());
-    if (certkeypwd) {
-	SSL_CTX_set_default_passwd_cb_userdata(ctx, certkeypwd);
+    if (!ctx) {
+	debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
+	return NULL;
+    }
+    
+    if (conf->certkeypwd) {
+	SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
 	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
     }
-    if (!SSL_CTX_use_certificate_chain_file(ctx, certfile) ||
-	!SSL_CTX_use_PrivateKey_file(ctx, certkeyfile, SSL_FILETYPE_PEM) ||
+    if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
+	!SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
 	!SSL_CTX_check_private_key(ctx) ||
-	!SSL_CTX_load_verify_locations(ctx, cacertfile, cacertpath)) {
+	!SSL_CTX_load_verify_locations(ctx, conf->cacertfile, conf->cacertpath)) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-	debugx(1, DBG_ERR, "Error initialising SSL/TLS in TLS context %s", value);
+	debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
+	SSL_CTX_free(ctx);
+	return NULL;
     }
 
-    calist = cacertfile ? SSL_load_client_CA_file(cacertfile) : NULL;
-    if (!cacertfile || calist) {
-	if (cacertpath) {
+    calist = conf->cacertfile ? SSL_load_client_CA_file(conf->cacertfile) : NULL;
+    if (!conf->cacertfile || calist) {
+	if (conf->cacertpath) {
 	    if (!calist)
 		calist = sk_X509_NAME_new_null();
-	    if (!SSL_add_dir_cert_subjects_to_stack(calist, cacertpath)) {
+	    if (!SSL_add_dir_cert_subjects_to_stack(calist, conf->cacertpath)) {
 		sk_X509_NAME_free(calist);
 		calist = NULL;
 	    }
@@ -3207,33 +3208,29 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
     if (!calist) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-	debugx(1, DBG_ERR, "Error adding CA subjects in TLS context %s", value);
+	debug(DBG_ERR, "tlscreatectx: Error adding CA subjects in TLS context %s", conf->name);
+	SSL_CTX_free(ctx);
+	return NULL;
     }
     SSL_CTX_set_client_CA_list(ctx, calist);
     
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
 
-    if (crlcheck) {
+    if (conf->crlcheck) {
 	x509_s = SSL_CTX_get_cert_store(ctx);
 	X509_STORE_set_flags(x509_s, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
     }
 
-    new = malloc(sizeof(struct tls));
-    if (!new || !list_push(tlsconfs, new))
-	debugx(1, DBG_ERR, "malloc failed");
-
-    memset(new, 0, sizeof(struct tls));
-    new->name = stringcopy(value, 0);
-    if (!new->name)
-	debugx(1, DBG_ERR, "malloc failed");
-    new->ctx = ctx;
-    debug(DBG_DBG, "tlsadd: added TLS context %s", value);
+    debug(DBG_DBG, "tlscreatectx: created TLS context %s", conf->name);
+    return ctx;
 }
 
 SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
     struct list_node *entry;
     struct tls *t, *t1 = NULL, *t2 = NULL;
+
+    pthread_mutex_lock(&tlsconfs_lock);
     
     for (entry = list_first(tlsconfs); entry; entry = list_next(entry)) {
 	t = (struct tls *)entry->data;
@@ -3246,8 +3243,14 @@ SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
     }
 
     t = (t1 ? t1 : t2);
-    if (!t)
+    if (!t) {
+	pthread_mutex_unlock(&tlsconfs_lock);
 	return NULL;
+    }
+
+    if (!t->ctx)
+	t->ctx = tlscreatectx(t);
+    pthread_mutex_unlock(&tlsconfs_lock);
     return t->ctx;
 }
 
@@ -3823,7 +3826,9 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->name = stringcopy(val, 0);
     if (!conf->host)
 	conf->host = stringcopy(val, 0);
-
+    if (!conf->name || !conf->host)
+	debugx(1, DBG_ERR, "malloc failed");
+	
     if (!conftype)
 	debugx(1, DBG_ERR, "error in block %s, option type missing", block);
     conf->type = protoname2int(conftype);
@@ -4038,29 +4043,63 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
 }
 
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    char *cacertfile = NULL, *cacertpath = NULL, *certfile = NULL, *certkeyfile = NULL, *certkeypwd = NULL;
-    uint8_t crlcheck = 0;
+    struct tls *conf;
     
     debug(DBG_DBG, "conftls_cb called for %s", block);
     
-    if (!getgenericconfig(cf, block,
-		     "CACertificateFile", CONF_STR, &cacertfile,
-		     "CACertificatePath", CONF_STR, &cacertpath,
-		     "CertificateFile", CONF_STR, &certfile,
-		     "CertificateKeyFile", CONF_STR, &certkeyfile,
-		     "CertificateKeyPassword", CONF_STR, &certkeypwd,
-		     "CRLCheck", CONF_BLN, &crlcheck,
-		     NULL
-			  ))
-	debugx(1, DBG_ERR, "configuration error");
+    conf = malloc(sizeof(struct tls));
+    if (!conf) {
+	debug(DBG_ERR, "conftls_cb: malloc failed");
+	return 0;
+    }
+    memset(conf, 0, sizeof(struct tls));
     
-    tlsadd(val, cacertfile, cacertpath, certfile, certkeyfile, certkeypwd, crlcheck);
-    free(cacertfile);
-    free(cacertpath);
-    free(certfile);
-    free(certkeyfile);
-    free(certkeypwd);
+    if (!getgenericconfig(cf, block,
+		     "CACertificateFile", CONF_STR, &conf->cacertfile,
+		     "CACertificatePath", CONF_STR, &conf->cacertpath,
+		     "CertificateFile", CONF_STR, &conf->certfile,
+		     "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
+		     "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
+		     "CRLCheck", CONF_BLN, &conf->crlcheck,
+		     NULL
+			  )) {
+	debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
+	goto errexit;
+    }
+    if (!conf->certfile || !conf->certkeyfile) {
+	debug(DBG_ERR, "conftls_cb: TLSCertificateFile and TLSCertificateKeyFile must be specified in block %s", val);
+	goto errexit;
+    }
+    if (!conf->cacertfile && !conf->cacertpath) {
+	debug(DBG_ERR, "conftls_cb: CA Certificate file or path need to be specified in block %s", val);
+	goto errexit;
+    }
+
+    conf->name = stringcopy(val, 0);
+    if (!conf->name) {
+	debug(DBG_ERR, "conftls_cb: malloc failed");
+	goto errexit;
+    }
+    
+    pthread_mutex_lock(&tlsconfs_lock);
+    if (!list_push(tlsconfs, conf)) {
+	debug(DBG_ERR, "conftls_cb: malloc failed");
+	pthread_mutex_unlock(&tlsconfs_lock);
+	goto errexit;
+    }
+    pthread_mutex_unlock(&tlsconfs_lock);
+	    
+    debug(DBG_DBG, "conftls_cb: added TLS block %s", val);
     return 1;
+
+ errexit:
+    free(conf->cacertfile);
+    free(conf->cacertpath);
+    free(conf->certfile);
+    free(conf->certkeyfile);
+    free(conf->certkeypwd);
+    free(conf);
+    return 0;
 }
 
 int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
@@ -4213,6 +4252,8 @@ int main(int argc, char **argv) {
     
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
+    pthread_mutex_init(&tlsconfs_lock, NULL);
+    
     getargs(argc, argv, &foreground, &pretend, &loglevel, &configfile);
     if (loglevel)
 	debug_set_level(loglevel);

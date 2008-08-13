@@ -150,6 +150,12 @@ struct realm {
 
 struct tls {
     char *name;
+    char *cacertfile;
+    char *cacertpath;
+    char *certfile;
+    char *certkeyfile;
+    char *certkeypwd;
+    uint8_t crlcheck;
     SSL_CTX *ctx;
 };
 
