@@ -71,7 +71,7 @@ static int udp_server_sock = -1;
 static int udp_accserver_sock = -1;
 static int udp_client4_sock = -1;
 static int udp_client6_sock = -1;
-static pthread_mutex_t *ssl_locks;
+static pthread_mutex_t *ssl_locks = NULL;
 static long *ssl_lock_count;
 extern int optind;
 extern char *optarg;
