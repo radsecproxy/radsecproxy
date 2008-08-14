@@ -721,8 +721,13 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *p;
     struct list_node *node;
+    fd_set readfds;
     
     for (;;) {
+	FD_ZERO(&readfds);
+        FD_SET(s, &readfds);
+	if (select(s + 1, &readfds, NULL, NULL, NULL) < 1)
+	    continue;
 	cnt = recvfrom(s, buf, 4, MSG_PEEK, (struct sockaddr *)&from, &fromlen);
 	if (cnt == -1) {
 	    debug(DBG_WARN, "radudpget: recv failed");
