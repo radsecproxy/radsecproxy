@@ -2398,6 +2398,7 @@ void *tlsserverwr(void *arg) {
 		/* ssl might have changed while waiting */
 		pthread_mutex_unlock(&replyq->mutex);
 		debug(DBG_DBG, "tlsserverwr: exiting as requested");
+		ERR_remove_state(0);
 		pthread_exit(NULL);
 	    }
 	}
@@ -2502,6 +2503,7 @@ void *tlsservernew(void *arg) {
 
  exit:
     SSL_free(ssl);
+    ERR_remove_state(0);
     shutdown(s, SHUT_RDWR);
     close(s);
     pthread_exit(NULL);
@@ -2603,6 +2605,7 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
 	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
 	debugx(1, DBG_ERR, "Error adding CA subjects in TLS context %s", value);
     }
+    ERR_clear_error(); /* add_dir_cert_subj returns errors on success */
     SSL_CTX_set_client_CA_list(ctx, calist);
     
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
