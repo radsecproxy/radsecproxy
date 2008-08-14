@@ -90,12 +90,15 @@ void *udpserverrd(void *arg);
 void *tlslistener(void *arg);
 void *tcplistener(void *arg);
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
+int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text);
 void *udpclientrd(void *arg);
 void *tlsclientrd(void *arg);
+void *dtlsclientrd(void *arg);
 void *tcpclientrd(void *arg);
 int clientradputudp(struct server *server, unsigned char *rad);
 int clientradputtls(struct server *server, unsigned char *rad);
+int clientradputdtls(struct server *server, unsigned char *rad);
 int clientradputtcp(struct server *server, unsigned char *rad);
     
 static const struct protodefs protodefs[] = {
@@ -151,9 +154,9 @@ static const struct protodefs protodefs[] = {
 	60, /* retryintervalmax */
 	udpserverrd, /* listener */
 	&options.sourceudp, /* srcaddrport */
-	tlsconnect, /* connecter */
-	udpclientrd, /* clientreader */
-	clientradputudp /* clientradput */
+	dtlsconnect, /* connecter */
+	dtlsclientrd, /* clientreader */
+	clientradputdtls /* clientradput */
     },
     {   NULL
     }
@@ -986,6 +989,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
     struct timeval now;
     time_t elapsed;
     X509 *cert;
+    unsigned long error;
     
     debug(DBG_DBG, "tlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -1032,8 +1036,11 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	SSL_free(server->ssl);
 	server->ssl = SSL_new(server->conf->ssl_ctx);
 	SSL_set_fd(server->ssl, server->sock);
-	if (SSL_connect(server->ssl) <= 0)
+	if (SSL_connect(server->ssl) <= 0) {
+	    while ((error = ERR_get_error()))
+		debug(DBG_ERR, "tlsconnect: TLS: %s", ERR_error_string(error, NULL));
 	    continue;
+	}
 	cert = verifytlscert(server->ssl);
 	if (!cert)
 	    continue;
@@ -1049,6 +1056,20 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
     return 1;
 }
 
+int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
+    BIO *dummybio, *wbio;
+    
+    debug(DBG_DBG, "dtlsconnect: called from %s", text);
+    server->ssl = SSL_new(server->conf->ssl_ctx);
+    SSL_set_connect_state(server->ssl);
+    dummybio = BIO_new(BIO_s_mem());
+    wbio = BIO_new_dgram(server->sock, BIO_NOCLOSE);
+    BIO_dgram_set_peer(wbio, server->conf->addrinfo->ai_addr);
+    /* the real rbio will be set by radudpget */
+    SSL_set_bio(server->ssl, dummybio, wbio);
+    return 1;
+}
+    
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval now;
     time_t elapsed;
@@ -1302,6 +1323,21 @@ int clientradputtls(struct server *server, unsigned char *rad) {
 
     server->connectionok = 1;
     debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->host);
+    return 1;
+}
+
+int clientradputdtls(struct server *server, unsigned char *rad) {
+    int cnt;
+    size_t len;
+    unsigned long error;
+    struct clsrvconf *conf = server->conf;
+    
+    len = RADLEN(rad);
+    while ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
+	while ((error = ERR_get_error()))
+	    debug(DBG_ERR, "clientradputdtls: DTLS: %s", ERR_error_string(error, NULL));
+    }
+    debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %d to DTLS peer %s", cnt, len, conf->host);
     return 1;
 }
 
@@ -2575,6 +2611,17 @@ void *tlsclientrd(void *arg) {
 		break;
 	    }
 	}
+    }
+    ERR_remove_state(0);
+    server->clientrdgone = 1;
+    return NULL;
+}
+
+void *dtlsclientrd(void *arg) {
+    struct server *server = (struct server *)arg;
+    
+    for (;;) {
+	sleep(1000);
     }
     ERR_remove_state(0);
     server->clientrdgone = 1;
