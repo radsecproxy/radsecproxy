@@ -2571,7 +2571,7 @@ void *tlsclientrd(void *arg) {
 	    }
 	}
     }
-    ERR_remove_state();
+    ERR_remove_state(0);
     server->clientrdgone = 1;
     return NULL;
 }
@@ -2765,7 +2765,7 @@ void *clientwr(void *arg) {
 	    freeclsrvconf(conf);
     }
     freeserver(server, 1);
-    ERR_remove_state();
+    ERR_remove_state(0);
     return NULL;
 }
 
@@ -2824,7 +2824,7 @@ void *tlsserverwr(void *arg) {
 		/* ssl might have changed while waiting */
 		pthread_mutex_unlock(&replyq->mutex);
 		debug(DBG_DBG, "tlsserverwr: exiting as requested");
-		ERR_remove_state();
+		ERR_remove_state(0);
 		pthread_exit(NULL);
 	    }
 	}
@@ -2933,7 +2933,7 @@ void *tlsservernew(void *arg) {
 
  exit:
     SSL_free(ssl);
-    ERR_remove_state();
+    ERR_remove_state(0);
     shutdown(s, SHUT_RDWR);
     close(s);
     pthread_exit(NULL);
