@@ -151,7 +151,7 @@ static const struct protodefs protodefs[] = {
 	60, /* retryintervalmax */
 	udpserverrd, /* listener */
 	&options.sourceudp, /* srcaddrport */
-	NULL, /* connecter */
+	tlsconnect, /* connecter */
 	udpclientrd, /* clientreader */
 	clientradputudp /* clientradput */
     },
@@ -2571,6 +2571,7 @@ void *tlsclientrd(void *arg) {
 	    }
 	}
     }
+    ERR_remove_state();
     server->clientrdgone = 1;
     return NULL;
 }
@@ -2764,6 +2765,7 @@ void *clientwr(void *arg) {
 	    freeclsrvconf(conf);
     }
     freeserver(server, 1);
+    ERR_remove_state();
     return NULL;
 }
 
@@ -2822,6 +2824,7 @@ void *tlsserverwr(void *arg) {
 		/* ssl might have changed while waiting */
 		pthread_mutex_unlock(&replyq->mutex);
 		debug(DBG_DBG, "tlsserverwr: exiting as requested");
+		ERR_remove_state();
 		pthread_exit(NULL);
 	    }
 	}
@@ -2930,6 +2933,7 @@ void *tlsservernew(void *arg) {
 
  exit:
     SSL_free(ssl);
+    ERR_remove_state();
     shutdown(s, SHUT_RDWR);
     close(s);
     pthread_exit(NULL);
@@ -3180,6 +3184,7 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 	break;
     case RAD_DTLS:
 	ctx = SSL_CTX_new(DTLSv1_method());
+	SSL_CTX_set_read_ahead(ctx, 1);
 	break;
     }
     if (!ctx) {
@@ -3220,6 +3225,7 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 	SSL_CTX_free(ctx);
 	return NULL;
     }
+    ERR_clear_error(); /* add_dir_cert_subj returns errors on success */
     SSL_CTX_set_client_CA_list(ctx, calist);
     
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
