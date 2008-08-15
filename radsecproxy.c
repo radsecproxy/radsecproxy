@@ -343,42 +343,6 @@ int prefixmatch(void *a1, void *a2, uint8_t len) {
     return (((uint8_t *)a1)[l] & mask[r]) == (((uint8_t *)a2)[l] & mask[r]);
 }
 
-/* check if conf has matching address */
-struct clsrvconf *checkconfaddr(char type, struct sockaddr *addr, struct clsrvconf *conf) {
-    struct sockaddr_in6 *sa6 = NULL;
-    struct in_addr *a4 = NULL;
-    struct addrinfo *res;
-    
-    if (addr->sa_family == AF_INET6) {
-        sa6 = (struct sockaddr_in6 *)addr;
-        if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) {
-            a4 = (struct in_addr *)&sa6->sin6_addr.s6_addr[12];
-	    sa6 = NULL;
-	}
-    } else
-	a4 = &((struct sockaddr_in *)addr)->sin_addr;
-
-    if (conf->type == type) {
-	if (conf->prefixlen == 255) {
-	    for (res = conf->addrinfo; res; res = res->ai_next)
-		if ((a4 && res->ai_family == AF_INET &&
-		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
-		    (sa6 && res->ai_family == AF_INET6 &&
-		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
-		    return conf;
-	} else {
-	    res = conf->addrinfo;
-	    if (res &&
-		((a4 && res->ai_family == AF_INET &&
-		  prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, conf->prefixlen)) ||
-		 (sa6 && res->ai_family == AF_INET6 &&
-		  prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, conf->prefixlen))))
-		return conf;
-	}
-    }
-    return NULL;
-}
-
 /* returns next config with matching address, or NULL */
 struct clsrvconf *find_conf(char type, struct sockaddr *addr, struct list *confs, struct list_node **cur) {
     struct sockaddr_in6 *sa6 = NULL;
@@ -558,78 +522,72 @@ void addserver(struct clsrvconf *conf) {
 }
 
 /* exactly one of client and server must be non-NULL */
-/* should probably take peer list (client(s) or server(s)) as argument instead */
-/* if *peer == NULL we return who we received from, else require it to be from peer */
+/* return who we received from in *client or *server */
 /* return from in sa if not NULL */
 unsigned char *radudpget(int s, struct client **client, struct server **server, struct sockaddr_storage *sa) {
     int cnt, len;
-    unsigned char buf[65536], *rad;
+    unsigned char buf[4], *rad;
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *p;
     struct list_node *node;
+    fd_set readfds;
     
     for (;;) {
-	cnt = recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr *)&from, &fromlen);
+	FD_ZERO(&readfds);
+	FD_SET(s, &readfds);
+	if (select(s + 1, &readfds, NULL, NULL, NULL) < 1)
+	    continue;
+	cnt = recvfrom(s, buf, 4, MSG_PEEK, (struct sockaddr *)&from, &fromlen);
 	if (cnt == -1) {
 	    debug(DBG_WARN, "radudpget: recv failed");
 	    continue;
 	}
-	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
-
-	if (cnt < 20) {
-	    debug(DBG_WARN, "radudpget: packet too small");
+	
+	p = find_conf('U', (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL);
+	if (!p) {
+	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
+	    recv(s, buf, 4, 0);
 	    continue;
 	}
-    
+	
 	len = RADLEN(buf);
 	if (len < 20) {
 	    debug(DBG_WARN, "radudpget: length too small");
-	    continue;
-	}
-
-	if (cnt < len) {
-	    debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
-	    continue;
-	}
-	if (cnt > len)
-	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
-
-	if (client)
-	    if (*client)
-		p = checkconfaddr('U', (struct sockaddr *)&from, (*client)->conf);
-	    else
-		p = find_conf('U', (struct sockaddr *)&from, clconfs, NULL);
-	else
-	    if (*server)
-		p = checkconfaddr('U', (struct sockaddr *)&from, (*server)->conf);
-	    else
-		p = find_conf('U', (struct sockaddr *)&from, srvconfs, NULL);
-
-	if (!p) {
-	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
+	    recv(s, buf, 4, 0);
 	    continue;
 	}
 	
 	rad = malloc(len);
 	if (!rad) {
 	    debug(DBG_ERR, "radudpget: malloc failed");
+	    recv(s, buf, 4, 0);
 	    continue;
 	}
 	
-	if (client && !*client) {
+	cnt = recv(s, rad, len, MSG_TRUNC);
+	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
+
+	if (cnt < len) {
+	    debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
+	    free(rad);
+	    continue;
+	}
+	
+	if (cnt > len)
+	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
+
+	if (client) {
 	    node = list_first(p->clients);
 	    *client = node ? (struct client *)node->data : addclient(p);
 	    if (!*client) {
 		free(rad);
 		continue;
 	    }
-	} else if (server && !*server)
+	} else if (server)
 	    *server = p->servers;
-	
 	break;
     }
-    memcpy(rad, buf, len);
     if (sa)
 	*sa = from;
     return rad;
