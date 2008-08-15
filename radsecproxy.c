@@ -90,7 +90,7 @@ void *udpserverrd(void *arg);
 void *tlslistener(void *arg);
 void *tcplistener(void *arg);
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
-int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
+int dtlsinit(struct server *server, struct timeval *when, int timeout, char *text);
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text);
 void *udpclientrd(void *arg);
 void *tlsclientrd(void *arg);
@@ -152,9 +152,9 @@ static const struct protodefs protodefs[] = {
 	10, /* retrycountmax */
 	REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
 	60, /* retryintervalmax */
-	udpserverrd, /* listener */
+	NULL, /* listener */
 	&options.sourceudp, /* srcaddrport */
-	dtlsconnect, /* connecter */
+	dtlsinit, /* connecter */
 	dtlsclientrd, /* clientreader */
 	clientradputdtls /* clientradput */
     },
@@ -437,42 +437,6 @@ int prefixmatch(void *a1, void *a2, uint8_t len) {
     return (((uint8_t *)a1)[l] & mask[r]) == (((uint8_t *)a2)[l] & mask[r]);
 }
 
-/* check if conf has matching address */
-struct clsrvconf *checkconfaddr(uint8_t type, struct sockaddr *addr, struct clsrvconf *conf) {
-    struct sockaddr_in6 *sa6 = NULL;
-    struct in_addr *a4 = NULL;
-    struct addrinfo *res;
-    
-    if (addr->sa_family == AF_INET6) {
-        sa6 = (struct sockaddr_in6 *)addr;
-        if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) {
-            a4 = (struct in_addr *)&sa6->sin6_addr.s6_addr[12];
-	    sa6 = NULL;
-	}
-    } else
-	a4 = &((struct sockaddr_in *)addr)->sin_addr;
-
-    if (conf->type == type) {
-	if (conf->prefixlen == 255) {
-	    for (res = conf->addrinfo; res; res = res->ai_next)
-		if ((a4 && res->ai_family == AF_INET &&
-		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
-		    (sa6 && res->ai_family == AF_INET6 &&
-		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
-		    return conf;
-	} else {
-	    res = conf->addrinfo;
-	    if (res &&
-		((a4 && res->ai_family == AF_INET &&
-		  prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, conf->prefixlen)) ||
-		 (sa6 && res->ai_family == AF_INET6 &&
-		  prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, conf->prefixlen))))
-		return conf;
-	}
-    }
-    return NULL;
-}
-
 /* returns next config with matching address, or NULL */
 struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *confs, struct list_node **cur) {
     struct sockaddr_in6 *sa6 = NULL;
@@ -714,8 +678,7 @@ int addserver(struct clsrvconf *conf) {
 }
 
 /* exactly one of client and server must be non-NULL */
-/* should probably take peer list (client(s) or server(s)) as argument instead */
-/* if *peer == NULL we return who we received from, else require it to be from peer */
+/* return who we received from in *client or *server */
 /* return from in sa if not NULL */
 unsigned char *radudpget(int s, struct client **client, struct server **server, struct sockaddr_storage *sa) {
     int cnt, len;
@@ -737,17 +700,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    continue;
 	}
 
-	if (client)
-	    if (*client)
-		p = checkconfaddr(RAD_UDP, (struct sockaddr *)&from, (*client)->conf);
-	    else
-		p = find_conf(RAD_UDP, (struct sockaddr *)&from, clconfs, NULL);
-	else
-	    if (*server)
-		p = checkconfaddr(RAD_UDP, (struct sockaddr *)&from, (*server)->conf);
-	    else
-		p = find_conf(RAD_UDP, (struct sockaddr *)&from, srvconfs, NULL);
-
+	p = find_conf(RAD_UDP, (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL);
 	if (!p) {
 	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
 	    recv(s, buf, 4, 0);
@@ -780,16 +733,15 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	if (cnt > len)
 	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
 
-	if (client && !*client) {
+	if (client) {
 	    node = list_first(p->clients);
 	    *client = node ? (struct client *)node->data : addclient(p);
 	    if (!*client) {
 		free(rad);
 		continue;
 	    }
-	} else if (server && !*server)
+	} else if (server)
 	    *server = p->servers;
-	
 	break;
     }
     if (sa)
@@ -1056,13 +1008,17 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
     return 1;
 }
 
-int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
+int dtlsinit(struct server *server, struct timeval *when, int timeout, char *text) {
     BIO *dummybio, *wbio;
     
-    debug(DBG_DBG, "dtlsconnect: called from %s", text);
+    debug(DBG_DBG, "dtlsinit: called from %s", text);
     server->ssl = SSL_new(server->conf->ssl_ctx);
     SSL_set_connect_state(server->ssl);
+    
     dummybio = BIO_new(BIO_s_mem());
+    /* trying to read from this BIO always returns retry */
+    BIO_set_mem_eof_return(dummybio, -1);
+    
     wbio = BIO_new_dgram(server->sock, BIO_NOCLOSE);
     BIO_dgram_set_peer(wbio, server->conf->addrinfo->ai_addr);
     /* the real rbio will be set by radudpget */
@@ -4364,7 +4320,7 @@ int main(int argc, char **argv) {
     pthread_sigmask(SIG_BLOCK, &sigset, NULL);
     pthread_create(&sigth, NULL, sighandler, NULL);
 
-    if (find_conf_type(RAD_UDP, clconfs, NULL)) {
+    if (find_conf_type(RAD_UDP, clconfs, NULL) || find_conf_type(RAD_DTLS, clconfs, NULL)) {
 	udp_server_replyq = newreplyq();
 	if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");
