@@ -90,7 +90,7 @@ void *udpserverrd(void *arg);
 void *tlslistener(void *arg);
 void *tcplistener(void *arg);
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
-int dtlsinit(struct server *server, struct timeval *when, int timeout, char *text);
+int dtlsinitserver(struct server *server, struct timeval *when, int timeout, char *text);
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text);
 void *udpclientrd(void *arg);
 void *tlsclientrd(void *arg);
@@ -154,7 +154,7 @@ static const struct protodefs protodefs[] = {
 	60, /* retryintervalmax */
 	NULL, /* listener */
 	&options.sourceudp, /* srcaddrport */
-	dtlsinit, /* connecter */
+	dtlsinitserver, /* connecter */
 	dtlsclientrd, /* clientreader */
 	clientradputdtls /* clientradput */
     },
@@ -531,7 +531,7 @@ struct client *addclient(struct clsrvconf *conf) {
     
     memset(new, 0, sizeof(struct client));
     new->conf = conf;
-    new->replyq = conf->type == RAD_UDP ? udp_server_replyq : newreplyq();
+    new->replyq = conf->type == RAD_UDP || conf->type == RAD_DTLS ? udp_server_replyq : newreplyq();
 
     list_push(conf->clients, new);
     return new;
@@ -677,12 +677,85 @@ int addserver(struct clsrvconf *conf) {
     return 0;
 }
 
+unsigned char *dtlsread(int s, struct clsrvconf *conf, SSL *ssl, int cnt, struct sockaddr *peer) {
+    unsigned char sslbuf[65536], *buf;
+    int sslbuflen = 65536, len;
+    BIO *rbio, *tmpbio;
+    BIO *dummybio, *wbio;
+    unsigned long error;
+    
+    buf = malloc(cnt);
+    if (!buf) {
+	debug(DBG_ERR, "dtlsread: malloc failed");
+	recv(s, sslbuf, 4, 0);
+	return NULL;
+    }
+
+    cnt = recv(s, buf, cnt, 0);
+    if (cnt == -1) {
+	debug(DBG_WARN, "dtlsread: recv failed");
+	free(buf);
+	return NULL;
+    }
+
+    dummybio = BIO_new(BIO_s_mem());
+    /* trying to read from this BIO always returns retry */
+    BIO_set_mem_eof_return(dummybio, -1);
+    wbio = BIO_new_dgram(s, BIO_NOCLOSE);
+    
+    if (peer)
+	BIO_dgram_set_peer(wbio, peer);
+    /* the real rbio will be set by radudpget */
+    SSL_set_bio(ssl, dummybio, wbio);
+    SSL_set_accept_state(ssl);
+
+    rbio = BIO_new_mem_buf(buf, cnt);
+    BIO_set_mem_eof_return(rbio, -1);
+    
+    tmpbio = ssl->rbio;
+    ssl->rbio = rbio;
+    cnt = SSL_read(ssl, sslbuf, sslbuflen);
+    debug(DBG_INFO, "dtlsread: DTLS: got %d bytes", cnt);
+
+    error = SSL_get_error(ssl, cnt);
+    ssl->rbio = tmpbio;
+    BIO_free(ssl->rbio);
+    free(buf);
+
+    if (cnt < 0) {
+	debug(DBG_ERR, "dtlsread: DTLS: %s", ERR_error_string(error, NULL));
+	if (error == SSL_ERROR_ZERO_RETURN) {
+	    /* remove ssl state? */
+	}
+	while ((error = ERR_get_error()))
+	    debug(DBG_ERR, "dtlsread: DTLS: %s", ERR_error_string(error, NULL));
+	return NULL;
+    }
+
+    len = RADLEN(sslbuf);
+    if (cnt < len) {
+	debug(DBG_WARN, "dtlsread: packet smaller than length field in radius header");
+	return NULL;
+    }
+    if (cnt > len)
+	debug(DBG_DBG, "dtlsread: packet was padded with %d bytes", cnt - len);
+
+    buf = malloc(cnt);
+    if (!buf) {
+	debug(DBG_ERR, "dtlsread: malloc failed");
+	return NULL;
+    }
+    
+    memcpy(buf, sslbuf, len);
+    return buf;
+}
+
 /* exactly one of client and server must be non-NULL */
 /* return who we received from in *client or *server */
 /* return from in sa if not NULL */
 unsigned char *radudpget(int s, struct client **client, struct server **server, struct sockaddr_storage *sa) {
     int cnt, len;
-    unsigned char buf[4], *rad;
+    unsigned char buf[4], *rad = NULL;
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *p;
@@ -690,55 +763,66 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     fd_set readfds;
     
     for (;;) {
+	if (rad) {
+	    free(rad);
+	    rad = NULL;
+	}
 	FD_ZERO(&readfds);
         FD_SET(s, &readfds);
 	if (select(s + 1, &readfds, NULL, NULL, NULL) < 1)
 	    continue;
-	cnt = recvfrom(s, buf, 4, MSG_PEEK, (struct sockaddr *)&from, &fromlen);
+	cnt = recvfrom(s, buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
 	if (cnt == -1) {
 	    debug(DBG_WARN, "radudpget: recv failed");
 	    continue;
 	}
 
-	p = find_conf(RAD_UDP, (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL);
-	if (!p) {
-	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
-	    recv(s, buf, 4, 0);
-	    continue;
-	}
+	if ((p = find_conf(RAD_UDP, (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL))) {
+	    len = RADLEN(buf);
+	    if (len < 20) {
+		debug(DBG_WARN, "radudpget: length too small");
+		recv(s, buf, 4, 0);
+		continue;
+	    }
+	    
+	    rad = malloc(len);
+	    if (!rad) {
+		debug(DBG_ERR, "radudpget: malloc failed");
+		recv(s, buf, 4, 0);
+		continue;
+	    }
 	
-	len = RADLEN(buf);
-	if (len < 20) {
-	    debug(DBG_WARN, "radudpget: length too small");
-	    recv(s, buf, 4, 0);
-	    continue;
-	}
-	
-	rad = malloc(len);
-	if (!rad) {
-	    debug(DBG_ERR, "radudpget: malloc failed");
-	    recv(s, buf, 4, 0);
-	    continue;
-	}
-	
-	cnt = recv(s, rad, len, MSG_TRUNC);
-	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
+	    cnt = recv(s, rad, len, MSG_TRUNC);
+	    debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
 
-	if (cnt < len) {
-	    debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
-	    free(rad);
-	    continue;
+	    if (cnt < len) {
+		debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
+		continue;
+	    }
+	
+	    if (cnt > len)
+		debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
+	} else {
+	    p = find_conf(RAD_DTLS, (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL);
+	    if (!p) {
+		debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
+		recv(s, buf, 4, 0);
+		continue;
+	    }
 	}
 	
-	if (cnt > len)
-	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
-
 	if (client) {
 	    node = list_first(p->clients);
 	    *client = node ? (struct client *)node->data : addclient(p);
-	    if (!*client) {
-		free(rad);
+	    if (!*client)
 		continue;
+	    if (p->type == RAD_DTLS) {
+		if (!(*client)->ssl)
+		    (*client)->ssl = SSL_new(p->ssl_ctx);
+		rad = dtlsread(s, p, (*client)->ssl, cnt, (struct sockaddr *)&from);
+		if (!rad)
+		    continue;
+		debug(DBG_DBG, "radudpget: got DTLS message from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
 	    }
 	} else if (server)
 	    *server = p->servers;
@@ -1008,21 +1092,21 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
     return 1;
 }
 
-int dtlsinit(struct server *server, struct timeval *when, int timeout, char *text) {
+int dtlsinitserver(struct server *server, struct timeval *when, int timeout, char *text) {
     BIO *dummybio, *wbio;
     
-    debug(DBG_DBG, "dtlsinit: called from %s", text);
+    debug(DBG_DBG, "dtlsinitserver: called from %s", text);
     server->ssl = SSL_new(server->conf->ssl_ctx);
     SSL_set_connect_state(server->ssl);
     
     dummybio = BIO_new(BIO_s_mem());
     /* trying to read from this BIO always returns retry */
     BIO_set_mem_eof_return(dummybio, -1);
-    
     wbio = BIO_new_dgram(server->sock, BIO_NOCLOSE);
     BIO_dgram_set_peer(wbio, server->conf->addrinfo->ai_addr);
     /* the real rbio will be set by radudpget */
     SSL_set_bio(server->ssl, dummybio, wbio);
+
     return 1;
 }
     
@@ -3158,6 +3242,40 @@ void createlisteners(uint8_t type, char **args) {
 	createlistener(type, NULL);
 }
 
+void *ssl_info_callback(const SSL *s, int where, int ret) {
+    const char *str;
+    int w;
+
+    w = where & ~SSL_ST_MASK;
+
+    if (w & SSL_ST_CONNECT)
+	str = "SSL_connect";
+    else if (w & SSL_ST_ACCEPT)
+	str = "SSL_accept";
+    else
+	str = "undefined";
+
+    if (where & SSL_CB_LOOP) {
+	debug(DBG_WARN, "%s:%s\n", str, SSL_state_string_long(s));
+    }
+    else if (where & SSL_CB_ALERT) {
+	str = (where & SSL_CB_READ) ? "read" : "write";
+	debug(DBG_WARN, "SSL3 alert %s:%s:%s\n",
+	      str,
+	      SSL_alert_type_string_long(ret),
+	      SSL_alert_desc_string_long(ret));
+    }
+    else if (where & SSL_CB_EXIT) {
+	if (ret == 0)
+	    debug(DBG_WARN, "%s:failed in %s\n",
+		  str, SSL_state_string_long(s));
+	else if (ret < 0)
+	    debug(DBG_WARN, "%s:error in %s\n",
+		  str,SSL_state_string_long(s));
+    }
+    return NULL;
+}
+
 SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     SSL_CTX *ctx = NULL;
     STACK_OF(X509_NAME) *calist;
@@ -3192,6 +3310,7 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 	break;
     case RAD_DTLS:
 	ctx = SSL_CTX_new(DTLSv1_method());
+	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
 	SSL_CTX_set_read_ahead(ctx, 1);
 	break;
     }
@@ -4301,8 +4420,6 @@ int main(int argc, char **argv) {
 
     if (!list_first(clconfs))
 	debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");
-    if (!list_first(srvconfs))
-	debugx(1, DBG_ERR, "No servers configured, nothing to do, exiting");
     if (!list_first(realms))
 	debugx(1, DBG_ERR, "No realms configured, nothing to do, exiting");
 
