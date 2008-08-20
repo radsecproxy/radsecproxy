@@ -68,11 +68,13 @@
 static struct options options;
 struct list *clconfs, *srvconfs, *realms, *tlsconfs, *rewriteconfs;
 
-static struct addrinfo *srcprotores[3] = { NULL, NULL, NULL };
+static struct addrinfo *srcprotores[4] = { NULL, NULL, NULL, NULL };
 
 static struct queue *udp_server_replyq = NULL;
 static int udp_client4_sock = -1;
 static int udp_client6_sock = -1;
+static int dtls_client4_sock = -1;
+static int dtls_client6_sock = -1;
 static pthread_mutex_t tlsconfs_lock;
 static pthread_mutex_t *ssl_locks = NULL;
 static long *ssl_lock_count;
@@ -87,6 +89,7 @@ void freerealm(struct realm *realm);
 void freeclsrvconf(struct clsrvconf *conf);
 void freerqdata(struct request *rq);
 void *udpserverrd(void *arg);
+void *udpdtlsserverrd(void *arg);
 void *tlslistener(void *arg);
 void *tcplistener(void *arg);
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
@@ -148,15 +151,15 @@ static const struct protodefs protodefs[] = {
 	clientradputtcp /* clientradput */
     },
     {   "dtls", /* DTLS, assuming RAD_DTLS defined as 3 */
-	NULL, /* secretdefault */
+	"mysecret", /* secretdefault */
 	SOCK_DGRAM, /* socktype */
-	"1812", /* portdefault */
+	"2083", /* portdefault */
 	REQUEST_RETRY_COUNT, /* retrycountdefault */
 	10, /* retrycountmax */
 	REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
 	60, /* retryintervalmax */
-	NULL, /* listener */
-	&options.sourceudp, /* srcaddrport */
+	udpdtlsserverrd, /* listener */
+	&options.sourcedtls, /* srcaddrport */
 	dtlsconnect, /* connecter */
 	dtlsclientrd, /* clientreader */
 	clientradputdtls /* clientradput */
@@ -633,10 +636,8 @@ int addserver(struct clsrvconf *conf) {
     conf->servers->conf = conf;
 
     type = conf->type;
-    if (type == RAD_DTLS) {
+    if (type == RAD_DTLS)
 	conf->servers->rbios = newqueue();
-	type = RAD_UDP;
-    }
     
     if (!srcprotores[type]) {
 	res = resolve_hostport(type, *conf->pdef->srcaddrport, NULL);
@@ -645,7 +646,8 @@ int addserver(struct clsrvconf *conf) {
 	freeclsrvres(res);
     }
 
-    if (type == RAD_UDP) {
+    switch (type) {
+    case RAD_UDP:
 	switch (conf->addrinfo->ai_family) {
 	case AF_INET:
 	    if (udp_client4_sock < 0) {
@@ -666,9 +668,32 @@ int addserver(struct clsrvconf *conf) {
 	default:
 	    debugx(1, DBG_ERR, "addserver: unsupported address family");
 	}
-	
-    } else
+	break;
+    case RAD_DTLS:
+	switch (conf->addrinfo->ai_family) {
+	case AF_INET:
+	    if (dtls_client4_sock < 0) {
+		dtls_client4_sock = bindtoaddr(srcprotores[RAD_DTLS], AF_INET, 0, 1);
+		if (dtls_client4_sock < 0)
+		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+	    }
+	    conf->servers->sock = dtls_client4_sock;
+	    break;
+	case AF_INET6:
+	    if (dtls_client6_sock < 0) {
+		dtls_client6_sock = bindtoaddr(srcprotores[RAD_DTLS], AF_INET6, 0, 1);
+		if (dtls_client6_sock < 0)
+		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+	    }
+	    conf->servers->sock = dtls_client6_sock;
+	    break;
+	default:
+	    debugx(1, DBG_ERR, "addserver: unsupported address family");
+	}
+	break;
+    default:
 	conf->servers->sock = -1;
+    }
     
     conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct request));
     if (!conf->servers->requests) {
@@ -709,9 +734,9 @@ int udp2bio(int s, struct queue *q, int cnt) {
     
     buf = malloc(cnt);
     if (!buf) {
+	unsigned char err;
 	debug(DBG_ERR, "udp2bio: malloc failed");
-	/* is this ok? */
-	recv(s, NULL, 0, 0);
+	recv(s, &err, 1, 0);
 	return 0;
     }
 
@@ -747,7 +772,6 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     struct clsrvconf *p;
     struct list_node *node;
     fd_set readfds;
-    pthread_t dtlsserverth;
     
     for (;;) {
 	if (rad) {
@@ -763,80 +787,50 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_WARN, "radudpget: recv failed");
 	    continue;
 	}
-	
-	if ((p = find_conf(RAD_UDP, (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL))) {
-	    if (cnt >= 20)
-		len = RADLEN(buf);
-	    if (cnt < 20 || len < 20) {
-		debug(DBG_WARN, "radudpget: length too small");
-		recv(s, buf, 4, 0);
-		continue;
-	    }
-	    
-	    rad = malloc(len);
-	    if (!rad) {
-		debug(DBG_ERR, "radudpget: malloc failed");
-		recv(s, buf, 4, 0);
-		continue;
-	    }
-	
-	    cnt = recv(s, rad, len, MSG_TRUNC);
-	    debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
-
-	    if (cnt < len) {
-		debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
-		continue;
-	    }
-	
-	    if (cnt > len)
-		debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
-	} else {
-	    p = find_conf(RAD_DTLS, (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL);
-	    if (!p) {
-		debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
-		recv(s, buf, 4, 0);
-		continue;
-	    }
+	if (cnt < 20) {
+	    debug(DBG_WARN, "radudpget: length too small");
+	    recv(s, buf, 4, 0);
+	    continue;
 	}
 	
+	p = find_conf(RAD_UDP, (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL);
+	if (!p) {
+	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
+	    recv(s, buf, 4, 0);
+	    continue;
+	}
+	
+	len = RADLEN(buf);
+	if (len < 20) {
+	    debug(DBG_WARN, "radudpget: length too small");
+	    recv(s, buf, 4, 0);
+	    continue;
+	}
+	    
+	rad = malloc(len);
+	if (!rad) {
+	    debug(DBG_ERR, "radudpget: malloc failed");
+	    recv(s, buf, 4, 0);
+	    continue;
+	}
+	
+	cnt = recv(s, rad, len, MSG_TRUNC);
+	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
+
+	if (cnt < len) {
+	    debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
+	    continue;
+	}
+	if (cnt > len)
+	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
+
 	if (client) {
 	    node = list_first(p->clients);
-	    switch (p->type) {
-	    case RAD_UDP:
-		*client = node ? (struct client *)node->data : addclient(p);
-		if (!*client)
-		    continue;
-		break;
-	    case RAD_DTLS:
-		if (node)
-		    *client = (struct client *)node->data;
-		else {
-		    *client = addclient(p);
-		    if (!*client)
-			continue;
-		    (*client)->sock = s;
-		    memcpy(&(*client)->addr, &from, fromlen);
-		    if (pthread_create(&dtlsserverth, NULL, dtlsservernew, (void *)*client)) {
-			debug(DBG_ERR, "radudpget: pthread_create failed");
-			removeclient(*client);
-			continue;
-		    }
-		    pthread_detach(dtlsserverth);
-		}
-		if (udp2bio(s, (*client)->rbios, cnt))
-		    debug(DBG_DBG, "radudpget: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
+	    *client = node ? (struct client *)node->data : addclient(p);
+	    if (!*client)
 		continue;
-	    default:
-		continue;
-	    }
-	} else if (server) {
+	} else if (server)
 	    *server = p->servers;
-	    if (p->type == RAD_DTLS) {
-		if (udp2bio(s, (*server)->rbios, cnt))
-		    debug(DBG_DBG, "radudpget: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
-		continue;
-	    }
-	}
 	break;
     }
     if (sa)
@@ -1101,6 +1095,58 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
     return 1;
+}
+
+void *udpdtlsserverrd(void *arg) {
+    int cnt, s = *(int *)arg;
+    unsigned char buf[4];
+    struct sockaddr_storage from;
+    socklen_t fromlen = sizeof(from);
+    struct clsrvconf *conf;
+    struct list_node *node;
+    struct client *client;
+    fd_set readfds;
+    pthread_t dtlsserverth;
+
+    for (;;) {
+	FD_ZERO(&readfds);
+        FD_SET(s, &readfds);
+	if (select(s + 1, &readfds, NULL, NULL, NULL) < 1)
+	    continue;
+	cnt = recvfrom(s, buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
+	if (cnt == -1) {
+	    debug(DBG_WARN, "udpdtlsserverrd: recv failed");
+	    continue;
+	}
+	conf = find_conf(RAD_DTLS, (struct sockaddr *)&from, clconfs, NULL);
+	if (!conf) {
+	    debug(DBG_WARN, "udpdtlsserverrd: got packet from wrong or unknown DTLS peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
+	    recv(s, buf, 4, 0);
+	    continue;
+	}
+	
+	node = list_first(conf->clients);
+	if (node)
+	    client = (struct client *)node->data;
+	else {
+	    client = addclient(conf);
+	    if (!client) {
+		recv(s, buf, 4, 0);
+		continue;
+	    }
+	    client->sock = s;
+	    memcpy(&client->addr, &from, fromlen);
+	    if (pthread_create(&dtlsserverth, NULL, dtlsservernew, (void *)client)) {
+		debug(DBG_ERR, "udpdtlsserverrd: pthread_create failed");
+		removeclient(client);
+		recv(s, buf, 4, 0);
+		continue;
+	    }
+	    pthread_detach(dtlsserverth);
+	}
+	if (udp2bio(s, client->rbios, cnt))
+	    debug(DBG_DBG, "udpdtlsserverrd: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
+    }
 }
 
 void *dtlsserverwr(void *arg) {
@@ -1378,12 +1424,11 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 	if (!cert)
 	    continue;
 	
-	if (verifyconfcert(cert, server->conf)) {
-	    X509_free(cert);
+	if (verifyconfcert(cert, server->conf))
 	    break;
-	}
 	X509_free(cert);
     }
+    X509_free(cert);
     debug(DBG_WARN, "dtlsconnect: DTLS connection to %s port %s up", server->conf->host, server->conf->port);
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
@@ -2935,6 +2980,36 @@ void *tlsclientrd(void *arg) {
     ERR_remove_state(0);
     server->clientrdgone = 1;
     return NULL;
+}
+
+void *udpdtlsclientrd(void *arg) {
+    int cnt, s = *(int *)arg;
+    unsigned char buf[4];
+    struct sockaddr_storage from;
+    socklen_t fromlen = sizeof(from);
+    struct clsrvconf *conf;
+    fd_set readfds;
+    
+    for (;;) {
+	FD_ZERO(&readfds);
+        FD_SET(s, &readfds);
+	if (select(s + 1, &readfds, NULL, NULL, NULL) < 1)
+	    continue;
+	cnt = recvfrom(s, buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
+	if (cnt == -1) {
+	    debug(DBG_WARN, "udpdtlsclientrd: recv failed");
+	    continue;
+	}
+	
+	conf = find_conf(RAD_DTLS, (struct sockaddr *)&from, srvconfs, NULL);
+	if (!conf) {
+	    debug(DBG_WARN, "udpdtlsclientrd: got packet from wrong or unknown DTLS peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
+	    recv(s, buf, 4, 0);
+	    continue;
+	}
+	if (udp2bio(s, conf->servers->rbios, cnt))
+	    debug(DBG_DBG, "radudpget: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
+    }
 }
 
 void *dtlsclientrd(void *arg) {
@@ -4588,10 +4663,12 @@ void getmainconfig(const char *configfile) {
 			  "ListenUDP", CONF_MSTR, &options.listenudp,
 			  "ListenTCP", CONF_MSTR, &options.listentcp,
 			  "ListenTLS", CONF_MSTR, &options.listentls,
+			  "ListenDTLS", CONF_MSTR, &options.listendtls,
 			  "ListenAccountingUDP", CONF_MSTR, &options.listenaccudp,
 			  "SourceUDP", CONF_STR, &options.sourceudp,
 			  "SourceTCP", CONF_STR, &options.sourcetcp,
 			  "SourceTLS", CONF_STR, &options.sourcetls,
+			  "SourceDTLS", CONF_STR, &options.sourcedtls,
 			  "LogLevel", CONF_LINT, &loglevel,
 			  "LogDestination", CONF_STR, &options.logdestination,
 			  "LoopPrevention", CONF_BLN, &options.loopprevention,
@@ -4683,7 +4760,7 @@ void *sighandler(void *arg) {
 }
 
 int main(int argc, char **argv) {
-    pthread_t sigth, udpclient4rdth, udpclient6rdth, udpserverwrth;
+    pthread_t sigth, udpclient4rdth, udpclient6rdth, udpserverwrth, dtlsclient4rdth, dtlsclient6rdth;
     sigset_t sigset;
     struct list_node *entry;
     uint8_t foreground = 0, pretend = 0, loglevel = 0;
@@ -4748,13 +4825,23 @@ int main(int argc, char **argv) {
 	if (pthread_create(&udpclient6rdth, NULL, protodefs[RAD_UDP].clientreader, (void *)&udp_client6_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     
+    if (dtls_client4_sock >= 0)
+	if (pthread_create(&dtlsclient4rdth, NULL, udpdtlsclientrd, (void *)&dtls_client4_sock))
+	    debugx(1, DBG_ERR, "pthread_create failed");
+    if (dtls_client6_sock >= 0)
+	if (pthread_create(&dtlsclient6rdth, NULL, udpdtlsclientrd, (void *)&dtls_client6_sock))
+	    debugx(1, DBG_ERR, "pthread_create failed");
+    
     if (find_conf_type(RAD_TCP, clconfs, NULL))
 	createlisteners(RAD_TCP, options.listentcp);
     
     if (find_conf_type(RAD_TLS, clconfs, NULL))
 	createlisteners(RAD_TLS, options.listentls);
     
-    if (find_conf_type(RAD_UDP, clconfs, NULL) || find_conf_type(RAD_DTLS, clconfs, NULL)) {
+    if (find_conf_type(RAD_DTLS, clconfs, NULL))
+	createlisteners(RAD_DTLS, options.listendtls);
+    
+    if (find_conf_type(RAD_UDP, clconfs, NULL)) {
 	udp_server_replyq = newqueue();
 	if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
 	    debugx(1, DBG_ERR, "pthread_create failed");

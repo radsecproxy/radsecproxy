@@ -46,10 +46,12 @@ struct options {
     char **listenudp;
     char **listentcp;
     char **listentls;
+    char **listendtls;
     char **listenaccudp;
     char *sourceudp;
     char *sourcetcp;
     char *sourcetls;
+    char *sourcedtls;
     char *logdestination;
     uint8_t loglevel;
     uint8_t loopprevention;
