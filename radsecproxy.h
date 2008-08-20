@@ -76,8 +76,8 @@ struct reply {
     int toudpsock; /* used by udpservwr */
 };
 
-struct replyq {
-    struct list *replies;
+struct queue {
+    struct list *entries;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
 };
@@ -112,9 +112,11 @@ struct clsrvconf {
 
 struct client {
     struct clsrvconf *conf;
-    int s; /* for tcp */
+    int sock; /* for tcp/dtls */
     SSL *ssl;
-    struct replyq *replyq;
+    struct queue *replyq;
+    struct queue *rbios; /* for dtls */
+    struct sockaddr_storage addr; /* for dtls */
 };
 
 struct server {
@@ -135,6 +137,7 @@ struct server {
     uint8_t newrq;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
+    struct queue *rbios; /* for dtls */
 };
 
 struct realm {

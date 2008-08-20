@@ -70,7 +70,7 @@ struct list *clconfs, *srvconfs, *realms, *tlsconfs, *rewriteconfs;
 
 static struct addrinfo *srcprotores[3] = { NULL, NULL, NULL };
 
-static struct replyq *udp_server_replyq = NULL;
+static struct queue *udp_server_replyq = NULL;
 static int udp_client4_sock = -1;
 static int udp_client6_sock = -1;
 static pthread_mutex_t tlsconfs_lock;
@@ -90,7 +90,8 @@ void *udpserverrd(void *arg);
 void *tlslistener(void *arg);
 void *tcplistener(void *arg);
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
-int dtlsinitserver(struct server *server, struct timeval *when, int timeout, char *text);
+int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
+void *dtlsservernew(void *arg);
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text);
 void *udpclientrd(void *arg);
 void *tlsclientrd(void *arg);
@@ -100,7 +101,9 @@ int clientradputudp(struct server *server, unsigned char *rad);
 int clientradputtls(struct server *server, unsigned char *rad);
 int clientradputdtls(struct server *server, unsigned char *rad);
 int clientradputtcp(struct server *server, unsigned char *rad);
-    
+X509 *verifytlscert(SSL *ssl);
+int radsrv(struct request *rq);
+
 static const struct protodefs protodefs[] = {
     {   "udp", /* UDP, assuming RAD_UDP defined as 0 */
 	NULL, /* secretdefault */
@@ -154,7 +157,7 @@ static const struct protodefs protodefs[] = {
 	60, /* retryintervalmax */
 	NULL, /* listener */
 	&options.sourceudp, /* srcaddrport */
-	dtlsinitserver, /* connecter */
+	dtlsconnect, /* connecter */
 	dtlsclientrd, /* clientreader */
 	clientradputdtls /* clientradput */
     },
@@ -500,18 +503,40 @@ struct clsrvconf *find_conf_type(uint8_t type, struct list *confs, struct list_n
     return NULL;
 }
 
-struct replyq *newreplyq() {
-    struct replyq *replyq;
+struct queue *newqueue() {
+    struct queue *q;
     
-    replyq = malloc(sizeof(struct replyq));
-    if (!replyq)
+    q = malloc(sizeof(struct queue));
+    if (!q)
 	debugx(1, DBG_ERR, "malloc failed");
-    replyq->replies = list_create();
-    if (!replyq->replies)
+    q->entries = list_create();
+    if (!q->entries)
 	debugx(1, DBG_ERR, "malloc failed");
-    pthread_mutex_init(&replyq->mutex, NULL);
-    pthread_cond_init(&replyq->cond, NULL);
-    return replyq;
+    pthread_mutex_init(&q->mutex, NULL);
+    pthread_cond_init(&q->cond, NULL);
+    return q;
+}
+
+void removequeue(struct queue *q) {
+    struct list_node *entry;
+    
+    pthread_mutex_lock(&q->mutex);
+    for (entry = list_first(q->entries); entry; entry = list_next(entry))
+	free(((struct reply *)entry)->buf);
+    list_destroy(q->entries);
+    pthread_cond_destroy(&q->cond);
+    pthread_mutex_unlock(&q->mutex);
+    pthread_mutex_destroy(&q->mutex);
+}
+
+void freebios(struct queue *q) {
+    BIO *bio;
+    
+    pthread_mutex_lock(&q->mutex);
+    while ((bio = (BIO *)list_shift(q->entries)))
+	BIO_free(bio);
+    pthread_mutex_unlock(&q->mutex);
+    removequeue(q);
 }
 
 struct client *addclient(struct clsrvconf *conf) {
@@ -531,25 +556,19 @@ struct client *addclient(struct clsrvconf *conf) {
     
     memset(new, 0, sizeof(struct client));
     new->conf = conf;
-    new->replyq = conf->type == RAD_UDP || conf->type == RAD_DTLS ? udp_server_replyq : newreplyq();
-
+    new->replyq = conf->type == RAD_UDP ? udp_server_replyq : newqueue();
+    if (conf->type == RAD_DTLS)
+	new->rbios = newqueue();
     list_push(conf->clients, new);
     return new;
 }
 
 void removeclient(struct client *client) {
-    struct list_node *entry;
-    
     if (!client || !client->conf->clients)
 	return;
-
-    pthread_mutex_lock(&client->replyq->mutex);
-    for (entry = list_first(client->replyq->replies); entry; entry = list_next(entry))
-	free(((struct reply *)entry)->buf);
-    list_destroy(client->replyq->replies);
-    pthread_cond_destroy(&client->replyq->cond);
-    pthread_mutex_unlock(&client->replyq->mutex);
-    pthread_mutex_destroy(&client->replyq->mutex);
+    removequeue(client->replyq);
+    if (client->rbios)
+	freebios(client->rbios);
     list_removedata(client->conf->clients, client);
     free(client);
 }
@@ -580,12 +599,14 @@ void freeserver(struct server *server, uint8_t destroymutex) {
     if (!server)
 	return;
 
-    if(server->requests) {
+    if (server->requests) {
 	rq = server->requests;
 	for (end = rq + MAX_REQUESTS; rq < end; rq++)
 	    freerqdata(rq);
 	free(server->requests);
     }
+    if (server->rbios)
+	freebios(server->rbios);
     free(server->dynamiclookuparg);
     if (destroymutex) {
 	pthread_mutex_destroy(&server->lock);
@@ -612,8 +633,10 @@ int addserver(struct clsrvconf *conf) {
     conf->servers->conf = conf;
 
     type = conf->type;
-    if (type == RAD_DTLS)
+    if (type == RAD_DTLS) {
+	conf->servers->rbios = newqueue();
 	type = RAD_UDP;
+    }
     
     if (!srcprotores[type]) {
 	res = resolve_hostport(type, *conf->pdef->srcaddrport, NULL);
@@ -677,77 +700,40 @@ int addserver(struct clsrvconf *conf) {
     return 0;
 }
 
-unsigned char *dtlsread(int s, struct clsrvconf *conf, SSL *ssl, int cnt, struct sockaddr *peer) {
-    unsigned char sslbuf[65536], *buf;
-    int sslbuflen = 65536, len;
-    BIO *rbio, *tmpbio;
-    BIO *dummybio, *wbio;
-    unsigned long error;
+int udp2bio(int s, struct queue *q, int cnt) {
+    unsigned char *buf;
+    BIO *rbio;
+
+    if (cnt < 1)
+	return 0;
     
     buf = malloc(cnt);
     if (!buf) {
-	debug(DBG_ERR, "dtlsread: malloc failed");
-	recv(s, sslbuf, 4, 0);
-	return NULL;
+	debug(DBG_ERR, "udp2bio: malloc failed");
+	/* is this ok? */
+	recv(s, NULL, 0, 0);
+	return 0;
     }
 
     cnt = recv(s, buf, cnt, 0);
-    if (cnt == -1) {
-	debug(DBG_WARN, "dtlsread: recv failed");
+    if (cnt < 1) {
+	debug(DBG_WARN, "udp2bio: recv failed");
 	free(buf);
-	return NULL;
+	return 0;
     }
-
-    dummybio = BIO_new(BIO_s_mem());
-    /* trying to read from this BIO always returns retry */
-    BIO_set_mem_eof_return(dummybio, -1);
-    wbio = BIO_new_dgram(s, BIO_NOCLOSE);
-    
-    if (peer)
-	BIO_dgram_set_peer(wbio, peer);
-    /* the real rbio will be set by radudpget */
-    SSL_set_bio(ssl, dummybio, wbio);
-    SSL_set_accept_state(ssl);
 
     rbio = BIO_new_mem_buf(buf, cnt);
     BIO_set_mem_eof_return(rbio, -1);
-    
-    tmpbio = ssl->rbio;
-    ssl->rbio = rbio;
-    cnt = SSL_read(ssl, sslbuf, sslbuflen);
-    debug(DBG_INFO, "dtlsread: DTLS: got %d bytes", cnt);
 
-    error = SSL_get_error(ssl, cnt);
-    ssl->rbio = tmpbio;
-    BIO_free(ssl->rbio);
-    free(buf);
-
-    if (cnt < 0) {
-	debug(DBG_ERR, "dtlsread: DTLS: %s", ERR_error_string(error, NULL));
-	if (error == SSL_ERROR_ZERO_RETURN) {
-	    /* remove ssl state? */
-	}
-	while ((error = ERR_get_error()))
-	    debug(DBG_ERR, "dtlsread: DTLS: %s", ERR_error_string(error, NULL));
-	return NULL;
+    pthread_mutex_lock(&q->mutex);
+    if (!list_push(q->entries, rbio)) {
+	BIO_free(rbio);
+	pthread_mutex_unlock(&q->mutex);
+	return 0;
     }
-
-    len = RADLEN(sslbuf);
-    if (cnt < len) {
-	debug(DBG_WARN, "dtlsread: packet smaller than length field in radius header");
-	return NULL;
-    }
-    if (cnt > len)
-	debug(DBG_DBG, "dtlsread: packet was padded with %d bytes", cnt - len);
-
-    buf = malloc(cnt);
-    if (!buf) {
-	debug(DBG_ERR, "dtlsread: malloc failed");
-	return NULL;
-    }
-    
-    memcpy(buf, sslbuf, len);
-    return buf;
+    pthread_cond_signal(&q->cond);
+    pthread_mutex_unlock(&q->mutex);
+    return 1;
 }
 
 /* exactly one of client and server must be non-NULL */
@@ -761,6 +747,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     struct clsrvconf *p;
     struct list_node *node;
     fd_set readfds;
+    pthread_t dtlsserverth;
     
     for (;;) {
 	if (rad) {
@@ -776,10 +763,11 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_WARN, "radudpget: recv failed");
 	    continue;
 	}
-
+	
 	if ((p = find_conf(RAD_UDP, (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL))) {
-	    len = RADLEN(buf);
-	    if (len < 20) {
+	    if (cnt >= 20)
+		len = RADLEN(buf);
+	    if (cnt < 20 || len < 20) {
 		debug(DBG_WARN, "radudpget: length too small");
 		recv(s, buf, 4, 0);
 		continue;
@@ -813,19 +801,42 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	
 	if (client) {
 	    node = list_first(p->clients);
-	    *client = node ? (struct client *)node->data : addclient(p);
-	    if (!*client)
-		continue;
-	    if (p->type == RAD_DTLS) {
-		if (!(*client)->ssl)
-		    (*client)->ssl = SSL_new(p->ssl_ctx);
-		rad = dtlsread(s, p, (*client)->ssl, cnt, (struct sockaddr *)&from);
-		if (!rad)
+	    switch (p->type) {
+	    case RAD_UDP:
+		*client = node ? (struct client *)node->data : addclient(p);
+		if (!*client)
 		    continue;
-		debug(DBG_DBG, "radudpget: got DTLS message from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
+		break;
+	    case RAD_DTLS:
+		if (node)
+		    *client = (struct client *)node->data;
+		else {
+		    *client = addclient(p);
+		    if (!*client)
+			continue;
+		    (*client)->sock = s;
+		    memcpy(&(*client)->addr, &from, fromlen);
+		    if (pthread_create(&dtlsserverth, NULL, dtlsservernew, (void *)*client)) {
+			debug(DBG_ERR, "radudpget: pthread_create failed");
+			removeclient(*client);
+			continue;
+		    }
+		    pthread_detach(dtlsserverth);
+		}
+		if (udp2bio(s, (*client)->rbios, cnt))
+		    debug(DBG_DBG, "radudpget: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
+		continue;
+	    default:
+		continue;
 	    }
-	} else if (server)
+	} else if (server) {
 	    *server = p->servers;
+	    if (p->type == RAD_DTLS) {
+		if (udp2bio(s, (*server)->rbios, cnt))
+		    debug(DBG_DBG, "radudpget: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
+		continue;
+	    }
+	}
 	break;
     }
     if (sa)
@@ -1092,24 +1103,293 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
     return 1;
 }
 
-int dtlsinitserver(struct server *server, struct timeval *when, int timeout, char *text) {
-    BIO *dummybio, *wbio;
+void *dtlsserverwr(void *arg) {
+    int cnt;
+    unsigned long error;
+    struct client *client = (struct client *)arg;
+    struct queue *replyq;
+    struct reply *reply;
     
-    debug(DBG_DBG, "dtlsinitserver: called from %s", text);
-    server->ssl = SSL_new(server->conf->ssl_ctx);
-    SSL_set_connect_state(server->ssl);
-    
-    dummybio = BIO_new(BIO_s_mem());
-    /* trying to read from this BIO always returns retry */
-    BIO_set_mem_eof_return(dummybio, -1);
-    wbio = BIO_new_dgram(server->sock, BIO_NOCLOSE);
-    BIO_dgram_set_peer(wbio, server->conf->addrinfo->ai_addr);
-    /* the real rbio will be set by radudpget */
-    SSL_set_bio(server->ssl, dummybio, wbio);
+    debug(DBG_DBG, "dtlsserverwr: starting for %s", client->conf->host);
+    replyq = client->replyq;
+    for (;;) {
+	pthread_mutex_lock(&replyq->mutex);
+	while (!list_first(replyq->entries)) {
+	    if (client->ssl) {	    
+		debug(DBG_DBG, "dtlsserverwr: waiting for signal");
+		pthread_cond_wait(&replyq->cond, &replyq->mutex);
+		debug(DBG_DBG, "dtlsserverwr: got signal");
+	    }
+	    if (!client->ssl) {
+		/* ssl might have changed while waiting */
+		pthread_mutex_unlock(&replyq->mutex);
+		debug(DBG_DBG, "dtlsserverwr: exiting as requested");
+		ERR_remove_state(0);
+		pthread_exit(NULL);
+	    }
+	}
+	reply = (struct reply *)list_shift(replyq->entries);
+	pthread_mutex_unlock(&replyq->mutex);
+	cnt = SSL_write(client->ssl, reply->buf, RADLEN(reply->buf));
+	if (cnt > 0)
+	    debug(DBG_DBG, "dtlsserverwr: sent %d bytes, Radius packet of length %d",
+		  cnt, RADLEN(reply->buf));
+	else
+	    while ((error = ERR_get_error()))
+		debug(DBG_ERR, "dtlsserverwr: SSL: %s", ERR_error_string(error, NULL));
+	free(reply->buf);
+	free(reply);
+    }
+}
 
+BIO *getrbio(SSL *ssl, struct queue *q, int timeout) {
+    BIO *rbio;
+    struct timeval now;
+    struct timespec to;
+
+    pthread_mutex_lock(&q->mutex);
+    if (!(rbio = (BIO *)list_shift(q->entries))) {
+	if (timeout) {
+	    gettimeofday(&now, NULL);
+	    memset(&to, 0, sizeof(struct timespec));
+	    to.tv_sec = now.tv_sec + timeout;
+	    pthread_cond_timedwait(&q->cond, &q->mutex, &to);
+	} else
+	    pthread_cond_wait(&q->cond, &q->mutex);
+	rbio = (BIO *)list_shift(q->entries);
+    }
+    pthread_mutex_unlock(&q->mutex);
+    return rbio;
+}
+
+int dtlsread(SSL *ssl, struct queue *q, unsigned char *buf, int num) {
+    int len, cnt;
+
+    for (len = 0; len < num; len += cnt) {
+	cnt = SSL_read(ssl, buf + len, num - len);
+	if (cnt <= 0)
+	    switch (cnt = SSL_get_error(ssl, cnt)) {
+	    case SSL_ERROR_WANT_READ:
+		BIO_free(ssl->rbio);		
+		ssl->rbio = getrbio(ssl, q, 0);
+		if (!ssl->rbio)
+		    return -1;
+		cnt = 0;
+		continue;
+	    case SSL_ERROR_WANT_WRITE:
+		cnt = 0;
+		continue;
+	    case SSL_ERROR_ZERO_RETURN:
+		/* remote end sent close_notify, send one back */
+		SSL_shutdown(ssl);
+		return -1;
+	    default:
+		return -1;
+	    }
+    }
+    return num;
+}
+
+unsigned char *raddtlsget(SSL *ssl, struct queue *rbios) {
+    int cnt, len;
+    unsigned char buf[4], *rad;
+
+    for (;;) {
+        cnt = dtlsread(ssl, rbios, buf, 4);
+        if (cnt < 1) {
+            debug(DBG_DBG, "raddtlsget: connection lost");
+            return NULL;
+        }
+
+	len = RADLEN(buf);
+	rad = malloc(len);
+	if (!rad) {
+	    debug(DBG_ERR, "raddtlsget: malloc failed");
+	    continue;
+	}
+	memcpy(rad, buf, 4);
+	
+	cnt = dtlsread(ssl, rbios, rad + 4, len - 4);
+        if (cnt < 1) {
+            debug(DBG_DBG, "raddtlsget: connection lost");
+            free(rad);
+            return NULL;
+        }
+        
+        if (len >= 20)
+            break;
+	
+        free(rad);
+        debug(DBG_WARN, "raddtlsget: packet smaller than minimum radius size");
+    }
+    
+    debug(DBG_DBG, "raddtlsget: got %d bytes", len);
+    return rad;
+}
+
+void dtlsserverrd(struct client *client) {
+    struct request rq;
+    pthread_t dtlsserverwrth;
+    
+    debug(DBG_DBG, "dtlsserverrd: starting for %s", client->conf->host);
+
+    if (pthread_create(&dtlsserverwrth, NULL, dtlsserverwr, (void *)client)) {
+	debug(DBG_ERR, "dtlsserverrd: pthread_create failed");
+	return;
+    }
+
+    for (;;) {
+	memset(&rq, 0, sizeof(struct request));
+	rq.buf = raddtlsget(client->ssl, client->rbios);
+	if (!rq.buf) {
+	    debug(DBG_ERR, "dtlsserverrd: connection from %s lost", client->conf->host);
+	    break;
+	}
+	debug(DBG_DBG, "dtlsserverrd: got Radius message from %s", client->conf->host);
+	rq.from = client;
+	if (!radsrv(&rq)) {
+	    debug(DBG_ERR, "dtlsserverrd: message authentication/validation failed, closing connection from %s", client->conf->host);
+	    break;
+	}
+    }
+    
+    /* stop writer by setting ssl to NULL and give signal in case waiting for data */
+    client->ssl = NULL;
+
+    pthread_mutex_lock(&client->replyq->mutex);
+    pthread_cond_signal(&client->replyq->cond);
+    pthread_mutex_unlock(&client->replyq->mutex);
+    debug(DBG_DBG, "dtlsserverrd: waiting for writer to end");
+    pthread_join(dtlsserverwrth, NULL);
+    removeclientrqs(client);
+    debug(DBG_DBG, "dtlsserverrd: reader for %s exiting", client->conf->host);
+}
+		     
+/* accept if acc == 1, else connect */
+SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct queue *rbios) {
+    SSL *ssl;
+    int i, res;
+    unsigned long error;
+    BIO *mem0bio, *wbio;
+    
+    ssl = SSL_new(ctx);
+    if (!ssl)
+	return NULL;
+    
+    mem0bio = BIO_new(BIO_s_mem());
+    BIO_set_mem_eof_return(mem0bio, -1);
+    wbio = BIO_new_dgram(s, BIO_NOCLOSE);
+    BIO_dgram_set_peer(wbio, addr);
+    SSL_set_bio(ssl, mem0bio, wbio);
+
+    for (i = 0; i < 5; i++) {
+        res = acc ? SSL_accept(ssl) : SSL_connect(ssl);
+        if (res > 0)
+            return ssl;
+        if (res == 0)
+            break;
+        if (SSL_get_error(ssl, res) == SSL_ERROR_WANT_READ) {
+            BIO_free(ssl->rbio);
+            ssl->rbio = getrbio(ssl, rbios, 5);
+            if (!ssl->rbio)
+                break;
+        }
+        while ((error = ERR_get_error()))
+            debug(DBG_ERR, "dtls%st: DTLS: %s", acc ? "accep" : "connec", ERR_error_string(error, NULL));
+    }
+
+    SSL_free(ssl);
+    return NULL;
+}
+		     
+void *dtlsservernew(void *arg) {
+    struct client *client = (struct client *)arg;
+    X509 *cert = NULL;
+
+    client->ssl = dtlsacccon(1, client->conf->ssl_ctx, client->sock, (struct sockaddr *)&client->addr, client->rbios);
+    if (!client->ssl)
+	goto exit;
+    cert = verifytlscert(client->ssl);
+    if (!cert)
+	goto exit;
+    if (verifyconfcert(cert, client->conf)) {
+	X509_free(cert);
+	dtlsserverrd(client);
+	removeclient(client);
+    } else
+	debug(DBG_WARN, "dtlsservernew: ignoring request, certificate validation failed");
+    if (cert)
+	X509_free(cert);
+
+ exit:
+    SSL_free(client->ssl);
+    ERR_remove_state(0);
+    pthread_exit(NULL);
+}
+
+int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
+    struct timeval now;
+    time_t elapsed;
+    X509 *cert;
+    
+    debug(DBG_DBG, "dtlsconnect: called from %s", text);
+    pthread_mutex_lock(&server->lock);
+    if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
+	/* already reconnected, nothing to do */
+	debug(DBG_DBG, "dtlsconnect(%s): seems already reconnected", text);
+	pthread_mutex_unlock(&server->lock);
+	return 1;
+    }
+
+    for (;;) {
+	gettimeofday(&now, NULL);
+	elapsed = now.tv_sec - server->lastconnecttry.tv_sec;
+
+	if (timeout && server->lastconnecttry.tv_sec && elapsed > timeout) {
+	    debug(DBG_DBG, "dtlsconnect: timeout");
+	    SSL_free(server->ssl);
+	    server->ssl = NULL;
+	    pthread_mutex_unlock(&server->lock);
+	    return 0;
+	}
+
+	if (server->connectionok) {
+	    server->connectionok = 0;
+	    sleep(2);
+	} else if (elapsed < 1)
+	    sleep(2);
+	else if (elapsed < 60) {
+	    debug(DBG_INFO, "dtlsconnect: sleeping %lds", elapsed);
+	    sleep(elapsed);
+	} else if (elapsed < 100000) {
+	    debug(DBG_INFO, "dtlsconnect: sleeping %ds", 60);
+	    sleep(60);
+	} else
+	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
+	debug(DBG_WARN, "dtlsconnect: trying to open DTLS connection to %s port %s", server->conf->host, server->conf->port);
+
+	SSL_free(server->ssl);
+	server->ssl = dtlsacccon(0, server->conf->ssl_ctx, server->sock, server->conf->addrinfo->ai_addr, server->rbios);
+	if (!server->ssl)
+	    continue;
+	debug(DBG_DBG, "dtlsconnect: DTLS: ok");
+	
+	cert = verifytlscert(server->ssl);
+	if (!cert)
+	    continue;
+	
+	if (verifyconfcert(cert, server->conf)) {
+	    X509_free(cert);
+	    break;
+	}
+	X509_free(cert);
+    }
+    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s port %s up", server->conf->host, server->conf->port);
+    gettimeofday(&server->lastconnecttry, NULL);
+    pthread_mutex_unlock(&server->lock);
     return 1;
 }
-    
+
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval now;
     time_t elapsed;
@@ -1192,7 +1472,7 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout) {
 	    case SSL_ERROR_ZERO_RETURN:
 		/* remote end sent close_notify, send one back */
 		SSL_shutdown(ssl);
-		/* fall through */
+		return -1;
 	    default:
 		return -1;
 	    }
@@ -1606,9 +1886,9 @@ void sendreply(struct client *to, unsigned char *buf, struct sockaddr_storage *t
     
     pthread_mutex_lock(&to->replyq->mutex);
 
-    first = list_first(to->replyq->replies) == NULL;
+    first = list_first(to->replyq->entries) == NULL;
     
-    if (!list_push(to->replyq->replies, reply)) {
+    if (!list_push(to->replyq->entries, reply)) {
 	pthread_mutex_unlock(&to->replyq->mutex);
 	free(reply);
 	free(buf);
@@ -2659,13 +2939,21 @@ void *tlsclientrd(void *arg) {
 
 void *dtlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
+    unsigned char *buf;
+    struct timeval lastconnecttry;
     
     for (;;) {
-	sleep(1000);
+	/* yes, lastconnecttry is really necessary */
+	lastconnecttry = server->lastconnecttry;
+	buf = raddtlsget(server->ssl, server->rbios);
+	if (!buf) {
+	    dtlsconnect(server, &lastconnecttry, 0, "dtlsclientrd");
+	    continue;
+	}
+
+	if (!replyh(server, buf))
+	    free(buf);
     }
-    ERR_remove_state(0);
-    server->clientrdgone = 1;
-    return NULL;
 }
 
 void *tcpclientrd(void *arg) {
@@ -2862,12 +3150,12 @@ void *clientwr(void *arg) {
 }
 
 void *udpserverwr(void *arg) {
-    struct replyq *replyq = udp_server_replyq;
+    struct queue *replyq = udp_server_replyq;
     struct reply *reply;
     
     for (;;) {
 	pthread_mutex_lock(&replyq->mutex);
-	while (!(reply = (struct reply *)list_shift(replyq->replies))) {
+	while (!(reply = (struct reply *)list_shift(replyq->entries))) {
 	    debug(DBG_DBG, "udp server writer, waiting for signal");
 	    pthread_cond_wait(&replyq->cond, &replyq->mutex);
 	    debug(DBG_DBG, "udp server writer, got signal");
@@ -2899,14 +3187,14 @@ void *tlsserverwr(void *arg) {
     int cnt;
     unsigned long error;
     struct client *client = (struct client *)arg;
-    struct replyq *replyq;
+    struct queue *replyq;
     struct reply *reply;
     
     debug(DBG_DBG, "tlsserverwr: starting for %s", client->conf->host);
     replyq = client->replyq;
     for (;;) {
 	pthread_mutex_lock(&replyq->mutex);
-	while (!list_first(replyq->replies)) {
+	while (!list_first(replyq->entries)) {
 	    if (client->ssl) {	    
 		debug(DBG_DBG, "tlsserverwr: waiting for signal");
 		pthread_cond_wait(&replyq->cond, &replyq->mutex);
@@ -2920,7 +3208,7 @@ void *tlsserverwr(void *arg) {
 		pthread_exit(NULL);
 	    }
 	}
-	reply = (struct reply *)list_shift(replyq->replies);
+	reply = (struct reply *)list_shift(replyq->entries);
 	pthread_mutex_unlock(&replyq->mutex);
 	cnt = SSL_write(client->ssl, reply->buf, RADLEN(reply->buf));
 	if (cnt > 0)
@@ -3060,29 +3348,29 @@ void *tlslistener(void *arg) {
 void *tcpserverwr(void *arg) {
     int cnt;
     struct client *client = (struct client *)arg;
-    struct replyq *replyq;
+    struct queue *replyq;
     struct reply *reply;
     
     debug(DBG_DBG, "tcpserverwr: starting for %s", client->conf->host);
     replyq = client->replyq;
     for (;;) {
 	pthread_mutex_lock(&replyq->mutex);
-	while (!list_first(replyq->replies)) {
-	    if (client->s >= 0) {	    
+	while (!list_first(replyq->entries)) {
+	    if (client->sock >= 0) {	    
 		debug(DBG_DBG, "tcpserverwr: waiting for signal");
 		pthread_cond_wait(&replyq->cond, &replyq->mutex);
 		debug(DBG_DBG, "tcpserverwr: got signal");
 	    }
-	    if (client->s < 0) {
+	    if (client->sock < 0) {
 		/* s might have changed while waiting */
 		pthread_mutex_unlock(&replyq->mutex);
 		debug(DBG_DBG, "tcpserverwr: exiting as requested");
 		pthread_exit(NULL);
 	    }
 	}
-	reply = (struct reply *)list_shift(replyq->replies);
+	reply = (struct reply *)list_shift(replyq->entries);
 	pthread_mutex_unlock(&replyq->mutex);
-	cnt = write(client->s, reply->buf, RADLEN(reply->buf));
+	cnt = write(client->sock, reply->buf, RADLEN(reply->buf));
 	if (cnt > 0)
 	    debug(DBG_DBG, "tcpserverwr: sent %d bytes, Radius packet of length %d",
 		  cnt, RADLEN(reply->buf));
@@ -3106,7 +3394,7 @@ void tcpserverrd(struct client *client) {
 
     for (;;) {
 	memset(&rq, 0, sizeof(struct request));
-	rq.buf = radtcpget(client->s, 0);
+	rq.buf = radtcpget(client->sock, 0);
 	if (!rq.buf) {
 	    debug(DBG_ERR, "tcpserverrd: connection from %s lost", client->conf->host);
 	    break;
@@ -3120,7 +3408,7 @@ void tcpserverrd(struct client *client) {
     }
 
     /* stop writer by setting s to -1 and give signal in case waiting for data */
-    client->s = -1;
+    client->sock = -1;
     pthread_mutex_lock(&client->replyq->mutex);
     pthread_cond_signal(&client->replyq->cond);
     pthread_mutex_unlock(&client->replyq->mutex);
@@ -3148,7 +3436,7 @@ void *tcpservernew(void *arg) {
     if (conf) {
 	client = addclient(conf);
 	if (client) {
-	    client->s = s;
+	    client->sock = s;
 	    tcpserverrd(client);
 	    removeclient(client);
 	} else
@@ -3242,39 +3530,34 @@ void createlisteners(uint8_t type, char **args) {
 	createlistener(type, NULL);
 }
 
-void *ssl_info_callback(const SSL *s, int where, int ret) {
-    const char *str;
+#ifdef DEBUG
+void ssl_info_callback(const SSL *ssl, int where, int ret) {
+    const char *s;
     int w;
 
     w = where & ~SSL_ST_MASK;
 
     if (w & SSL_ST_CONNECT)
-	str = "SSL_connect";
+	s = "SSL_connect";
     else if (w & SSL_ST_ACCEPT)
-	str = "SSL_accept";
+	s = "SSL_accept";
     else
-	str = "undefined";
+	s = "undefined";
 
-    if (where & SSL_CB_LOOP) {
-	debug(DBG_WARN, "%s:%s\n", str, SSL_state_string_long(s));
-    }
+    if (where & SSL_CB_LOOP)
+	debug(DBG_DBG, "%s:%s\n", s, SSL_state_string_long(ssl));
     else if (where & SSL_CB_ALERT) {
-	str = (where & SSL_CB_READ) ? "read" : "write";
-	debug(DBG_WARN, "SSL3 alert %s:%s:%s\n",
-	      str,
-	      SSL_alert_type_string_long(ret),
-	      SSL_alert_desc_string_long(ret));
+	s = (where & SSL_CB_READ) ? "read" : "write";
+	debug(DBG_DBG, "SSL3 alert %s:%s:%s\n", s, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
     }
     else if (where & SSL_CB_EXIT) {
 	if (ret == 0)
-	    debug(DBG_WARN, "%s:failed in %s\n",
-		  str, SSL_state_string_long(s));
+	    debug(DBG_DBG, "%s:failed in %s\n", s, SSL_state_string_long(ssl));
 	else if (ret < 0)
-	    debug(DBG_WARN, "%s:error in %s\n",
-		  str,SSL_state_string_long(s));
+	    debug(DBG_DBG, "%s:error in %s\n", s, SSL_state_string_long(ssl));
     }
-    return NULL;
 }
+#endif
 
 SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     SSL_CTX *ctx = NULL;
@@ -3307,10 +3590,15 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     switch (type) {
     case RAD_TLS:
 	ctx = SSL_CTX_new(TLSv1_method());
+#ifdef DEBUG	
+	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
+#endif	
 	break;
     case RAD_DTLS:
 	ctx = SSL_CTX_new(DTLSv1_method());
+#ifdef DEBUG	
 	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
+#endif	
 	SSL_CTX_set_read_ahead(ctx, 1);
 	break;
     }
@@ -4437,15 +4725,6 @@ int main(int argc, char **argv) {
     pthread_sigmask(SIG_BLOCK, &sigset, NULL);
     pthread_create(&sigth, NULL, sighandler, NULL);
 
-    if (find_conf_type(RAD_UDP, clconfs, NULL) || find_conf_type(RAD_DTLS, clconfs, NULL)) {
-	udp_server_replyq = newreplyq();
-	if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
-	    debugx(1, DBG_ERR, "pthread_create failed");
-	createlisteners(RAD_UDP, options.listenudp);
-	if (options.listenaccudp)
-	    createlisteners(RAD_UDP, options.listenaccudp);
-    }
-    
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	srvconf = (struct clsrvconf *)entry->data;
 	if (srvconf->dynamiclookupcommand)
@@ -4461,6 +4740,7 @@ int main(int argc, char **argv) {
 	freeaddrinfo(srcprotores[RAD_UDP]);
 	srcprotores[RAD_UDP] = NULL;
     }
+    
     if (udp_client4_sock >= 0)
 	if (pthread_create(&udpclient4rdth, NULL, protodefs[RAD_UDP].clientreader, (void *)&udp_client4_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
@@ -4473,6 +4753,15 @@ int main(int argc, char **argv) {
     
     if (find_conf_type(RAD_TLS, clconfs, NULL))
 	createlisteners(RAD_TLS, options.listentls);
+    
+    if (find_conf_type(RAD_UDP, clconfs, NULL) || find_conf_type(RAD_DTLS, clconfs, NULL)) {
+	udp_server_replyq = newqueue();
+	if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
+	    debugx(1, DBG_ERR, "pthread_create failed");
+	createlisteners(RAD_UDP, options.listenudp);
+	if (options.listenaccudp)
+	    createlisteners(RAD_UDP, options.listenaccudp);
+    }
     
     /* just hang around doing nothing, anything to do here? */
     for (;;)
