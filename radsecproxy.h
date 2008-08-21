@@ -170,11 +170,6 @@ struct rewrite {
     uint32_t *removevendorattrs;
 };
 
-struct rewriteconf {
-    char *name;
-    struct rewrite *rewrite;
-};
-
 struct protodefs {
     char *name;
     char *secretdefault;

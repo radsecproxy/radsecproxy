@@ -72,8 +72,8 @@
 
 static struct options options;
 static struct list *clconfs, *srvconfs;
-struct list *realms, *rewriteconfs;
-struct hash *tlsconfs;
+struct list *realms;
+struct hash *tlsconfs, *rewriteconfs;
 
 static struct addrinfo *srcprotores[4] = { NULL, NULL, NULL, NULL };
 
@@ -2836,27 +2836,16 @@ int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
 }
 
 struct rewrite *getrewrite(char *alt1, char *alt2) {
-    struct list_node *entry;
-    struct rewriteconf *r, *r1 = NULL, *r2 = NULL;
-    
-    for (entry = list_first(rewriteconfs); entry; entry = list_next(entry)) {
-	r = (struct rewriteconf *)entry->data;
-	if (!strcasecmp(r->name, alt1)) {
-	    r1 = r;
-	    break;
-	}
-	if (!r2 && alt2 && !strcasecmp(r->name, alt2))
-	    r2 = r;
-    }
+    struct rewrite *r;
 
-    r = (r1 ? r1 : r2);
-    if (!r)
-	return NULL;
-    return r->rewrite;
+    if ((r = hash_read(rewriteconfs,  alt1, strlen(alt1))))
+	return r;
+    if ((r = hash_read(rewriteconfs,  alt2, strlen(alt2))))
+	return r;
+    return NULL;
 }
 
 void addrewrite(char *value, char **attrs, char **vattrs) {
-    struct rewriteconf *new;
     struct rewrite *rewrite = NULL;
     int i, n;
     uint8_t *a = NULL;
@@ -2902,16 +2891,8 @@ void addrewrite(char *value, char **attrs, char **vattrs) {
 	rewrite->removevendorattrs = va;
     }
     
-    new = malloc(sizeof(struct rewriteconf));
-    if (!new || !list_push(rewriteconfs, new))
+    if (!hash_insert(rewriteconfs, value, strlen(value), rewrite))
 	debugx(1, DBG_ERR, "malloc failed");
-
-    memset(new, 0, sizeof(struct rewriteconf));
-    new->name = stringcopy(value, 0);
-    if (!new->name)
-	debugx(1, DBG_ERR, "malloc failed");
-	
-    new->rewrite = rewrite;
     debug(DBG_DBG, "addrewrite: added rewrite block %s", value);
 }
 
@@ -3319,7 +3300,7 @@ void getmainconfig(const char *configfile) {
     if (!tlsconfs)
 	debugx(1, DBG_ERR, "malloc failed");
     
-    rewriteconfs = list_create();
+    rewriteconfs = hash_create();
     if (!rewriteconfs)
 	debugx(1, DBG_ERR, "malloc failed");    
  
