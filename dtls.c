@@ -470,4 +470,3 @@ void *dtlsclientrd(void *arg) {
 	    free(buf);
     }
 }
-

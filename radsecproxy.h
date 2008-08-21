@@ -202,6 +202,7 @@ struct protodefs {
                             sizeof(struct sockaddr_in) : \
                             sizeof(struct sockaddr_in6))
 
+struct addrinfo *getsrcprotores(uint8_t type);
 struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf);
@@ -211,3 +212,4 @@ int radsrv(struct request *rq);
 X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);
 int replyh(struct server *server, unsigned char *buf);
+int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src);
