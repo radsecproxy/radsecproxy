@@ -6,6 +6,7 @@ radsecproxy_SOURCES = radsecproxy.c \
                       debug.c \
                       list.c \
 		      tcp.c \
+		      tls.c \
 		      dtls.c \
                       radsecproxy.h \
                       gconfig.h \
@@ -13,6 +14,7 @@ radsecproxy_SOURCES = radsecproxy.c \
                       util.h \
                       list.h \
 		      tcp.h \
+		      tls.h \
 		      dtls.h
 
 radsecproxy_CFLAGS  = -g -Wall -pedantic -pthread @SSL_CFLAGS@ @TARGET_CFLAGS@
