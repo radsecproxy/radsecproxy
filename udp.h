@@ -9,4 +9,6 @@
 int clientradputudp(struct server *server, unsigned char *rad);
 void *udpclientrd(void *arg);
 void *udpserverrd(void *arg);
-void *udpserverwr(void *arg);
+void addclientudp(struct client *client);
+void addserverextraudp(struct clsrvconf *conf);
+void initextraudp();

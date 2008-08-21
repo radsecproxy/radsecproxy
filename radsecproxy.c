@@ -75,11 +75,6 @@ struct list *realms, *tlsconfs, *rewriteconfs;
 
 static struct addrinfo *srcprotores[4] = { NULL, NULL, NULL, NULL };
 
-static struct queue *udp_server_replyq = NULL;
-static int udp_client4_sock = -1;
-static int udp_client6_sock = -1;
-static int dtls_client4_sock = -1;
-static int dtls_client6_sock = -1;
 static pthread_mutex_t tlsconfs_lock;
 static pthread_mutex_t *ssl_locks = NULL;
 static long *ssl_lock_count;
@@ -106,8 +101,11 @@ static const struct protodefs protodefs[] = {
 	udpserverrd, /* listener */
 	&options.sourceudp, /* srcaddrport */
 	NULL, /* connecter */
-	udpclientrd, /* clientreader */
-	clientradputudp /* clientradput */
+	NULL, /* clientconnreader */
+	clientradputudp, /* clientradput */
+	addclientudp, /* addclient */
+	addserverextraudp, /* addserverextra */
+	initextraudp /* initextra */
     },
     {   "tls", /* TLS, assuming RAD_TLS defined as 1 */
 	"mysecret", /* secretdefault */
@@ -120,8 +118,11 @@ static const struct protodefs protodefs[] = {
 	tlslistener, /* listener */
 	&options.sourcetls, /* srcaddrport */
 	tlsconnect, /* connecter */
-	tlsclientrd, /* clientreader */
-	clientradputtls /* clientradput */
+	tlsclientrd, /* clientconnreader */
+	clientradputtls, /* clientradput */
+	NULL, /* addclient */
+	NULL, /* addserverextra */
+	NULL /* initextra */
     },
     {   "tcp", /* TCP, assuming RAD_TCP defined as 2 */
 	NULL, /* secretdefault */
@@ -134,8 +135,11 @@ static const struct protodefs protodefs[] = {
 	tcplistener, /* listener */
 	&options.sourcetcp, /* srcaddrport */
 	tcpconnect, /* connecter */
-	tcpclientrd, /* clientreader */
-	clientradputtcp /* clientradput */
+	tcpclientrd, /* clientconnreader */
+	clientradputtcp, /* clientradput */
+	NULL, /* addclient */
+	NULL, /* addserverextra */
+	NULL /* initextra */
     },
     {   "dtls", /* DTLS, assuming RAD_DTLS defined as 3 */
 	"mysecret", /* secretdefault */
@@ -148,8 +152,11 @@ static const struct protodefs protodefs[] = {
 	udpdtlsserverrd, /* listener */
 	&options.sourcedtls, /* srcaddrport */
 	dtlsconnect, /* connecter */
-	dtlsclientrd, /* clientreader */
-	clientradputdtls /* clientradput */
+	dtlsclientrd, /* clientconnreader */
+	clientradputdtls, /* clientradput */
+	addclientdtls, /* addclient */
+	addserverextradtls, /* addserverextra */
+	initextradtls /* initextra */
     },
     {   NULL
     }
@@ -305,33 +312,6 @@ int resolvepeer(struct clsrvconf *conf, int ai_flags) {
 	freeaddrinfo(conf->addrinfo);
     conf->addrinfo = addrinfo;
     return 1;
-}	  
-
-int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
-    int s, on = 1;
-    struct addrinfo *res;
-    
-    for (res = addrinfo; res; res = res->ai_next) {
-	if (family != AF_UNSPEC && family != res->ai_family)
-	    continue;
-        s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-        if (s < 0) {
-            debug(DBG_WARN, "bindtoaddr: socket failed");
-            continue;
-        }
-	if (reuse)
-	    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-#ifdef IPV6_V6ONLY
-	if (v6only)
-	    setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
-#endif		
-
-	if (!bind(s, res->ai_addr, res->ai_addrlen))
-	    return s;
-	debug(DBG_WARN, "bindtoaddr: bind failed");
-        close(s);
-    }
-    return -1;
 }	  
 
 char *parsehostport(char *s, struct clsrvconf *conf, char *default_port) {
@@ -490,11 +470,11 @@ struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_
 }
 
 /* returns next config of given type, or NULL */
-struct clsrvconf *find_conf_type(uint8_t type, struct list *confs, struct list_node **cur) {
+struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur) {
     struct list_node *entry;
     struct clsrvconf *conf;
     
-    for (entry = (cur && *cur ? list_next(*cur) : list_first(confs)); entry; entry = list_next(entry)) {
+    for (entry = (cur && *cur ? list_next(*cur) : list_first(clconfs)); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
 	if (conf->type == type) {
 	    if (cur)
@@ -558,9 +538,10 @@ struct client *addclient(struct clsrvconf *conf) {
     
     memset(new, 0, sizeof(struct client));
     new->conf = conf;
-    new->replyq = conf->type == RAD_UDP ? udp_server_replyq : newqueue();
-    if (conf->type == RAD_DTLS)
-	new->rbios = newqueue();
+    if (conf->pdef->addclient)
+	conf->pdef->addclient(new);
+    else
+	new->replyq = newqueue();
     list_push(conf->clients, new);
     return new;
 }
@@ -645,54 +626,9 @@ int addserver(struct clsrvconf *conf) {
 	freeclsrvres(res);
     }
 
-    switch (type) {
-    case RAD_UDP:
-	switch (conf->addrinfo->ai_family) {
-	case AF_INET:
-	    if (udp_client4_sock < 0) {
-		udp_client4_sock = bindtoaddr(srcprotores[RAD_UDP], AF_INET, 0, 1);
-		if (udp_client4_sock < 0)
-		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
-	    }
-	    conf->servers->sock = udp_client4_sock;
-	    break;
-	case AF_INET6:
-	    if (udp_client6_sock < 0) {
-		udp_client6_sock = bindtoaddr(srcprotores[RAD_UDP], AF_INET6, 0, 1);
-		if (udp_client6_sock < 0)
-		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
-	    }
-	    conf->servers->sock = udp_client6_sock;
-	    break;
-	default:
-	    debugx(1, DBG_ERR, "addserver: unsupported address family");
-	}
-	break;
-    case RAD_DTLS:
-	switch (conf->addrinfo->ai_family) {
-	case AF_INET:
-	    if (dtls_client4_sock < 0) {
-		dtls_client4_sock = bindtoaddr(srcprotores[RAD_DTLS], AF_INET, 0, 1);
-		if (dtls_client4_sock < 0)
-		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
-	    }
-	    conf->servers->sock = dtls_client4_sock;
-	    break;
-	case AF_INET6:
-	    if (dtls_client6_sock < 0) {
-		dtls_client6_sock = bindtoaddr(srcprotores[RAD_DTLS], AF_INET6, 0, 1);
-		if (dtls_client6_sock < 0)
-		    debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
-	    }
-	    conf->servers->sock = dtls_client6_sock;
-	    break;
-	default:
-	    debugx(1, DBG_ERR, "addserver: unsupported address family");
-	}
-	break;
-    default:
-	conf->servers->sock = -1;
-    }
+    conf->servers->sock = -1;
+    if (conf->pdef->addserverextra)
+	conf->pdef->addserverextra(conf);
     
     conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct request));
     if (!conf->servers->requests) {
@@ -2166,7 +2102,7 @@ void *clientwr(void *arg) {
 	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 6 : 0, "clientwr"))
 	    goto errexit;
 	server->connectionok = 1;
-	if (pthread_create(&clientrdth, NULL, conf->pdef->clientreader, (void *)server)) {
+	if (pthread_create(&clientrdth, NULL, conf->pdef->clientconnreader, (void *)server)) {
 	    debug(DBG_ERR, "clientwr: pthread_create failed");
 	    goto errexit;
 	}
@@ -3506,12 +3442,13 @@ void *sighandler(void *arg) {
 }
 
 int main(int argc, char **argv) {
-    pthread_t sigth, udpclient4rdth, udpclient6rdth, udpserverwrth, dtlsclient4rdth, dtlsclient6rdth;
+    pthread_t sigth;
     sigset_t sigset;
     struct list_node *entry;
     uint8_t foreground = 0, pretend = 0, loglevel = 0;
     char *configfile = NULL;
     struct clsrvconf *srvconf;
+    int i;
     
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
@@ -3563,34 +3500,21 @@ int main(int argc, char **argv) {
 	freeaddrinfo(srcprotores[RAD_UDP]);
 	srcprotores[RAD_UDP] = NULL;
     }
+
+    for (i = 0; protodefs[i].name; i++)
+	if (protodefs[i].initextra)
+	    protodefs[i].initextra();
     
-    if (udp_client4_sock >= 0)
-	if (pthread_create(&udpclient4rdth, NULL, protodefs[RAD_UDP].clientreader, (void *)&udp_client4_sock))
-	    debugx(1, DBG_ERR, "pthread_create failed");
-    if (udp_client6_sock >= 0)
-	if (pthread_create(&udpclient6rdth, NULL, protodefs[RAD_UDP].clientreader, (void *)&udp_client6_sock))
-	    debugx(1, DBG_ERR, "pthread_create failed");
-    
-    if (dtls_client4_sock >= 0)
-	if (pthread_create(&dtlsclient4rdth, NULL, udpdtlsclientrd, (void *)&dtls_client4_sock))
-	    debugx(1, DBG_ERR, "pthread_create failed");
-    if (dtls_client6_sock >= 0)
-	if (pthread_create(&dtlsclient6rdth, NULL, udpdtlsclientrd, (void *)&dtls_client6_sock))
-	    debugx(1, DBG_ERR, "pthread_create failed");
-    
-    if (find_conf_type(RAD_TCP, clconfs, NULL))
+    if (find_clconf_type(RAD_TCP, NULL))
 	createlisteners(RAD_TCP, options.listentcp);
     
-    if (find_conf_type(RAD_TLS, clconfs, NULL))
+    if (find_clconf_type(RAD_TLS, NULL))
 	createlisteners(RAD_TLS, options.listentls);
     
-    if (find_conf_type(RAD_DTLS, clconfs, NULL))
+    if (find_clconf_type(RAD_DTLS, NULL))
 	createlisteners(RAD_DTLS, options.listendtls);
     
-    if (find_conf_type(RAD_UDP, clconfs, NULL)) {
-	udp_server_replyq = newqueue();
-	if (pthread_create(&udpserverwrth, NULL, udpserverwr, (void *)udp_server_replyq))
-	    debugx(1, DBG_ERR, "pthread_create failed");
+    if (find_clconf_type(RAD_UDP, NULL)) {
 	createlisteners(RAD_UDP, options.listenudp);
 	if (options.listenaccudp)
 	    createlisteners(RAD_UDP, options.listenaccudp);

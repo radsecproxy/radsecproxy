@@ -31,6 +31,10 @@
 #include "radsecproxy.h"
 #include "tls.h"
 
+static int client4_sock = -1;
+static int client6_sock = -1;
+static struct queue *server_replyq = NULL;
+
 /* exactly one of client and server must be non-NULL */
 /* return who we received from in *client or *server */
 /* return from in sa if not NULL */
@@ -192,5 +196,49 @@ void *udpserverwr(void *arg) {
 	    debug(DBG_WARN, "sendudp: send failed");
 	free(reply->buf);
 	free(reply);
+    }
+}
+
+void addclientudp(struct client *client) {
+    client->replyq = server_replyq;
+}
+
+void addserverextraudp(struct clsrvconf *conf) {
+    switch (conf->addrinfo->ai_family) {
+    case AF_INET:
+	if (client4_sock < 0) {
+	    client4_sock = bindtoaddr(getsrcprotores(RAD_UDP), AF_INET, 0, 1);
+	    if (client4_sock < 0)
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+	}
+	conf->servers->sock = client4_sock;
+	break;
+    case AF_INET6:
+	if (client6_sock < 0) {
+	    client6_sock = bindtoaddr(getsrcprotores(RAD_UDP), AF_INET6, 0, 1);
+	    if (client6_sock < 0)
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+	}
+	conf->servers->sock = client6_sock;
+	break;
+    default:
+	debugx(1, DBG_ERR, "addserver: unsupported address family");
+    }
+}
+
+void initextraudp() {
+    pthread_t cl4th, cl6th, srvth;
+    
+    if (client4_sock >= 0)
+	if (pthread_create(&cl4th, NULL, udpclientrd, (void *)&client4_sock))
+	    debugx(1, DBG_ERR, "pthread_create failed");
+    if (client6_sock >= 0)
+	if (pthread_create(&cl6th, NULL, udpclientrd, (void *)&client6_sock))
+	    debugx(1, DBG_ERR, "pthread_create failed");
+
+    if (find_clconf_type(RAD_UDP, NULL)) {
+	server_replyq = newqueue();
+	if (pthread_create(&srvth, NULL, udpserverwr, (void *)server_replyq))
+	    debugx(1, DBG_ERR, "pthread_create failed");
     }
 }

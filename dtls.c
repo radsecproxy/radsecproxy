@@ -32,6 +32,9 @@
 #include "radsecproxy.h"
 #include "dtls.h"
 
+static int client4_sock = -1;
+static int client6_sock = -1;
+
 int udp2bio(int s, struct queue *q, int cnt) {
     unsigned char *buf;
     BIO *rbio;
@@ -469,4 +472,43 @@ void *dtlsclientrd(void *arg) {
 	if (!replyh(server, buf))
 	    free(buf);
     }
+}
+
+void addclientdtls(struct client *client) {
+    client->replyq = newqueue();
+    client->rbios = newqueue();
+}
+
+void addserverextradtls(struct clsrvconf *conf) {
+    switch (conf->addrinfo->ai_family) {
+    case AF_INET:
+	if (client4_sock < 0) {
+	    client4_sock = bindtoaddr(getsrcprotores(RAD_DTLS), AF_INET, 0, 1);
+	    if (client4_sock < 0)
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+	}
+	conf->servers->sock = client4_sock;
+	break;
+    case AF_INET6:
+	if (client6_sock < 0) {
+	    client6_sock = bindtoaddr(getsrcprotores(RAD_DTLS), AF_INET6, 0, 1);
+	    if (client6_sock < 0)
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+	}
+	conf->servers->sock = client6_sock;
+	break;
+    default:
+	debugx(1, DBG_ERR, "addserver: unsupported address family");
+    }
+}
+
+void initextradtls() {
+    pthread_t cl4th, cl6th;
+    
+    if (client4_sock >= 0)
+	if (pthread_create(&cl4th, NULL, udpdtlsclientrd, (void *)&client4_sock))
+	    debugx(1, DBG_ERR, "pthread_create failed");
+    if (client6_sock >= 0)
+	if (pthread_create(&cl6th, NULL, udpdtlsclientrd, (void *)&client6_sock))
+	    debugx(1, DBG_ERR, "pthread_create failed");
 }

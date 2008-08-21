@@ -98,6 +98,33 @@ char *addr2string(struct sockaddr *addr, socklen_t len) {
     return addr_buf[i];
 }
 
+int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
+    int s, on = 1;
+    struct addrinfo *res;
+
+    for (res = addrinfo; res; res = res->ai_next) {
+	if (family != AF_UNSPEC && family != res->ai_family)
+	    continue;
+	s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+	if (s < 0) {
+	    debug(DBG_WARN, "bindtoaddr: socket failed");
+	    continue;
+	}
+	if (reuse)
+	    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+	#ifdef IPV6_V6ONLY
+	if (v6only)
+	    setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
+#endif
+
+	if (!bind(s, res->ai_addr, res->ai_addrlen))
+	    return s;
+	debug(DBG_WARN, "bindtoaddr: bind failed");
+	close(s);
+    }
+    return -1;
+}
+
 int connectport(int type, char *host, char *port) {
     struct addrinfo hints, *res0, *res;
     int s = -1;

@@ -187,8 +187,11 @@ struct protodefs {
     void *(*listener)(void*);
     char **srcaddrport;
     int (*connecter)(struct server *, struct timeval *, int, char *);
-    void *(*clientreader)(void*);
+    void *(*clientconnreader)(void*);
     int (*clientradput)(struct server *, unsigned char *);
+    void (*addclient)(struct client *);
+    void (*addserverextra)(struct clsrvconf *);
+    void (*initextra)();
 };
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
@@ -205,9 +208,11 @@ struct protodefs {
 struct addrinfo *getsrcprotores(uint8_t type);
 struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
+struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf);
 void removeclient(struct client *client);
 void removeclientrqs(struct client *client);
+struct queue *newqueue();
 int radsrv(struct request *rq);
 X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);

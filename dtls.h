@@ -12,3 +12,6 @@ void *dtlsservernew(void *arg);
 void *dtlsclientrd(void *arg);
 void *udpdtlsclientrd(void *arg);
 int clientradputdtls(struct server *server, unsigned char *rad);
+void addclientdtls(struct client *client);
+void addserverextradtls(struct clsrvconf *conf);
+void initextradtls();
