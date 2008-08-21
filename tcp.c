@@ -25,7 +25,6 @@
 #include <regex.h>
 #include <pthread.h>
 #include <openssl/ssl.h>
-#include <openssl/err.h>
 #include "debug.h"
 #include "list.h"
 #include "util.h"

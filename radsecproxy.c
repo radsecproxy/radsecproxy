@@ -64,6 +64,7 @@
 #include "util.h"
 #include "gconfig.h"
 #include "radsecproxy.h"
+#include "udp.h"
 #include "tcp.h"
 #include "tls.h"
 #include "dtls.h"
@@ -92,11 +93,6 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 void freerealm(struct realm *realm);
 void freeclsrvconf(struct clsrvconf *conf);
 void freerqdata(struct request *rq);
-void *udpserverrd(void *arg);
-void *udpclientrd(void *arg);
-int clientradputudp(struct server *server, unsigned char *rad);
-X509 *verifytlscert(SSL *ssl);
-int radsrv(struct request *rq);
 
 static const struct protodefs protodefs[] = {
     {   "udp", /* UDP, assuming RAD_UDP defined as 0 */
@@ -728,83 +724,6 @@ int addserver(struct clsrvconf *conf) {
     return 0;
 }
 
-/* exactly one of client and server must be non-NULL */
-/* return who we received from in *client or *server */
-/* return from in sa if not NULL */
-unsigned char *radudpget(int s, struct client **client, struct server **server, struct sockaddr_storage *sa) {
-    int cnt, len;
-    unsigned char buf[4], *rad = NULL;
-    struct sockaddr_storage from;
-    socklen_t fromlen = sizeof(from);
-    struct clsrvconf *p;
-    struct list_node *node;
-    fd_set readfds;
-    
-    for (;;) {
-	if (rad) {
-	    free(rad);
-	    rad = NULL;
-	}
-	FD_ZERO(&readfds);
-        FD_SET(s, &readfds);
-	if (select(s + 1, &readfds, NULL, NULL, NULL) < 1)
-	    continue;
-	cnt = recvfrom(s, buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
-	if (cnt == -1) {
-	    debug(DBG_WARN, "radudpget: recv failed");
-	    continue;
-	}
-	if (cnt < 20) {
-	    debug(DBG_WARN, "radudpget: length too small");
-	    recv(s, buf, 4, 0);
-	    continue;
-	}
-	
-	p = find_conf(RAD_UDP, (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL);
-	if (!p) {
-	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
-	    recv(s, buf, 4, 0);
-	    continue;
-	}
-	
-	len = RADLEN(buf);
-	if (len < 20) {
-	    debug(DBG_WARN, "radudpget: length too small");
-	    recv(s, buf, 4, 0);
-	    continue;
-	}
-	    
-	rad = malloc(len);
-	if (!rad) {
-	    debug(DBG_ERR, "radudpget: malloc failed");
-	    recv(s, buf, 4, 0);
-	    continue;
-	}
-	
-	cnt = recv(s, rad, len, MSG_TRUNC);
-	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
-
-	if (cnt < len) {
-	    debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
-	    continue;
-	}
-	if (cnt > len)
-	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
-
-	if (client) {
-	    node = list_first(p->clients);
-	    *client = node ? (struct client *)node->data : addclient(p);
-	    if (!*client)
-		continue;
-	} else if (server)
-	    *server = p->servers;
-	break;
-    }
-    if (sa)
-	*sa = from;
-    return rad;
-}
-
 int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
     int loc, i, l, n, r = 0;
     char *v;
@@ -991,44 +910,6 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
 	debug(DBG_DBG, "verifyconfcert: subjectaltname URI matching regex");
     }
     return 1;
-}
-
-int clientradputudp(struct server *server, unsigned char *rad) {
-    size_t len;
-    struct sockaddr_storage sa;
-    struct sockaddr *sap;
-    struct clsrvconf *conf = server->conf;
-    in_port_t *port = NULL;
-    
-    len = RADLEN(rad);
-    
-    if (*rad == RAD_Accounting_Request) {
-	sap = (struct sockaddr *)&sa;
-	memcpy(sap, conf->addrinfo->ai_addr, conf->addrinfo->ai_addrlen);
-    } else
-	sap = conf->addrinfo->ai_addr;
-    
-    switch (sap->sa_family) {
-    case AF_INET:
-	port = &((struct sockaddr_in *)sap)->sin_port;
-	break;
-    case AF_INET6:
-	port = &((struct sockaddr_in6 *)sap)->sin6_port;
-	break;
-    default:
-	return 0;
-    }
-
-    if (*rad == RAD_Accounting_Request)
-	*port = htons(ntohs(*port) + 1);
-    
-    if (sendto(server->sock, rad, len, 0, sap, conf->addrinfo->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, ntohs(*port));
-	return 1;
-    }
-
-    debug(DBG_WARN, "clientradputudp: send failed");
-    return 0;
 }
 
 int radsign(unsigned char *rad, unsigned char *sec) {
@@ -2244,19 +2125,6 @@ int replyh(struct server *server, unsigned char *buf) {
     return 1;
 }
 
-void *udpclientrd(void *arg) {
-    struct server *server;
-    unsigned char *buf;
-    int *s = (int *)arg;
-    
-    for (;;) {
-	server = NULL;
-	buf = radudpget(*s, NULL, &server, NULL);
-	if (!replyh(server, buf))
-	    free(buf);
-    }
-}
-
 /* code for removing state not finished */
 void *clientwr(void *arg) {
     struct server *server = (struct server *)arg;
@@ -2427,40 +2295,6 @@ void *clientwr(void *arg) {
     freeserver(server, 1);
     ERR_remove_state(0);
     return NULL;
-}
-
-void *udpserverwr(void *arg) {
-    struct queue *replyq = udp_server_replyq;
-    struct reply *reply;
-    
-    for (;;) {
-	pthread_mutex_lock(&replyq->mutex);
-	while (!(reply = (struct reply *)list_shift(replyq->entries))) {
-	    debug(DBG_DBG, "udp server writer, waiting for signal");
-	    pthread_cond_wait(&replyq->cond, &replyq->mutex);
-	    debug(DBG_DBG, "udp server writer, got signal");
-	}
-	pthread_mutex_unlock(&replyq->mutex);
-
-	if (sendto(reply->toudpsock, reply->buf, RADLEN(reply->buf), 0,
-		   (struct sockaddr *)&reply->tosa, SOCKADDR_SIZE(reply->tosa)) < 0)
-	    debug(DBG_WARN, "sendudp: send failed");
-	free(reply->buf);
-	free(reply);
-    }
-}
-
-void *udpserverrd(void *arg) {
-    struct request rq;
-    int *sp = (int *)arg;
-    
-    for (;;) {
-	memset(&rq, 0, sizeof(struct request));
-	rq.buf = radudpget(*sp, &rq.from, NULL, &rq.fromsa);
-	rq.fromudpsock = *sp;
-	radsrv(&rq);
-    }
-    free(sp);
 }
 
 void createlistener(uint8_t type, char *arg) {
@@ -3755,7 +3589,7 @@ int main(int argc, char **argv) {
     
     if (find_conf_type(RAD_UDP, clconfs, NULL)) {
 	udp_server_replyq = newqueue();
-	if (pthread_create(&udpserverwrth, NULL, udpserverwr, NULL))
+	if (pthread_create(&udpserverwrth, NULL, udpserverwr, (void *)udp_server_replyq))
 	    debugx(1, DBG_ERR, "pthread_create failed");
 	createlisteners(RAD_UDP, options.listenudp);
 	if (options.listenaccudp)
