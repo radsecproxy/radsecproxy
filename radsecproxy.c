@@ -3243,8 +3243,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 	debug(DBG_ERR, "conftls_cb: malloc failed");
 	goto errexit;
     }
-    
-    if (!hash_insert(tlsconfs, conf->name, strlen(conf->name), conf)) {
+
+    if (!hash_insert(tlsconfs, val, strlen(val), conf)) {
 	debug(DBG_ERR, "conftls_cb: malloc failed");
 	goto errexit;
     }
