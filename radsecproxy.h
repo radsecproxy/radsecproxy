@@ -213,3 +213,4 @@ X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);
 int replyh(struct server *server, unsigned char *buf);
 int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src);
+int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only);
