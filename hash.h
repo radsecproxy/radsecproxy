@@ -24,3 +24,6 @@ int hash_insert(struct hash *hash, void *key, uint32_t keylen, void *data);
 
 /* reads entry from hash */
 void *hash_read(struct hash *hash, void *key, uint32_t keylen);
+
+/* extracts (read and remove) entry from hash */
+void *hash_extract(struct hash *hash, void *key, uint32_t keylen);

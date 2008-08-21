@@ -28,6 +28,7 @@
 #include <openssl/err.h>
 #include "debug.h"
 #include "list.h"
+#include "hash.h"
 #include "util.h"
 #include "radsecproxy.h"
 #include "dtls.h"
@@ -96,12 +97,16 @@ void *udpdtlsserverrd(void *arg) {
     unsigned char buf[4];
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
-    struct clsrvconf *conf;
-    struct list_node *node;
     struct client *client;
     fd_set readfds;
     pthread_t dtlsserverth;
-
+    struct hash *rbiosh;
+    struct queue *rbiosq;
+    
+    rbiosh = hash_create();
+    if (!rbiosh)
+	debugx(1, DBG_ERR, "udpdtlsserverrd: malloc failed");
+	
     for (;;) {
 	FD_ZERO(&readfds);
         FD_SET(s, &readfds);
@@ -112,34 +117,36 @@ void *udpdtlsserverrd(void *arg) {
 	    debug(DBG_WARN, "udpdtlsserverrd: recv failed");
 	    continue;
 	}
-	conf = find_clconf(RAD_DTLS, (struct sockaddr *)&from, NULL);
-	if (!conf) {
-	    debug(DBG_WARN, "udpdtlsserverrd: got packet from wrong or unknown DTLS peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
-	    recv(s, buf, 4, 0);
+	rbiosq = hash_read(rbiosh, &from, fromlen);
+	if (rbiosq) {
+	    if (udp2bio(s, rbiosq, cnt))
+		debug(DBG_DBG, "udpdtlsserverrd: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
 	    continue;
 	}
-	
-	node = list_first(conf->clients);
-	if (node)
-	    client = (struct client *)node->data;
-	else {
-	    client = addclient(conf);
-	    if (!client) {
-		recv(s, buf, 4, 0);
-		continue;
-	    }
-	    client->sock = s;
-	    memcpy(&client->addr, &from, fromlen);
-	    if (pthread_create(&dtlsserverth, NULL, dtlsservernew, (void *)client)) {
-		debug(DBG_ERR, "udpdtlsserverrd: pthread_create failed");
-		removeclient(client);
-		recv(s, buf, 4, 0);
-		continue;
-	    }
-	    pthread_detach(dtlsserverth);
+
+	/* from new source, new client? */
+	client = malloc(sizeof(struct client));
+	if (!client)
+	    continue;
+	client->rbios = rbiosq = newqueue();
+	if (!hash_insert(rbiosh, &from, fromlen, rbiosq)) {
+	    free(client);
+	    removequeue(rbiosq);
+	    continue;
 	}
-	if (udp2bio(s, client->rbios, cnt))
+	client->sock = s;
+	memcpy(&client->addr, &from, fromlen);
+
+	if (udp2bio(s, rbiosq, cnt)) {
 	    debug(DBG_DBG, "udpdtlsserverrd: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
+	    if (!pthread_create(&dtlsserverth, NULL, dtlsservernew, (void *)client)) {
+		pthread_detach(dtlsserverth);
+		continue;
+	    }
+	    debug(DBG_ERR, "udpdtlsserverrd: pthread_create failed");
+	}
+	free(client);
+	freebios(hash_extract(rbiosh, &from, fromlen));
     }
 }
 
@@ -323,26 +330,56 @@ SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct 
 }
 
 void *dtlsservernew(void *arg) {
-    struct client *client = (struct client *)arg;
+    struct client *client, *clpar = (struct client *)arg;
+    struct clsrvconf *conf;
+    struct list_node *cur = NULL;
+    int s;
+    SSL *ssl = NULL;
     X509 *cert = NULL;
+    struct queue *rbios;
+    struct sockaddr_storage addr;
+    
+    s = clpar->sock;
+    rbios = clpar->rbios;
+    addr = clpar->addr;
+    free(clpar);
+    
+    conf = find_clconf(RAD_DTLS, (struct sockaddr *)&addr, NULL);
+    if (conf) {
+	ssl = dtlsacccon(1, conf->ssl_ctx, s, (struct sockaddr *)&addr, rbios);
+	if (!ssl)
+	    goto exit;
+	cert = verifytlscert(ssl);
+        if (!cert)
+            goto exit;
+    }
 
-    client->ssl = dtlsacccon(1, client->conf->ssl_ctx, client->sock, (struct sockaddr *)&client->addr, client->rbios);
-    if (!client->ssl)
-	goto exit;
-    cert = verifytlscert(client->ssl);
-    if (!cert)
-	goto exit;
-    if (verifyconfcert(cert, client->conf)) {
-	X509_free(cert);
-	dtlsserverrd(client);
-	removeclient(client);
-    } else
-	debug(DBG_WARN, "dtlsservernew: ignoring request, certificate validation failed");
+    while (conf) {
+	if (verifyconfcert(cert, conf)) {
+	    X509_free(cert);
+	    client = addclient(conf);
+	    if (client) {
+		client->sock = s;
+		client->rbios = rbios;
+		client->addr = addr;
+		client->ssl = ssl;
+		dtlsserverrd(client);
+		removeclient(client);
+	    } else {
+		debug(DBG_WARN, "dtlsservernew: failed to create new client instance");
+	    }
+	    goto exit;
+	}
+	conf = find_clconf(RAD_DTLS, (struct sockaddr *)&client->addr, &cur);
+    }
+    debug(DBG_WARN, "dtlsservernew: ignoring request, no matching TLS client");
+
     if (cert)
 	X509_free(cert);
 
  exit:
-    SSL_free(client->ssl);
+    /* mark rbios for removal, to be removed by udpdtlsserverrd()*/
+    SSL_free(ssl);
     ERR_remove_state(0);
     pthread_exit(NULL);
 }
@@ -472,11 +509,6 @@ void *dtlsclientrd(void *arg) {
 	if (!replyh(server, buf))
 	    free(buf);
     }
-}
-
-void addclientdtls(struct client *client) {
-    client->replyq = newqueue();
-    client->rbios = newqueue();
 }
 
 void addserverextradtls(struct clsrvconf *conf) {

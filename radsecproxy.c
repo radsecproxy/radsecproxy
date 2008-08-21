@@ -155,7 +155,7 @@ static const struct protodefs protodefs[] = {
 	dtlsconnect, /* connecter */
 	dtlsclientrd, /* clientconnreader */
 	clientradputdtls, /* clientradput */
-	addclientdtls, /* addclient */
+	NULL, /* addclient */
 	addserverextradtls, /* addserverextra */
 	initextradtls /* initextra */
     },
@@ -528,7 +528,9 @@ struct queue *newqueue() {
 
 void removequeue(struct queue *q) {
     struct list_node *entry;
-    
+
+    if (!q)
+	return;
     pthread_mutex_lock(&q->mutex);
     for (entry = list_first(q->entries); entry; entry = list_next(entry))
 	free(((struct reply *)entry)->buf);
@@ -536,6 +538,7 @@ void removequeue(struct queue *q) {
     pthread_cond_destroy(&q->cond);
     pthread_mutex_unlock(&q->mutex);
     pthread_mutex_destroy(&q->mutex);
+    free(q);
 }
 
 void freebios(struct queue *q) {
@@ -577,8 +580,6 @@ void removeclient(struct client *client) {
     if (!client || !client->conf->clients)
 	return;
     removequeue(client->replyq);
-    if (client->rbios)
-	freebios(client->rbios);
     list_removedata(client->conf->clients, client);
     free(client);
 }

@@ -208,6 +208,8 @@ struct client *addclient(struct clsrvconf *conf);
 void removeclient(struct client *client);
 void removeclientrqs(struct client *client);
 struct queue *newqueue();
+void removequeue(struct queue *q);
+void freebios(struct queue *q);
 int radsrv(struct request *rq);
 X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);
