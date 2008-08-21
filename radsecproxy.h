@@ -201,3 +201,13 @@ struct protodefs {
 #define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ? \
                             sizeof(struct sockaddr_in) : \
                             sizeof(struct sockaddr_in6))
+
+struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
+struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
+struct client *addclient(struct clsrvconf *conf);
+void removeclient(struct client *client);
+void removeclientrqs(struct client *client);
+int radsrv(struct request *rq);
+X509 *verifytlscert(SSL *ssl);
+int verifyconfcert(X509 *cert, struct clsrvconf *conf);
+int replyh(struct server *server, unsigned char *buf);
