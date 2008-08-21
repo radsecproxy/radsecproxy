@@ -61,6 +61,7 @@
 #include <openssl/x509v3.h>
 #include "debug.h"
 #include "list.h"
+#include "hash.h"
 #include "util.h"
 #include "gconfig.h"
 #include "radsecproxy.h"
@@ -71,11 +72,11 @@
 
 static struct options options;
 static struct list *clconfs, *srvconfs;
-struct list *realms, *tlsconfs, *rewriteconfs;
+struct list *realms, *rewriteconfs;
+struct hash *tlsconfs;
 
 static struct addrinfo *srcprotores[4] = { NULL, NULL, NULL, NULL };
 
-static pthread_mutex_t tlsconfs_lock;
 static pthread_mutex_t *ssl_locks = NULL;
 static long *ssl_lock_count;
 extern int optind;
@@ -2413,42 +2414,26 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 }
 
 SSL_CTX *tlsgetctx(uint8_t type, char *alt1, char *alt2) {
-    struct list_node *entry;
-    struct tls *t, *t1 = NULL, *t2 = NULL;
-    SSL_CTX *ctx = NULL;
-    
-    pthread_mutex_lock(&tlsconfs_lock);
-    
-    for (entry = list_first(tlsconfs); entry; entry = list_next(entry)) {
-	t = (struct tls *)entry->data;
-	if (!strcasecmp(t->name, alt1)) {
-	    t1 = t;
-	    break;
-	}
-	if (!t2 && alt2 && !strcasecmp(t->name, alt2))
-	    t2 = t;
-    }
+    struct tls *t;
 
-    t = (t1 ? t1 : t2);
-    if (!t)
-	goto exit;
+    t = hash_read(tlsconfs, alt1, strlen(alt1));
+    if (!t) {
+	t = hash_read(tlsconfs, alt2, strlen(alt2));
+	if (!t)
+	    return NULL;
+    }
 
     switch (type) {
     case RAD_TLS:
 	if (!t->tlsctx)
 	    t->tlsctx = tlscreatectx(RAD_TLS, t);
-	ctx = t->tlsctx;
-	break;
+	return t->tlsctx;
     case RAD_DTLS:
 	if (!t->dtlsctx)
 	    t->dtlsctx = tlscreatectx(RAD_DTLS, t);
-	ctx = t->dtlsctx;
-	break;
+	return t->dtlsctx;
     }
-    
- exit:
-    pthread_mutex_unlock(&tlsconfs_lock);
-    return ctx;
+    return NULL;
 }
 
 struct list *addsrvconfs(char *value, char **names) {
@@ -3278,13 +3263,10 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 	goto errexit;
     }
     
-    pthread_mutex_lock(&tlsconfs_lock);
-    if (!list_push(tlsconfs, conf)) {
+    if (!hash_insert(tlsconfs, conf->name, strlen(conf->name), conf)) {
 	debug(DBG_ERR, "conftls_cb: malloc failed");
-	pthread_mutex_unlock(&tlsconfs_lock);
 	goto errexit;
     }
-    pthread_mutex_unlock(&tlsconfs_lock);
 	    
     debug(DBG_DBG, "conftls_cb: added TLS block %s", val);
     return 1;
@@ -3333,7 +3315,7 @@ void getmainconfig(const char *configfile) {
     if (!realms)
 	debugx(1, DBG_ERR, "malloc failed");    
  
-    tlsconfs = list_create();
+    tlsconfs = hash_create();
     if (!tlsconfs)
 	debugx(1, DBG_ERR, "malloc failed");
     
@@ -3452,7 +3434,6 @@ int main(int argc, char **argv) {
     
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
-    pthread_mutex_init(&tlsconfs_lock, NULL);
     
     getargs(argc, argv, &foreground, &pretend, &loglevel, &configfile);
     if (loglevel)
