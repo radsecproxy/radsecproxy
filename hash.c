@@ -12,12 +12,6 @@
 #include "list.h"
 #include "hash.h"
 
-struct entry {
-    void *key;
-    uint32_t keylen;
-    void *data;
-};
-	
 /* allocates and initialises hash structure; returns NULL if malloc fails */
 struct hash *hash_create() {
     struct hash *h = malloc(sizeof(struct hash));
@@ -39,8 +33,8 @@ void hash_destroy(struct hash *h) {
     if (!h)
 	return;
     for (ln = list_first(h->hashlist); ln; ln = list_next(ln)) {
-	free(((struct entry *)ln->data)->key);
-	free(((struct entry *)ln->data)->data);
+	free(((struct hash_entry *)ln->data)->key);
+	free(((struct hash_entry *)ln->data)->data);
     }
     list_destroy(h->hashlist);
     pthread_mutex_destroy(&h->mutex);
@@ -48,13 +42,14 @@ void hash_destroy(struct hash *h) {
 
 /* insert entry in hash; returns 1 if ok, 0 if malloc fails */
 int hash_insert(struct hash *h, void *key, uint32_t keylen, void *data) {
-    struct entry *e;
+    struct hash_entry *e;
 
     if (!h)
 	return 0;
-    e = malloc(sizeof(struct entry));
+    e = malloc(sizeof(struct hash_entry));
     if (!e)
 	return 0;
+    memset(e, 0, sizeof(struct hash_entry));
     e->key = malloc(keylen);
     if (!e->key) {
 	free(e);
@@ -77,13 +72,13 @@ int hash_insert(struct hash *h, void *key, uint32_t keylen, void *data) {
 /* reads entry from hash */
 void *hash_read(struct hash *h, void *key, uint32_t keylen) {
     struct list_node *ln;
-    struct entry *e;
+    struct hash_entry *e;
     
     if (!h)
 	return 0;
     pthread_mutex_lock(&h->mutex);
     for (ln = list_first(h->hashlist); ln; ln = list_next(ln)) {
-	e = (struct entry *)ln->data;
+	e = (struct hash_entry *)ln->data;
 	if (e->keylen == keylen && !memcmp(e->key, key, keylen)) {
 	        pthread_mutex_unlock(&h->mutex);
 		return e->data;
@@ -96,13 +91,13 @@ void *hash_read(struct hash *h, void *key, uint32_t keylen) {
 /* extracts entry from hash */
 void *hash_extract(struct hash *h, void *key, uint32_t keylen) {
     struct list_node *ln;
-    struct entry *e;
+    struct hash_entry *e;
     
     if (!h)
 	return 0;
     pthread_mutex_lock(&h->mutex);
     for (ln = list_first(h->hashlist); ln; ln = list_next(ln)) {
-	e = (struct entry *)ln->data;
+	e = (struct hash_entry *)ln->data;
 	if (e->keylen == keylen && !memcmp(e->key, key, keylen)) {
 	    free(e->key);
 	    list_removedata(h->hashlist, e);
@@ -113,4 +108,25 @@ void *hash_extract(struct hash *h, void *key, uint32_t keylen) {
     }
     pthread_mutex_unlock(&h->mutex);
     return NULL;
+}
+
+/* returns first entry */
+struct hash_entry *hash_first(struct hash *hash) {
+    struct list_node *ln;
+    struct hash_entry *e;
+    if (!hash || !((ln = list_first(hash->hashlist))))
+	return NULL;
+    e = (struct hash_entry *)ln->data;
+    e->next = ln->next;
+    return e;
+}
+
+/* returns the next node after the argument */
+struct hash_entry *hash_next(struct hash_entry *entry) {
+    struct hash_entry *e;
+    if (!entry || !entry->next)
+	return NULL;
+    e = (struct hash_entry *)entry->next->data;
+    e->next = (struct list_node *)entry->next->next;
+    return e;
 }

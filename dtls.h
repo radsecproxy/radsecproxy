@@ -8,9 +8,7 @@
 
 void *udpdtlsserverrd(void *arg);
 int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
-void *dtlsservernew(void *arg);
 void *dtlsclientrd(void *arg);
-void *udpdtlsclientrd(void *arg);
 int clientradputdtls(struct server *server, unsigned char *rad);
 void addserverextradtls(struct clsrvconf *conf);
 void initextradtls();

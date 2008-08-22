@@ -619,6 +619,8 @@ void freeserver(struct server *server, uint8_t destroymutex) {
     if (server->rbios)
 	freebios(server->rbios);
     free(server->dynamiclookuparg);
+    if (server->ssl)
+	SSL_free(server->ssl);
     if (destroymutex) {
 	pthread_mutex_destroy(&server->lock);
 	pthread_cond_destroy(&server->newrq_cond);
@@ -2094,9 +2096,9 @@ void *clientwr(void *arg) {
     struct server *server = (struct server *)arg;
     struct request *rq;
     pthread_t clientrdth;
-    int i, dynconffail = 0;
+    int i, secs, dynconffail = 0;
     uint8_t rnd;
-    struct timeval now;
+    struct timeval now, laststatsrv;
     struct timespec timeout;
     struct request statsrvrq;
     unsigned char statsrvbuf[38];
@@ -2124,6 +2126,7 @@ void *clientwr(void *arg) {
 	statsrvbuf[20] = RAD_Attr_Message_Authenticator;
 	statsrvbuf[21] = 18;
 	gettimeofday(&server->lastrcv, NULL);
+	gettimeofday(&laststatsrv, NULL);
     }
 
     if (conf->pdef->connecter) {
@@ -2145,13 +2148,14 @@ void *clientwr(void *arg) {
 	    RAND_bytes(&rnd, 1);
 	    rnd /= 32;
 	    if (conf->statusserver) {
-		if (!timeout.tv_sec || timeout.tv_sec > server->lastrcv.tv_sec + STATUS_SERVER_PERIOD + rnd)
-		    timeout.tv_sec = server->lastrcv.tv_sec + STATUS_SERVER_PERIOD + rnd;
+		secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
+		if (!timeout.tv_sec || timeout.tv_sec > secs + STATUS_SERVER_PERIOD + rnd)
+		    timeout.tv_sec = secs + STATUS_SERVER_PERIOD + rnd;
 	    } else {
 		if (!timeout.tv_sec || timeout.tv_sec > now.tv_sec + STATUS_SERVER_PERIOD + rnd)
 		    timeout.tv_sec = now.tv_sec + STATUS_SERVER_PERIOD + rnd;
 	    }
-#if 0	    
+#if 0
 	    if (timeout.tv_sec > now.tv_sec)
 		debug(DBG_DBG, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
 #endif	    
@@ -2230,8 +2234,10 @@ void *clientwr(void *arg) {
 	    conf->pdef->clientradput(server, server->requests[i].buf);
 	}
 	if (conf->statusserver) {
+	    secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
 	    gettimeofday(&now, NULL);
-	    if (now.tv_sec - server->lastrcv.tv_sec >= STATUS_SERVER_PERIOD) {
+	    if (now.tv_sec - secs > STATUS_SERVER_PERIOD) {
+		laststatsrv = now;
 		if (!RAND_bytes(statsrvbuf + 4, 16)) {
 		    debug(DBG_WARN, "clientwr: failed to generate random auth");
 		    continue;

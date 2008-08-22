@@ -13,6 +13,13 @@ struct hash {
     pthread_mutex_t mutex;
 };
 
+struct hash_entry {
+    void *key;
+    uint32_t keylen;
+    void *data;
+    struct list_node *next; /* used when walking through hash */
+};
+
 /* allocates and initialises hash structure; returns NULL if malloc fails */
 struct hash *hash_create();
 
@@ -27,3 +34,9 @@ void *hash_read(struct hash *hash, void *key, uint32_t keylen);
 
 /* extracts (read and remove) entry from hash */
 void *hash_extract(struct hash *hash, void *key, uint32_t keylen);
+
+/* returns first entry */
+struct hash_entry *hash_first(struct hash *hash);
+
+/* returns the next entry after the argument */
+struct hash_entry *hash_next(struct hash_entry *entry);

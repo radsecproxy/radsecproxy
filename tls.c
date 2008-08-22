@@ -365,6 +365,7 @@ void *tlsservernew(void *arg) {
 	X509_free(cert);
 
  exit:
+    SSL_shutdown(ssl);
     SSL_free(ssl);
     ERR_remove_state(0);
     shutdown(s, SHUT_RDWR);
