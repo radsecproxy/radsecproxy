@@ -58,7 +58,7 @@ void *list_shift(struct list *list) {
     struct list_node *node;
     void *data;
     
-    if (!list->first)
+    if (!list || !list->first)
 	return NULL;
     
     node = list->first;
