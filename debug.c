@@ -24,6 +24,7 @@ static char *debug_ident = NULL;
 static uint8_t debug_level = DBG_INFO;
 static FILE *debug_file = NULL;
 static int debug_syslogfacility = 0;
+static uint8_t debug_timestamp = 1;
 
 void debug_init(char *ident) {
     debug_file = stderr;
@@ -46,6 +47,10 @@ void debug_set_level(uint8_t level) {
 	debug_level = DBG_DBG;
 	return;
     }
+}
+
+void debug_no_timestamp() {
+    debug_timestamp = 0;
 }
 
 uint8_t debug_get_level() {
@@ -116,8 +121,7 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
 	}
 	vsyslog(priority, format, ap);
     } else {
-	timebuf = malloc(256);
-	if (timebuf) {
+	if (debug_timestamp && (timebuf = malloc(256))) {
 	    gettimeofday(&now, NULL);
 	    ctime_r(&now.tv_sec, timebuf);
 	    timebuf[strlen(timebuf) - 1] = '\0';
