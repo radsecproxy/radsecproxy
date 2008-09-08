@@ -2701,7 +2701,7 @@ void addrealm(char *value, char **servers, char **accservers, char *message, uin
     realm->message = message;
     realm->accresp = accresp;
 
-    if (regcomp(&realm->regex, regex ? regex : value + 1, REG_ICASE | REG_NOSUB))
+    if (regcomp(&realm->regex, regex ? regex : value + 1, REG_EXTENDED | REG_ICASE | REG_NOSUB))
 	debugx(1, DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
     if (regex)
 	free(regex);
@@ -2739,7 +2739,7 @@ int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
 	debug(DBG_ERR, "malloc failed");
 	return 0;
     }
-    if (regcomp(*r, v, REG_ICASE | REG_NOSUB)) {
+    if (regcomp(*r, v, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
 	free(*r);
 	*r = NULL;
 	debug(DBG_ERR, "failed to compile regular expression %s", v);
