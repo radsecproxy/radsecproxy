@@ -135,9 +135,16 @@ struct tls {
     int count;
 };
 
+struct attribute {
+    uint8_t t;
+    uint8_t l;
+    uint8_t *v;
+};
+
 struct rewrite {
     uint8_t *removeattrs;
     uint32_t *removevendorattrs;
+    struct list *addattrs;
 };
 
 struct rewriteconf {
