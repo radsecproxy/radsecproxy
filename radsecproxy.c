@@ -3018,6 +3018,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 		     "rewrite", CONF_STR, &rewriteinalias,
 		     "rewriteIn", CONF_STR, &conf->confrewritein,
+		     "rewriteOut", CONF_STR, &conf->confrewriteout,
 		     "rewriteattribute", CONF_STR, &conf->rewriteusername,
 		     NULL
 			  ))
@@ -3050,6 +3051,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     else
 	free(rewriteinalias);
     conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultclient", "default");
+    if (conf->confrewriteout)
+	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
     
     if (conf->rewriteusername) {
 	if (!addrewriteattr(conf))
@@ -3096,6 +3099,8 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	conf->retrycount = protodefs[conf->type].retrycountdefault;
     
     conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultserver", "default");
+    if (conf->confrewriteout)
+	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
 
     if (!conf->secret) {
 	if (!conf->pdef->secretdefault) {
@@ -3145,6 +3150,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
 			  "rewrite", CONF_STR, &rewriteinalias,
 			  "rewriteIn", CONF_STR, &conf->confrewritein,
+			  "rewriteOut", CONF_STR, &conf->confrewriteout,
 			  "StatusServer", CONF_BLN, &conf->statusserver,
 			  "RetryInterval", CONF_LINT, &retryinterval,
 			  "RetryCount", CONF_LINT, &retrycount,
