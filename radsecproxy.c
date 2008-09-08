@@ -1833,8 +1833,8 @@ void radsrv(struct request *rq) {
 	}
     }
     
-    if (rq->from->conf->rewrite) {
-	dorewrite(rq->buf, rq->from->conf->rewrite);
+    if (rq->from->conf->rewritein) {
+	dorewrite(rq->buf, rq->from->conf->rewritein);
 	len = RADLEN(rq->buf) - 20;
     }
     
@@ -2011,8 +2011,8 @@ int replyh(struct server *server, unsigned char *buf) {
 	return 0;
     }
 	
-    if (server->conf->rewrite) {
-	dorewrite(buf, server->conf->rewrite);
+    if (server->conf->rewritein) {
+	dorewrite(buf, server->conf->rewritein);
 	len = RADLEN(buf) - 20;
     }
     
@@ -2908,7 +2908,7 @@ void addrewrite(char *value, char **attrs, char **vattrs) {
 }
 
 void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL, *rewriteattr = NULL;
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewritein = NULL, *rewriteusername = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confclient_cb called for %s", block);
@@ -2926,8 +2926,8 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "tls", CONF_STR, &tls,
 		     "matchcertificateattribute", CONF_STR, &matchcertattr,
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
-		     "rewrite", CONF_STR, &rewrite,
-		     "rewriteattribute", CONF_STR, &rewriteattr,
+		     "rewrite", CONF_STR, &rewritein,
+		     "rewriteattribute", CONF_STR, &rewriteusername,
 		     NULL
 		     );
 
@@ -2954,12 +2954,13 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     if (matchcertattr)
 	free(matchcertattr);
     
-    conf->rewrite = rewrite ? getrewrite(rewrite, NULL) : getrewrite("defaultclient", "default");
+    conf->rewritein = rewritein ? getrewrite(rewritein, NULL) : getrewrite("defaultclient", "default");
+    free(rewritein);
     
-    if (rewriteattr) {
-	if (!addrewriteattr(conf, rewriteattr))
+    if (rewriteusername) {
+	if (!addrewriteattr(conf, rewriteusername))
 	    debugx(1, DBG_ERR, "error in block %s, invalid RewriteAttributeValue", block);
-	free(rewriteattr);
+	free(rewriteusername);
     }
     
     if (!resolvepeer(conf, 0))
@@ -2973,7 +2974,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 }
 
 void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewrite = NULL;
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewritein = NULL;
     long int retryinterval = LONG_MIN, retrycount = LONG_MIN;
     struct clsrvconf *conf;
     
@@ -2992,7 +2993,7 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "secret", CONF_STR, &conf->secret,
 		     "tls", CONF_STR, &tls,
 		     "MatchCertificateAttribute", CONF_STR, &matchcertattr,
-		     "rewrite", CONF_STR, &rewrite,
+		     "rewrite", CONF_STR, &rewritein,
 		     "StatusServer", CONF_BLN, &conf->statusserver,
 		     "RetryInterval", CONF_LINT, &retryinterval,
 		     "RetryCount", CONF_LINT, &retrycount,
@@ -3039,7 +3040,8 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     } else
 	conf->retrycount = REQUEST_RETRY_COUNT;
     
-    conf->rewrite = rewrite ? getrewrite(rewrite, NULL) : getrewrite("defaultserver", "default");
+    conf->rewritein = rewritein ? getrewrite(rewritein, NULL) : getrewrite("defaultserver", "default");
+    free(rewritein);
     
     if (!resolvepeer(conf, 0))
 	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");

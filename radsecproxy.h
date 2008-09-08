@@ -90,7 +90,8 @@ struct clsrvconf {
     uint8_t retrycount;
     uint8_t certnamecheck;
     SSL_CTX *ssl_ctx;
-    struct rewrite *rewrite;
+    struct rewrite *rewritein;
+    struct rewrite *rewriteout;
     struct addrinfo *addrinfo;
     uint8_t prefixlen;
     struct list *clients;
