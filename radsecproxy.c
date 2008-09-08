@@ -2908,7 +2908,7 @@ void addrewrite(char *value, char **attrs, char **vattrs) {
 }
 
 void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewritein = NULL, *rewriteusername = NULL;
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewritein = NULL, *rewriteinalias = NULL, *rewriteusername = NULL;
     struct clsrvconf *conf;
     
     debug(DBG_DBG, "confclient_cb called for %s", block);
@@ -2926,7 +2926,8 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "tls", CONF_STR, &tls,
 		     "matchcertificateattribute", CONF_STR, &matchcertattr,
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
-		     "rewrite", CONF_STR, &rewritein,
+		     "rewrite", CONF_STR, &rewriteinalias,
+		     "rewriteIn", CONF_STR, &rewritein,
 		     "rewriteattribute", CONF_STR, &rewriteusername,
 		     NULL
 		     );
@@ -2953,7 +2954,11 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	free(tls);
     if (matchcertattr)
 	free(matchcertattr);
-    
+
+    if (!rewritein)
+	rewritein = rewriteinalias;
+    else
+	free(rewriteinalias);
     conf->rewritein = rewritein ? getrewrite(rewritein, NULL) : getrewrite("defaultclient", "default");
     free(rewritein);
     
@@ -2974,7 +2979,7 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 }
 
 void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewritein = NULL;
+    char *type = NULL, *tls = NULL, *matchcertattr = NULL, *rewritein = NULL, rewriteinalias = NULL;
     long int retryinterval = LONG_MIN, retrycount = LONG_MIN;
     struct clsrvconf *conf;
     
@@ -2993,7 +2998,8 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "secret", CONF_STR, &conf->secret,
 		     "tls", CONF_STR, &tls,
 		     "MatchCertificateAttribute", CONF_STR, &matchcertattr,
-		     "rewrite", CONF_STR, &rewritein,
+		     "rewrite", CONF_STR, &rewriteinalias,
+		     "rewriteIn", CONF_STR, &rewritein,
 		     "StatusServer", CONF_BLN, &conf->statusserver,
 		     "RetryInterval", CONF_LINT, &retryinterval,
 		     "RetryCount", CONF_LINT, &retrycount,
@@ -3039,7 +3045,11 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	conf->retrycount = (uint8_t)retrycount;
     } else
 	conf->retrycount = REQUEST_RETRY_COUNT;
-    
+
+    if (!rewritein)
+	rewritein = rewriteinalias;
+    else
+	free(rewriteinalias);
     conf->rewritein = rewritein ? getrewrite(rewritein, NULL) : getrewrite("defaultserver", "default");
     free(rewritein);
     
