@@ -1921,6 +1921,9 @@ void radsrv(struct request *rq) {
     rq->origid = id;
     memcpy(rq->origauth, auth, 16);
     memcpy(auth, newauth, 16);
+
+    if (to->conf->rewriteout)
+	dorewrite(rq->buf, to->conf->rewriteout);
     sendrq(to, rq);
     return;
     
@@ -2072,7 +2075,14 @@ int replyh(struct server *server, unsigned char *buf) {
 	if (messageauth)
 	    messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
     }
-	
+    
+    if (from->conf->rewriteout) {
+	dorewrite(buf, from->conf->rewriteout);
+	len = RADLEN(buf) - 20;
+	if (messageauth)
+	    messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
+    }
+    
     if (messageauth) {
 	if (!createmessageauth(buf, ATTRVAL(messageauth), from->conf->secret)) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
