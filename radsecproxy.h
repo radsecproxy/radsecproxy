@@ -83,8 +83,8 @@ struct clsrvconf {
     char *secret;
     regex_t *certcnregex;
     regex_t *certuriregex;
-    regex_t *rewriteattrregex;
-    char *rewriteattrreplacement;
+    regex_t *rewriteusernameregex;
+    char *rewriteusernamereplacement;
     uint8_t statusserver;
     uint8_t retryinterval;
     uint8_t retrycount;
