@@ -1458,7 +1458,7 @@ int findvendorsubattr(uint32_t *attrs, uint32_t vendor, uint8_t subattr) {
     return 0;
 }
 
-int dovendorrewrite(uint8_t *attrs, uint16_t length, uint32_t *removevendorattrs) {
+int dovendorrewriterm(uint8_t *attrs, uint16_t length, uint32_t *removevendorattrs) {
     uint8_t alen, sublen, rmlen = 0;
     uint32_t vendor = *(uint32_t *)ATTRVAL(attrs);
     uint8_t *subattrs;
@@ -1503,23 +1503,20 @@ int dovendorrewrite(uint8_t *attrs, uint16_t length, uint32_t *removevendorattrs
     return rmlen;
 }
 
-void dorewrite(uint8_t *buf, struct rewrite *rewrite) {
+void dorewriterm(uint8_t *buf, uint8_t *rmattrs, uint32_t *rmvattrs) {
     uint8_t *attrs, alen;
     uint16_t len, rmlen = 0;
     
-    if (!rewrite || (!rewrite->removeattrs && !rewrite->removevendorattrs))
-	return;
-
     len = RADLEN(buf) - 20;
     attrs = buf + 20;
     while (len > 1) {
 	alen = ATTRLEN(attrs);
 	len -= alen;
-	if (rewrite->removeattrs && strchr((char *)rewrite->removeattrs, ATTRTYPE(attrs))) {
+	if (rmattrs && strchr((char *)rmattrs, ATTRTYPE(attrs))) {
 	    memmove(attrs, attrs + alen, len);
 	    rmlen += alen;
-	} else if (ATTRTYPE(attrs) == RAD_Attr_Vendor_Specific && rewrite->removevendorattrs)
-	    rmlen += dovendorrewrite(attrs, len, rewrite->removevendorattrs);
+	} else if (ATTRTYPE(attrs) == RAD_Attr_Vendor_Specific && rmvattrs)
+	    rmlen += dovendorrewriterm(attrs, len, rmvattrs);
 	else
 	    attrs += alen;
     }
@@ -1527,6 +1524,43 @@ void dorewrite(uint8_t *buf, struct rewrite *rewrite) {
 	((uint16_t *)buf)[1] = htons(RADLEN(buf) - rmlen);
 }
 
+int dorewriteadd(uint8_t **buf, struct list *addattrs) {
+    struct list_node *n;
+    struct attribute *a;
+    uint16_t i, addlen = 0;
+    uint8_t *newbuf;
+    
+    for (n = list_first(addattrs); n; n = list_next(n))
+	addlen += 2 + ((struct attribute *)n->data)->l;
+    if (!addlen)
+	return 1;
+    newbuf = realloc(*buf, RADLEN(*buf) + addlen);
+    if (!newbuf)
+	return 0;
+
+    i = RADLEN(newbuf);
+    for (n = list_first(addattrs); n; n = list_next(n)) {
+	a = (struct attribute *)n->data;
+	newbuf[i++] = a->t;
+	newbuf[i++] = a->l + 2;
+	memcpy(newbuf + i, a->v, a->l);
+	i += a->l;
+    }
+    ((uint16_t *)newbuf)[1] = htons(RADLEN(newbuf) + addlen);
+    *buf = newbuf;
+    return 1;
+}
+
+int dorewrite(uint8_t **buf, struct rewrite *rewrite) {
+    if (!rewrite)
+	return 1;
+    if (rewrite->removeattrs || rewrite->removevendorattrs)
+	dorewriterm(*buf, rewrite->removeattrs, rewrite->removevendorattrs);
+    if (rewrite->addattrs)
+	return dorewriteadd(buf, rewrite->addattrs);
+    return 1;
+}
+    
 /* returns a pointer to the resized attribute value */
 uint8_t *resizeattr(uint8_t **buf, uint8_t newvallen, uint8_t type) {
     uint8_t *attrs, *attr, vallen;
@@ -1826,8 +1860,11 @@ int radsrv(struct request *rq) {
     }
     
     if (rq->from->conf->rewritein) {
-	dorewrite(rq->buf, rq->from->conf->rewritein);
+	if (!dorewrite(&rq->buf, rq->from->conf->rewritein))
+	    goto exit;
 	len = RADLEN(rq->buf) - 20;
+	auth = (uint8_t *)(rq->buf + 4);
+	attrs = rq->buf + 20;
     }
     
     attr = attrget(attrs, len, RAD_Attr_User_Name);
@@ -1913,7 +1950,9 @@ int radsrv(struct request *rq) {
     memcpy(auth, newauth, 16);
 
     if (to->conf->rewriteout)
-	dorewrite(rq->buf, to->conf->rewriteout);
+	if (!dorewrite(&rq->buf, to->conf->rewriteout))
+	    goto exit;
+    
     sendrq(to, rq);
     return 1;
     
@@ -2014,8 +2053,12 @@ int replyh(struct server *server, unsigned char *buf) {
     }
 	
     if (server->conf->rewritein) {
-	dorewrite(buf, server->conf->rewritein);
+	if (!dorewrite(&buf, server->conf->rewritein))
+	    return 0;
 	len = RADLEN(buf) - 20;
+	attrs = buf + 20;
+	if (messageauth)
+	    messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
     }
     
     /* MS MPPE */
@@ -2076,8 +2119,10 @@ int replyh(struct server *server, unsigned char *buf) {
     }
     
     if (from->conf->rewriteout) {
-	dorewrite(buf, from->conf->rewriteout);
+	if (!dorewrite(&buf, from->conf->rewriteout))
+	    return 0;
 	len = RADLEN(buf) - 20;
+	attrs = buf + 20;
 	if (messageauth)
 	    messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
     }
@@ -2368,7 +2413,7 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     unsigned long error;
 
     if (!ssl_locks) {
-	ssl_locks = malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
+	ssl_locks = calloc(CRYPTO_num_locks(), sizeof(pthread_mutex_t));
 	ssl_lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
 	for (i = 0; i < CRYPTO_num_locks(); i++) {
 	    ssl_lock_count[i] = 0;
@@ -2878,6 +2923,32 @@ int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
     return *type >= 0 && *type < 256;
 }
 
+/* should accept both names and numeric values, only numeric right now */
+struct attribute *extractattr(char *nameval) {
+    int len, name = 0;
+    char *s;
+    struct attribute *a;
+    
+    s = strchr(nameval, ':');
+    name = atoi(nameval);
+    if (!s || name < 1 || name > 255)
+	return NULL;
+    len = strlen(s + 1);
+    if (len > 253)
+	return NULL;
+    a = malloc(sizeof(struct attribute));
+    if (!a)
+	return NULL;
+    a->v = (uint8_t *)stringcopy(s + 1, 0);
+    if (!a->v) {
+	free(a);
+	return NULL;
+    }
+    a->t = name;
+    a->l = len;
+    return a;
+}
+
 struct rewrite *getrewrite(char *alt1, char *alt2) {
     struct rewrite *r;
 
@@ -2888,50 +2959,66 @@ struct rewrite *getrewrite(char *alt1, char *alt2) {
     return NULL;
 }
 
-void addrewrite(char *value, char **attrs, char **vattrs) {
+void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs) {
     struct rewrite *rewrite = NULL;
     int i, n;
-    uint8_t *a = NULL;
-    uint32_t *p, *va = NULL;
-
-    if (attrs) {
-	n = 0;
-	for (; attrs[n]; n++);
-	a = malloc((n + 1) * sizeof(uint8_t));
-	if (!a)
+    uint8_t *rma = NULL;
+    uint32_t *p, *rmva = NULL;
+    struct list *adda = NULL;
+    struct attribute *a;
+    
+    if (rmattrs) {
+	for (n = 0; rmattrs[n]; n++);
+	rma = calloc(n + 1, sizeof(uint8_t));
+	if (!rma)
 	    debugx(1, DBG_ERR, "malloc failed");
     
 	for (i = 0; i < n; i++) {
-	    if (!(a[i] = attrname2val(attrs[i])))
-		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", attrs[i]);
-	    free(attrs[i]);
+	    if (!(rma[i] = attrname2val(rmattrs[i])))
+		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", rmattrs[i]);
+	    free(rmattrs[i]);
 	}
-	free(attrs);
-	a[i] = 0;
+	free(rmattrs);
+	rma[i] = 0;
     }
     
-    if (vattrs) {
-	n = 0;
-	for (; vattrs[n]; n++);
-	va = malloc((2 * n + 1) * sizeof(uint32_t));
-	if (!va)
+    if (rmvattrs) {
+	for (n = 0; rmvattrs[n]; n++);
+	rmva = calloc(2 * n + 1, sizeof(uint32_t));
+	if (!rmva)
 	    debugx(1, DBG_ERR, "malloc failed");
     
-	for (p = va, i = 0; i < n; i++, p += 2) {
-	    if (!vattrname2val(vattrs[i], p, p + 1))
-		debugx(1, DBG_ERR, "addrewrite: invalid vendor attribute %s", vattrs[i]);
-	    free(vattrs[i]);
+	for (p = rmva, i = 0; i < n; i++, p += 2) {
+	    if (!vattrname2val(rmvattrs[i], p, p + 1))
+		debugx(1, DBG_ERR, "addrewrite: invalid vendor attribute %s", rmvattrs[i]);
+	    free(rmvattrs[i]);
 	}
-	free(vattrs);
+	free(rmvattrs);
 	*p = 0;
     }
     
-    if (a || va) {
+    if (addattrs) {
+	adda = list_create();
+	if (!adda)
+	    debugx(1, DBG_ERR, "malloc failed");
+	for (i = 0; addattrs[i]; i++) {
+	    a = extractattr(addattrs[i]);
+	    if (!a)
+		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", addattrs[i]);
+	    free(addattrs[i]);
+	    if (!list_push(adda, a))
+		debugx(1, DBG_ERR, "malloc failed");
+	}
+	free(addattrs);
+    }
+    
+    if (rma || rmva || adda) {
 	rewrite = malloc(sizeof(struct rewrite));
 	if (!rewrite)
 	    debugx(1, DBG_ERR, "malloc failed");
-	rewrite->removeattrs = a;
-	rewrite->removevendorattrs = va;
+	rewrite->removeattrs = rma;
+	rewrite->removevendorattrs = rmva;
+	rewrite->addattrs = adda;
     }
     
     if (!hash_insert(rewriteconfs, value, strlen(value), rewrite))
@@ -3329,17 +3416,18 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 }
 
 int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    char **attrs = NULL, **vattrs = NULL;
+    char **rmattrs = NULL, **rmvattrs = NULL, **addattrs = NULL;
     
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
     
     if (!getgenericconfig(cf, block,
-		     "removeAttribute", CONF_MSTR, &attrs,
-		     "removeVendorAttribute", CONF_MSTR, &vattrs,
+		     "removeAttribute", CONF_MSTR, &rmattrs,
+		     "removeVendorAttribute", CONF_MSTR, &rmvattrs,
+		     "addAttribute", CONF_MSTR, &addattrs,
 		     NULL
 			  ))
 	debugx(1, DBG_ERR, "configuration error");
-    addrewrite(val, attrs, vattrs);
+    addrewrite(val, rmattrs, rmvattrs, addattrs);
     return 1;
 }
 
