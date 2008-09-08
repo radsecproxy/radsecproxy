@@ -2999,7 +2999,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf;
-    char *conftype = NULL;
+    char *conftype = NULL, *rewriteinalias = NULL;
     
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -3016,7 +3016,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 		     "tls", CONF_STR, &conf->tls,
 		     "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
-		     "rewrite", CONF_STR, &conf->confrewritein,
+		     "rewrite", CONF_STR, &rewriteinalias,
+		     "rewriteIn", CONF_STR, &conf->confrewritein,
 		     "rewriteattribute", CONF_STR, &conf->rewriteusername,
 		     NULL
 			  ))
@@ -3043,7 +3044,11 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	if (conf->matchcertattr && !addmatchcertattr(conf))
 	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
     }
-    
+
+    if (!conf->confrewritein)
+	conf->confrewritein = rewriteinalias;
+    else
+	free(rewriteinalias);
     conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultclient", "default");
     
     if (conf->rewriteusername) {
@@ -3113,7 +3118,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 			
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *resconf;
-    char *conftype = NULL;
+    char *conftype = NULL, *rewriteinalias = NULL;
     long int retryinterval = LONG_MIN, retrycount = LONG_MIN;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
@@ -3138,7 +3143,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "secret", CONF_STR, &conf->secret,
 			  "tls", CONF_STR, &conf->tls,
 			  "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
-			  "rewrite", CONF_STR, &conf->confrewritein,
+			  "rewrite", CONF_STR, &rewriteinalias,
+			  "rewriteIn", CONF_STR, &conf->confrewritein,
 			  "StatusServer", CONF_BLN, &conf->statusserver,
 			  "RetryInterval", CONF_LINT, &retryinterval,
 			  "RetryCount", CONF_LINT, &retrycount,
@@ -3169,11 +3175,17 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->pdef = &protodefs[conf->type];
     if (!conf->pdef->name) {
 	debug(DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
-	free(conftype);
 	goto errexit;
     }
     free(conftype);
-	    
+    conftype = NULL;
+
+    if (!conf->confrewritein)
+	conf->confrewritein = rewriteinalias;
+    else
+	free(rewriteinalias);
+    rewriteinalias = NULL;
+
     if (retryinterval != LONG_MIN) {
 	if (retryinterval < 1 || retryinterval > conf->pdef->retryintervalmax) {
 	    debug(DBG_ERR, "error in block %s, value of option RetryInterval is %d, must be 1-%d", block, retryinterval, conf->pdef->retryintervalmax);
@@ -3217,7 +3229,9 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
     return 1;
 
- errexit:    
+ errexit:
+    free(conftype);
+    free(rewriteinalias);
     freeclsrvconf(conf);
     return 0;
 }
