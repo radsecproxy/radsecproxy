@@ -97,8 +97,8 @@ struct clsrvconf {
     regex_t *certuriregex;
     char *confrewrite;
     char *rewriteattr;
-    regex_t *rewriteattrregex;
-    char *rewriteattrreplacement;
+    regex_t *rewriteusernameregex;
+    char *rewriteusernamereplacement;
     char *dynamiclookupcommand;
     uint8_t statusserver;
     uint8_t retryinterval;

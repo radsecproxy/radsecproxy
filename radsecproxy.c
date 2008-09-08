@@ -1568,9 +1568,9 @@ int rewriteusername(struct request *rq, char *in) {
     regmatch_t pmatch[10], *pfield;
     int i;
     unsigned char *result;
-    char *out = rq->from->conf->rewriteattrreplacement;
+    char *out = rq->from->conf->rewriteusernamereplacement;
     
-    if (regexec(rq->from->conf->rewriteattrregex, in, nmatch, pmatch, 0)) {
+    if (regexec(rq->from->conf->rewriteusernameregex, in, nmatch, pmatch, 0)) {
 	debug(DBG_DBG, "rewriteattr: username not matching, no rewrite");
 	return 1;
     }
@@ -1843,7 +1843,7 @@ int radsrv(struct request *rq) {
     username[ATTRVALLEN(attr)] = '\0';
     radattr2ascii(userascii, sizeof(userascii), attr);
 
-    if (rq->from->conf->rewriteattrregex) {
+    if (rq->from->conf->rewriteusernameregex) {
 	if (!rewriteusername(rq, username)) {
 	    debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
 	    goto exit;
@@ -2821,24 +2821,24 @@ int addrewriteattr(struct clsrvconf *conf) {
     *w = '\0';
     w++;
     
-    conf->rewriteattrregex = malloc(sizeof(regex_t));
-    if (!conf->rewriteattrregex) {
+    conf->rewriteusernameregex = malloc(sizeof(regex_t));
+    if (!conf->rewriteusernameregex) {
 	debug(DBG_ERR, "malloc failed");
 	return 0;
     }
 
-    conf->rewriteattrreplacement = stringcopy(w, 0);
-    if (!conf->rewriteattrreplacement) {
-	free(conf->rewriteattrregex);
-	conf->rewriteattrregex = NULL;
+    conf->rewriteusernamereplacement = stringcopy(w, 0);
+    if (!conf->rewriteusernamereplacement) {
+	free(conf->rewriteusernameregex);
+	conf->rewriteusernameregex = NULL;
 	return 0;
     }
     
-    if (regcomp(conf->rewriteattrregex, v, REG_ICASE | REG_EXTENDED)) {
-	free(conf->rewriteattrregex);
-	conf->rewriteattrregex = NULL;
-	free(conf->rewriteattrreplacement);
-	conf->rewriteattrreplacement = NULL;
+    if (regcomp(conf->rewriteusernameregex, v, REG_ICASE | REG_EXTENDED)) {
+	free(conf->rewriteusernameregex);
+	conf->rewriteusernameregex = NULL;
+	free(conf->rewriteusernamereplacement);
+	conf->rewriteusernamereplacement = NULL;
 	debug(DBG_ERR, "failed to compile regular expression %s", v);
 	return 0;
     }
@@ -2942,9 +2942,9 @@ void freeclsrvconf(struct clsrvconf *conf) {
 	regfree(conf->certuriregex);
     free(conf->confrewrite);
     free(conf->rewriteattr);
-    if (conf->rewriteattrregex)
-	regfree(conf->rewriteattrregex);
-    free(conf->rewriteattrreplacement);
+    if (conf->rewriteusernameregex)
+	regfree(conf->rewriteusernameregex);
+    free(conf->rewriteusernamereplacement);
     free(conf->dynamiclookupcommand);
     free(conf->rewrite);
     if (conf->addrinfo)
