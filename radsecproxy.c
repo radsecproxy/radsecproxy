@@ -1825,8 +1825,8 @@ int radsrv(struct request *rq) {
 	}
     }
     
-    if (rq->from->conf->rewrite) {
-	dorewrite(rq->buf, rq->from->conf->rewrite);
+    if (rq->from->conf->rewritein) {
+	dorewrite(rq->buf, rq->from->conf->rewritein);
 	len = RADLEN(rq->buf) - 20;
     }
     
@@ -2010,8 +2010,8 @@ int replyh(struct server *server, unsigned char *buf) {
 	return 0;
     }
 	
-    if (server->conf->rewrite) {
-	dorewrite(buf, server->conf->rewrite);
+    if (server->conf->rewritein) {
+	dorewrite(buf, server->conf->rewritein);
 	len = RADLEN(buf) - 20;
     }
     
@@ -2808,8 +2808,8 @@ int addmatchcertattr(struct clsrvconf *conf) {
 int addrewriteattr(struct clsrvconf *conf) {
     char *v, *w;
     
-    v = conf->rewriteattr + 11;
-    if (strncasecmp(conf->rewriteattr, "User-Name:/", 11) || !*v)
+    v = conf->rewriteusername + 11;
+    if (strncasecmp(conf->rewriteusername, "User-Name:/", 11) || !*v)
 	return 0;
     /* regexp, remove optional trailing / if present */
     if (v[strlen(v) - 1] == '/')
@@ -2940,13 +2940,15 @@ void freeclsrvconf(struct clsrvconf *conf) {
 	regfree(conf->certcnregex);
     if (conf->certuriregex)
 	regfree(conf->certuriregex);
-    free(conf->confrewrite);
-    free(conf->rewriteattr);
+    free(conf->confrewritein);
+    free(conf->confrewriteout);
+    free(conf->rewriteusername);
     if (conf->rewriteusernameregex)
 	regfree(conf->rewriteusernameregex);
     free(conf->rewriteusernamereplacement);
     free(conf->dynamiclookupcommand);
-    free(conf->rewrite);
+    free(conf->rewritein);
+    free(conf->rewriteout);
     if (conf->addrinfo)
 	freeaddrinfo(conf->addrinfo);
     /* not touching ssl_ctx, clients and servers */
@@ -2980,7 +2982,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	!mergeconfstring(&dst->secret, &src->secret) ||
 	!mergeconfstring(&dst->tls, &src->tls) ||
 	!mergeconfstring(&dst->matchcertattr, &src->matchcertattr) ||
-	!mergeconfstring(&dst->confrewrite, &src->confrewrite) ||
+	!mergeconfstring(&dst->confrewritein, &src->confrewritein) ||
+	!mergeconfstring(&dst->confrewriteout, &src->confrewriteout) ||
 	!mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand))
 	return 0;
     if (src->pdef)
@@ -3013,8 +3016,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 		     "tls", CONF_STR, &conf->tls,
 		     "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
 		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
-		     "rewrite", CONF_STR, &conf->confrewrite,
-		     "rewriteattribute", CONF_STR, &conf->rewriteattr,
+		     "rewrite", CONF_STR, &conf->confrewritein,
+		     "rewriteattribute", CONF_STR, &conf->rewriteusername,
 		     NULL
 			  ))
 	debugx(1, DBG_ERR, "configuration error");
@@ -3041,9 +3044,9 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
     }
     
-    conf->rewrite = conf->confrewrite ? getrewrite(conf->confrewrite, NULL) : getrewrite("defaultclient", "default");
+    conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultclient", "default");
     
-    if (conf->rewriteattr) {
+    if (conf->rewriteusername) {
 	if (!addrewriteattr(conf))
 	    debugx(1, DBG_ERR, "error in block %s, invalid RewriteAttributeValue", block);
     }
@@ -3087,7 +3090,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     if (conf->retrycount == 255)
 	conf->retrycount = protodefs[conf->type].retrycountdefault;
     
-    conf->rewrite = conf->confrewrite ? getrewrite(conf->confrewrite, NULL) : getrewrite("defaultserver", "default");
+    conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultserver", "default");
 
     if (!conf->secret) {
 	if (!conf->pdef->secretdefault) {
@@ -3135,7 +3138,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "secret", CONF_STR, &conf->secret,
 			  "tls", CONF_STR, &conf->tls,
 			  "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
-			  "rewrite", CONF_STR, &conf->confrewrite,
+			  "rewrite", CONF_STR, &conf->confrewritein,
 			  "StatusServer", CONF_BLN, &conf->statusserver,
 			  "RetryInterval", CONF_LINT, &retryinterval,
 			  "RetryCount", CONF_LINT, &retrycount,

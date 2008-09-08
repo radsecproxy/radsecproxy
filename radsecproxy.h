@@ -95,8 +95,9 @@ struct clsrvconf {
     char *matchcertattr;
     regex_t *certcnregex;
     regex_t *certuriregex;
-    char *confrewrite;
-    char *rewriteattr;
+    char *confrewritein;
+    char *confrewriteout;
+    char *rewriteusername;
     regex_t *rewriteusernameregex;
     char *rewriteusernamereplacement;
     char *dynamiclookupcommand;
@@ -105,7 +106,8 @@ struct clsrvconf {
     uint8_t retrycount;
     uint8_t certnamecheck;
     SSL_CTX *ssl_ctx;
-    struct rewrite *rewrite;
+    struct rewrite *rewritein;
+    struct rewrite *rewriteout;
     struct addrinfo *addrinfo;
     uint8_t prefixlen;
     struct list *clients;
