@@ -97,9 +97,8 @@ struct clsrvconf {
     regex_t *certuriregex;
     char *confrewritein;
     char *confrewriteout;
-    char *rewriteusername;
-    regex_t *rewriteusernameregex;
-    char *rewriteusernamereplacement;
+    char *confrewriteusername;
+    struct modattr *rewriteusername;
     char *dynamiclookupcommand;
     uint8_t statusserver;
     uint8_t retryinterval;
@@ -173,10 +172,17 @@ struct attribute {
     uint8_t *v;
 };
 
+struct modattr {
+    uint8_t t;
+    char *replacement;
+    regex_t *regex;
+};
+
 struct rewrite {
     uint8_t *removeattrs;
     uint32_t *removevendorattrs;
     struct list *addattrs;
+    struct list *modattrs;
 };
 
 struct protodefs {
