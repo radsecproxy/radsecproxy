@@ -83,8 +83,7 @@ struct clsrvconf {
     char *secret;
     regex_t *certcnregex;
     regex_t *certuriregex;
-    regex_t *rewriteusernameregex;
-    char *rewriteusernamereplacement;
+    struct modattr *rewriteusername;
     uint8_t statusserver;
     uint8_t retryinterval;
     uint8_t retrycount;
@@ -141,10 +140,17 @@ struct attribute {
     uint8_t *v;
 };
 
+struct modattr {
+    uint8_t t;
+    char *replacement;
+    regex_t *regex;
+};
+
 struct rewrite {
     uint8_t *removeattrs;
     uint32_t *removevendorattrs;
     struct list *addattrs;
+    struct list *modattrs;
 };
 
 struct rewriteconf {

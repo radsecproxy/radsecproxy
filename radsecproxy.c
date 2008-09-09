@@ -1577,67 +1577,52 @@ int dorewriteadd(uint8_t **buf, struct list *addattrs) {
     return 1;
 }
 
-int dorewrite(uint8_t **buf, struct rewrite *rewrite) {
-    if (!rewrite)
-	return 1;
-    if (rewrite->removeattrs || rewrite->removevendorattrs)
-	dorewriterm(*buf, rewrite->removeattrs, rewrite->removevendorattrs);
-    if (rewrite->addattrs)
-	return dorewriteadd(buf, rewrite->addattrs);
-    return 1;
-}
-
 /* returns a pointer to the resized attribute value */
-uint8_t *resizeattr(uint8_t **buf, uint8_t newvallen, uint8_t type) {
-    uint8_t *attrs, *attr, vallen;
+uint8_t *resizeattr(uint8_t **buf, uint8_t **attr, uint8_t newvallen) {
+    uint8_t vallen;
     uint16_t len;
     unsigned char *new;
     
-    len = RADLEN(*buf) - 20;
-    attrs = *buf + 20;
-
-    attr = attrget(attrs, len, type);
-    if (!attr)
-	return NULL;
-    
-    vallen = ATTRVALLEN(attr);
+    vallen = ATTRVALLEN(*attr);
     if (vallen == newvallen)
-	return attr + 2;
+	return *attr + 2;
+    
+    len = RADLEN(*buf) + newvallen - vallen;
 
-    len += newvallen - vallen;
     if (newvallen > vallen) {
-	new = realloc(*buf, len + 20);
+	new = realloc(*buf, len);
 	if (!new) {
 	    debug(DBG_ERR, "resizeattr: malloc failed");
 	    return NULL;
 	}
 	if (new != *buf) {
-	    attr += new - *buf;
-	    attrs = new + 20;
+	    *attr += new - *buf;
 	    *buf = new;
 	}
     }
-    memmove(attr + 2 + newvallen, attr + 2 + vallen, len - (attr - attrs + newvallen));
-    attr[1] = newvallen + 2;
-    ((uint16_t *)*buf)[1] = htons(len + 20);
-    return attr + 2;
+    memmove(*attr + 2 + newvallen, *attr + 2 + vallen, len - (*attr - *buf + newvallen));
+    (*attr)[1] = newvallen + 2;
+    ((uint16_t *)*buf)[1] = htons(len);
+    return *attr + 2;
 }
-		
-int rewriteusername(struct request *rq, char *in) {
+
+int dorewritemodattr(uint8_t **buf, uint8_t **attr, struct modattr *modattr) {
     size_t nmatch = 10, reslen = 0, start = 0;
     regmatch_t pmatch[10], *pfield;
     int i;
     unsigned char *result;
-    char *out = rq->from->conf->rewriteusernamereplacement;
+    char *in, *out;
+
+    in = stringcopy((char *)ATTRVAL(*attr), ATTRVALLEN(*attr));
+    if (!in)
+	return 0;
     
-    if (regexec(rq->from->conf->rewriteusernameregex, in, nmatch, pmatch, 0)) {
-	debug(DBG_DBG, "rewriteattr: username not matching, no rewrite");
+    if (regexec(modattr->regex, in, nmatch, pmatch, 0)) {
+	free(in);
 	return 1;
     }
     
-    rq->origusername = stringcopy(in, 0);
-    if (!rq->origusername)
-	return 0;
+    out = modattr->replacement;
     
     for (i = start; out[i]; i++) {
 	if (out[i] == '\\' && out[i + 1] >= '1' && out[i + 1] <= '9') {
@@ -1650,10 +1635,16 @@ int rewriteusername(struct request *rq, char *in) {
 	}
     }
     reslen += i - start;
-
-    result = resizeattr(&rq->buf, reslen, RAD_Attr_User_Name);
-    if (!result)
+    if (reslen > 253) {
+	debug(DBG_WARN, "rewritten attribute length would be %d, max possible is 253, discarding message", reslen);
+	free(in);
 	return 0;
+    }
+    result = resizeattr(buf, attr, reslen);
+    if (!result) {
+	free(in);
+	return 0;
+    }
     
     start = 0;
     reslen = 0;
@@ -1672,9 +1663,50 @@ int rewriteusername(struct request *rq, char *in) {
     }
 
     memcpy(result + reslen, out + start, i - start);
-    reslen += i - start;
-    memcpy(in, result, reslen);
-    in[reslen] = '\0';
+    return 1;
+}
+
+int dorewritemod(uint8_t **buf, struct list *modattrs) {
+    uint8_t *attr;
+    uint16_t len = 0;
+    struct list_node *n;
+
+    attr = *buf + 20;
+    while (RADLEN(*buf) - 22 >= len) {
+	for (n = list_first(modattrs); n; n = list_next(n))
+	    if (ATTRTYPE(attr) == ((struct modattr *)n->data)->t)
+		if (!dorewritemodattr(buf, &attr, (struct modattr *)n->data))
+		    return 0;
+	len += ATTRLEN(attr);
+	attr += ATTRLEN(attr);
+    }
+    return 1;
+}
+
+int dorewrite(uint8_t **buf, struct rewrite *rewrite) {
+    if (!rewrite)
+	return 1;
+    if (rewrite->removeattrs || rewrite->removevendorattrs)
+	dorewriterm(*buf, rewrite->removeattrs, rewrite->removevendorattrs);
+    if (rewrite->addattrs && !dorewriteadd(buf, rewrite->addattrs))
+	return 0;
+    if (rewrite->modattrs && !dorewritemod(buf, rewrite->modattrs))
+	return 0;
+    return 1;
+}
+
+int rewriteusername(struct request *rq, uint8_t *attr, char *in) {
+    if (!dorewritemodattr(&rq->buf, &attr, rq->from->conf->rewriteusername))
+	return 0;
+    if (strlen(in) == ATTRVALLEN(attr) && !memcmp(in, ATTRVAL(attr), ATTRVALLEN(attr)))
+	return 1;
+
+    rq->origusername = stringcopy(in, 0);
+    if (!rq->origusername)
+	return 0;
+    
+    memcpy(in, ATTRVAL(attr), ATTRVALLEN(attr));
+    in[ATTRVALLEN(attr)] = '\0';
     return 1;
 }
 
@@ -1888,8 +1920,8 @@ void radsrv(struct request *rq) {
     username[ATTRVALLEN(attr)] = '\0';
     radattr2ascii(userascii, sizeof(userascii), attr);
 
-    if (rq->from->conf->rewriteusernameregex) {
-	if (!rewriteusername(rq, username)) {
+    if (rq->from->conf->rewriteusername) {
+	if (!rewriteusername(rq, attr, username)) {
 	    debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
 	    goto exit;
 	}
@@ -2105,8 +2137,8 @@ int replyh(struct server *server, unsigned char *buf) {
     printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
 
-    if (rq->origusername) {
-	username = resizeattr(&buf, strlen(rq->origusername), RAD_Attr_User_Name);
+    if (rq->origusername && (attr = attrget(buf + 20, RADLEN(buf) - 20, RAD_Attr_User_Name))) {
+	username = resizeattr(&buf, &attr, strlen(rq->origusername));
 	if (!username) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
 	    debug(DBG_WARN, "replyh: malloc failed, ignoring reply");
@@ -2803,47 +2835,6 @@ int addmatchcertattr(struct clsrvconf *conf, char *matchcertattr) {
     return 1;
 }
 
-int addrewriteattr(struct clsrvconf *conf, char *rewriteattr) {
-    char *v, *w;
-    
-    v = rewriteattr + 11;
-    if (strncasecmp(rewriteattr, "User-Name:/", 11) || !*v)
-	return 0;
-    /* regexp, remove optional trailing / if present */
-    if (v[strlen(v) - 1] == '/')
-	v[strlen(v) - 1] = '\0';
-
-    w = strchr(v, '/');
-    if (!*w)
-	return 0;
-    *w = '\0';
-    w++;
-    
-    conf->rewriteusernameregex = malloc(sizeof(regex_t));
-    if (!conf->rewriteusernameregex) {
-	debug(DBG_ERR, "malloc failed");
-	return 0;
-    }
-
-    conf->rewriteusernamereplacement = stringcopy(w, 0);
-    if (!conf->rewriteusernamereplacement) {
-	free(conf->rewriteusernameregex);
-	conf->rewriteusernameregex = NULL;
-	return 0;
-    }
-    
-    if (regcomp(conf->rewriteusernameregex, v, REG_ICASE | REG_EXTENDED)) {
-	free(conf->rewriteusernameregex);
-	conf->rewriteusernameregex = NULL;
-	free(conf->rewriteusernamereplacement);
-	conf->rewriteusernamereplacement = NULL;
-	debug(DBG_ERR, "failed to compile regular expression %s", v);
-	return 0;
-    }
-
-    return 1;
-}
-
 /* should accept both names and numeric values, only numeric right now */
 uint8_t attrname2val(char *attrname) {
     int val = 0;
@@ -2892,6 +2883,65 @@ struct attribute *extractattr(char *nameval) {
     return a;
 }
 
+/* should accept both names and numeric values, only numeric right now */
+struct modattr *extractmodattr(char *nameval) {
+    int name = 0;
+    char *s, *t;
+    struct modattr *m;
+
+    if (!strncasecmp(nameval, "User-Name:/", 11)) {
+	s = nameval + 11;
+	name = 1;
+    } else {
+	s = strchr(nameval, ':');
+	name = atoi(nameval);
+	if (!s || name < 1 || name > 255 || s[1] != '/')
+	    return NULL;
+	s += 2;
+    }
+    /* regexp, remove optional trailing / if present */
+    if (s[strlen(s) - 1] == '/')
+	s[strlen(s) - 1] = '\0';
+
+    t = strchr(s, '/');
+    if (!t)
+	return NULL;
+    *t = '\0';
+    t++;
+
+    m = malloc(sizeof(struct modattr));
+    if (!m) {
+	debug(DBG_ERR, "malloc failed");
+	return NULL;
+    }
+    m->t = name;
+
+    m->replacement = stringcopy(t, 0);
+    if (!m->replacement) {
+	free(m);
+	debug(DBG_ERR, "malloc failed");
+	return NULL;
+    }
+	
+    m->regex = malloc(sizeof(regex_t));
+    if (!m->regex) {
+	free(m->replacement);
+	free(m);
+	debug(DBG_ERR, "malloc failed");
+	return NULL;
+    }
+    
+    if (regcomp(m->regex, s, REG_ICASE | REG_EXTENDED)) {
+	free(m->regex);
+	free(m->replacement);
+	free(m);
+	debug(DBG_ERR, "failed to compile regular expression %s", s);
+	return NULL;
+    }
+
+    return m;
+}
+
 void rewritefree() {
     struct list_node *entry;
     struct rewriteconf *r;
@@ -2928,14 +2978,15 @@ struct rewrite *getrewrite(char *alt1, char *alt2) {
     return r->rewrite;
 }
 
-void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs) {
+void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, char **modattrs) {
     struct rewriteconf *new;
     struct rewrite *rewrite = NULL;
     int i, n;
     uint8_t *rma = NULL;
     uint32_t *p, *rmva = NULL;
+    struct list *adda = NULL, *moda = NULL;
     struct attribute *a;
-    struct list *adda = NULL;
+    struct modattr *m;
     
     if (rmattrs) {
 	for (n = 0; rmattrs[n]; n++);
@@ -2981,14 +3032,30 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs) {
 	}
 	free(addattrs);
     }
- 
-    if (rma || rmva || adda) {
+
+    if (modattrs) {
+	moda = list_create();
+	if (!moda)
+	    debugx(1, DBG_ERR, "malloc failed");
+	for (i = 0; modattrs[i]; i++) {
+	    m = extractmodattr(modattrs[i]);
+	    if (!m)
+		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", modattrs[i]);
+	    free(modattrs[i]);
+	    if (!list_push(moda, m))
+		debugx(1, DBG_ERR, "malloc failed");
+	}
+	free(modattrs);
+    }
+    
+    if (rma || rmva || adda || moda) {
 	rewrite = malloc(sizeof(struct rewrite));
 	if (!rewrite)
 	    debugx(1, DBG_ERR, "malloc failed");
 	rewrite->removeattrs = rma;
 	rewrite->removevendorattrs = rmva;
 	rewrite->addattrs = adda;
+	rewrite->modattrs = moda;
     }
     
     new = malloc(sizeof(struct rewriteconf));
@@ -3066,7 +3133,8 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     }
     
     if (rewriteusername) {
-	if (!addrewriteattr(conf, rewriteusername))
+	conf->rewriteusername = extractmodattr(rewriteusername);
+	if (!conf->rewriteusername)
 	    debugx(1, DBG_ERR, "error in block %s, invalid RewriteAttributeValue", block);
 	free(rewriteusername);
     }
@@ -3213,7 +3281,7 @@ void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 }
 
 void confrewrite_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char **rmattrs = NULL, **rmvattrs = NULL, **addattrs = NULL;
+    char **rmattrs = NULL, **rmvattrs = NULL, **addattrs = NULL, **modattrs = NULL;
     
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
     
@@ -3221,9 +3289,10 @@ void confrewrite_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 		     "removeAttribute", CONF_MSTR, &rmattrs,
 		     "removeVendorAttribute", CONF_MSTR, &rmvattrs,
 		     "addAttribute", CONF_MSTR, &addattrs,
+		     "modifyAttribute", CONF_MSTR, &modattrs,
 		     NULL
 		     );
-    addrewrite(val, rmattrs, rmvattrs, addattrs);
+    addrewrite(val, rmattrs, rmvattrs, addattrs, modattrs);
 }
 
 void getmainconfig(const char *configfile) {
