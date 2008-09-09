@@ -1552,7 +1552,7 @@ int dorewriteadd(uint8_t **buf, struct list *addattrs) {
 }
 
 /* returns a pointer to the resized attribute value */
-uint8_t *resizeattr2(uint8_t **buf, uint8_t **attr, uint8_t newvallen) {
+uint8_t *resizeattr(uint8_t **buf, uint8_t **attr, uint8_t newvallen) {
     uint8_t vallen;
     uint16_t len;
     unsigned char *new;
@@ -1566,7 +1566,7 @@ uint8_t *resizeattr2(uint8_t **buf, uint8_t **attr, uint8_t newvallen) {
     if (newvallen > vallen) {
 	new = realloc(*buf, len);
 	if (!new) {
-	    debug(DBG_ERR, "resizeattr2: malloc failed");
+	    debug(DBG_ERR, "resizeattr: malloc failed");
 	    return NULL;
 	}
 	if (new != *buf) {
@@ -1609,8 +1609,12 @@ int dorewritemodattr(uint8_t **buf, uint8_t **attr, struct modattr *modattr) {
 	}
     }
     reslen += i - start;
-
-    result = resizeattr2(buf, attr, reslen);
+    if (reslen > 253) {
+	debug(DBG_WARN, "rewritten attribute length would be %d, max possible is 253, discarding message", reslen);
+	free(in);
+	return 0;
+    }
+    result = resizeattr(buf, attr, reslen);
     if (!result) {
 	free(in);
 	return 0;
@@ -1665,42 +1669,6 @@ int dorewrite(uint8_t **buf, struct rewrite *rewrite) {
     return 1;
 }
     
-/* returns a pointer to the resized attribute value */
-uint8_t *resizeattr(uint8_t **buf, uint8_t newvallen, uint8_t type) {
-    uint8_t *attrs, *attr, vallen;
-    uint16_t len;
-    unsigned char *new;
-    
-    len = RADLEN(*buf) - 20;
-    attrs = *buf + 20;
-
-    attr = attrget(attrs, len, type);
-    if (!attr)
-	return NULL;
-    
-    vallen = ATTRVALLEN(attr);
-    if (vallen == newvallen)
-	return attr + 2;
-
-    len += newvallen - vallen;
-    if (newvallen > vallen) {
-	new = realloc(*buf, len + 20);
-	if (!new) {
-	    debug(DBG_ERR, "resizeattr: malloc failed");
-	    return NULL;
-	}
-	if (new != *buf) {
-	    attr += new - *buf;
-	    attrs = new + 20;
-	    *buf = new;
-	}
-    }
-    memmove(attr + 2 + newvallen, attr + 2 + vallen, len - (attr - attrs + newvallen));
-    attr[1] = newvallen + 2;
-    ((uint16_t *)*buf)[1] = htons(len + 20);
-    return attr + 2;
-}
-		
 int rewriteusername(struct request *rq, uint8_t *attr, char *in) {
     if (!dorewritemodattr(&rq->buf, &attr, rq->from->conf->rewriteusername))
 	return 0;
@@ -2168,8 +2136,8 @@ int replyh(struct server *server, unsigned char *buf) {
     printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
 
-    if (rq->origusername) {
-	username = resizeattr(&buf, strlen(rq->origusername), RAD_Attr_User_Name);
+    if (rq->origusername && (attr = attrget(buf + 20, RADLEN(buf) - 20, RAD_Attr_User_Name))) {
+	username = resizeattr(&buf, &attr, strlen(rq->origusername));
 	if (!username) {
 	    pthread_mutex_unlock(&server->newrq_mutex);
 	    debug(DBG_WARN, "replyh: malloc failed, ignoring reply");
@@ -2973,7 +2941,6 @@ struct attribute *extractattr(char *nameval) {
 }
 
 /* should accept both names and numeric values, only numeric right now */
-/* this should be used instead of addrewriteattr */
 struct modattr *extractmodattr(char *nameval) {
     int name = 0;
     char *s, *t;
