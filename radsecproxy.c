@@ -1486,12 +1486,14 @@ int findvendorsubattr(uint32_t *attrs, uint32_t vendor, uint8_t subattr) {
 
 int dovendorrewrite(uint8_t *attrs, uint16_t length, uint32_t *removevendorattrs) {
     uint8_t alen, sublen, rmlen = 0;
-    uint32_t vendor = *(uint32_t *)ATTRVAL(attrs);
+    uint32_t vendor;
     uint8_t *subattrs;
     
     if (!removevendorattrs)
 	return 0;
 
+    memcpy(&vendor, ATTRVAL(attrs), 4);
+    vendor = ntohl(vendor);
     while (*removevendorattrs && *removevendorattrs != vendor)
 	removevendorattrs += 2;
     if (!*removevendorattrs)
@@ -1505,7 +1507,7 @@ int dovendorrewrite(uint8_t *attrs, uint16_t length, uint32_t *removevendorattrs
 	return alen;
     }
 
-    sublen = alen - 4;
+    sublen = alen - 6;
     subattrs = ATTRVAL(attrs) + 4;
     
     if (!attrvalidate(subattrs, sublen)) {
@@ -1600,7 +1602,8 @@ uint8_t *resizeattr(uint8_t **buf, uint8_t **attr, uint8_t newvallen) {
 	    *buf = new;
 	}
     }
-    memmove(*attr + 2 + newvallen, *attr + 2 + vallen, len - (*attr - *buf + newvallen));
+
+    memmove(*attr + 2 + newvallen, *attr + 2 + vallen, len - (*attr - *buf + newvallen + 2));
     (*attr)[1] = newvallen + 2;
     ((uint16_t *)*buf)[1] = htons(len);
     return *attr + 2;
