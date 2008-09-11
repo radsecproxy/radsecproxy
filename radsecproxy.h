@@ -6,6 +6,9 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#include "tlv11.h"
+#include "radmsg.h"
+
 #define DEBUG_LEVEL 3
 
 #define CONFIG_MAIN "/etc/radsecproxy.conf"
@@ -41,6 +44,7 @@ struct options {
 /* requests that our client will send */
 struct request {
     unsigned char *buf;
+    struct radmsg *msg;
     uint8_t tries;
     uint8_t received;
     struct timeval expiry;
@@ -203,6 +207,6 @@ void freebios(struct queue *q);
 int radsrv(struct request *rq);
 X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);
-int replyh(struct server *server, unsigned char *buf);
+void replyh(struct server *server, unsigned char *buf);
 int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src);
 int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only);

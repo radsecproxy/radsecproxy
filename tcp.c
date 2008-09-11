@@ -180,8 +180,7 @@ void *tcpclientrd(void *arg) {
 	    continue;
 	}
 
-	if (!replyh(server, buf))
-	    free(buf);
+	replyh(server, buf);
     }
     server->clientrdgone = 1;
     return NULL;

@@ -37,5 +37,5 @@ void radmsg_free(struct radmsg *);
 struct radmsg *radmsg_init(uint8_t, uint8_t, uint8_t *);
 int radmsg_add(struct radmsg *, struct tlv *);
 struct tlv *radmsg_gettype(struct radmsg *, uint8_t);
-uint8_t *radmsg2buf(struct radmsg *msg);
+uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *);
 struct radmsg *buf2radmsg(uint8_t *, uint8_t *, uint8_t *);

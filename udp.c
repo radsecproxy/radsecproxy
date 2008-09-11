@@ -27,8 +27,6 @@
 #include <openssl/ssl.h>
 #include "debug.h"
 #include "list.h"
-#include "tlv11.h"
-#include "radmsg.h"
 #include "util.h"
 #include "radsecproxy.h"
 #include "tls.h"
@@ -162,8 +160,7 @@ void *udpclientrd(void *arg) {
     for (;;) {
 	server = NULL;
 	buf = radudpget(*s, NULL, &server, NULL);
-	if (!replyh(server, buf))
-	    free(buf);
+	replyh(server, buf);
     }
 }
 

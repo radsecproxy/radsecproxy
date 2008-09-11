@@ -62,8 +62,6 @@
 #include "debug.h"
 #include "list.h"
 #include "hash.h"
-#include "tlv11.h"
-#include "radmsg.h"
 #include "util.h"
 #include "gconfig.h"
 #include "radsecproxy.h"
@@ -902,36 +900,6 @@ int radsign(unsigned char *rad, unsigned char *sec) {
     return result;
 }
 
-int createmessageauth(unsigned char *rad, unsigned char *authattrval, char *secret) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static HMAC_CTX hmacctx;
-    unsigned int md_len;
-
-    if (!authattrval)
-	return 1;
-    
-    pthread_mutex_lock(&lock);
-    if (first) {
-	HMAC_CTX_init(&hmacctx);
-	first = 0;
-    }
-
-    memset(authattrval, 0, 16);
-    md_len = 0;
-    HMAC_Init_ex(&hmacctx, secret, strlen(secret), EVP_md5(), NULL);
-    HMAC_Update(&hmacctx, rad, RADLEN(rad));
-    HMAC_Final(&hmacctx, authattrval, &md_len);
-    if (md_len != 16) {
-	debug(DBG_WARN, "message auth computation failed");
-	pthread_mutex_unlock(&lock);
-	return 0;
-    }
-
-    pthread_mutex_unlock(&lock);
-    return 1;
-}
-
 unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
     while (length > 1) {
 	if (ATTRTYPE(attrs) == type)
@@ -945,13 +913,14 @@ unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
 void freerqdata(struct request *rq) {
     if (rq->origusername)
 	free(rq->origusername);
+    if (rq->msg)
+	radmsg_free(rq->msg);
     if (rq->buf)
 	free(rq->buf);
 }
 
 void sendrq(struct server *to, struct request *rq) {
     int i;
-    uint8_t *attr;
 
     pthread_mutex_lock(&to->newrq_mutex);
     /* might simplify if only try nextid, might be ok */
@@ -968,11 +937,10 @@ void sendrq(struct server *to, struct request *rq) {
 	    goto exit;
 	}
     }
-    
-    rq->buf[1] = (char)i;
 
-    attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_Message_Authenticator);
-    if (attr && !createmessageauth(rq->buf, ATTRVAL(attr), to->conf->secret)) {
+    rq->msg->id = (uint8_t)i;
+    rq->buf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
+    if (!rq->buf) {
 	freerqdata(rq);
 	goto exit;
     }
@@ -994,6 +962,7 @@ void sendrq(struct server *to, struct request *rq) {
 	debug(DBG_DBG, "sendrq: signalling client writer");
 	pthread_cond_signal(&to->newrq_cond);
     }
+
  exit:
     pthread_mutex_unlock(&to->newrq_mutex);
 }
@@ -1470,7 +1439,7 @@ int dorewriteadd(struct radmsg *msg, struct list *addattrs) {
     return 1;
 }
 
-int resizeattr2(struct tlv *attr, uint8_t newlen) {
+int resizeattr(struct tlv *attr, uint8_t newlen) {
     uint8_t *newv;
     
     if (newlen != attr->l) {
@@ -1517,7 +1486,7 @@ int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
 	return 0;
     }
 
-    if (!resizeattr2(attr, reslen)) {
+    if (!resizeattr(attr, reslen)) {
 	free(in);
 	return 0;
     }
@@ -1596,39 +1565,7 @@ void char2hex(char *h, unsigned char c) {
     return;
 }
 
-char *radattr2ascii(char *ascii, size_t len, unsigned char *attr) {
-    int i, l;
-    char *s, *d;
-
-    if (!attr || len == 1) {
-	*ascii = '\0';
-	return ascii;
-    }
-
-    l = ATTRVALLEN(attr);
-    s = (char *)ATTRVAL(attr);
-    d = ascii;
-
-    for (i = 0; i < l; i++) {
-	if (s[i] > 31 && s[i] < 127) {
-	    *d++ = s[i];
-	    if (d - ascii == len - 1)
-		break;
-	} else {
-	    if (d - ascii > len - 4)
-		break;
-	    *d++ = '%';
-	    char2hex(d, s[i]);
-	    d += 2;
-	    if (d - ascii == len - 1)
-		break;
-	}
-    }
-    *d = '\0';
-    return ascii;
-}
-
-uint8_t *radattr2ascii2(struct tlv *attr) {
+uint8_t *radattr2ascii(struct tlv *attr) {
     int i, l;
     uint8_t *a, *d;
 
@@ -1667,7 +1604,7 @@ void acclog(struct radmsg *msg, char *host) {
 	debug(DBG_INFO, "acclog: accounting-request from %s without username attribute", host);
 	return;
     }
-    username = radattr2ascii2(attr);
+    username = radattr2ascii(attr);
     if (username) {
 	debug(DBG_INFO, "acclog: accounting-request from %s with username: %s", host, username);
 	free(username);
@@ -1817,13 +1754,13 @@ int radsrv(struct request *rq) {
 	    debug(DBG_WARN, "radsrv: ignoring access request, no username attribute");
 	goto exit;
     }
-
+    
     if (rq->from->conf->rewriteusername && !rewriteusername(rq, attr)) {
 	debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
 	goto exit;
     }
     
-    userascii = radattr2ascii2(attr);
+    userascii = radattr2ascii(attr);
     if (!userascii)
 	goto exit;
     debug(DBG_DBG, "%s with username: %s", radmsgtype2string(msg->code), userascii);
@@ -1843,6 +1780,9 @@ int radsrv(struct request *rq) {
 	}
 	goto exit;
     }
+    
+    free(rq->buf);
+    rq->buf = NULL;
     
     if (options.loopprevention && !strcmp(rq->from->conf->name, to->conf->name)) {
 	debug(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s to server %s, discarding",
@@ -1888,13 +1828,8 @@ int radsrv(struct request *rq) {
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
 	goto exit;
     
-    free(rq->buf);
-    rq->buf = radmsg2buf(msg);
-    if (!rq->buf)
-	goto exit;
     free(userascii);
-    radmsg_free(msg);
-
+    rq->msg = msg;
     sendrq(to, rq);
     return 1;
     
@@ -1905,31 +1840,33 @@ int radsrv(struct request *rq) {
     return 1;
 }
 
-int replyh(struct server *server, unsigned char *buf) {
+void replyh(struct server *server, unsigned char *buf) {
     struct client *from;
     struct request *rq;
     int sublen;
-    unsigned char *subattrs, *rqattr;
+    unsigned char *subattrs;
     struct sockaddr_storage fromsa;
-    char tmp[760], stationid[760];
+    uint8_t *username, *stationid;
     struct radmsg *msg = NULL;
-    struct tlv *attr, *messageauth;
+    struct tlv *attr;
     struct list_node *node;
     
     server->connectionok = 1;
     server->lostrqs = 0;
 
     rq = server->requests + buf[1];
-    msg = buf2radmsg(buf, (uint8_t *)server->conf->secret, rq->buf + 4);
+    msg = buf2radmsg(buf, (uint8_t *)server->conf->secret, rq->msg->auth);
+    free(buf);
+    buf = NULL;
     if (!msg) {
         debug(DBG_WARN, "replyh: message validation failed, ignoring packet");
-	return 0;
+	return;
     }
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge
 	&& msg->code != RAD_Accounting_Response) {
 	debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
 	radmsg_free(msg);
-	return 0;
+	return;
     }
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
 
@@ -1946,7 +1883,7 @@ int replyh(struct server *server, unsigned char *buf) {
 	
     gettimeofday(&server->lastrcv, NULL);
     
-    if (*rq->buf == RAD_Status_Server) {
+    if (rq->msg->code == RAD_Status_Server) {
 	rq->received = 1;
 	debug(DBG_DBG, "replyh: got status server response from %s", server->conf->host);
 	goto errunlock;
@@ -1990,16 +1927,16 @@ int replyh(struct server *server, unsigned char *buf) {
     }
 
     if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response) {
-	rqattr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_User_Name);	
-	if (rqattr) {
-	    radattr2ascii(tmp, sizeof(tmp), rqattr);
-	    rqattr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_Calling_Station_Id);
-	    if (rqattr) {
-		radattr2ascii(stationid, sizeof(stationid), rqattr);
+	username = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_User_Name));
+	if (username) {
+	    stationid = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Calling_Station_Id));
+	    if (stationid) {
 		debug(DBG_INFO, "%s for user %s stationid %s from %s",
-		      radmsgtype2string(msg->code), tmp, stationid, server->conf->host);
+		      radmsgtype2string(msg->code), username, stationid, server->conf->host);
+		free(stationid);
 	    } else
-		debug(DBG_INFO, "%s for user %s from %s", radmsgtype2string(msg->code), tmp, server->conf->host);
+		debug(DBG_INFO, "%s for user %s from %s", radmsgtype2string(msg->code), username, server->conf->host);
+	    free(username);
 	}
     }
 
@@ -2011,7 +1948,7 @@ int replyh(struct server *server, unsigned char *buf) {
 #endif
 
     if (rq->origusername && (attr = radmsg_gettype(msg, RAD_Attr_User_Name))) {
-	if (!resizeattr2(attr, strlen(rq->origusername))) {
+	if (!resizeattr(attr, strlen(rq->origusername))) {
 	    debug(DBG_WARN, "replyh: malloc failed, ignoring reply");
 	    goto errunlock;
 	}
@@ -2023,24 +1960,12 @@ int replyh(struct server *server, unsigned char *buf) {
 	goto errunlock;
     }
 
-    free(buf);
-    buf = radmsg2buf(msg);
+    buf = radmsg2buf(msg, (uint8_t *)from->conf->secret);
     radmsg_free(msg);
     msg = NULL;
     if (!buf) {
 	debug(DBG_ERR, "replyh: malloc failed");
 	goto errunlock;
-    }
-    
-    if (messageauth) {
-	rqattr = attrget(buf + 20, RADLEN(buf) - 20, RAD_Attr_Message_Authenticator);
-	if (rqattr) {
-	    if (!createmessageauth(buf, ATTRVAL(rqattr), from->conf->secret)) {
-		debug(DBG_WARN, "replyh: failed to create authenticator, malloc failed?, ignoring reply");
-		goto errunlock;
-	    }
-	    debug(DBG_DBG, "replyh: computed messageauthattr");
-	}
     }
 
     fromsa = rq->fromsa; /* only needed for UDP */
@@ -2050,12 +1975,33 @@ int replyh(struct server *server, unsigned char *buf) {
     debug(DBG_INFO, "replyh: passing reply to client %s", from->conf->name);
     sendreply(from, buf, &fromsa, rq->fromudpsock);
     pthread_mutex_unlock(&server->newrq_mutex);
-    return 1;
+    return;
 
  errunlock:
     radmsg_free(msg);
     pthread_mutex_unlock(&server->newrq_mutex);
-    return 0;
+    return;
+}
+
+struct radmsg *createstatsrvmsg() {
+    struct radmsg *msg;
+    struct tlv *attr;
+
+    msg = radmsg_init(RAD_Status_Server, 0, NULL);
+    if (!msg)
+	return NULL;
+    
+    attr = maketlv(RAD_Attr_Message_Authenticator, 16, NULL);
+    if (!attr) {
+	radmsg_free(msg);
+	return NULL;
+    }
+    if (!radmsg_add(msg, attr)) {
+	freetlv(attr);
+	radmsg_free(msg);
+	return NULL;
+    }
+    return msg;
 }
 
 /* code for removing state not finished */
@@ -2068,7 +2014,6 @@ void *clientwr(void *arg) {
     struct timeval now, laststatsrv;
     struct timespec timeout;
     struct request statsrvrq;
-    unsigned char statsrvbuf[38];
     struct clsrvconf *conf;
     
     conf = server->conf;
@@ -2086,12 +2031,6 @@ void *clientwr(void *arg) {
     memset(&timeout, 0, sizeof(struct timespec));
     
     if (conf->statusserver) {
-	memset(&statsrvrq, 0, sizeof(struct request));
-	memset(statsrvbuf, 0, sizeof(statsrvbuf));
-	statsrvbuf[0] = RAD_Status_Server;
-	statsrvbuf[3] = 38;
-	statsrvbuf[20] = RAD_Attr_Message_Authenticator;
-	statsrvbuf[21] = 18;
 	gettimeofday(&server->lastrcv, NULL);
 	gettimeofday(&laststatsrv, NULL);
     }
@@ -2205,18 +2144,12 @@ void *clientwr(void *arg) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - secs > STATUS_SERVER_PERIOD) {
 		laststatsrv = now;
-		if (!RAND_bytes(statsrvbuf + 4, 16)) {
-		    debug(DBG_WARN, "clientwr: failed to generate random auth");
-		    continue;
+		memset(&statsrvrq, 0, sizeof(struct request));
+		statsrvrq.msg = createstatsrvmsg();
+		if (statsrvrq.msg) {
+		    debug(DBG_DBG, "clientwr: sending status server to %s", conf->host);
+		    sendrq(server, &statsrvrq);
 		}
-		statsrvrq.buf = malloc(sizeof(statsrvbuf));
-		if (!statsrvrq.buf) {
-		    debug(DBG_ERR, "clientwr: malloc failed");
-		    continue;
-		}
-		memcpy(statsrvrq.buf, statsrvbuf, sizeof(statsrvbuf));
-		debug(DBG_DBG, "clientwr: sending status server to %s", conf->host);
-		sendrq(server, &statsrvrq);
 	    }
 	}
     }

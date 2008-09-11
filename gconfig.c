@@ -13,6 +13,7 @@
 #include <limits.h>
 #include <glob.h>
 #include <sys/types.h>
+#include <ctype.h>
 #include <libgen.h>
 #include <errno.h>
 #include "debug.h"
@@ -350,6 +351,28 @@ int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, in
     return 0;
 }
 
+uint8_t hexdigit2int(char d) {
+    if (d >= '0' && d <= '9')
+	return d - '0';
+    if (d >= 'a' && d <= 'f')
+	return 10 + d - 'a';
+    if (d >= 'A' && d <= 'F')
+	return 10 + d - 'A';
+    return 0;
+}
+
+void unhex(char *s) {
+    char *t;
+    for (t = s; *t; s++) {
+	if (*t == '%' && isxdigit(t[1]) && isxdigit(t[2])) {
+	    *s = 16 * hexdigit2int(t[1]) + hexdigit2int(t[2]);
+	    t += 3;
+	} else
+	    *s = *t++;
+    }
+    *s = '\0';
+}
+
 /* returns 1 if ok, 0 on error */
 /* caller must free returned values also on error */
 int getgenericconfig(struct gconffile **cf, char *block, ...) {
@@ -436,6 +459,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 		debug(DBG_ERR, "configuration error, option %s already set to %s", opt, *str);
 		goto errexit;
 	    }
+	    unhex(val);
 	    *str = val;
 	    break;
 	case CONF_MSTR:
@@ -448,6 +472,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 		debug(DBG_ERR, "malloc failed");
 		goto errexit;
 	    }
+	    unhex(val);
 	    newmstr[n] = val;
 	    newmstr[n + 1] = NULL;
 	    *mstr = newmstr;

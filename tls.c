@@ -221,8 +221,8 @@ void *tlsclientrd(void *arg) {
 	    continue;
 	}
 
-	if (!replyh(server, buf))
-	    free(buf);
+	replyh(server, buf);
+
 	if (server->dynamiclookuparg) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {

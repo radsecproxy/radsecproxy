@@ -16,6 +16,7 @@
 #include "debug.h"
 #include <pthread.h>
 #include <openssl/hmac.h>
+#include <openssl/rand.h>
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
 
@@ -32,6 +33,7 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
     msg = malloc(sizeof(struct radmsg));
     if (!msg)
         return NULL;
+    memset(msg, 0, sizeof(struct radmsg));
     msg->attrs = list_create();
     if (!msg->attrs) {
 	free(msg);
@@ -39,7 +41,12 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
     }	
     msg->code = code;
     msg->id = id;
-    memcpy(msg->auth, auth, 16);
+    if (auth)
+	memcpy(msg->auth, auth, 16);
+    else if (!RAND_bytes(msg->auth, 16)) {
+	free(msg);
+	return NULL;
+    }	
     return msg;
 }
 
@@ -64,40 +71,6 @@ struct tlv *radmsg_gettype(struct radmsg *msg, uint8_t type) {
             return tlv;
     }
     return NULL;
-}
-
-uint8_t *radmsg2buf(struct radmsg *msg) {
-    struct list_node *node;
-    struct tlv *tlv;
-    int size;
-    uint8_t *buf, *p;
-
-    if (!msg || !msg->attrs)
-        return NULL;
-    size = 20;
-    for (node = list_first(msg->attrs); node; node = list_next(node))
-        size += 2 + ((struct tlv *)node->data)->l;
-    if (size > 65535)
-        return NULL;
-    buf = malloc(size);
-    if (!buf)
-        return NULL;
-    
-    p = buf;
-    *p++ = msg->code;
-    *p++ = msg->id;
-    *(uint16_t *)p = htons(size);
-    p += 2;
-    memcpy(p, msg->auth, 16);
-    p += 16;
-
-    for (node = list_first(msg->attrs); node; node = list_next(node)) {
-        tlv = (struct tlv *)node->data;
-        p = tlv2buf(p, tlv);
-	p[-1] += 2;
-        p += tlv->l;
-    }
-    return buf;
 }
 
 int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret) {
@@ -163,7 +136,76 @@ int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
     pthread_mutex_unlock(&lock);
     return result;
 }
-	      
+
+int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *secret) {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned char first = 1;
+    static HMAC_CTX hmacctx;
+    unsigned int md_len;
+
+    if (!authattrval)
+	return 1;
+    
+    pthread_mutex_lock(&lock);
+    if (first) {
+	HMAC_CTX_init(&hmacctx);
+	first = 0;
+    }
+
+    memset(authattrval, 0, 16);
+    md_len = 0;
+    HMAC_Init_ex(&hmacctx, secret, strlen((char *)secret), EVP_md5(), NULL);
+    HMAC_Update(&hmacctx, rad, RADLEN(rad));
+    HMAC_Final(&hmacctx, authattrval, &md_len);
+    if (md_len != 16) {
+	debug(DBG_WARN, "message auth computation failed");
+	pthread_mutex_unlock(&lock);
+	return 0;
+    }
+    pthread_mutex_unlock(&lock);
+    return 1;
+}
+
+uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
+    struct list_node *node;
+    struct tlv *tlv;
+    int size;
+    uint8_t *buf, *p, *msgauth = NULL;
+
+    if (!msg || !msg->attrs)
+        return NULL;
+    size = 20;
+    for (node = list_first(msg->attrs); node; node = list_next(node))
+        size += 2 + ((struct tlv *)node->data)->l;
+    if (size > 65535)
+        return NULL;
+    buf = malloc(size);
+    if (!buf)
+        return NULL;
+    
+    p = buf;
+    *p++ = msg->code;
+    *p++ = msg->id;
+    *(uint16_t *)p = htons(size);
+    p += 2;
+    memcpy(p, msg->auth, 16);
+    p += 16;
+
+    for (node = list_first(msg->attrs); node; node = list_next(node)) {
+        tlv = (struct tlv *)node->data;
+        p = tlv2buf(p, tlv);
+	p[-1] += 2;
+	if (tlv->t == RAD_Attr_Message_Authenticator && secret)
+	    msgauth = p;
+        p += tlv->l;
+    }
+    if (msgauth && !_createmessageauth(buf, msgauth, secret)) {
+	free(buf);
+	return NULL;
+    }
+    return buf;
+}
+
 /* if secret set we also validate message authenticator if present */
 struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
     struct radmsg *msg;

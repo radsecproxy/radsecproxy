@@ -585,8 +585,7 @@ void *dtlsclientrd(void *arg) {
 	    dtlsconnect(server, &lastconnecttry, 0, "dtlsclientrd");
 	    continue;
 	}
-	if (!replyh(server, buf))
-	    free(buf);
+	replyh(server, buf);
     }
     ERR_remove_state(0);
     server->clientrdgone = 1;
