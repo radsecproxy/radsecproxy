@@ -17,30 +17,11 @@
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
-#define RAD_Access_Request 1
-#define RAD_Access_Accept 2
-#define RAD_Access_Reject 3
-#define RAD_Accounting_Request 4
-#define RAD_Accounting_Response 5
-#define RAD_Access_Challenge 11
-#define RAD_Status_Server 12
-#define RAD_Status_Client 13
 
 #define RAD_UDP 0
 #define RAD_TLS 1
 #define RAD_TCP 2
 #define RAD_DTLS 3
-
-#define RAD_Attr_User_Name 1
-#define RAD_Attr_User_Password 2
-#define RAD_Attr_Reply_Message 18
-#define RAD_Attr_Vendor_Specific 26
-#define RAD_Attr_Calling_Station_Id 31
-#define RAD_Attr_Tunnel_Password 69
-#define RAD_Attr_Message_Authenticator 80
-
-#define RAD_VS_ATTR_MS_MPPE_Send_Key 16
-#define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
 
 struct options {
     char **listenudp;
@@ -164,12 +145,6 @@ struct tls {
     uint8_t crlcheck;
     SSL_CTX *tlsctx;
     SSL_CTX *dtlsctx;
-};
-
-struct attribute {
-    uint8_t t;
-    uint8_t l;
-    uint8_t *v;
 };
 
 struct modattr {

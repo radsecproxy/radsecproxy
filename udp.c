@@ -27,6 +27,8 @@
 #include <openssl/ssl.h>
 #include "debug.h"
 #include "list.h"
+#include "tlv11.h"
+#include "radmsg.h"
 #include "util.h"
 #include "radsecproxy.h"
 #include "tls.h"

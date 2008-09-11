@@ -62,6 +62,8 @@
 #include "debug.h"
 #include "list.h"
 #include "hash.h"
+#include "tlv11.h"
+#include "radmsg.h"
 #include "util.h"
 #include "gconfig.h"
 #include "radsecproxy.h"
@@ -900,70 +902,6 @@ int radsign(unsigned char *rad, unsigned char *sec) {
     return result;
 }
 
-int validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static EVP_MD_CTX mdctx;
-    unsigned char hash[EVP_MAX_MD_SIZE];
-    unsigned int len;
-    int result;
-    
-    pthread_mutex_lock(&lock);
-    if (first) {
-	EVP_MD_CTX_init(&mdctx);
-	first = 0;
-    }
-
-    len = RADLEN(rad);
-    
-    result = (EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) &&
-	      EVP_DigestUpdate(&mdctx, rad, 4) &&
-	      EVP_DigestUpdate(&mdctx, reqauth, 16) &&
-	      (len <= 20 || EVP_DigestUpdate(&mdctx, rad + 20, len - 20)) &&
-	      EVP_DigestUpdate(&mdctx, sec, strlen((char *)sec)) &&
-	      EVP_DigestFinal_ex(&mdctx, hash, &len) &&
-	      len == 16 &&
-	      !memcmp(hash, rad + 4, 16));
-    pthread_mutex_unlock(&lock);
-    return result;
-}
-	      
-int checkmessageauth(unsigned char *rad, uint8_t *authattr, char *secret) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static HMAC_CTX hmacctx;
-    unsigned int md_len;
-    uint8_t auth[16], hash[EVP_MAX_MD_SIZE];
-    
-    pthread_mutex_lock(&lock);
-    if (first) {
-	HMAC_CTX_init(&hmacctx);
-	first = 0;
-    }
-
-    memcpy(auth, authattr, 16);
-    memset(authattr, 0, 16);
-    md_len = 0;
-    HMAC_Init_ex(&hmacctx, secret, strlen(secret), EVP_md5(), NULL);
-    HMAC_Update(&hmacctx, rad, RADLEN(rad));
-    HMAC_Final(&hmacctx, hash, &md_len);
-    memcpy(authattr, auth, 16);
-    if (md_len != 16) {
-	debug(DBG_WARN, "message auth computation failed");
-	pthread_mutex_unlock(&lock);
-	return 0;
-    }
-
-    if (memcmp(auth, hash, 16)) {
-	debug(DBG_WARN, "message authenticator, wrong value");
-	pthread_mutex_unlock(&lock);
-	return 0;
-    }	
-	
-    pthread_mutex_unlock(&lock);
-    return 1;
-}
-
 int createmessageauth(unsigned char *rad, unsigned char *authattrval, char *secret) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     static unsigned char first = 1;
@@ -1458,136 +1396,100 @@ int findvendorsubattr(uint32_t *attrs, uint32_t vendor, uint8_t subattr) {
     return 0;
 }
 
-int dovendorrewriterm(uint8_t *attrs, uint16_t length, uint32_t *removevendorattrs) {
-    uint8_t alen, sublen, rmlen = 0;
-    uint32_t vendor = *(uint32_t *)ATTRVAL(attrs);
+/* returns 1 if entire element is to be removed, else 0 */
+int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs) {
+    uint8_t alen, sublen;
+    uint32_t vendor;
     uint8_t *subattrs;
     
     if (!removevendorattrs)
 	return 0;
 
+    memcpy(&vendor, attr->v, 4);
+    vendor = ntohl(vendor);
     while (*removevendorattrs && *removevendorattrs != vendor)
 	removevendorattrs += 2;
     if (!*removevendorattrs)
 	return 0;
     
-    alen = ATTRLEN(attrs);
+    if (findvendorsubattr(removevendorattrs, vendor, -1))
+	return 1; /* remove entire vendor attribute */
 
-    if (findvendorsubattr(removevendorattrs, vendor, -1)) {
-	/* remove entire vendor attribute */
-	memmove(attrs, attrs + alen, length - alen);
-	return alen;
-    }
-
-    sublen = alen - 4;
-    subattrs = ATTRVAL(attrs) + 4;
+    sublen = attr->l - 4;
+    subattrs = attr->v + 4;
     
     if (!attrvalidate(subattrs, sublen)) {
 	debug(DBG_WARN, "dovendorrewrite: vendor attribute validation failed, no rewrite");
 	return 0;
     }
 
-    length -= 6;
     while (sublen > 1) {
 	alen = ATTRLEN(subattrs);
 	sublen -= alen;
-	length -= alen;
 	if (findvendorsubattr(removevendorattrs, vendor, ATTRTYPE(subattrs))) {
-	    memmove(subattrs, subattrs + alen, length);
-	    rmlen += alen;
+	    memmove(subattrs, subattrs + alen, sublen);
+	    attr->l -= alen;
 	} else
 	    subattrs += alen;
     }
-
-    ATTRLEN(attrs) -= rmlen;
-    return rmlen;
+    return 0;
 }
 
-void dorewriterm(uint8_t *buf, uint8_t *rmattrs, uint32_t *rmvattrs) {
-    uint8_t *attrs, alen;
-    uint16_t len, rmlen = 0;
-    
-    len = RADLEN(buf) - 20;
-    attrs = buf + 20;
-    while (len > 1) {
-	alen = ATTRLEN(attrs);
-	len -= alen;
-	if (rmattrs && strchr((char *)rmattrs, ATTRTYPE(attrs))) {
-	    memmove(attrs, attrs + alen, len);
-	    rmlen += alen;
-	} else if (ATTRTYPE(attrs) == RAD_Attr_Vendor_Specific && rmvattrs)
-	    rmlen += dovendorrewriterm(attrs, len, rmvattrs);
-	else
-	    attrs += alen;
+void dorewriterm(struct radmsg *msg, uint8_t *rmattrs, uint32_t *rmvattrs) {
+    struct list_node *n, *p;
+    struct tlv *attr;
+
+    p = NULL;
+    n = list_first(msg->attrs);
+    while (n) {
+	attr = (struct tlv *)n->data;
+	if ((rmattrs && strchr((char *)rmattrs, attr->t)) ||
+	    (rmvattrs && attr->t == RAD_Attr_Vendor_Specific && dovendorrewriterm(attr, rmvattrs))) {
+	    list_removedata(msg->attrs, attr);
+	    freetlv(attr);
+	    n = p ? list_next(p) : list_first(msg->attrs);
+	} else
+	    p = n;
+            n = list_next(n);
     }
-    if (rmlen)
-	((uint16_t *)buf)[1] = htons(RADLEN(buf) - rmlen);
 }
 
-int dorewriteadd(uint8_t **buf, struct list *addattrs) {
+int dorewriteadd(struct radmsg *msg, struct list *addattrs) {
     struct list_node *n;
-    struct attribute *a;
-    uint16_t i, addlen = 0;
-    uint8_t *newbuf;
+    struct tlv *a;
     
-    for (n = list_first(addattrs); n; n = list_next(n))
-	addlen += 2 + ((struct attribute *)n->data)->l;
-    if (!addlen)
-	return 1;
-    newbuf = realloc(*buf, RADLEN(*buf) + addlen);
-    if (!newbuf)
-	return 0;
-
-    i = RADLEN(newbuf);
     for (n = list_first(addattrs); n; n = list_next(n)) {
-	a = (struct attribute *)n->data;
-	newbuf[i++] = a->t;
-	newbuf[i++] = a->l + 2;
-	memcpy(newbuf + i, a->v, a->l);
-	i += a->l;
+	a = copytlv((struct tlv *)n->data);
+	if (!a)
+	    return 0;
+	if (!radmsg_add(msg, a)) {
+	    freetlv(a);
+	    return 0;
+	}
     }
-    ((uint16_t *)newbuf)[1] = htons(RADLEN(newbuf) + addlen);
-    *buf = newbuf;
     return 1;
 }
 
-/* returns a pointer to the resized attribute value */
-uint8_t *resizeattr(uint8_t **buf, uint8_t **attr, uint8_t newvallen) {
-    uint8_t vallen;
-    uint16_t len;
-    unsigned char *new;
+int resizeattr2(struct tlv *attr, uint8_t newlen) {
+    uint8_t *newv;
     
-    vallen = ATTRVALLEN(*attr);
-    if (vallen == newvallen)
-	return *attr + 2;
-    
-    len = RADLEN(*buf) + newvallen - vallen;
-
-    if (newvallen > vallen) {
-	new = realloc(*buf, len);
-	if (!new) {
-	    debug(DBG_ERR, "resizeattr: malloc failed");
-	    return NULL;
-	}
-	if (new != *buf) {
-	    *attr += new - *buf;
-	    *buf = new;
-	}
+    if (newlen != attr->l) {
+	newv = realloc(attr->v, newlen);
+	if (!newv)
+	    return 0;
+	attr->v = newv;
+	attr->l = newlen;
     }
-    memmove(*attr + 2 + newvallen, *attr + 2 + vallen, len - (*attr - *buf + newvallen));
-    (*attr)[1] = newvallen + 2;
-    ((uint16_t *)*buf)[1] = htons(len);
-    return *attr + 2;
+    return 1;
 }
 
-int dorewritemodattr(uint8_t **buf, uint8_t **attr, struct modattr *modattr) {
+int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
     size_t nmatch = 10, reslen = 0, start = 0;
     regmatch_t pmatch[10], *pfield;
     int i;
-    unsigned char *result;
     char *in, *out;
 
-    in = stringcopy((char *)ATTRVAL(*attr), ATTRVALLEN(*attr));
+    in = stringcopy((char *)attr->v, attr->l);
     if (!in)
 	return 0;
     
@@ -1614,21 +1516,21 @@ int dorewritemodattr(uint8_t **buf, uint8_t **attr, struct modattr *modattr) {
 	free(in);
 	return 0;
     }
-    result = resizeattr(buf, attr, reslen);
-    if (!result) {
+
+    if (!resizeattr2(attr, reslen)) {
 	free(in);
 	return 0;
     }
-    
+
     start = 0;
     reslen = 0;
     for (i = start; out[i]; i++) {
 	if (out[i] == '\\' && out[i + 1] >= '1' && out[i + 1] <= '9') {
 	    pfield = &pmatch[out[i + 1] - '0'];
 	    if (pfield->rm_so >= 0) {
-		memcpy(result + reslen, out + start, i - start);
+		memcpy(attr->v + reslen, out + start, i - start);
 		reslen += i - start;
-		memcpy(result + reslen, in + pfield->rm_so, pfield->rm_eo - pfield->rm_so);
+		memcpy(attr->v + reslen, in + pfield->rm_so, pfield->rm_eo - pfield->rm_so);
 		reslen += pfield->rm_eo - pfield->rm_so;
 		start = i + 2;
 	    }
@@ -1636,51 +1538,43 @@ int dorewritemodattr(uint8_t **buf, uint8_t **attr, struct modattr *modattr) {
 	}
     }
 
-    memcpy(result + reslen, out + start, i - start);
-    return 1;
-}
-   
-int dorewritemod(uint8_t **buf, struct list *modattrs) {
-    uint8_t *attr;
-    uint16_t len = 0;
-    struct list_node *n;
-
-    attr = *buf + 20;
-    while (RADLEN(*buf) - 22 >= len) {
-	for (n = list_first(modattrs); n; n = list_next(n))
-	    if (ATTRTYPE(attr) == ((struct modattr *)n->data)->t)
-		if (!dorewritemodattr(buf, &attr, (struct modattr *)n->data))
-		    return 0;
-	len += ATTRLEN(attr);
-	attr += ATTRLEN(attr);
-    }
+    memcpy(attr->v + reslen, out + start, i - start);
     return 1;
 }
 
-int dorewrite(uint8_t **buf, struct rewrite *rewrite) {
+int dorewritemod(struct radmsg *msg, struct list *modattrs) {
+    struct list_node *n, *m;
+
+    for (n = list_first(msg->attrs); n; n = list_next(n))
+	for (m = list_first(modattrs); m; m = list_next(m))
+	    if (((struct tlv *)n->data)->t == ((struct modattr *)m->data)->t &&
+		!dorewritemodattr((struct tlv *)n->data, (struct modattr *)m->data))
+		return 0;
+    return 1;
+}
+
+int dorewrite(struct radmsg *msg, struct rewrite *rewrite) {
     if (!rewrite)
 	return 1;
     if (rewrite->removeattrs || rewrite->removevendorattrs)
-	dorewriterm(*buf, rewrite->removeattrs, rewrite->removevendorattrs);
-    if (rewrite->addattrs && !dorewriteadd(buf, rewrite->addattrs))
+	dorewriterm(msg, rewrite->removeattrs, rewrite->removevendorattrs);
+    if (rewrite->addattrs && !dorewriteadd(msg, rewrite->addattrs))
 	return 0;
-    if (rewrite->modattrs && !dorewritemod(buf, rewrite->modattrs))
+    if (rewrite->modattrs && !dorewritemod(msg, rewrite->modattrs))
 	return 0;
     return 1;
 }
-    
-int rewriteusername(struct request *rq, uint8_t *attr, char *in) {
-    if (!dorewritemodattr(&rq->buf, &attr, rq->from->conf->rewriteusername))
-	return 0;
-    if (strlen(in) == ATTRVALLEN(attr) && !memcmp(in, ATTRVAL(attr), ATTRVALLEN(attr)))
-	return 1;
 
-    rq->origusername = stringcopy(in, 0);
-    if (!rq->origusername)
+int rewriteusername(struct request *rq, struct tlv *attr) {
+    char *orig = (char *)tlv2str(attr);
+    if (!dorewritemodattr(attr, rq->from->conf->rewriteusername)) {
+	free(orig);
 	return 0;
-    
-    memcpy(in, ATTRVAL(attr), ATTRVALLEN(attr));
-    in[ATTRVALLEN(attr)] = '\0';
+    }
+    if (strlen(orig) != attr->l || memcmp(orig, attr->v, attr->l))
+	rq->origusername = (char *)orig;
+    else
+	free(orig);
     return 1;
 }
 
@@ -1734,19 +1628,52 @@ char *radattr2ascii(char *ascii, size_t len, unsigned char *attr) {
     return ascii;
 }
 
-void acclog(unsigned char *attrs, int length, char *host) {
-    unsigned char *attr;
-    char username[760];
+uint8_t *radattr2ascii2(struct tlv *attr) {
+    int i, l;
+    uint8_t *a, *d;
+
+    if (!attr)
+	return NULL;
+
+    l = attr->l;
+    for (i = 0; i < attr->l; i++)
+	if (attr->v[i] < 32 || attr->v[i] > 126)
+	    l += 2;
+    if (l == attr->l)
+	return (uint8_t *)stringcopy((char *)attr->v, attr->l);
     
-    attr = attrget(attrs, length, RAD_Attr_User_Name);
+    a = malloc(l + 1);
+    if (!a)
+	return NULL;
+
+    d = a;
+    for (i = 0; i < attr->l; i++)
+	if (attr->v[i] < 32 || attr->v[i] > 126) {
+	    *d++ = '%';
+	    char2hex((char *)d, attr->v[i]);
+	    d += 2;
+	} else
+	    *d++ = attr->v[i];
+    *d = '\0';
+    return a;
+}
+
+void acclog(struct radmsg *msg, char *host) {
+    struct tlv *attr;
+    uint8_t *username;
+    
+    attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
 	debug(DBG_INFO, "acclog: accounting-request from %s without username attribute", host);
 	return;
     }
-    radattr2ascii(username, sizeof(username), attr);
-    debug(DBG_INFO, "acclog: accounting-request from %s with username: %s", host, username);
+    username = radattr2ascii2(attr);
+    if (username) {
+	debug(DBG_INFO, "acclog: accounting-request from %s with username: %s", host, username);
+	free(username);
+    }
 }
-	
+
 void respondaccounting(struct request *rq) {
     unsigned char *resp;
 
@@ -1826,115 +1753,92 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
     return best ? best : first;
 }
 
-struct server *findserver(struct realm **realm, char *id, uint8_t acc) {
+struct server *findserver(struct realm **realm, struct tlv *username, uint8_t acc) {
     struct clsrvconf *srvconf;
+    char *id = (char *)tlv2str(username);
     
-    *realm = id2realm(realms, id);
-    if (!*realm)
+    if (!id)
 	return NULL;
+    *realm = id2realm(realms, id);
+    if (!*realm) {
+	free(id);
+	return NULL;
+    }
     debug(DBG_DBG, "found matching realm: %s", (*realm)->name);
     srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
-    if (!srvconf)
+    if (!srvconf) {
+	free(id);
 	return NULL;
+    }
     if (!acc && !srvconf->servers)
 	adddynamicrealmserver(*realm, srvconf, id);
+    free(id);
     return srvconf->servers;
 }
 
 /* returns 0 if validation/authentication fails, else 1 */
 int radsrv(struct request *rq) {
-    uint8_t code, id, *auth, *attrs, *attr;
-    uint16_t len;
-    struct server *to = NULL;
-    char username[254], userascii[760];
+    struct radmsg *msg = NULL;
+    struct tlv *attr;
+    uint8_t *userascii = NULL;
     unsigned char newauth[16];
     struct realm *realm = NULL;
-    
-    code = *(uint8_t *)rq->buf;
-    id = *(uint8_t *)(rq->buf + 1);
-    len = RADLEN(rq->buf);
-    auth = (uint8_t *)(rq->buf + 4);
+    struct server *to = NULL;
 
-    debug(DBG_DBG, "radsrv: code %d, id %d, length %d", code, id, len);
+    msg = buf2radmsg(rq->buf, (uint8_t *)rq->from->conf->secret, NULL);
+    if (!msg) {
+	debug(DBG_WARN, "radsrv: message validation failed, ignoring packet");
+	freerqdata(rq);
+	return 0;
+    }
+    debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
     
-    if (code != RAD_Access_Request && code != RAD_Status_Server && code != RAD_Accounting_Request) {
+    if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
 	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
 	goto exit;
     }
 
-    len -= 20;
-    attrs = rq->buf + 20;
-
-    if (!attrvalidate(attrs, len)) {
-	debug(DBG_WARN, "radsrv: attribute validation failed, ignoring packet");
-	goto errvalauth;
-    }
-
-    attr = attrget(attrs, len, RAD_Attr_Message_Authenticator);
-    if (attr && (ATTRVALLEN(attr) != 16 || !checkmessageauth(rq->buf, ATTRVAL(attr), rq->from->conf->secret))) {
-	debug(DBG_WARN, "radsrv: message authentication failed");
-	goto errvalauth;
-    }
-
-    if (code == RAD_Status_Server) {
+    if (msg->code == RAD_Status_Server) {
 	respondstatusserver(rq);
 	goto exit;
     }
-    
+
     /* below: code == RAD_Access_Request || code == RAD_Accounting_Request */
 
-    if (code == RAD_Accounting_Request) {
-	memset(newauth, 0, 16);
-	if (!validauth(rq->buf, newauth, (unsigned char *)rq->from->conf->secret)) {
-	    debug(DBG_WARN, "radsrv: Accounting-Request message authentication failed");
-	    goto errvalauth;
-	}
-    }
-    
-    if (rq->from->conf->rewritein) {
-	if (!dorewrite(&rq->buf, rq->from->conf->rewritein))
-	    goto exit;
-	len = RADLEN(rq->buf) - 20;
-	auth = (uint8_t *)(rq->buf + 4);
-	attrs = rq->buf + 20;
-    }
-    
-    attr = attrget(attrs, len, RAD_Attr_User_Name);
+    if (rq->from->conf->rewritein && !dorewrite(msg, rq->from->conf->rewritein))
+	goto exit;
+
+    attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
-	if (code == RAD_Accounting_Request) {
-	    acclog(attrs, len, rq->from->conf->host);
+	if (msg->code == RAD_Accounting_Request) {
+	    acclog(msg, rq->from->conf->host);
 	    respondaccounting(rq);
 	} else
 	    debug(DBG_WARN, "radsrv: ignoring access request, no username attribute");
 	goto exit;
     }
-    memcpy(username, ATTRVAL(attr), ATTRVALLEN(attr));
-    username[ATTRVALLEN(attr)] = '\0';
-    radattr2ascii(userascii, sizeof(userascii), attr);
 
-    if (rq->from->conf->rewriteusername) {
-	if (!rewriteusername(rq, attr, username)) {
-	    debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
-	    goto exit;
-	}
-	len = RADLEN(rq->buf) - 20;
-	auth = (uint8_t *)(rq->buf + 4);
-	attrs = rq->buf + 20;
+    if (rq->from->conf->rewriteusername && !rewriteusername(rq, attr)) {
+	debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
+	goto exit;
     }
-
-    debug(DBG_DBG, "%s with username: %s", radmsgtype2string(code), userascii);
     
-    to = findserver(&realm, username, code == RAD_Accounting_Request);
+    userascii = radattr2ascii2(attr);
+    if (!userascii)
+	goto exit;
+    debug(DBG_DBG, "%s with username: %s", radmsgtype2string(msg->code), userascii);
+
+    to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
     if (!realm) {
 	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
 	goto exit;
     }
     if (!to) {
-	if (realm->message && code == RAD_Access_Request) {
+	if (realm->message && msg->code == RAD_Access_Request) {
 	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", rq->from->conf->host, userascii);
 	    respondreject(rq, realm->message);
-	} else if (realm->accresp && code == RAD_Accounting_Request) {
-	    acclog(attrs, len, rq->from->conf->host);
+	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
+	    acclog(msg, rq->from->conf->host);
 	    respondaccounting(rq);
 	}
 	goto exit;
@@ -1946,13 +1850,13 @@ int radsrv(struct request *rq) {
 	goto exit;
     }
 
-    if (rqinqueue(to, rq->from, id, code)) {
+    if (rqinqueue(to, rq->from, msg->id, msg->code)) {
 	debug(DBG_INFO, "radsrv: already got %s from host %s with id %d, ignoring",
-	      radmsgtype2string(code), rq->from->conf->host, id);
+	      radmsgtype2string(msg->code), rq->from->conf->host, msg->id);
 	goto exit;
     }
     
-    if (code != RAD_Accounting_Request) {
+    if (msg->code != RAD_Accounting_Request) {
 	if (!RAND_bytes(newauth, 16)) {
 	    debug(DBG_WARN, "radsrv: failed to generate random auth");
 	    goto exit;
@@ -1963,146 +1867,116 @@ int radsrv(struct request *rq) {
     printfchars(NULL, "auth", "%02x ", auth, 16);
 #endif
 
-    attr = attrget(attrs, len, RAD_Attr_User_Password);
+    attr = radmsg_gettype(msg, RAD_Attr_User_Password);
     if (attr) {
-	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", ATTRVALLEN(attr));
-	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->conf->secret, to->conf->secret, auth, newauth))
-	    goto exit;
-    }
-    
-    attr = attrget(attrs, len, RAD_Attr_Tunnel_Password);
-    if (attr) {
-	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", ATTRVALLEN(attr));
-	if (!pwdrecrypt(ATTRVAL(attr), ATTRVALLEN(attr), rq->from->conf->secret, to->conf->secret, auth, newauth))
+	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attr->l);
+	if (!pwdrecrypt(attr->v, attr->l, rq->from->conf->secret, to->conf->secret, msg->auth, newauth))
 	    goto exit;
     }
 
-    rq->origid = id;
-    memcpy(rq->origauth, auth, 16);
-    memcpy(auth, newauth, 16);
-
-    if (to->conf->rewriteout)
-	if (!dorewrite(&rq->buf, to->conf->rewriteout))
+    attr = radmsg_gettype(msg, RAD_Attr_Tunnel_Password);
+    if (attr) {
+	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", attr->l);
+	if (!pwdrecrypt(attr->v, attr->l, rq->from->conf->secret, to->conf->secret, msg->auth, newauth))
 	    goto exit;
+    }
+
+    rq->origid = msg->id;
+    memcpy(rq->origauth, msg->auth, 16);
+    memcpy(msg->auth, newauth, 16);    
+
+    if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
+	goto exit;
     
+    free(rq->buf);
+    rq->buf = radmsg2buf(msg);
+    if (!rq->buf)
+	goto exit;
+    free(userascii);
+    radmsg_free(msg);
+
     sendrq(to, rq);
     return 1;
     
  exit:
+    free(userascii);
+    radmsg_free(msg);
     freerqdata(rq);
     return 1;
-
- errvalauth:
-    freerqdata(rq);
-    return 0;
 }
 
 int replyh(struct server *server, unsigned char *buf) {
     struct client *from;
     struct request *rq;
-    int i, len, sublen;
-    unsigned char *messageauth, *subattrs, *attrs, *attr, *username;
+    int sublen;
+    unsigned char *subattrs, *rqattr;
     struct sockaddr_storage fromsa;
     char tmp[760], stationid[760];
+    struct radmsg *msg = NULL;
+    struct tlv *attr, *messageauth;
+    struct list_node *node;
     
     server->connectionok = 1;
     server->lostrqs = 0;
-	
-    i = buf[1]; /* i is the id */
 
-    if (*buf != RAD_Access_Accept && *buf != RAD_Access_Reject && *buf != RAD_Access_Challenge
-	&& *buf != RAD_Accounting_Response) {
-	debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(*buf));
+    rq = server->requests + buf[1];
+    msg = buf2radmsg(buf, (uint8_t *)server->conf->secret, rq->buf + 4);
+    if (!msg) {
+        debug(DBG_WARN, "replyh: message validation failed, ignoring packet");
 	return 0;
     }
-    debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(*buf), i);
-
-    rq = server->requests + i;
+    if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge
+	&& msg->code != RAD_Accounting_Response) {
+	debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
+	radmsg_free(msg);
+	return 0;
+    }
+    debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
 
     pthread_mutex_lock(&server->newrq_mutex);
     if (!rq->buf || !rq->tries) {
-	pthread_mutex_unlock(&server->newrq_mutex);
 	debug(DBG_INFO, "replyh: no matching request sent with this id, ignoring reply");
-	return 0;
+	goto errunlock;
     }
 
     if (rq->received) {
-	pthread_mutex_unlock(&server->newrq_mutex);
 	debug(DBG_INFO, "replyh: already received, ignoring reply");
-	return 0;
+	goto errunlock;
     }
 	
-    if (!validauth(buf, rq->buf + 4, (unsigned char *)server->conf->secret)) {
-	pthread_mutex_unlock(&server->newrq_mutex);
-	debug(DBG_WARN, "replyh: invalid auth, ignoring reply");
-	return 0;
-    }
-	
-    len = RADLEN(buf) - 20;
-    attrs = buf + 20;
-
-    if (!attrvalidate(attrs, len)) {
-	pthread_mutex_unlock(&server->newrq_mutex);
-	debug(DBG_WARN, "replyh: attribute validation failed, ignoring reply");
-	return 0;
-    }
-	
-    /* Message Authenticator */
-    messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
-    if (messageauth) {
-	if (ATTRVALLEN(messageauth) != 16) {
-	    pthread_mutex_unlock(&server->newrq_mutex);
-	    debug(DBG_WARN, "replyh: illegal message auth attribute length, ignoring reply");
-	    return 0;
-	}
-	memcpy(tmp, buf + 4, 16);
-	memcpy(buf + 4, rq->buf + 4, 16);
-	if (!checkmessageauth(buf, ATTRVAL(messageauth), server->conf->secret)) {
-	    pthread_mutex_unlock(&server->newrq_mutex);
-	    debug(DBG_WARN, "replyh: message authentication failed, ignoring reply");
-	    return 0;
-	}
-	memcpy(buf + 4, tmp, 16);
-	debug(DBG_DBG, "replyh: message auth ok");
-    }
-    
     gettimeofday(&server->lastrcv, NULL);
     
     if (*rq->buf == RAD_Status_Server) {
 	rq->received = 1;
-	pthread_mutex_unlock(&server->newrq_mutex);
 	debug(DBG_DBG, "replyh: got status server response from %s", server->conf->host);
-	return 0;
+	goto errunlock;
     }
 
     gettimeofday(&server->lastreply, NULL);
     
     from = rq->from;
     if (!from) {
-	pthread_mutex_unlock(&server->newrq_mutex);
 	debug(DBG_INFO, "replyh: client gone, ignoring reply");
-	return 0;
+	goto errunlock;
     }
 	
-    if (server->conf->rewritein) {
-	if (!dorewrite(&buf, server->conf->rewritein))
-	    return 0;
-	len = RADLEN(buf) - 20;
-	attrs = buf + 20;
-	if (messageauth)
-	    messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
+    if (server->conf->rewritein && !dorewrite(msg, rq->from->conf->rewritein)) {
+	debug(DBG_WARN, "replyh: rewritein failed");
+	goto errunlock;
     }
     
     /* MS MPPE */
-    for (attr = attrs; (attr = attrget(attr, len - (attr - attrs), RAD_Attr_Vendor_Specific)); attr += ATTRLEN(attr)) {
-	if (ATTRVALLEN(attr) <= 4)
+    for (node = list_first(msg->attrs); node; node = list_next(node)) {
+	attr = (struct tlv *)node->data;
+	if (attr->t != RAD_Attr_Vendor_Specific)
+	    continue;
+	if (attr->l <= 4)
 	    break;
-	    
-	if (attr[2] != 0 || attr[3] != 0 || attr[4] != 1 || attr[5] != 55)  /* 311 == MS */
+	if (attr->v[0] != 0 || attr->v[1] != 0 || attr->v[2] != 1 || attr->v[3] != 55)  /* 311 == MS */
 	    continue;
 	    
-	sublen = ATTRVALLEN(attr) - 4;
-	subattrs = ATTRVAL(attr) + 4;  
+	sublen = attr->l - 4;
+	subattrs = attr->v + 4;  
 	if (!attrvalidate(subattrs, sublen) ||
 	    !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, "MS MPPE Send Key",
 		    rq, server->conf->secret, from->conf->secret) ||
@@ -2110,62 +1984,63 @@ int replyh(struct server *server, unsigned char *buf) {
 		    rq, server->conf->secret, from->conf->secret))
 	    break;
     }
-    if (attr) {
-	pthread_mutex_unlock(&server->newrq_mutex);
+    if (node) {
 	debug(DBG_WARN, "replyh: MS attribute handling failed, ignoring reply");
-	return 0;
+	goto errunlock;
     }
-	
-    if (*buf == RAD_Access_Accept || *buf == RAD_Access_Reject || *buf == RAD_Accounting_Response) {
-	attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_User_Name);
-	if (attr) {
-	    radattr2ascii(tmp, sizeof(tmp), attr);
-	    attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_Calling_Station_Id);
-	    if (attr) {
-		radattr2ascii(stationid, sizeof(stationid), attr);
+
+    if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response) {
+	rqattr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_User_Name);	
+	if (rqattr) {
+	    radattr2ascii(tmp, sizeof(tmp), rqattr);
+	    rqattr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_Calling_Station_Id);
+	    if (rqattr) {
+		radattr2ascii(stationid, sizeof(stationid), rqattr);
 		debug(DBG_INFO, "%s for user %s stationid %s from %s",
-		      radmsgtype2string(*buf), tmp, stationid, server->conf->host);
+		      radmsgtype2string(msg->code), tmp, stationid, server->conf->host);
 	    } else
-		debug(DBG_INFO, "%s for user %s from %s", radmsgtype2string(*buf), tmp, server->conf->host);
+		debug(DBG_INFO, "%s for user %s from %s", radmsgtype2string(msg->code), tmp, server->conf->host);
 	}
     }
-	
-    buf[1] = (char)rq->origid;
-    memcpy(buf + 4, rq->origauth, 16);
+
+    msg->id = (char)rq->origid;
+    memcpy(msg->auth, rq->origauth, 16);
+
 #ifdef DEBUG	
     printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
 
-    if (rq->origusername && (attr = attrget(buf + 20, RADLEN(buf) - 20, RAD_Attr_User_Name))) {
-	username = resizeattr(&buf, &attr, strlen(rq->origusername));
-	if (!username) {
-	    pthread_mutex_unlock(&server->newrq_mutex);
+    if (rq->origusername && (attr = radmsg_gettype(msg, RAD_Attr_User_Name))) {
+	if (!resizeattr2(attr, strlen(rq->origusername))) {
 	    debug(DBG_WARN, "replyh: malloc failed, ignoring reply");
-	    return 0;
+	    goto errunlock;
 	}
-	memcpy(username, rq->origusername, strlen(rq->origusername));
-	len = RADLEN(buf) - 20;
-	attrs = buf + 20;
-	if (messageauth)
-	    messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
+	memcpy(attr->v, rq->origusername, strlen(rq->origusername));
+    }
+
+    if (from->conf->rewriteout && !dorewrite(msg, from->conf->rewriteout)) {
+	debug(DBG_WARN, "replyh: rewriteout failed");
+	goto errunlock;
+    }
+
+    free(buf);
+    buf = radmsg2buf(msg);
+    radmsg_free(msg);
+    msg = NULL;
+    if (!buf) {
+	debug(DBG_ERR, "replyh: malloc failed");
+	goto errunlock;
     }
     
-    if (from->conf->rewriteout) {
-	if (!dorewrite(&buf, from->conf->rewriteout))
-	    return 0;
-	len = RADLEN(buf) - 20;
-	attrs = buf + 20;
-	if (messageauth)
-	    messageauth = attrget(attrs, len, RAD_Attr_Message_Authenticator);
-    }
-	
     if (messageauth) {
-	if (!createmessageauth(buf, ATTRVAL(messageauth), from->conf->secret)) {
-	    pthread_mutex_unlock(&server->newrq_mutex);
-	    debug(DBG_WARN, "replyh: failed to create authenticator, malloc failed?, ignoring reply");
-	    return 0;
+	rqattr = attrget(buf + 20, RADLEN(buf) - 20, RAD_Attr_Message_Authenticator);
+	if (rqattr) {
+	    if (!createmessageauth(buf, ATTRVAL(rqattr), from->conf->secret)) {
+		debug(DBG_WARN, "replyh: failed to create authenticator, malloc failed?, ignoring reply");
+		goto errunlock;
+	    }
+	    debug(DBG_DBG, "replyh: computed messageauthattr");
 	}
-	debug(DBG_DBG, "replyh: computed messageauthattr");
     }
 
     fromsa = rq->fromsa; /* only needed for UDP */
@@ -2176,6 +2051,11 @@ int replyh(struct server *server, unsigned char *buf) {
     sendreply(from, buf, &fromsa, rq->fromudpsock);
     pthread_mutex_unlock(&server->newrq_mutex);
     return 1;
+
+ errunlock:
+    radmsg_free(msg);
+    pthread_mutex_unlock(&server->newrq_mutex);
+    return 0;
 }
 
 /* code for removing state not finished */
@@ -2915,10 +2795,10 @@ int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
 }
 
 /* should accept both names and numeric values, only numeric right now */
-struct attribute *extractattr(char *nameval) {
+struct tlv *extractattr(char *nameval) {
     int len, name = 0;
     char *s;
-    struct attribute *a;
+    struct tlv *a;
     
     s = strchr(nameval, ':');
     name = atoi(nameval);
@@ -2927,7 +2807,7 @@ struct attribute *extractattr(char *nameval) {
     len = strlen(s + 1);
     if (len > 253)
 	return NULL;
-    a = malloc(sizeof(struct attribute));
+    a = malloc(sizeof(struct tlv));
     if (!a)
 	return NULL;
     a->v = (uint8_t *)stringcopy(s + 1, 0);
@@ -3015,7 +2895,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
     uint8_t *rma = NULL;
     uint32_t *p, *rmva = NULL;
     struct list *adda = NULL, *moda = NULL;
-    struct attribute *a;
+    struct tlv *a;
     struct modattr *m;
     
     if (rmattrs) {
