@@ -330,8 +330,10 @@ void *dtlsservernew(void *arg) {
 	X509_free(cert);
 
  exit:
-    SSL_shutdown(ssl);
-    SSL_free(ssl);
+    if (ssl) {
+	SSL_shutdown(ssl);
+	SSL_free(ssl);
+    }
     pthread_mutex_lock(&params->sesscache->mutex);
     freebios(params->sesscache->rbios);
     params->sesscache->rbios = NULL;
