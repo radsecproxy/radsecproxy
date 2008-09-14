@@ -878,28 +878,6 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     return 1;
 }
 
-int radsign(unsigned char *rad, unsigned char *sec) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static EVP_MD_CTX mdctx;
-    unsigned int md_len;
-    int result;
-    
-    pthread_mutex_lock(&lock);
-    if (first) {
-	EVP_MD_CTX_init(&mdctx);
-	first = 0;
-    }
-
-    result = (EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) &&
-	EVP_DigestUpdate(&mdctx, rad, RADLEN(rad)) &&
-	EVP_DigestUpdate(&mdctx, sec, strlen((char *)sec)) &&
-	EVP_DigestFinal_ex(&mdctx, rad + 4, &md_len) &&
-	md_len == 16);
-    pthread_mutex_unlock(&lock);
-    return result;
-}
-
 unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
     while (length > 1) {
 	if (ATTRTYPE(attrs) == type)
@@ -941,18 +919,11 @@ void sendrq(struct server *to, struct request *rq) {
     rq->msg->id = (uint8_t)i;
     rq->buf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
     if (!rq->buf) {
+	debug(DBG_ERR, "sendrq: radmsg2buf failed");
 	freerqdata(rq);
 	goto exit;
     }
     
-    if (*rq->buf == RAD_Accounting_Request) {
-	if (!radsign(rq->buf, (unsigned char *)to->conf->secret)) {
-	    debug(DBG_WARN, "sendrq: failed to sign Accounting-Request message");
-	    freerqdata(rq);
-	    goto exit;
-	}
-    }
-
     debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->conf->host);
     to->requests[i] = *rq;
     to->nextid = i + 1;
@@ -967,13 +938,15 @@ void sendrq(struct server *to, struct request *rq) {
     pthread_mutex_unlock(&to->newrq_mutex);
 }
 
-void sendreply(struct client *to, unsigned char *buf, struct sockaddr_storage *tosa, int toudpsock) {
+void sendreply(struct client *to, struct radmsg *msg, struct sockaddr_storage *tosa, int toudpsock) {
+    uint8_t *buf;
     struct reply *reply;
     uint8_t first;
-    
-    if (!radsign(buf, (unsigned char *)to->conf->secret)) {
-	free(buf);
-	debug(DBG_WARN, "sendreply: failed to sign message");
+
+    buf = radmsg2buf(msg, (uint8_t *)to->conf->secret);
+    radmsg_free(msg);
+    if (!buf) {
+	debug(DBG_ERR, "sendreply: radmsg2buf failed");
 	return;
     }
 
@@ -1612,58 +1585,48 @@ void acclog(struct radmsg *msg, char *host) {
 }
 
 void respondaccounting(struct request *rq) {
-    unsigned char *resp;
+    struct radmsg *msg;
 
-    resp = malloc(20);
-    if (!resp) {
+    msg = radmsg_init(RAD_Accounting_Response, rq->msg->id, rq->msg->auth);
+    if (msg) {
+	debug(DBG_DBG, "respondaccounting: responding to %s", rq->from->conf->host);
+	sendreply(rq->from, msg, &rq->fromsa, rq->fromudpsock);
+    } else	
 	debug(DBG_ERR, "respondaccounting: malloc failed");
-	return;
-    }
-    memcpy(resp, rq->buf, 20);
-    resp[0] = RAD_Accounting_Response;
-    resp[2] = 0;
-    resp[3] = 20;
-    debug(DBG_DBG, "respondaccounting: responding to %s", rq->from->conf->host);
-    sendreply(rq->from, resp, &rq->fromsa, rq->fromudpsock);
 }
 
 void respondstatusserver(struct request *rq) {
-    unsigned char *resp;
+    struct radmsg *msg;
 
-    resp = malloc(20);
-    if (!resp) {
+    msg = radmsg_init(RAD_Access_Accept, rq->msg->id, rq->msg->auth);
+    if (msg) {
+	debug(DBG_DBG, "respondstatusserver: responding to %s", rq->from->conf->host);
+	sendreply(rq->from, msg, &rq->fromsa, rq->fromudpsock);
+    } else
 	debug(DBG_ERR, "respondstatusserver: malloc failed");
-	return;
-    }
-    memcpy(resp, rq->buf, 20);
-    resp[0] = RAD_Access_Accept;
-    resp[2] = 0;
-    resp[3] = 20;
-    debug(DBG_DBG, "respondstatusserver: responding to %s", rq->from->conf->host);
-    sendreply(rq->from, resp, &rq->fromsa, rq->fromudpsock);
 }
 
 void respondreject(struct request *rq, char *message) {
-    unsigned char *resp;
-    int len = 20;
+    struct radmsg *msg;
+    struct tlv *attr;
 
-    if (message && *message)
-	len += 2 + strlen(message);
-    
-    resp = malloc(len);
-    if (!resp) {
+    msg = radmsg_init(RAD_Access_Reject, rq->msg->id, rq->msg->auth);
+    if (!msg) {
 	debug(DBG_ERR, "respondreject: malloc failed");
 	return;
     }
-    memcpy(resp, rq->buf, 20);
-    resp[0] = RAD_Access_Reject;
-    *(uint16_t *)(resp + 2) = htons(len);
     if (message && *message) {
-	resp[20] = RAD_Attr_Reply_Message;
-	resp[21] = len - 20;
-	memcpy(resp + 22, message, len - 22);
+	attr = maketlv(RAD_Attr_Reply_Message, strlen(message), message);
+	if (!attr || !radmsg_add(msg, attr)) {
+	    freetlv(attr);
+	    radmsg_free(msg);
+	    debug(DBG_ERR, "respondreject: malloc failed");
+	    return;
+	}
     }
-    sendreply(rq->from, resp, &rq->fromsa, rq->fromudpsock);
+
+    debug(DBG_DBG, "respondreject: responding to %s", rq->from->conf->host);
+    sendreply(rq->from, msg, &rq->fromsa, rq->fromudpsock);
 }
 
 struct clsrvconf *choosesrvconf(struct list *srvconfs) {
@@ -1728,6 +1691,7 @@ int radsrv(struct request *rq) {
 	freerqdata(rq);
 	return 0;
     }
+    rq->msg = msg;
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
     
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
@@ -1829,13 +1793,11 @@ int radsrv(struct request *rq) {
 	goto exit;
     
     free(userascii);
-    rq->msg = msg;
     sendrq(to, rq);
     return 1;
     
  exit:
     free(userascii);
-    radmsg_free(msg);
     freerqdata(rq);
     return 1;
 }
@@ -1960,20 +1922,12 @@ void replyh(struct server *server, unsigned char *buf) {
 	goto errunlock;
     }
 
-    buf = radmsg2buf(msg, (uint8_t *)from->conf->secret);
-    radmsg_free(msg);
-    msg = NULL;
-    if (!buf) {
-	debug(DBG_ERR, "replyh: malloc failed");
-	goto errunlock;
-    }
-
     fromsa = rq->fromsa; /* only needed for UDP */
     /* once we set received = 1, rq may be reused */
     rq->received = 1;
 
     debug(DBG_INFO, "replyh: passing reply to client %s", from->conf->name);
-    sendreply(from, buf, &fromsa, rq->fromudpsock);
+    sendreply(from, msg, &fromsa, rq->fromudpsock);
     pthread_mutex_unlock(&server->newrq_mutex);
     return;
 

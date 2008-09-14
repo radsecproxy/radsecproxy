@@ -166,6 +166,28 @@ int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *
     return 1;
 }
 
+int _radsign(unsigned char *rad, unsigned char *sec) {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned char first = 1;
+    static EVP_MD_CTX mdctx;
+    unsigned int md_len;
+    int result;
+
+    pthread_mutex_lock(&lock);
+    if (first) {
+	EVP_MD_CTX_init(&mdctx);
+	first = 0;
+    }
+
+    result = (EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) &&
+	      EVP_DigestUpdate(&mdctx, rad, RADLEN(rad)) &&
+	      EVP_DigestUpdate(&mdctx, sec, strlen((char *)sec)) &&
+	      EVP_DigestFinal_ex(&mdctx, rad + 4, &md_len) &&
+	      md_len == 16);
+    pthread_mutex_unlock(&lock);
+    return result;
+}
+
 uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
     struct list_node *node;
     struct tlv *tlv;
@@ -200,6 +222,10 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
         p += tlv->l;
     }
     if (msgauth && !_createmessageauth(buf, msgauth, secret)) {
+	free(buf);
+	return NULL;
+    }
+    if (secret && (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(buf, secret)) {
 	free(buf);
 	return NULL;
     }
