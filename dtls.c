@@ -312,7 +312,6 @@ void *dtlsservernew(void *arg) {
 	    if (client) {
 		client->sock = params->sock;
 		client->rbios = params->sesscache->rbios;
-		client->addr = params->addr;
 		client->ssl = ssl;
 		dtlsserverrd(client);
 		removeclient(client);

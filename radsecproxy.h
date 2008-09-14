@@ -104,7 +104,7 @@ struct client {
     SSL *ssl;
     struct queue *replyq;
     struct queue *rbios; /* for dtls */
-    struct sockaddr_storage addr; /* for dtls */
+    struct sockaddr *addr; /* for udp */
 };
 
 struct server {

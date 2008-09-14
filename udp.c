@@ -42,6 +42,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     int cnt, len;
     unsigned char buf[4], *rad = NULL;
     struct sockaddr_storage from;
+    struct sockaddr *fromcopy;
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *p;
     struct list_node *node;
@@ -101,10 +102,22 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
 
 	if (client) {
-	    node = list_first(p->clients);
-	    *client = node ? (struct client *)node->data : addclient(p);
-	    if (!*client)
+	    for (node = list_first(p->clients); node; node = list_next(node))
+		if (addr_equal((struct sockaddr *)&from, ((struct client *)node->data)->addr))
+		    break;
+	    if (node) {
+		*client = (struct client *)node->data;
+		break;
+	    }
+	    fromcopy = addr_copy((struct sockaddr *)&from);
+	    if (!fromcopy)
 		continue;
+	    *client = addclient(p);
+	    if (!*client) {
+		free(fromcopy);
+		continue;
+	    }
+	    (*client)->addr = fromcopy;
 	} else if (server)
 	    *server = p->servers;
 	break;

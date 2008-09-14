@@ -581,6 +581,7 @@ void removeclient(struct client *client) {
 	return;
     removequeue(client->replyq);
     list_removedata(client->conf->clients, client);
+    free(client->addr);
     free(client);
 }
 
