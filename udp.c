@@ -102,22 +102,28 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
 
 	if (client) {
+	    pthread_mutex_lock(p->lock);
 	    for (node = list_first(p->clients); node; node = list_next(node))
 		if (addr_equal((struct sockaddr *)&from, ((struct client *)node->data)->addr))
 		    break;
 	    if (node) {
 		*client = (struct client *)node->data;
+		pthread_mutex_unlock(p->lock);
 		break;
 	    }
 	    fromcopy = addr_copy((struct sockaddr *)&from);
-	    if (!fromcopy)
+	    if (!fromcopy) {
+		pthread_mutex_unlock(p->lock);
 		continue;
-	    *client = addclient(p);
+	    }
+	    *client = addclient(p, 0);
 	    if (!*client) {
 		free(fromcopy);
+		pthread_mutex_unlock(p->lock);
 		continue;
 	    }
 	    (*client)->addr = fromcopy;
+	    pthread_mutex_unlock(p->lock);
 	} else if (server)
 	    *server = p->servers;
 	break;
@@ -178,14 +184,19 @@ void *udpclientrd(void *arg) {
 }
 
 void *udpserverrd(void *arg) {
-    struct request rq;
+    struct request *rq;
     int *sp = (int *)arg;
     
     for (;;) {
-	memset(&rq, 0, sizeof(struct request));
-	rq.buf = radudpget(*sp, &rq.from, NULL, &rq.fromsa);
-	rq.fromudpsock = *sp;
-	radsrv(&rq);
+	rq = newrequest();
+	if (!rq) {
+	    sleep(5); /* malloc failed */
+	    continue;
+	}
+	rq->buf = radudpget(*sp, &rq->from, NULL, &rq->fromsa);
+	rq->fromudpsock = *sp;
+	radsrv(rq);
+	freerq(rq);
     }
     free(sp);
 }

@@ -17,6 +17,7 @@
 #define MAX_REQUESTS 256
 #define REQUEST_RETRY_INTERVAL 5
 #define REQUEST_RETRY_COUNT 2
+#define DUPLICATE_INTERVAL REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
@@ -41,19 +42,26 @@ struct options {
     uint8_t loopprevention;
 };
 
-/* requests that our client will send */
 struct request {
+    struct timeval created;
+    uint8_t refcount;
+    uint8_t *buf;
+    struct client *from;
+    struct sockaddr_storage fromsa; /* used by udpservwr */
+    int fromudpsock; /* used by udpservwr */
+};
+
+/* requests that our client will send */
+struct rqout {
     unsigned char *buf;
     struct radmsg *msg;
     uint8_t tries;
     uint8_t received;
     struct timeval expiry;
-    struct client *from;
     char *origusername;
     uint8_t origid; /* used by servwr */
     char origauth[16]; /* used by servwr */
-    struct sockaddr_storage fromsa; /* used by udpservwr */
-    int fromudpsock; /* used by udpservwr */
+    struct request *rq;
 };
 
 /* replies that a server will send */
@@ -88,12 +96,14 @@ struct clsrvconf {
     uint8_t statusserver;
     uint8_t retryinterval;
     uint8_t retrycount;
+    uint8_t dupinterval;
     uint8_t certnamecheck;
     SSL_CTX *ssl_ctx;
     struct rewrite *rewritein;
     struct rewrite *rewriteout;
     struct addrinfo *addrinfo;
     uint8_t prefixlen;
+    pthread_mutex_t *lock; /* only used for updating clients so far */
     struct list *clients;
     struct server *servers;
 };
@@ -102,6 +112,8 @@ struct client {
     struct clsrvconf *conf;
     int sock; /* for tcp/dtls */
     SSL *ssl;
+    pthread_mutex_t lock; /* used for updating rqs */
+    struct request *rqs[MAX_REQUESTS];
     struct queue *replyq;
     struct queue *rbios; /* for dtls */
     struct sockaddr *addr; /* for udp */
@@ -121,7 +133,7 @@ struct server {
     char *dynamiclookuparg;
     int nextid;
     struct timeval lastrcv;
-    struct request *requests;
+    struct rqout *requests;
     uint8_t newrq;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
@@ -173,6 +185,7 @@ struct protodefs {
     uint8_t retrycountmax;
     uint8_t retryintervaldefault;
     uint8_t retryintervalmax;
+    uint8_t duplicateintervaldefault;
     void *(*listener)(void*);
     char **srcaddrport;
     int (*connecter)(struct server *, struct timeval *, int, char *);
@@ -198,12 +211,14 @@ struct addrinfo *getsrcprotores(uint8_t type);
 struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
-struct client *addclient(struct clsrvconf *conf);
+struct client *addclient(struct clsrvconf *conf, uint8_t lock);
 void removeclient(struct client *client);
 void removeclientrqs(struct client *client);
 struct queue *newqueue();
 void removequeue(struct queue *q);
 void freebios(struct queue *q);
+struct request *newrequest();
+void freerq(struct request *rq);
 int radsrv(struct request *rq);
 X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);

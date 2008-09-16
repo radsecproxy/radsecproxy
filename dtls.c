@@ -248,7 +248,8 @@ void *dtlsserverwr(void *arg) {
 }
 
 void dtlsserverrd(struct client *client) {
-    struct request rq;
+    struct request *rq;
+    uint8_t *buf;
     pthread_t dtlsserverwrth;
     
     debug(DBG_DBG, "dtlsserverrd: starting for %s", client->conf->host);
@@ -259,18 +260,25 @@ void dtlsserverrd(struct client *client) {
     }
 
     for (;;) {
-	memset(&rq, 0, sizeof(struct request));
-	rq.buf = raddtlsget(client->ssl, client->rbios, IDLE_TIMEOUT);
-	if (!rq.buf) {
+	buf = raddtlsget(client->ssl, client->rbios, IDLE_TIMEOUT);
+	if (!buf) {
 	    debug(DBG_ERR, "dtlsserverrd: connection from %s lost", client->conf->host);
 	    break;
 	}
 	debug(DBG_DBG, "dtlsserverrd: got Radius message from %s", client->conf->host);
-	rq.from = client;
-	if (!radsrv(&rq)) {
+	rq = newrequest();
+	if (!rq) {
+	    free(buf);
+	    continue;
+	}
+	rq->buf = buf;
+	rq->from = client;
+	if (!radsrv(rq)) {
+	    freerq(rq);
 	    debug(DBG_ERR, "dtlsserverrd: message authentication/validation failed, closing connection from %s", client->conf->host);
 	    break;
 	}
+	freerq(rq);
     }
     
     /* stop writer by setting ssl to NULL and give signal in case waiting for data */
@@ -308,7 +316,7 @@ void *dtlsservernew(void *arg) {
     while (conf) {
 	if (verifyconfcert(cert, conf)) {
 	    X509_free(cert);
-	    client = addclient(conf);
+	    client = addclient(conf, 1);
 	    if (client) {
 		client->sock = params->sock;
 		client->rbios = params->sesscache->rbios;

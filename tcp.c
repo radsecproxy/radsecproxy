@@ -223,7 +223,8 @@ void *tcpserverwr(void *arg) {
 }
 
 void tcpserverrd(struct client *client) {
-    struct request rq;
+    struct request *rq;
+    uint8_t *buf;
     pthread_t tcpserverwrth;
     
     debug(DBG_DBG, "tcpserverrd: starting for %s", client->conf->host);
@@ -234,18 +235,25 @@ void tcpserverrd(struct client *client) {
     }
 
     for (;;) {
-	memset(&rq, 0, sizeof(struct request));
-	rq.buf = radtcpget(client->sock, 0);
-	if (!rq.buf) {
+	buf = radtcpget(client->sock, 0);
+	if (!buf) {
 	    debug(DBG_ERR, "tcpserverrd: connection from %s lost", client->conf->host);
 	    break;
 	}
 	debug(DBG_DBG, "tcpserverrd: got Radius message from %s", client->conf->host);
-	rq.from = client;
-	if (!radsrv(&rq)) {
+	rq = newrequest();
+	if (!rq) {
+	    free(buf);
+	    continue;
+	}
+	rq->buf = buf;
+	rq->from = client;
+	if (!radsrv(rq)) {
+	    freerq(rq);
 	    debug(DBG_ERR, "tcpserverrd: message authentication/validation failed, closing connection from %s", client->conf->host);
 	    break;
 	}
+	freerq(rq);
     }
 
     /* stop writer by setting s to -1 and give signal in case waiting for data */
@@ -275,7 +283,7 @@ void *tcpservernew(void *arg) {
 
     conf = find_clconf(RAD_TCP, (struct sockaddr *)&from, NULL);
     if (conf) {
-	client = addclient(conf);
+	client = addclient(conf, 1);
 	if (client) {
 	    client->sock = s;
 	    tcpserverrd(client);

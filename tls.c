@@ -276,7 +276,8 @@ void *tlsserverwr(void *arg) {
 }
 
 void tlsserverrd(struct client *client) {
-    struct request rq;
+    struct request *rq;
+    uint8_t *buf;
     pthread_t tlsserverwrth;
     
     debug(DBG_DBG, "tlsserverrd: starting for %s", client->conf->host);
@@ -287,18 +288,25 @@ void tlsserverrd(struct client *client) {
     }
 
     for (;;) {
-	memset(&rq, 0, sizeof(struct request));
-	rq.buf = radtlsget(client->ssl, 0);
-	if (!rq.buf) {
+	buf = radtlsget(client->ssl, 0);
+	if (!buf) {
 	    debug(DBG_ERR, "tlsserverrd: connection from %s lost", client->conf->host);
 	    break;
 	}
 	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", client->conf->host);
-	rq.from = client;
-	if (!radsrv(&rq)) {
+	rq = newrequest();
+	if (!rq) {
+	    free(buf);
+	    continue;
+	}
+	rq->buf = buf;
+	rq->from = client;
+	if (!radsrv(rq)) {
+	    freerq(rq);
 	    debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", client->conf->host);
 	    break;
 	}
+	freerq(rq);
     }
     
     /* stop writer by setting ssl to NULL and give signal in case waiting for data */
@@ -349,7 +357,7 @@ void *tlsservernew(void *arg) {
     while (conf) {
 	if (verifyconfcert(cert, conf)) {
 	    X509_free(cert);
-	    client = addclient(conf);
+	    client = addclient(conf, 1);
 	    if (client) {
 		client->ssl = ssl;
 		tlsserverrd(client);
