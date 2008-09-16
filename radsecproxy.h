@@ -49,6 +49,9 @@ struct request {
     struct client *from;
     struct sockaddr_storage fromsa; /* used by udpservwr */
     int fromudpsock; /* used by udpservwr */
+    char *origusername;
+    char origauth[16]; /* used by servwr */
+    uint8_t origid; /* used by servwr */
 };
 
 /* requests that our client will send */
@@ -58,9 +61,6 @@ struct rqout {
     uint8_t tries;
     uint8_t received;
     struct timeval expiry;
-    char *origusername;
-    uint8_t origid; /* used by servwr */
-    char origauth[16]; /* used by servwr */
     struct request *rq;
 };
 

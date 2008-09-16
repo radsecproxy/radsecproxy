@@ -917,6 +917,8 @@ unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
 void freerqdata(struct request *rq) {
     if (!rq)
 	return;
+    if (rq->origusername)
+	free(rq->origusername);
     if (rq->buf)
 	free(rq->buf);
 }
@@ -934,8 +936,6 @@ void freerq(struct request *rq) {
 void freerqoutdata(struct rqout *rqout) {
     if (!rqout)
 	return;
-    if (rqout->origusername)
-	free(rqout->origusername);
     if (rqout->msg)
 	radmsg_free(rqout->msg);
     if (rqout->buf)
@@ -1304,7 +1304,7 @@ int rqinqueue(struct server *to, struct client *from, uint8_t id, uint8_t code) 
     
     pthread_mutex_lock(&to->newrq_mutex);
     for (end = rqout + MAX_REQUESTS; rqout < end; rqout++)
-	if (rqout->buf && !rqout->received && rqout->origid == id && rqout->rq && rqout->rq->from == from && *rqout->buf == code)
+	if (rqout->buf && !rqout->received && rqout->rq && rqout->rq->origid == id && rqout->rq->from == from && *rqout->buf == code)
 	    break;
     pthread_mutex_unlock(&to->newrq_mutex);
     
@@ -1363,13 +1363,13 @@ int msmpprecrypt(uint8_t *msmpp, uint8_t len, char *oldsecret, char *newsecret, 
     return 1;
 }
 
-int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct rqout *rq,
+int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct rqout *rqout,
 	   char *oldsecret, char *newsecret) {
     unsigned char *attr;
     
     for (attr = attrs; (attr = attrget(attr, length - (attr - attrs), type)); attr += ATTRLEN(attr)) {
 	debug(DBG_DBG, "msmppe: Got %s", attrtxt);
-	if (!msmpprecrypt(ATTRVAL(attr), ATTRVALLEN(attr), oldsecret, newsecret, rq->buf + 4, rq->origauth))
+	if (!msmpprecrypt(ATTRVAL(attr), ATTRVALLEN(attr), oldsecret, newsecret, rqout->buf + 4, rqout->rq->origauth))
 	    return 0;
     }
     return 1;
@@ -1561,7 +1561,7 @@ int rewriteusername(struct rqout *rqout, struct tlv *attr) {
 	return 0;
     }
     if (strlen(orig) != attr->l || memcmp(orig, attr->v, attr->l))
-	rqout->origusername = (char *)orig;
+	rqout->rq->origusername = (char *)orig;
     else
 	free(orig);
     return 1;
@@ -1782,6 +1782,9 @@ int radsrv(struct request *rq) {
     struct client *from = rq->from;
     
     msg = buf2radmsg(rq->buf, (uint8_t *)from->conf->secret, NULL);
+    free(rq->buf);
+    rq->buf = NULL;
+
     if (!msg) {
 	debug(DBG_WARN, "radsrv: message validation failed, ignoring packet");
 	return 0;
@@ -1808,7 +1811,7 @@ int radsrv(struct request *rq) {
     
     if (msg->code == RAD_Status_Server) {
 	respondstatusserver(rqout);
-	goto exit;
+	goto respexit;
     }
 
     /* below: code == RAD_Access_Request || code == RAD_Accounting_Request */
@@ -1821,8 +1824,9 @@ int radsrv(struct request *rq) {
 	if (msg->code == RAD_Accounting_Request) {
 	    acclog(msg, from->conf->host);
 	    respondaccounting(rqout);
-	} else
-	    debug(DBG_WARN, "radsrv: ignoring access request, no username attribute");
+	    goto respexit;
+	} 
+	debug(DBG_WARN, "radsrv: ignoring access request, no username attribute");
 	goto exit;
     }
     
@@ -1841,6 +1845,7 @@ int radsrv(struct request *rq) {
 	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
 	goto exit;
     }
+
     if (!to) {
 	if (realm->message && msg->code == RAD_Access_Request) {
 	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", from->conf->host, userascii);
@@ -1849,11 +1854,8 @@ int radsrv(struct request *rq) {
 	    acclog(msg, from->conf->host);
 	    respondaccounting(rqout);
 	}
-	goto exit;
+	goto respexit;
     }
-    
-    free(rq->buf);
-    rq->buf = NULL;
     
     if (options.loopprevention && !strcmp(from->conf->name, to->conf->name)) {
 	debug(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s to server %s, discarding",
@@ -1895,8 +1897,8 @@ int radsrv(struct request *rq) {
 	    goto exit;
     }
 
-    rqout->origid = msg->id;
-    memcpy(rqout->origauth, msg->auth, 16);
+    rqout->rq->origid = msg->id;
+    memcpy(rqout->rq->origauth, msg->auth, 16);
     memcpy(msg->auth, newauth, 16);    
 
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
@@ -1911,6 +1913,12 @@ int radsrv(struct request *rq) {
     free(userascii);
     freerqoutdata(rqout);
     return 1;
+    
+ respexit:
+    free(userascii);
+    freerqoutdata(rqout);
+    return 1;
+    
 }
 
 void replyh(struct server *server, unsigned char *buf) {
@@ -2013,19 +2021,19 @@ void replyh(struct server *server, unsigned char *buf) {
 	}
     }
 
-    msg->id = (char)rqout->origid;
-    memcpy(msg->auth, rqout->origauth, 16);
+    msg->id = (char)rqout->rq->origid;
+    memcpy(msg->auth, rqout->rq->origauth, 16);
 
 #ifdef DEBUG	
     printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
 
-    if (rqout->origusername && (attr = radmsg_gettype(msg, RAD_Attr_User_Name))) {
-	if (!resizeattr(attr, strlen(rqout->origusername))) {
+    if (rqout->rq->origusername && (attr = radmsg_gettype(msg, RAD_Attr_User_Name))) {
+	if (!resizeattr(attr, strlen(rqout->rq->origusername))) {
 	    debug(DBG_WARN, "replyh: malloc failed, ignoring reply");
 	    goto errunlock;
 	}
-	memcpy(attr->v, rqout->origusername, strlen(rqout->origusername));
+	memcpy(attr->v, rqout->rq->origusername, strlen(rqout->rq->origusername));
     }
 
     if (from->conf->rewriteout && !dorewrite(msg, from->conf->rewriteout)) {
