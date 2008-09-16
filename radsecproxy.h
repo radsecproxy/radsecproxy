@@ -56,12 +56,13 @@ struct request {
 
 /* requests that our client will send */
 struct rqout {
+    pthread_mutex_t *lock; /* used when modifying buf/msg/rq */
     unsigned char *buf;
     struct radmsg *msg;
+    struct request *rq;
     uint8_t tries;
     uint8_t received;
     struct timeval expiry;
-    struct request *rq;
 };
 
 /* replies that a server will send */
