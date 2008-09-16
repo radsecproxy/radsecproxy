@@ -274,11 +274,9 @@ void dtlsserverrd(struct client *client) {
 	rq->buf = buf;
 	rq->from = client;
 	if (!radsrv(rq)) {
-	    freerq(rq);
 	    debug(DBG_ERR, "dtlsserverrd: message authentication/validation failed, closing connection from %s", client->conf->host);
 	    break;
 	}
-	freerq(rq);
     }
     
     /* stop writer by setting ssl to NULL and give signal in case waiting for data */

@@ -92,6 +92,7 @@ void freerealm(struct realm *realm);
 void freeclsrvconf(struct clsrvconf *conf);
 void freerq(struct request *rq);
 void freerqoutdata(struct rqout *rqout);
+void rmclientrq(struct request *rq, uint8_t id);
 
 static const struct protodefs protodefs[] = {
     {   "udp", /* UDP, assuming RAD_UDP defined as 0 */
@@ -622,7 +623,7 @@ void removeclientrqs(struct client *client) {
 	    rqout = server->requests + i;
 	    pthread_mutex_lock(rqout->lock);
 	    if (rqout->rq && rqout->rq->from == client)
-		freerqoutdata(rqout->rq);
+		freerqoutdata(rqout);
 	    pthread_mutex_unlock(rqout->lock);
 	}
     }
@@ -929,87 +930,76 @@ unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
     return NULL;
 }
 
-void freerqdata(struct request *rq) {
-    if (!rq)
-	return;
-    if (rq->origusername)
-	free(rq->origusername);
-    if (rq->buf)
-	free(rq->buf);
-}
-
 void freerq(struct request *rq) {
     if (!rq)
 	return;
     debug(DBG_DBG, "freerq: called with refcount %d", rq->refcount);
     if (--rq->refcount)
 	return;
-    freerqdata(rq);
+    if (rq->origusername)
+	free(rq->origusername);
+    if (rq->buf)
+	free(rq->buf);
+    if (rq->msg) {
+	radmsg_free(rq->msg);
+	rq->msg = NULL;
+    }
     free(rq);
 }
 
 void freerqoutdata(struct rqout *rqout) {
     if (!rqout)
 	return;
-    if (rqout->msg) {
-	radmsg_free(rqout->msg);
-	rqout->msg = NULL;
-    }
-    if (rqout->buf) {
-	free(rqout->buf);
-	rqout->buf = NULL;
-    }
     if (rqout->rq) {
 	freerq(rqout->rq);
 	rqout->rq = NULL;
     }
     rqout->tries = 0;
-    rqout->received = 0;
     memset(&rqout->expiry, 0, sizeof(struct timeval));
 }
 
-void sendrq(struct server *to, struct rqout *rqout) {
+void sendrq(struct server *to, struct request *rq) {
     int i;
     
     pthread_mutex_lock(&to->newrq_mutex);
     /* might simplify if only try nextid, might be ok */
     for (i = to->nextid; i < MAX_REQUESTS; i++) {
-	if (!to->requests[i].buf) {
+	if (!to->requests[i].rq) {
 	    pthread_mutex_lock(to->requests[i].lock);
-	    if (!to->requests[i].buf)
+	    if (!to->requests[i].rq)
 		break;
 	    pthread_mutex_unlock(to->requests[i].lock);
 	}
     }
     if (i == MAX_REQUESTS) {
 	for (i = 0; i < to->nextid; i++) {
-	    if (!to->requests[i].buf) {
+	    if (!to->requests[i].rq) {
 		pthread_mutex_lock(to->requests[i].lock);
-		if (!to->requests[i].buf)
+		if (!to->requests[i].rq)
 		    break;
 		pthread_mutex_unlock(to->requests[i].lock);
 	    }
 	}
 	if (i == to->nextid) {
 	    debug(DBG_WARN, "sendrq: no room in queue, dropping request");
-	    freerqoutdata(rqout);
+	    rmclientrq(rq, rq->msg->id);
+	    freerq(rq);
 	    goto exit;
 	}
     }
 
-    rqout->msg->id = (uint8_t)i;
-    rqout->buf = radmsg2buf(rqout->msg, (uint8_t *)to->conf->secret);
-    if (!rqout->buf) {
+    rq->msg->id = (uint8_t)i;
+    rq->buf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
+    if (!rq->buf) {
 	pthread_mutex_unlock(to->requests[i].lock);
 	debug(DBG_ERR, "sendrq: radmsg2buf failed");
-	freerqoutdata(rqout);
+	rmclientrq(rq, rq->msg->id);
+	freerq(rq);
 	goto exit;
     }
     
     debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->conf->host);
-    to->requests[i].buf = rqout->buf;
-    to->requests[i].msg = rqout->msg;
-    to->requests[i].rq = rqout->rq;
+    to->requests[i].rq = rq;
     pthread_mutex_unlock(to->requests[i].lock);
     to->nextid = i + 1;
 
@@ -1337,18 +1327,6 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
     }
 }
 			
-int rqinqueue(struct server *to, struct client *from, uint8_t id, uint8_t code) {
-    struct rqout *rqout = to->requests, *end;
-    
-    pthread_mutex_lock(&to->newrq_mutex);
-    for (end = rqout + MAX_REQUESTS; rqout < end; rqout++)
-	if (rqout->buf && !rqout->received && rqout->rq && rqout->rq->origid == id && rqout->rq->from == from && *rqout->buf == code)
-	    break;
-    pthread_mutex_unlock(&to->newrq_mutex);
-    
-    return rqout < end;
-}
-
 int attrvalidate(unsigned char *attrs, int length) {
     while (length > 1) {
 	if (ATTRLEN(attrs) < 2) {
@@ -1401,13 +1379,13 @@ int msmpprecrypt(uint8_t *msmpp, uint8_t len, char *oldsecret, char *newsecret, 
     return 1;
 }
 
-int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct rqout *rqout,
+int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct request *rq,
 	   char *oldsecret, char *newsecret) {
     unsigned char *attr;
     
     for (attr = attrs; (attr = attrget(attr, length - (attr - attrs), type)); attr += ATTRLEN(attr)) {
 	debug(DBG_DBG, "msmppe: Got %s", attrtxt);
-	if (!msmpprecrypt(ATTRVAL(attr), ATTRVALLEN(attr), oldsecret, newsecret, rqout->buf + 4, rqout->rq->origauth))
+	if (!msmpprecrypt(ATTRVAL(attr), ATTRVALLEN(attr), oldsecret, newsecret, rq->buf + 4, rq->origauth))
 	    return 0;
     }
     return 1;
@@ -1592,14 +1570,14 @@ int dorewrite(struct radmsg *msg, struct rewrite *rewrite) {
     return 1;
 }
 
-int rewriteusername(struct rqout *rqout, struct tlv *attr) {
+int rewriteusername(struct request *rq, struct tlv *attr) {
     char *orig = (char *)tlv2str(attr);
-    if (!dorewritemodattr(attr, rqout->rq->from->conf->rewriteusername)) {
+    if (!dorewritemodattr(attr, rq->from->conf->rewriteusername)) {
 	free(orig);
 	return 0;
     }
     if (strlen(orig) != attr->l || memcmp(orig, attr->v, attr->l))
-	rqout->rq->origusername = (char *)orig;
+	rq->origusername = (char *)orig;
     else
 	free(orig);
     return 1;
@@ -1669,33 +1647,33 @@ void acclog(struct radmsg *msg, char *host) {
     }
 }
 
-void respondaccounting(struct rqout *rqout) {
+void respondaccounting(struct request *rq) {
     struct radmsg *msg;
 
-    msg = radmsg_init(RAD_Accounting_Response, rqout->msg->id, rqout->msg->auth);
+    msg = radmsg_init(RAD_Accounting_Response, rq->msg->id, rq->msg->auth);
     if (msg) {
-	debug(DBG_DBG, "respondaccounting: responding to %s", rqout->rq->from->conf->host);
-	sendreply(rqout->rq->from, msg, &rqout->rq->fromsa, rqout->rq->fromudpsock);
+	debug(DBG_DBG, "respondaccounting: responding to %s", rq->from->conf->host);
+	sendreply(rq->from, msg, &rq->fromsa, rq->fromudpsock);
     } else	
 	debug(DBG_ERR, "respondaccounting: malloc failed");
 }
 
-void respondstatusserver(struct rqout *rqout) {
+void respondstatusserver(struct request *rq) {
     struct radmsg *msg;
 
-    msg = radmsg_init(RAD_Access_Accept, rqout->msg->id, rqout->msg->auth);
+    msg = radmsg_init(RAD_Access_Accept, rq->msg->id, rq->msg->auth);
     if (msg) {
-	debug(DBG_DBG, "respondstatusserver: responding to %s", rqout->rq->from->conf->host);
-	sendreply(rqout->rq->from, msg, &rqout->rq->fromsa, rqout->rq->fromudpsock);
+	debug(DBG_DBG, "respondstatusserver: responding to %s", rq->from->conf->host);
+	sendreply(rq->from, msg, &rq->fromsa, rq->fromudpsock);
     } else
 	debug(DBG_ERR, "respondstatusserver: malloc failed");
 }
 
-void respondreject(struct rqout *rqout, char *message) {
+void respondreject(struct request *rq, char *message) {
     struct radmsg *msg;
     struct tlv *attr;
 
-    msg = radmsg_init(RAD_Access_Reject, rqout->msg->id, rqout->msg->auth);
+    msg = radmsg_init(RAD_Access_Reject, rq->msg->id, rq->msg->auth);
     if (!msg) {
 	debug(DBG_ERR, "respondreject: malloc failed");
 	return;
@@ -1710,8 +1688,8 @@ void respondreject(struct rqout *rqout, char *message) {
 	}
     }
 
-    debug(DBG_DBG, "respondreject: responding to %s", rqout->rq->from->conf->host);
-    sendreply(rqout->rq->from, msg, &rqout->rq->fromsa, rqout->rq->fromudpsock);
+    debug(DBG_DBG, "respondreject: responding to %s", rq->from->conf->host);
+    sendreply(rq->from, msg, &rq->fromsa, rq->fromudpsock);
 }
 
 struct clsrvconf *choosesrvconf(struct list *srvconfs) {
@@ -1784,7 +1762,7 @@ int addclientrq(struct request *rq, uint8_t id) {
     gettimeofday(&now, NULL);
     r = rq->from->rqs[id];
     if (r) {
-	if (r->refcount > 1 && now.tv_sec - r->created.tv_sec < r->from->conf->dupinterval) {
+	if (now.tv_sec - r->created.tv_sec < r->from->conf->dupinterval) {
 	    pthread_mutex_unlock(&rq->from->lock);
 	    return 0;
 	}
@@ -1811,7 +1789,6 @@ void rmclientrq(struct request *rq, uint8_t id) {
 /* returns 0 if validation/authentication fails, else 1 */
 int radsrv(struct request *rq) {
     struct radmsg *msg = NULL;
-    struct rqout *rqout, rqdata;
     struct tlv *attr;
     uint8_t *userascii = NULL;
     unsigned char newauth[16];
@@ -1825,57 +1802,50 @@ int radsrv(struct request *rq) {
 
     if (!msg) {
 	debug(DBG_WARN, "radsrv: message validation failed, ignoring packet");
+	freerq(rq);
 	return 0;
     }
-
-    rqout = &rqdata;
-    memset(rqout, 0, sizeof(struct rqout));
-    rqout->msg = msg;
-    debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
     
+    rq->msg = msg;
+    debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
-	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
-	freerqoutdata(rqout);
-	return 1;
+	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");	
+	goto exit;
     }
-
+    
     if (!addclientrq(rq, msg->id)) {
 	debug(DBG_INFO, "radsrv: already got request with id %d from %s, ignoring", msg->id, from->conf->host);
-	freerqoutdata(rqout);
-	return 1;
+	goto exit;
     }
-    rqout->rq = rq;
-    rq->refcount++;
-    
+
     if (msg->code == RAD_Status_Server) {
-	respondstatusserver(rqout);
-	goto respexit;
+	respondstatusserver(rq);
+	goto exit;
     }
 
     /* below: code == RAD_Access_Request || code == RAD_Accounting_Request */
 
     if (from->conf->rewritein && !dorewrite(msg, from->conf->rewritein))
-	goto exit;
+	goto rmclrqexit;
 
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
 	if (msg->code == RAD_Accounting_Request) {
 	    acclog(msg, from->conf->host);
-	    respondaccounting(rqout);
-	    goto respexit;
-	} 
-	debug(DBG_WARN, "radsrv: ignoring access request, no username attribute");
+	    respondaccounting(rq);
+	} else
+	    debug(DBG_WARN, "radsrv: ignoring access request, no username attribute");
 	goto exit;
     }
     
-    if (from->conf->rewriteusername && !rewriteusername(rqout, attr)) {
+    if (from->conf->rewriteusername && !rewriteusername(rq, attr)) {
 	debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
-	goto exit;
+	goto rmclrqexit;
     }
     
     userascii = radattr2ascii(attr);
     if (!userascii)
-	goto exit;
+	goto rmclrqexit;
     debug(DBG_DBG, "%s with username: %s", radmsgtype2string(msg->code), userascii);
 
     to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
@@ -1887,12 +1857,12 @@ int radsrv(struct request *rq) {
     if (!to) {
 	if (realm->message && msg->code == RAD_Access_Request) {
 	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", from->conf->host, userascii);
-	    respondreject(rqout, realm->message);
+	    respondreject(rq, realm->message);
 	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
 	    acclog(msg, from->conf->host);
-	    respondaccounting(rqout);
+	    respondaccounting(rq);
 	}
-	goto respexit;
+	goto exit;
     }
     
     if (options.loopprevention && !strcmp(from->conf->name, to->conf->name)) {
@@ -1901,19 +1871,10 @@ int radsrv(struct request *rq) {
 	goto exit;
     }
 
-#if 0
-    skip this now that we have rqrcv... per client?
-    if (rqinqueue(to, from, msg->id, msg->code)) {
-	debug(DBG_INFO, "radsrv: already got %s from host %s with id %d, ignoring",
-	      radmsgtype2string(msg->code), from->conf->host, msg->id);
-	goto exit;
-    }
-#endif
-    
     if (msg->code != RAD_Accounting_Request) {
 	if (!RAND_bytes(newauth, 16)) {
 	    debug(DBG_WARN, "radsrv: failed to generate random auth");
-	    goto exit;
+	    goto rmclrqexit;
 	}
     }
     
@@ -1925,38 +1886,33 @@ int radsrv(struct request *rq) {
     if (attr) {
 	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attr->l);
 	if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, to->conf->secret, msg->auth, newauth))
-	    goto exit;
+	    goto rmclrqexit;
     }
 
     attr = radmsg_gettype(msg, RAD_Attr_Tunnel_Password);
     if (attr) {
 	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", attr->l);
 	if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, to->conf->secret, msg->auth, newauth))
-	    goto exit;
+	    goto rmclrqexit;
     }
 
-    rqout->rq->origid = msg->id;
-    memcpy(rqout->rq->origauth, msg->auth, 16);
+    rq->origid = msg->id;
+    memcpy(rq->origauth, msg->auth, 16);
     memcpy(msg->auth, newauth, 16);    
 
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
-	goto exit;
+	goto rmclrqexit;
     
     free(userascii);
-    sendrq(to, rqout);
+    sendrq(to, rq);
     return 1;
     
- exit:
+ rmclrqexit:
     rmclientrq(rq, msg->id);
+ exit:
+    free(rq);
     free(userascii);
-    freerqoutdata(rqout);
     return 1;
-    
- respexit:
-    free(userascii);
-    freerqoutdata(rqout);
-    return 1;
-    
 }
 
 void replyh(struct server *server, unsigned char *buf) {
@@ -1964,7 +1920,6 @@ void replyh(struct server *server, unsigned char *buf) {
     struct rqout *rqout;
     int sublen;
     unsigned char *subattrs;
-    struct sockaddr_storage fromsa;
     uint8_t *username, *stationid;
     struct radmsg *msg = NULL;
     struct tlv *attr;
@@ -1978,11 +1933,11 @@ void replyh(struct server *server, unsigned char *buf) {
     if (!rqout->tries) {
 	free(buf);
 	buf = NULL;
-	debug(DBG_INFO, "replyh: no matching request sent with this id, ignoring reply");
+	debug(DBG_INFO, "replyh: no outstanding request with this id, ignoring reply");
 	goto errunlock;
     }
 	
-    msg = buf2radmsg(buf, (uint8_t *)server->conf->secret, rqout->msg->auth);
+    msg = buf2radmsg(buf, (uint8_t *)server->conf->secret, rqout->rq->msg->auth);
     free(buf);
     buf = NULL;
     if (!msg) {
@@ -1996,25 +1951,15 @@ void replyh(struct server *server, unsigned char *buf) {
     }
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
 
-    if (rqout->received) {
-	debug(DBG_INFO, "replyh: already received, ignoring reply");
-	goto errunlock;
-    }
-	
     gettimeofday(&server->lastrcv, NULL);
     
-    if (rqout->msg->code == RAD_Status_Server) {
-	rqout->received = 1;
+    if (rqout->rq->msg->code == RAD_Status_Server) {
+	freerqoutdata(rqout);
 	debug(DBG_DBG, "replyh: got status server response from %s", server->conf->host);
 	goto errunlock;
     }
 
     gettimeofday(&server->lastreply, NULL);
-    
-    if (!rqout->rq) {
-	debug(DBG_INFO, "replyh: client gone, ignoring reply");
-	goto errunlock;
-    }
     from = rqout->rq->from;
 	
     if (server->conf->rewritein && !dorewrite(msg, from->conf->rewritein)) {
@@ -2036,9 +1981,9 @@ void replyh(struct server *server, unsigned char *buf) {
 	subattrs = attr->v + 4;  
 	if (!attrvalidate(subattrs, sublen) ||
 	    !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, "MS MPPE Send Key",
-		    rqout, server->conf->secret, from->conf->secret) ||
+		    rqout->rq, server->conf->secret, from->conf->secret) ||
 	    !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Recv_Key, "MS MPPE Recv Key",
-		    rqout, server->conf->secret, from->conf->secret))
+		    rqout->rq, server->conf->secret, from->conf->secret))
 	    break;
     }
     if (node) {
@@ -2047,9 +1992,9 @@ void replyh(struct server *server, unsigned char *buf) {
     }
 
     if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response) {
-	username = radattr2ascii(radmsg_gettype(rqout->msg, RAD_Attr_User_Name));
+	username = radattr2ascii(radmsg_gettype(rqout->rq->msg, RAD_Attr_User_Name));
 	if (username) {
-	    stationid = radattr2ascii(radmsg_gettype(rqout->msg, RAD_Attr_Calling_Station_Id));
+	    stationid = radattr2ascii(radmsg_gettype(rqout->rq->msg, RAD_Attr_Calling_Station_Id));
 	    if (stationid) {
 		debug(DBG_INFO, "%s for user %s stationid %s from %s",
 		      radmsgtype2string(msg->code), username, stationid, server->conf->host);
@@ -2080,12 +2025,9 @@ void replyh(struct server *server, unsigned char *buf) {
 	goto errunlock;
     }
 
-    fromsa = rqout->rq->fromsa; /* only needed for UDP */
-    /* once we set received = 1, rq may be reused */
-    rqout->received = 1;
-
     debug(DBG_INFO, "replyh: passing reply to client %s", from->conf->name);
-    sendreply(from, msg, &fromsa, rqout->rq->fromudpsock);
+    sendreply(from, msg, &rqout->rq->fromsa, rqout->rq->fromudpsock);
+    freerqoutdata(rqout);
     pthread_mutex_unlock(rqout->lock);
     return;
 
@@ -2095,25 +2037,28 @@ void replyh(struct server *server, unsigned char *buf) {
     return;
 }
 
-struct radmsg *createstatsrvmsg() {
-    struct radmsg *msg;
+struct request *createstatsrvrq() {
+    struct request *rq;
     struct tlv *attr;
 
-    msg = radmsg_init(RAD_Status_Server, 0, NULL);
-    if (!msg)
+    rq = newrequest();
+    if (!rq)
 	return NULL;
-    
+    rq->msg = radmsg_init(RAD_Status_Server, 0, NULL);
+    if (!rq->msg)
+	goto exit;
     attr = maketlv(RAD_Attr_Message_Authenticator, 16, NULL);
-    if (!attr) {
-	radmsg_free(msg);
-	return NULL;
-    }
-    if (!radmsg_add(msg, attr)) {
+    if (!attr)
+	goto exit;
+    if (!radmsg_add(rq->msg, attr)) {
 	freetlv(attr);
-	radmsg_free(msg);
-	return NULL;
+	goto exit;
     }
-    return msg;
+    return rq;
+
+ exit:
+    freerq(rq);
+    return NULL;
 }
 
 /* code for removing state not finished */
@@ -2125,7 +2070,7 @@ void *clientwr(void *arg) {
     uint8_t rnd;
     struct timeval now, laststatsrv;
     struct timespec timeout;
-    struct rqout statsrvrq;
+    struct request *statsrvrq;
     struct clsrvconf *conf;
     
     conf = server->conf;
@@ -2198,9 +2143,9 @@ void *clientwr(void *arg) {
 
 	    for (; i < MAX_REQUESTS; i++) {
 		rqout = server->requests + i;
-		if (rqout->buf) {
+		if (rqout->rq) {
 		    pthread_mutex_lock(rqout->lock);
-		    if (rqout->buf)
+		    if (rqout->rq)
 			break;
 		    pthread_mutex_unlock(rqout->lock);
 		}
@@ -2209,17 +2154,6 @@ void *clientwr(void *arg) {
 	    if (i == MAX_REQUESTS)
 		break;
 
-            if (rqout->received) {
-		debug(DBG_DBG, "clientwr: packet %d in queue is marked as received", i);
-		if (rqout->buf) {
-		    debug(DBG_DBG, "clientwr: freeing received packet %d from queue", i);
-		    freerqoutdata(rqout);
-		    /* rqout->buf becomes NULL, means can be reused */
-		}
-                pthread_mutex_unlock(rqout->lock);
-                continue;
-            }
-	    
 	    gettimeofday(&now, NULL);
             if (now.tv_sec < rqout->expiry.tv_sec) {
 		if (!timeout.tv_sec || rqout->expiry.tv_sec < timeout.tv_sec)
@@ -2228,10 +2162,10 @@ void *clientwr(void *arg) {
 		continue;
 	    }
 
-	    if (rqout->tries == (*rqout->buf == RAD_Status_Server ? 1 : conf->retrycount + 1)) {
+	    if (rqout->tries == (*rqout->rq->buf == RAD_Status_Server ? 1 : conf->retrycount + 1)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		if (conf->statusserver) {
-		    if (*rqout->buf == RAD_Status_Server) {
+		    if (*rqout->rq->buf == RAD_Status_Server) {
 			debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->host);
 			if (server->lostrqs < 255)
 			    server->lostrqs++;
@@ -2242,7 +2176,6 @@ void *clientwr(void *arg) {
 			server->lostrqs++;
 		}
 		freerqoutdata(rqout);
-		/* rqout->buf becomes NULL, means can be reused */
                 pthread_mutex_unlock(rqout->lock);
 		continue;
 	    }
@@ -2251,7 +2184,7 @@ void *clientwr(void *arg) {
 	    if (!timeout.tv_sec || rqout->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rqout->expiry.tv_sec;
 	    rqout->tries++;
-	    conf->pdef->clientradput(server, rqout->buf);
+	    conf->pdef->clientradput(server, rqout->rq->buf);
 	    pthread_mutex_unlock(rqout->lock);
 	}
 	if (conf->statusserver) {
@@ -2259,11 +2192,10 @@ void *clientwr(void *arg) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - secs > STATUS_SERVER_PERIOD) {
 		laststatsrv = now;
-		memset(&statsrvrq, 0, sizeof(struct rqout));
-		statsrvrq.msg = createstatsrvmsg();
-		if (statsrvrq.msg) {
+		statsrvrq = createstatsrvrq();
+		if (statsrvrq) {
 		    debug(DBG_DBG, "clientwr: sending status server to %s", conf->host);
-		    sendrq(server, &statsrvrq);
+		    sendrq(server, statsrvrq);
 		}
 	    }
 	}

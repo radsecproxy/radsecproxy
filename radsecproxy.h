@@ -46,6 +46,7 @@ struct request {
     struct timeval created;
     uint8_t refcount;
     uint8_t *buf;
+    struct radmsg *msg;
     struct client *from;
     struct sockaddr_storage fromsa; /* used by udpservwr */
     int fromudpsock; /* used by udpservwr */
@@ -56,12 +57,9 @@ struct request {
 
 /* requests that our client will send */
 struct rqout {
-    pthread_mutex_t *lock; /* used when modifying buf/msg/rq */
-    unsigned char *buf;
-    struct radmsg *msg;
+    pthread_mutex_t *lock;
     struct request *rq;
     uint8_t tries;
-    uint8_t received;
     struct timeval expiry;
 };
 

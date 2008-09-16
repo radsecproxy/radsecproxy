@@ -196,7 +196,6 @@ void *udpserverrd(void *arg) {
 	rq->buf = radudpget(*sp, &rq->from, NULL, &rq->fromsa);
 	rq->fromudpsock = *sp;
 	radsrv(rq);
-	freerq(rq);
     }
     free(sp);
 }

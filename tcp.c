@@ -249,11 +249,9 @@ void tcpserverrd(struct client *client) {
 	rq->buf = buf;
 	rq->from = client;
 	if (!radsrv(rq)) {
-	    freerq(rq);
 	    debug(DBG_ERR, "tcpserverrd: message authentication/validation failed, closing connection from %s", client->conf->host);
 	    break;
 	}
-	freerq(rq);
     }
 
     /* stop writer by setting s to -1 and give signal in case waiting for data */
