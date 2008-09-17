@@ -1649,6 +1649,7 @@ void respond(struct request *rq, uint8_t code, char *message) {
     radmsg_free(rq->msg);
     rq->msg = msg;
     debug(DBG_DBG, "respond: sending %s to %s", radmsgtype2string(msg->code), rq->from->conf->host);
+    rq->refcount++;
     sendreply(rq);
 }
 
@@ -1877,7 +1878,7 @@ int radsrv(struct request *rq) {
  rmclrqexit:
     rmclientrq(rq, msg->id);
  exit:
-    free(rq);
+    freerq(rq);
     free(userascii);
     return 1;
 }

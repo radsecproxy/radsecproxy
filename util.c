@@ -127,6 +127,7 @@ struct sockaddr *addr_copy(struct sockaddr *in) {
 	}
 	break;
     }
+    out->sa_family = in->sa_family;
     return out;
 }
 
