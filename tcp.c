@@ -190,7 +190,7 @@ void *tcpserverwr(void *arg) {
     int cnt;
     struct client *client = (struct client *)arg;
     struct queue *replyq;
-    struct reply *reply;
+    struct request *reply;
     
     debug(DBG_DBG, "tcpserverwr: starting for %s", client->conf->host);
     replyq = client->replyq;
@@ -209,16 +209,15 @@ void *tcpserverwr(void *arg) {
 		pthread_exit(NULL);
 	    }
 	}
-	reply = (struct reply *)list_shift(replyq->entries);
+	reply = (struct request *)list_shift(replyq->entries);
 	pthread_mutex_unlock(&replyq->mutex);
-	cnt = write(client->sock, reply->buf, RADLEN(reply->buf));
+	cnt = write(client->sock, reply->replybuf, RADLEN(reply->replybuf));
 	if (cnt > 0)
 	    debug(DBG_DBG, "tcpserverwr: sent %d bytes, Radius packet of length %d",
-		  cnt, RADLEN(reply->buf));
+		  cnt, RADLEN(reply->replybuf));
 	else
 	    debug(DBG_ERR, "tcpserverwr: write error for %s", client->conf->host);
-	free(reply->buf);
-	free(reply);
+	freerq(reply);
     }
 }
 

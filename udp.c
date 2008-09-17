@@ -38,7 +38,7 @@ static struct queue *server_replyq = NULL;
 /* exactly one of client and server must be non-NULL */
 /* return who we received from in *client or *server */
 /* return from in sa if not NULL */
-unsigned char *radudpget(int s, struct client **client, struct server **server, struct sockaddr_storage *sa) {
+unsigned char *radudpget(int s, struct client **client, struct server **server, uint16_t *port) {
     int cnt, len;
     unsigned char buf[4], *rad = NULL;
     struct sockaddr_storage from;
@@ -128,8 +128,8 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    *server = p->servers;
 	break;
     }
-    if (sa)
-	*sa = from;
+    if (port)
+	*port = port_get((struct sockaddr *)&from);
     return rad;
 }
 
@@ -138,32 +138,20 @@ int clientradputudp(struct server *server, unsigned char *rad) {
     struct sockaddr_storage sa;
     struct sockaddr *sap;
     struct clsrvconf *conf = server->conf;
-    in_port_t *port = NULL;
+    uint16_t port;
     
     len = RADLEN(rad);
+    port = port_get(conf->addrinfo->ai_addr);
     
     if (*rad == RAD_Accounting_Request) {
 	sap = (struct sockaddr *)&sa;
 	memcpy(sap, conf->addrinfo->ai_addr, conf->addrinfo->ai_addrlen);
+	port_set(sap, ++port);
     } else
 	sap = conf->addrinfo->ai_addr;
-    
-    switch (sap->sa_family) {
-    case AF_INET:
-	port = &((struct sockaddr_in *)sap)->sin_port;
-	break;
-    case AF_INET6:
-	port = &((struct sockaddr_in6 *)sap)->sin6_port;
-	break;
-    default:
-	return 0;
-    }
 
-    if (*rad == RAD_Accounting_Request)
-	*port = htons(ntohs(*port) + 1);
-    
     if (sendto(server->sock, rad, len, 0, sap, conf->addrinfo->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, ntohs(*port));
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, port);
 	return 1;
     }
 
@@ -193,8 +181,8 @@ void *udpserverrd(void *arg) {
 	    sleep(5); /* malloc failed */
 	    continue;
 	}
-	rq->buf = radudpget(*sp, &rq->from, NULL, &rq->fromsa);
-	rq->fromudpsock = *sp;
+	rq->buf = radudpget(*sp, &rq->from, NULL, &rq->udpport);
+	rq->udpsock = *sp;
 	radsrv(rq);
     }
     free(sp);
@@ -202,22 +190,23 @@ void *udpserverrd(void *arg) {
 
 void *udpserverwr(void *arg) {
     struct queue *replyq = (struct queue *)arg;
-    struct reply *reply;
+    struct request *reply;
+    struct sockaddr_storage to;
     
     for (;;) {
 	pthread_mutex_lock(&replyq->mutex);
-	while (!(reply = (struct reply *)list_shift(replyq->entries))) {
+	while (!(reply = (struct request *)list_shift(replyq->entries))) {
 	    debug(DBG_DBG, "udp server writer, waiting for signal");
 	    pthread_cond_wait(&replyq->cond, &replyq->mutex);
 	    debug(DBG_DBG, "udp server writer, got signal");
 	}
 	pthread_mutex_unlock(&replyq->mutex);
 
-	if (sendto(reply->toudpsock, reply->buf, RADLEN(reply->buf), 0,
-		   (struct sockaddr *)&reply->tosa, SOCKADDR_SIZE(reply->tosa)) < 0)
-	    debug(DBG_WARN, "sendudp: send failed");
-	free(reply->buf);
-	free(reply);
+	memcpy(&to, reply->from->addr, SOCKADDRP_SIZE(reply->from->addr));
+	port_set((struct sockaddr *)&to, reply->udpport);
+	if (sendto(reply->udpsock, reply->replybuf, RADLEN(reply->replybuf), 0, (struct sockaddr *)&to, SOCKADDR_SIZE(to)) < 0)
+	    debug(DBG_WARN, "udpserverwr: send failed");
+	freerq(reply);
     }
 }
 

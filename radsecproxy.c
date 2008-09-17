@@ -279,16 +279,8 @@ int resolvepeer(struct clsrvconf *conf, int ai_flags) {
 	    debug(DBG_WARN, "resolvepeer: can't resolve (null) port (null)");
 	    return 0;
 	}
-	for (res = addrinfo; res; res = res->ai_next) {
-	    switch (res->ai_family) {
-	    case AF_INET:
-		((struct sockaddr_in *)res->ai_addr)->sin_port = 0;
-		break;
-	    case AF_INET6:
-		((struct sockaddr_in6 *)res->ai_addr)->sin6_port = 0;
-		break;
-	    }
-	}
+	for (res = addrinfo; res; res = res->ai_next)
+	    port_set(res->ai_addr, 0);
     } else {
 	if (slash)
 	    hints.ai_flags |= AI_NUMERICHOST;
@@ -541,7 +533,7 @@ void removequeue(struct queue *q) {
 	return;
     pthread_mutex_lock(&q->mutex);
     for (entry = list_first(q->entries); entry; entry = list_next(entry))
-	free(((struct reply *)entry)->buf);
+	freerq((struct request *)entry);
     list_destroy(q->entries);
     pthread_cond_destroy(&q->cond);
     pthread_mutex_unlock(&q->mutex);
@@ -940,10 +932,10 @@ void freerq(struct request *rq) {
 	free(rq->origusername);
     if (rq->buf)
 	free(rq->buf);
-    if (rq->msg) {
+    if (rq->replybuf)
+	free(rq->replybuf);
+    if (rq->msg)
 	radmsg_free(rq->msg);
-	rq->msg = NULL;
-    }
     free(rq);
 }
 
@@ -1013,38 +1005,26 @@ void sendrq(struct server *to, struct request *rq) {
     pthread_mutex_unlock(&to->newrq_mutex);
 }
 
-void sendreply(struct client *to, struct radmsg *msg, struct sockaddr_storage *tosa, int toudpsock) {
-    uint8_t *buf;
-    struct reply *reply;
+void sendreply(struct request *rq) {
     uint8_t first;
-
-    buf = radmsg2buf(msg, (uint8_t *)to->conf->secret);
-    radmsg_free(msg);
-    if (!buf) {
+    struct client *to = rq->from;
+    
+    if (!rq->replybuf)
+	rq->replybuf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
+    radmsg_free(rq->msg);
+    rq->msg = NULL;
+    if (!rq->replybuf) {
+	freerq(rq);
 	debug(DBG_ERR, "sendreply: radmsg2buf failed");
 	return;
     }
 
-    reply = malloc(sizeof(struct reply));
-    if (!reply) {
-	free(buf);
-	debug(DBG_ERR, "sendreply: malloc failed");
-	return;
-    }
-    memset(reply, 0, sizeof(struct reply));
-    reply->buf = buf;
-    if (tosa)
-	reply->tosa = *tosa;
-    reply->toudpsock = toudpsock;
-    
     pthread_mutex_lock(&to->replyq->mutex);
-
     first = list_first(to->replyq->entries) == NULL;
     
-    if (!list_push(to->replyq->entries, reply)) {
+    if (!list_push(to->replyq->entries, rq)) {
 	pthread_mutex_unlock(&to->replyq->mutex);
-	free(reply);
-	free(buf);
+	freerq(rq);
 	debug(DBG_ERR, "sendreply: malloc failed");
 	return;
     }
@@ -1652,8 +1632,10 @@ void respondaccounting(struct request *rq) {
 
     msg = radmsg_init(RAD_Accounting_Response, rq->msg->id, rq->msg->auth);
     if (msg) {
+	radmsg_free(rq->msg);
+	rq->msg = msg;
 	debug(DBG_DBG, "respondaccounting: responding to %s", rq->from->conf->host);
-	sendreply(rq->from, msg, &rq->fromsa, rq->fromudpsock);
+	sendreply(rq);
     } else	
 	debug(DBG_ERR, "respondaccounting: malloc failed");
 }
@@ -1663,8 +1645,10 @@ void respondstatusserver(struct request *rq) {
 
     msg = radmsg_init(RAD_Access_Accept, rq->msg->id, rq->msg->auth);
     if (msg) {
+	radmsg_free(rq->msg);
+	rq->msg = msg;
 	debug(DBG_DBG, "respondstatusserver: responding to %s", rq->from->conf->host);
-	sendreply(rq->from, msg, &rq->fromsa, rq->fromudpsock);
+	sendreply(rq);
     } else
 	debug(DBG_ERR, "respondstatusserver: malloc failed");
 }
@@ -1688,8 +1672,10 @@ void respondreject(struct request *rq, char *message) {
 	}
     }
 
+    radmsg_free(rq->msg);
+    rq->msg = msg;
     debug(DBG_DBG, "respondreject: responding to %s", rq->from->conf->host);
-    sendreply(rq->from, msg, &rq->fromsa, rq->fromudpsock);
+    sendreply(rq);
 }
 
 struct clsrvconf *choosesrvconf(struct list *srvconfs) {
@@ -1763,6 +1749,15 @@ int addclientrq(struct request *rq, uint8_t id) {
     r = rq->from->rqs[id];
     if (r) {
 	if (now.tv_sec - r->created.tv_sec < r->from->conf->dupinterval) {
+#if 0
+	    later	    
+	    if (r->replybuf) {
+		debug(DBG_INFO, "radsrv: already sent reply to request with id %d from %s, resending", id, r->from->conf->host);
+		r->refcount++;
+		sendreply(r);
+	    } else
+#endif		
+		debug(DBG_INFO, "radsrv: already got request with id %d from %s, ignoring", id, r->from->conf->host);		
 	    pthread_mutex_unlock(&rq->from->lock);
 	    return 0;
 	}
@@ -1813,10 +1808,8 @@ int radsrv(struct request *rq) {
 	goto exit;
     }
     
-    if (!addclientrq(rq, msg->id)) {
-	debug(DBG_INFO, "radsrv: already got request with id %d from %s, ignoring", msg->id, from->conf->host);
+    if (!addclientrq(rq, msg->id))
 	goto exit;
-    }
 
     if (msg->code == RAD_Status_Server) {
 	respondstatusserver(rq);
@@ -2026,7 +2019,10 @@ void replyh(struct server *server, unsigned char *buf) {
     }
 
     debug(DBG_INFO, "replyh: passing reply to client %s", from->conf->name);
-    sendreply(from, msg, &rqout->rq->fromsa, rqout->rq->fromudpsock);
+    radmsg_free(rqout->rq->msg);
+    rqout->rq->msg = msg;
+    rqout->rq->refcount++;
+    sendreply(rqout->rq);
     freerqoutdata(rqout);
     pthread_mutex_unlock(rqout->lock);
     return;

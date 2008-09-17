@@ -45,14 +45,14 @@ struct options {
 struct request {
     struct timeval created;
     uint8_t refcount;
-    uint8_t *buf;
+    uint8_t *buf, *replybuf;
     struct radmsg *msg;
     struct client *from;
-    struct sockaddr_storage fromsa; /* used by udpservwr */
-    int fromudpsock; /* used by udpservwr */
     char *origusername;
-    char origauth[16]; /* used by servwr */
-    uint8_t origid; /* used by servwr */
+    char origauth[16];
+    uint8_t origid;
+    int udpsock; /* only for UDP */
+    uint16_t udpport; /* only for UDP */
 };
 
 /* requests that our client will send */
@@ -61,13 +61,6 @@ struct rqout {
     struct request *rq;
     uint8_t tries;
     struct timeval expiry;
-};
-
-/* replies that a server will send */
-struct reply {
-    unsigned char *buf;
-    struct sockaddr_storage tosa; /* used by udpservwr */
-    int toudpsock; /* used by udpservwr */
 };
 
 struct queue {
@@ -203,6 +196,10 @@ struct protodefs {
 #define ATTRVALLEN(x) ((x)[1] - 2)
 
 #define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ? \
+                            sizeof(struct sockaddr_in) : \
+                            sizeof(struct sockaddr_in6))
+
+#define SOCKADDRP_SIZE(addr) ((addr)->sa_family == AF_INET ? \
                             sizeof(struct sockaddr_in) : \
                             sizeof(struct sockaddr_in6))
 

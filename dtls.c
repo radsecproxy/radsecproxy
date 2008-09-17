@@ -213,7 +213,7 @@ void *dtlsserverwr(void *arg) {
     unsigned long error;
     struct client *client = (struct client *)arg;
     struct queue *replyq;
-    struct reply *reply;
+    struct request *reply;
     
     debug(DBG_DBG, "dtlsserverwr: starting for %s", client->conf->host);
     replyq = client->replyq;
@@ -233,17 +233,16 @@ void *dtlsserverwr(void *arg) {
 		pthread_exit(NULL);
 	    }
 	}
-	reply = (struct reply *)list_shift(replyq->entries);
+	reply = (struct request *)list_shift(replyq->entries);
 	pthread_mutex_unlock(&replyq->mutex);
-	cnt = SSL_write(client->ssl, reply->buf, RADLEN(reply->buf));
+	cnt = SSL_write(client->ssl, reply->replybuf, RADLEN(reply->replybuf));
 	if (cnt > 0)
 	    debug(DBG_DBG, "dtlsserverwr: sent %d bytes, Radius packet of length %d",
-		  cnt, RADLEN(reply->buf));
+		  cnt, RADLEN(reply->replybuf));
 	else
 	    while ((error = ERR_get_error()))
 		debug(DBG_ERR, "dtlsserverwr: SSL: %s", ERR_error_string(error, NULL));
-	free(reply->buf);
-	free(reply);
+	freerq(reply);
     }
 }
 
