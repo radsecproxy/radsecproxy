@@ -15,40 +15,7 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include "debug.h"
-
-#if 0
-#include <errno.h>
-void errx(char *format, ...) {
-    extern int errno;
-
-    va_list ap;
-    va_start(ap, format);
-    vfprintf(stderr, format, ap);
-    va_end(ap);
-    if (errno) {
-        fprintf(stderr, ": ");
-        perror(NULL);
-        fprintf(stderr, "errno=%d\n", errno);
-    } else
-        fprintf(stderr, "\n");
-    exit(1);
-}
-
-void err(char *format, ...) {
-    extern int errno;
-
-    va_list ap;
-    va_start(ap, format);
-    vfprintf(stderr, format, ap);
-    va_end(ap);
-    if (errno) {
-        fprintf(stderr, ": ");
-        perror(NULL);
-        fprintf(stderr, "errno=%d\n", errno);
-    } else
-        fprintf(stderr, "\n");
-}
-#endif
+#include "util.h"
 
 char *stringcopy(const char *s, int len) {
     char *r;
@@ -93,7 +60,30 @@ void port_set(struct sockaddr *sa, uint16_t port) {
     }
 }
 
-char *addr2string(struct sockaddr *addr, socklen_t len) {
+struct sockaddr *addr_copy(struct sockaddr *in) {
+    struct sockaddr *out = NULL;
+
+    switch (in->sa_family) {
+    case AF_INET:
+	out = malloc(sizeof(struct sockaddr_in));
+	if (out) {
+	    memset(out, 0, sizeof(struct sockaddr_in));
+	    ((struct sockaddr_in *)out)->sin_addr = ((struct sockaddr_in *)in)->sin_addr;
+	}
+	break;
+    case AF_INET6:
+	out = malloc(sizeof(struct sockaddr_in6));
+	if (out) {
+	    memset(out, 0, sizeof(struct sockaddr_in6));
+	    ((struct sockaddr_in6 *)out)->sin6_addr = ((struct sockaddr_in6 *)in)->sin6_addr;
+	}
+	break;
+    }
+    out->sa_family = in->sa_family;
+    return out;
+}
+
+char *addr2string(struct sockaddr *addr) {
     struct sockaddr_in6 *sa6;
     struct sockaddr_in sa4;
     static char addr_buf[2][INET6_ADDRSTRLEN];
@@ -109,9 +99,7 @@ char *addr2string(struct sockaddr *addr, socklen_t len) {
 	    addr = (struct sockaddr *)&sa4;
 	}
     }
-    len = addr->sa_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
-    
-    if (getnameinfo(addr, len, addr_buf[i], sizeof(addr_buf[i]),
+    if (getnameinfo(addr, SOCKADDRP_SIZE(addr), addr_buf[i], sizeof(addr_buf[i]),
                     NULL, 0, NI_NUMERICHOST)) {
         debug(DBG_WARN, "getnameinfo failed");
         return "getnameinfo_failed";

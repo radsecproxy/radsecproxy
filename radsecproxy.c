@@ -433,6 +433,7 @@ void removeclient(struct client *client) {
     pthread_mutex_unlock(&client->replyq->mutex);
     pthread_mutex_destroy(&client->replyq->mutex);
     list_removedata(client->conf->clients, client);
+    free(client->addr);
     free(client);
 }
 
@@ -538,7 +539,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	
 	p = find_conf('U', (struct sockaddr *)&from, client ? clconfs : srvconfs, NULL);
 	if (!p) {
-	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
+	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from));
 	    recv(s, buf, 4, 0);
 	    continue;
 	}
@@ -558,7 +559,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	}
 	
 	cnt = recv(s, rad, len, MSG_TRUNC);
-	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
+	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from));
 
 	if (cnt < len) {
 	    debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
@@ -2387,7 +2388,7 @@ void *udpaccserverrd(void *arg) {
     
     listenres = resolve_hostport('U', options.listenaccudp, DEFAULT_UDP_PORT);
     if ((udp_accserver_sock = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
-	debugx(1, DBG_ERR, "udpserverrd: socket/bind failed");
+	debugx(1, DBG_ERR, "udpaccserverrd: socket/bind failed");
 
     debug(DBG_WARN, "udpaccserverrd: listening for UDP on %s:%s",
 	  listenres->host ? listenres->host : "*", listenres->port);
@@ -2412,7 +2413,8 @@ void *tlsserverwr(void *arg) {
     struct replyq *replyq;
     struct reply *reply;
     
-    debug(DBG_DBG, "tlsserverwr starting for %s", client->conf->host);
+    debug(DBG_DBG, "tlsserverwr starting for %s", addr2string(client->addr));
+    
     replyq = client->replyq;
     for (;;) {
 	pthread_mutex_lock(&replyq->mutex);
@@ -2434,8 +2436,8 @@ void *tlsserverwr(void *arg) {
 	pthread_mutex_unlock(&replyq->mutex);
 	cnt = SSL_write(client->ssl, reply->buf, RADLEN(reply->buf));
 	if (cnt > 0)
-	    debug(DBG_DBG, "tlsserverwr: Sent %d bytes, Radius packet of length %d",
-		  cnt, RADLEN(reply->buf));
+	    debug(DBG_DBG, "tlsserverwr: Sent %d bytes, Radius packet of length %d to %s",
+		  cnt, RADLEN(reply->buf), addr2string(client->addr));
 	else
 	    while ((error = ERR_get_error()))
 		debug(DBG_ERR, "tlsserverwr: SSL: %s", ERR_error_string(error, NULL));
@@ -2448,7 +2450,7 @@ void tlsserverrd(struct client *client) {
     struct request rq;
     pthread_t tlsserverwrth;
     
-    debug(DBG_DBG, "tlsserverrd starting for %s", client->conf->host);
+    debug(DBG_DBG, "tlsserverrd starting for %s", addr2string(client->addr));
     
     if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client)) {
 	debug(DBG_ERR, "tlsserverrd: pthread_create failed");
@@ -2460,12 +2462,12 @@ void tlsserverrd(struct client *client) {
 	rq.buf = radtlsget(client->ssl);
 	if (!rq.buf)
 	    break;
-	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", client->conf->host);
+	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr));
 	rq.from = client;
 	radsrv(&rq);
     }
     
-    debug(DBG_ERR, "tlsserverrd: connection lost");
+    debug(DBG_ERR, "tlsserverrd: connection from %s lost", addr2string(client->addr));
     /* stop writer by setting ssl to NULL and give signal in case waiting for data */
     client->ssl = NULL;
     pthread_mutex_lock(&client->replyq->mutex);
@@ -2474,7 +2476,7 @@ void tlsserverrd(struct client *client) {
     debug(DBG_DBG, "tlsserverrd: waiting for writer to end");
     pthread_join(tlsserverwrth, NULL);
     removeclientrqs(client);
-    debug(DBG_DBG, "tlsserverrd for %s exiting", client->conf->host);
+    debug(DBG_DBG, "tlsserverrd for %s exiting", addr2string(client->addr));
 }
 
 void *tlsservernew(void *arg) {
@@ -2490,10 +2492,10 @@ void *tlsservernew(void *arg) {
 
     s = *(int *)arg;
     if (getpeername(s, (struct sockaddr *)&from, &fromlen)) {
-	debug(DBG_DBG, "tlsserverrd: getpeername failed, exiting");
+	debug(DBG_DBG, "tlsservernew: getpeername failed, exiting");
 	goto exit;
     }
-    debug(DBG_WARN, "incoming TLS connection from %s", addr2string((struct sockaddr *)&from, fromlen));
+    debug(DBG_WARN, "incoming TLS connection from %s", addr2string((struct sockaddr *)&from));
 
     conf = find_conf('T', (struct sockaddr *)&from, clconfs, &cur);
     if (conf) {
@@ -2502,8 +2504,8 @@ void *tlsservernew(void *arg) {
 
 	if (SSL_accept(ssl) <= 0) {
 	    while ((error = ERR_get_error()))
-		debug(DBG_ERR, "tlsserverrd: SSL: %s", ERR_error_string(error, NULL));
-	    debug(DBG_ERR, "SSL_accept failed");
+		debug(DBG_ERR, "tlsservernew: SSL: %s", ERR_error_string(error, NULL));
+	    debug(DBG_ERR, "tlsservernew: SSL_accept failed");
 	    goto exit;
 	}
 	cert = verifytlscert(ssl);
@@ -2517,6 +2519,7 @@ void *tlsservernew(void *arg) {
 	    client = addclient(conf);
 	    if (client) {
 		client->ssl = ssl;
+		client->addr = addr_copy((struct sockaddr *)&from);
 		tlsserverrd(client);
 		removeclient(client);
 	    } else
@@ -3427,8 +3430,6 @@ int main(int argc, char **argv) {
 
     if (!list_first(clconfs))
 	debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");
-    if (!list_first(srvconfs))
-	debugx(1, DBG_ERR, "No servers configured, nothing to do, exiting");
     if (!list_first(realms))
 	debugx(1, DBG_ERR, "No realms configured, nothing to do, exiting");
 

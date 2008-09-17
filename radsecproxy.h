@@ -101,6 +101,7 @@ struct client {
     struct clsrvconf *conf;
     SSL *ssl;
     struct replyq *replyq;
+    struct sockaddr *addr;
 };
 
 struct server {
@@ -165,7 +166,3 @@ struct rewriteconf {
 #define ATTRLEN(x) ((x)[1])
 #define ATTRVAL(x) ((x) + 2)
 #define ATTRVALLEN(x) ((x)[1] - 2)
-
-#define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ? \
-                            sizeof(struct sockaddr_in) : \
-                            sizeof(struct sockaddr_in6))
