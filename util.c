@@ -15,40 +15,7 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include "debug.h"
-
-#if 0
-#include <errno.h>
-void errx(char *format, ...) {
-    extern int errno;
-
-    va_list ap;
-    va_start(ap, format);
-    vfprintf(stderr, format, ap);
-    va_end(ap);
-    if (errno) {
-        fprintf(stderr, ": ");
-        perror(NULL);
-        fprintf(stderr, "errno=%d\n", errno);
-    } else
-        fprintf(stderr, "\n");
-    exit(1);
-}
-
-void err(char *format, ...) {
-    extern int errno;
-
-    va_list ap;
-    va_start(ap, format);
-    vfprintf(stderr, format, ap);
-    va_end(ap);
-    if (errno) {
-        fprintf(stderr, ": ");
-        perror(NULL);
-        fprintf(stderr, "errno=%d\n", errno);
-    } else
-        fprintf(stderr, "\n");
-}
-#endif
+#include "util.h"
 
 char *stringcopy(const char *s, int len) {
     char *r;
@@ -131,7 +98,7 @@ struct sockaddr *addr_copy(struct sockaddr *in) {
     return out;
 }
 
-char *addr2string(struct sockaddr *addr, socklen_t len) {
+char *addr2string(struct sockaddr *addr) {
     struct sockaddr_in6 *sa6;
     struct sockaddr_in sa4;
     static char addr_buf[2][INET6_ADDRSTRLEN];
@@ -147,9 +114,7 @@ char *addr2string(struct sockaddr *addr, socklen_t len) {
 	    addr = (struct sockaddr *)&sa4;
 	}
     }
-    len = addr->sa_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
-    
-    if (getnameinfo(addr, len, addr_buf[i], sizeof(addr_buf[i]),
+    if (getnameinfo(addr, SOCKADDRP_SIZE(addr), addr_buf[i], sizeof(addr_buf[i]),
                     NULL, 0, NI_NUMERICHOST)) {
         debug(DBG_WARN, "getnameinfo failed");
         return "getnameinfo_failed";

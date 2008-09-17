@@ -72,7 +72,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    ? find_clconf(RAD_UDP, (struct sockaddr *)&from, NULL)
 	    : find_srvconf(RAD_UDP, (struct sockaddr *)&from, NULL);
 	if (!p) {
-	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
+	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from));
 	    recv(s, buf, 4, 0);
 	    continue;
 	}
@@ -92,7 +92,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	}
 	
 	cnt = recv(s, rad, len, MSG_TRUNC);
-	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, fromlen));
+	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from));
 
 	if (cnt < len) {
 	    debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");

@@ -585,20 +585,22 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
 }
 
 void removeclient(struct client *client) {
+    struct clsrvconf *conf;
+    
     if (!client)
 	return;
-
-    pthread_mutex_lock(client->conf->lock);
-    if (client->conf->clients) {
+    conf = client->conf;
+    pthread_mutex_lock(conf->lock);
+    if (conf->clients) {
 	pthread_mutex_lock(&client->lock);
 	removequeue(client->replyq);
-	list_removedata(client->conf->clients, client);
+	list_removedata(conf->clients, client);
 	pthread_mutex_unlock(&client->lock);
 	pthread_mutex_destroy(&client->lock);
 	free(client->addr);
 	free(client);
     }
-    pthread_mutex_unlock(client->conf->lock);
+    pthread_mutex_unlock(conf->lock);
 }
 
 void removeclientrqs(struct client *client) {

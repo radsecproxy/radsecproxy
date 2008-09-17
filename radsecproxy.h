@@ -108,7 +108,7 @@ struct client {
     struct request *rqs[MAX_REQUESTS];
     struct queue *replyq;
     struct queue *rbios; /* for dtls */
-    struct sockaddr *addr; /* for udp */
+    struct sockaddr *addr;
 };
 
 struct server {
@@ -194,14 +194,6 @@ struct protodefs {
 #define ATTRLEN(x) ((x)[1])
 #define ATTRVAL(x) ((x) + 2)
 #define ATTRVALLEN(x) ((x)[1] - 2)
-
-#define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ? \
-                            sizeof(struct sockaddr_in) : \
-                            sizeof(struct sockaddr_in6))
-
-#define SOCKADDRP_SIZE(addr) ((addr)->sa_family == AF_INET ? \
-                            sizeof(struct sockaddr_in) : \
-                            sizeof(struct sockaddr_in6))
 
 struct addrinfo *getsrcprotores(uint8_t type);
 struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);

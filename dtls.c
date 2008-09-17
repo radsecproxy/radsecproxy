@@ -215,7 +215,7 @@ void *dtlsserverwr(void *arg) {
     struct queue *replyq;
     struct request *reply;
     
-    debug(DBG_DBG, "dtlsserverwr: starting for %s", client->conf->host);
+    debug(DBG_DBG, "dtlsserverwr: starting for %s", addr2string(client->addr));
     replyq = client->replyq;
     for (;;) {
 	pthread_mutex_lock(&replyq->mutex);
@@ -237,8 +237,8 @@ void *dtlsserverwr(void *arg) {
 	pthread_mutex_unlock(&replyq->mutex);
 	cnt = SSL_write(client->ssl, reply->replybuf, RADLEN(reply->replybuf));
 	if (cnt > 0)
-	    debug(DBG_DBG, "dtlsserverwr: sent %d bytes, Radius packet of length %d",
-		  cnt, RADLEN(reply->replybuf));
+	    debug(DBG_DBG, "dtlsserverwr: sent %d bytes, Radius packet of length %d to %s",
+		  cnt, RADLEN(reply->replybuf), addr2string(client->addr));
 	else
 	    while ((error = ERR_get_error()))
 		debug(DBG_ERR, "dtlsserverwr: SSL: %s", ERR_error_string(error, NULL));
@@ -251,7 +251,7 @@ void dtlsserverrd(struct client *client) {
     uint8_t *buf;
     pthread_t dtlsserverwrth;
     
-    debug(DBG_DBG, "dtlsserverrd: starting for %s", client->conf->host);
+    debug(DBG_DBG, "dtlsserverrd: starting for %s", addr2string(client->addr));
 
     if (pthread_create(&dtlsserverwrth, NULL, dtlsserverwr, (void *)client)) {
 	debug(DBG_ERR, "dtlsserverrd: pthread_create failed");
@@ -261,10 +261,10 @@ void dtlsserverrd(struct client *client) {
     for (;;) {
 	buf = raddtlsget(client->ssl, client->rbios, IDLE_TIMEOUT);
 	if (!buf) {
-	    debug(DBG_ERR, "dtlsserverrd: connection from %s lost", client->conf->host);
+	    debug(DBG_ERR, "dtlsserverrd: connection from %s lost", addr2string(client->addr));
 	    break;
 	}
-	debug(DBG_DBG, "dtlsserverrd: got Radius message from %s", client->conf->host);
+	debug(DBG_DBG, "dtlsserverrd: got Radius message from %s", addr2string(client->addr));
 	rq = newrequest();
 	if (!rq) {
 	    free(buf);
@@ -273,7 +273,7 @@ void dtlsserverrd(struct client *client) {
 	rq->buf = buf;
 	rq->from = client;
 	if (!radsrv(rq)) {
-	    debug(DBG_ERR, "dtlsserverrd: message authentication/validation failed, closing connection from %s", client->conf->host);
+	    debug(DBG_ERR, "dtlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr));
 	    break;
 	}
     }
@@ -287,7 +287,7 @@ void dtlsserverrd(struct client *client) {
     debug(DBG_DBG, "dtlsserverrd: waiting for writer to end");
     pthread_join(dtlsserverwrth, NULL);
     removeclientrqs(client);
-    debug(DBG_DBG, "dtlsserverrd: reader for %s exiting", client->conf->host);
+    debug(DBG_DBG, "dtlsserverrd: reader for %s exiting", addr2string(client->addr));
 }
 
 void *dtlsservernew(void *arg) {
@@ -316,6 +316,7 @@ void *dtlsservernew(void *arg) {
 	    client = addclient(conf, 1);
 	    if (client) {
 		client->sock = params->sock;
+		client->addr = addr_copy((struct sockaddr *)&params->addr);
 		client->rbios = params->sesscache->rbios;
 		client->ssl = ssl;
 		dtlsserverrd(client);
@@ -417,7 +418,7 @@ void *udpdtlsserverrd(void *arg) {
 	    pthread_mutex_lock(&cacheentry->mutex);
 	    if (cacheentry->rbios) {
 		if (udp2bio(s, cacheentry->rbios, cnt))
-		    debug(DBG_DBG, "udpdtlsserverrd: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
+		    debug(DBG_DBG, "udpdtlsserverrd: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from));
 	    } else
 		recv(s, buf, 1, 0);
 	    pthread_mutex_unlock(&cacheentry->mutex);
@@ -449,7 +450,7 @@ void *udpdtlsserverrd(void *arg) {
 	    memcpy(&params->addr, &from, fromlen);
 
 	    if (udp2bio(s, params->sesscache->rbios, cnt)) {
-		debug(DBG_DBG, "udpdtlsserverrd: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
+		debug(DBG_DBG, "udpdtlsserverrd: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from));
 		if (!pthread_create(&dtlsserverth, NULL, dtlsservernew, (void *)params)) {
 		    pthread_detach(dtlsserverth);
 		    cacheexpire(sessioncache, &lastexpiry);
@@ -568,12 +569,12 @@ void *udpdtlsclientrd(void *arg) {
 	
 	conf = find_srvconf(RAD_DTLS, (struct sockaddr *)&from, NULL);
 	if (!conf) {
-	    debug(DBG_WARN, "udpdtlsclientrd: got packet from wrong or unknown DTLS peer %s, ignoring", addr2string((struct sockaddr *)&from, fromlen));
+	    debug(DBG_WARN, "udpdtlsclientrd: got packet from wrong or unknown DTLS peer %s, ignoring", addr2string((struct sockaddr *)&from));
 	    recv(s, buf, 4, 0);
 	    continue;
 	}
 	if (udp2bio(s, conf->servers->rbios, cnt))
-	    debug(DBG_DBG, "radudpget: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from, fromlen));
+	    debug(DBG_DBG, "radudpget: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from));
     }
 }
 

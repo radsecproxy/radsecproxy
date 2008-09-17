@@ -192,7 +192,7 @@ void *tcpserverwr(void *arg) {
     struct queue *replyq;
     struct request *reply;
     
-    debug(DBG_DBG, "tcpserverwr: starting for %s", client->conf->host);
+    debug(DBG_DBG, "tcpserverwr: starting for %s", addr2string(client->addr));
     replyq = client->replyq;
     for (;;) {
 	pthread_mutex_lock(&replyq->mutex);
@@ -213,10 +213,10 @@ void *tcpserverwr(void *arg) {
 	pthread_mutex_unlock(&replyq->mutex);
 	cnt = write(client->sock, reply->replybuf, RADLEN(reply->replybuf));
 	if (cnt > 0)
-	    debug(DBG_DBG, "tcpserverwr: sent %d bytes, Radius packet of length %d",
-		  cnt, RADLEN(reply->replybuf));
+	    debug(DBG_DBG, "tcpserverwr: sent %d bytes, Radius packet of length %d to %s",
+		  cnt, RADLEN(reply->replybuf), addr2string(client->addr));
 	else
-	    debug(DBG_ERR, "tcpserverwr: write error for %s", client->conf->host);
+	    debug(DBG_ERR, "tcpserverwr: write error for %s", addr2string(client->addr));
 	freerq(reply);
     }
 }
@@ -226,7 +226,7 @@ void tcpserverrd(struct client *client) {
     uint8_t *buf;
     pthread_t tcpserverwrth;
     
-    debug(DBG_DBG, "tcpserverrd: starting for %s", client->conf->host);
+    debug(DBG_DBG, "tcpserverrd: starting for %s", addr2string(client->addr));
     
     if (pthread_create(&tcpserverwrth, NULL, tcpserverwr, (void *)client)) {
 	debug(DBG_ERR, "tcpserverrd: pthread_create failed");
@@ -236,10 +236,10 @@ void tcpserverrd(struct client *client) {
     for (;;) {
 	buf = radtcpget(client->sock, 0);
 	if (!buf) {
-	    debug(DBG_ERR, "tcpserverrd: connection from %s lost", client->conf->host);
+	    debug(DBG_ERR, "tcpserverrd: connection from %s lost", addr2string(client->addr));
 	    break;
 	}
-	debug(DBG_DBG, "tcpserverrd: got Radius message from %s", client->conf->host);
+	debug(DBG_DBG, "tcpserverrd: got Radius message from %s", addr2string(client->addr));
 	rq = newrequest();
 	if (!rq) {
 	    free(buf);
@@ -248,7 +248,7 @@ void tcpserverrd(struct client *client) {
 	rq->buf = buf;
 	rq->from = client;
 	if (!radsrv(rq)) {
-	    debug(DBG_ERR, "tcpserverrd: message authentication/validation failed, closing connection from %s", client->conf->host);
+	    debug(DBG_ERR, "tcpserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr));
 	    break;
 	}
     }
@@ -261,9 +261,8 @@ void tcpserverrd(struct client *client) {
     debug(DBG_DBG, "tcpserverrd: waiting for writer to end");
     pthread_join(tcpserverwrth, NULL);
     removeclientrqs(client);
-    debug(DBG_DBG, "tcpserverrd: reader for %s exiting", client->conf->host);
+    debug(DBG_DBG, "tcpserverrd: reader for %s exiting", addr2string(client->addr));
 }
-
 void *tcpservernew(void *arg) {
     int s;
     struct sockaddr_storage from;
@@ -276,13 +275,14 @@ void *tcpservernew(void *arg) {
 	debug(DBG_DBG, "tcpservernew: getpeername failed, exiting");
 	goto exit;
     }
-    debug(DBG_WARN, "tcpservernew: incoming TCP connection from %s", addr2string((struct sockaddr *)&from, fromlen));
+    debug(DBG_WARN, "tcpservernew: incoming TCP connection from %s", addr2string((struct sockaddr *)&from));
 
     conf = find_clconf(RAD_TCP, (struct sockaddr *)&from, NULL);
     if (conf) {
 	client = addclient(conf, 1);
 	if (client) {
 	    client->sock = s;
+	    client->addr = addr_copy((struct sockaddr *)&from);
 	    tcpserverrd(client);
 	    removeclient(client);
 	} else
