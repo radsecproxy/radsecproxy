@@ -6,6 +6,11 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+/* Code contributions from:
+ *
+ * Arne Schwabe <schwabe at uni-paderborn.de>
+ */
+
 /* For UDP there is one server instance consisting of udpserverrd and udpserverth
  *              rd is responsible for init and launching wr
  * For TLS there is a server instance that launches tlsserverrd for each TLS peer
@@ -1890,7 +1895,7 @@ void replyh(struct server *server, unsigned char *buf) {
     struct rqout *rqout;
     int sublen;
     unsigned char *subattrs;
-    uint8_t *username, *stationid;
+    uint8_t *username, *stationid, *replymsg;
     struct radmsg *msg = NULL;
     struct tlv *attr;
     struct list_node *node;
@@ -1965,12 +1970,25 @@ void replyh(struct server *server, unsigned char *buf) {
 	username = radattr2ascii(radmsg_gettype(rqout->rq->msg, RAD_Attr_User_Name));
 	if (username) {
 	    stationid = radattr2ascii(radmsg_gettype(rqout->rq->msg, RAD_Attr_Calling_Station_Id));
+	    replymsg = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Reply_Message));
 	    if (stationid) {
-		debug(DBG_INFO, "%s for user %s stationid %s from %s",
-		      radmsgtype2string(msg->code), username, stationid, server->conf->host);
+		if (replymsg) {
+		    debug(DBG_INFO, "%s for user %s stationid %s from %s (%s)",
+			  radmsgtype2string(msg->code), username, stationid, server->conf->host, replymsg);
+		    free(replymsg);
+		} else
+		    debug(DBG_INFO, "%s for user %s stationid %s from %s",
+			  radmsgtype2string(msg->code), username, stationid, server->conf->host);
 		free(stationid);
-	    } else
-		debug(DBG_INFO, "%s for user %s from %s", radmsgtype2string(msg->code), username, server->conf->host);
+	    } else {
+		if (replymsg) {
+		    debug(DBG_INFO, "%s for user %s from %s (%s)",
+			  radmsgtype2string(msg->code), username, server->conf->host, replymsg);
+		    free(replymsg);
+		} else
+		    debug(DBG_INFO, "%s for user %s from %s",
+			  radmsgtype2string(msg->code), username, server->conf->host);
+	    }
 	    free(username);
 	}
     }
