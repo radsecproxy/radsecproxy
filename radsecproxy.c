@@ -2055,7 +2055,7 @@ struct request *createstatsrvrq() {
 /* code for removing state not finished */
 void *clientwr(void *arg) {
     struct server *server = (struct server *)arg;
-    struct rqout *rqout;
+    struct rqout *rqout = NULL;
     pthread_t clientrdth;
     int i, secs, dynconffail = 0;
     uint8_t rnd;

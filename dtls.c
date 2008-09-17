@@ -148,7 +148,7 @@ SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct 
     mem0bio = BIO_new(BIO_s_mem());
     BIO_set_mem_eof_return(mem0bio, -1);
     wbio = BIO_new_dgram(s, BIO_NOCLOSE);
-    BIO_dgram_set_peer(wbio, addr);
+    i = BIO_dgram_set_peer(wbio, addr); /* i just to avoid warning */
     SSL_set_bio(ssl, mem0bio, wbio);
 
     for (i = 0; i < 5; i++) {

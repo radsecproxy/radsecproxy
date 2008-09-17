@@ -235,7 +235,7 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
 /* if secret set we also validate message authenticator if present */
 struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
     struct radmsg *msg;
-    uint8_t t, l, *v, *p, auth[16];
+    uint8_t t, l, *v = NULL, *p, auth[16];
     uint16_t len;
     struct tlv *attr;
     
