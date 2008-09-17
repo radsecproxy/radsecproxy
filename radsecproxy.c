@@ -6,6 +6,11 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+/* Code contributions from:
+ *
+ * Arne Schwabe <schwabe at uni-paderborn.de>
+ */
+
 /* For UDP there is one server instance consisting of udpserverrd and udpserverth
  *              rd is responsible for init and launching wr
  * For TLS there is a server instance that launches tlsserverrd for each TLS peer
@@ -1992,7 +1997,7 @@ int replyh(struct server *server, unsigned char *buf) {
     int i, len, sublen;
     unsigned char *messageauth, *subattrs, *attrs, *attr, *username;
     struct sockaddr_storage fromsa;
-    char tmp[760], stationid[760];
+    char tmp[760], stationid[760], replymsg[760];
     
     server->connectionok = 1;
     server->lostrqs = 0;
@@ -2108,10 +2113,23 @@ int replyh(struct server *server, unsigned char *buf) {
 	    attr = attrget(rq->buf + 20, RADLEN(rq->buf) - 20, RAD_Attr_Calling_Station_Id);
 	    if (attr) {
 		radattr2ascii(stationid, sizeof(stationid), attr);
-		debug(DBG_INFO, "%s for user %s stationid %s from %s",
-		      radmsgtype2string(*buf), tmp, stationid, server->conf->host);
-	    } else
-		debug(DBG_INFO, "%s for user %s from %s", radmsgtype2string(*buf), tmp, server->conf->host);
+		attr = attrget(buf + 20, RADLEN(buf) - 20, RAD_Attr_Reply_Message);
+		if (attr) {
+		    radattr2ascii(replymsg, sizeof(replymsg), attr);
+		    debug(DBG_INFO, "%s for user %s stationid %s from %s (%s)",
+			  radmsgtype2string(*buf), tmp, stationid, server->conf->host, replymsg);
+		} else
+		    debug(DBG_INFO, "%s for user %s stationid %s from %s",
+			  radmsgtype2string(*buf), tmp, stationid, server->conf->host);
+	    } else {
+		attr = attrget(buf + 20, RADLEN(buf) - 20, RAD_Attr_Reply_Message);
+		if (attr) {
+		    radattr2ascii(replymsg, sizeof(replymsg), attr);
+		    debug(DBG_INFO, "%s for user %s from %s (%s)",
+			  radmsgtype2string(*buf), tmp, server->conf->host, replymsg);
+		} else
+		    debug(DBG_INFO, "%s for user %s from %s", radmsgtype2string(*buf), tmp, server->conf->host);
+	    }
 	}
     }
 	
