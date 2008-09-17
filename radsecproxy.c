@@ -1627,39 +1627,13 @@ void acclog(struct radmsg *msg, char *host) {
     }
 }
 
-void respondaccounting(struct request *rq) {
-    struct radmsg *msg;
-
-    msg = radmsg_init(RAD_Accounting_Response, rq->msg->id, rq->msg->auth);
-    if (msg) {
-	radmsg_free(rq->msg);
-	rq->msg = msg;
-	debug(DBG_DBG, "respondaccounting: responding to %s", rq->from->conf->host);
-	sendreply(rq);
-    } else	
-	debug(DBG_ERR, "respondaccounting: malloc failed");
-}
-
-void respondstatusserver(struct request *rq) {
-    struct radmsg *msg;
-
-    msg = radmsg_init(RAD_Access_Accept, rq->msg->id, rq->msg->auth);
-    if (msg) {
-	radmsg_free(rq->msg);
-	rq->msg = msg;
-	debug(DBG_DBG, "respondstatusserver: responding to %s", rq->from->conf->host);
-	sendreply(rq);
-    } else
-	debug(DBG_ERR, "respondstatusserver: malloc failed");
-}
-
-void respondreject(struct request *rq, char *message) {
+void respond(struct request *rq, uint8_t code, char *message) {
     struct radmsg *msg;
     struct tlv *attr;
 
-    msg = radmsg_init(RAD_Access_Reject, rq->msg->id, rq->msg->auth);
+    msg = radmsg_init(code, rq->msg->id, rq->msg->auth);
     if (!msg) {
-	debug(DBG_ERR, "respondreject: malloc failed");
+	debug(DBG_ERR, "respond: malloc failed");
 	return;
     }
     if (message && *message) {
@@ -1667,14 +1641,14 @@ void respondreject(struct request *rq, char *message) {
 	if (!attr || !radmsg_add(msg, attr)) {
 	    freetlv(attr);
 	    radmsg_free(msg);
-	    debug(DBG_ERR, "respondreject: malloc failed");
+	    debug(DBG_ERR, "respond: malloc failed");
 	    return;
 	}
     }
 
     radmsg_free(rq->msg);
     rq->msg = msg;
-    debug(DBG_DBG, "respondreject: responding to %s", rq->from->conf->host);
+    debug(DBG_DBG, "respond: sending %s to %s", radmsgtype2string(msg->code), rq->from->conf->host);
     sendreply(rq);
 }
 
@@ -1812,7 +1786,7 @@ int radsrv(struct request *rq) {
 	goto exit;
 
     if (msg->code == RAD_Status_Server) {
-	respondstatusserver(rq);
+	respond(rq, RAD_Access_Accept, NULL);
 	goto exit;
     }
 
@@ -1825,7 +1799,7 @@ int radsrv(struct request *rq) {
     if (!attr) {
 	if (msg->code == RAD_Accounting_Request) {
 	    acclog(msg, from->conf->host);
-	    respondaccounting(rq);
+	    respond(rq, RAD_Accounting_Response, NULL);
 	} else
 	    debug(DBG_WARN, "radsrv: ignoring access request, no username attribute");
 	goto exit;
@@ -1850,10 +1824,10 @@ int radsrv(struct request *rq) {
     if (!to) {
 	if (realm->message && msg->code == RAD_Access_Request) {
 	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", from->conf->host, userascii);
-	    respondreject(rq, realm->message);
+	    respond(rq, RAD_Access_Reject, realm->message);
 	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
 	    acclog(msg, from->conf->host);
-	    respondaccounting(rq);
+	    respond(rq, RAD_Accounting_Response, NULL);
 	}
 	goto exit;
     }
