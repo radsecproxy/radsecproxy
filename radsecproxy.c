@@ -173,16 +173,8 @@ int resolvepeer(struct clsrvconf *conf, int ai_flags) {
 	    debug(DBG_WARN, "resolvepeer: can't resolve (null) port (null)");
 	    return 0;
 	}
-	for (res = addrinfo; res; res = res->ai_next) {
-	    switch (res->ai_family) {
-	    case AF_INET:
-		((struct sockaddr_in *)res->ai_addr)->sin_port = 0;
-		break;
-	    case AF_INET6:
-		((struct sockaddr_in6 *)res->ai_addr)->sin6_port = 0;
-		break;
-	    }
-	}
+	for (res = addrinfo; res; res = res->ai_next)
+	    port_set(res->ai_addr, 0);
     } else {
 	if (slash)
 	    hints.ai_flags |= AI_NUMERICHOST;
@@ -894,32 +886,20 @@ int clientradputudp(struct server *server, unsigned char *rad) {
     struct sockaddr_storage sa;
     struct sockaddr *sap;
     struct clsrvconf *conf = server->conf;
-    in_port_t *port = NULL;
+    uint16_t port;
     
     len = RADLEN(rad);
+    port = port_get(conf->addrinfo->ai_addr);
     
     if (*rad == RAD_Accounting_Request) {
 	sap = (struct sockaddr *)&sa;
 	memcpy(sap, conf->addrinfo->ai_addr, conf->addrinfo->ai_addrlen);
+	port_set(sap, ++port);
     } else
 	sap = conf->addrinfo->ai_addr;
     
-    switch (sap->sa_family) {
-    case AF_INET:
-	port = &((struct sockaddr_in *)sap)->sin_port;
-	break;
-    case AF_INET6:
-	port = &((struct sockaddr_in6 *)sap)->sin6_port;
-	break;
-    default:
-	return 0;
-    }
-
-    if (*rad == RAD_Accounting_Request)
-	*port = htons(ntohs(*port) + 1);
-    
     if (sendto(server->sock, rad, len, 0, sap, conf->addrinfo->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, ntohs(*port));
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, port);
 	return 1;
     }
 

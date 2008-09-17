@@ -72,6 +72,27 @@ void printfchars(char *prefixfmt, char *prefix, char *charfmt, char *chars, int 
     printf("\n");
 }
 
+uint16_t port_get(struct sockaddr *sa) {
+    switch (sa->sa_family) {
+    case AF_INET:
+	return ntohs(((struct sockaddr_in *)sa)->sin_port);
+    case AF_INET6:
+	return ntohs(((struct sockaddr_in6 *)sa)->sin6_port);
+    }
+    return 0;
+}
+
+void port_set(struct sockaddr *sa, uint16_t port) {
+    switch (sa->sa_family) {
+    case AF_INET:
+	((struct sockaddr_in *)sa)->sin_port = htons(port);
+	break;
+    case AF_INET6:
+	((struct sockaddr_in6 *)sa)->sin6_port = htons(port);
+	break;
+    }
+}
+
 char *addr2string(struct sockaddr *addr, socklen_t len) {
     struct sockaddr_in6 *sa6;
     struct sockaddr_in sa4;
