@@ -1729,15 +1729,12 @@ int addclientrq(struct request *rq) {
 	if (rq->udpport == r->udpport && !memcmp(rq->rqauth, r->rqauth, 16)) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - r->created.tv_sec < r->from->conf->dupinterval) {
-#if 0
-		later	    
-		    if (r->replybuf) {
-			debug(DBG_INFO, "radsrv: already sent reply to request with id %d from %s, resending", rq->rqid, addr2string(r->from->addr));
-			r->refcount++;
-			sendreply(r);
-		    } else
-#endif		
-			debug(DBG_INFO, "radsrv: already got request with id %d from %s, ignoring", rq->rqid, addr2string(r->from->addr));
+		if (r->replybuf) {
+		    debug(DBG_INFO, "addclientrq: already sent reply to request with id %d from %s, resending", rq->rqid, addr2string(r->from->addr));
+		    r->refcount++;
+		    sendreply(r);
+		} else
+		    debug(DBG_INFO, "addclientrq: already got request with id %d from %s, ignoring", rq->rqid, addr2string(r->from->addr));
 		return 0;
 	    }
 	}

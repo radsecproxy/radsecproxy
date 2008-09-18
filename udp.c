@@ -208,6 +208,7 @@ void *udpserverwr(void *arg) {
 	port_set((struct sockaddr *)&to, reply->udpport);
 	if (sendto(reply->udpsock, reply->replybuf, RADLEN(reply->replybuf), 0, (struct sockaddr *)&to, SOCKADDR_SIZE(to)) < 0)
 	    debug(DBG_WARN, "udpserverwr: send failed");
+	debug(DBG_DBG, "udpserverwr: refcount %d", reply->refcount);
 	freerq(reply);
     }
 }
