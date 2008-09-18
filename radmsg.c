@@ -225,9 +225,13 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
 	free(buf);
 	return NULL;
     }
-    if (secret && (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(buf, secret)) {
-	free(buf);
-	return NULL;
+    if (secret) {
+	if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(buf, secret)) {
+	    free(buf);
+	    return NULL;
+	}
+	if (msg->code == RAD_Accounting_Request)
+	    memcpy(msg->auth, buf + 4, 16);
     }
     return buf;
 }

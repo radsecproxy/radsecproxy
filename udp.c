@@ -47,6 +47,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     struct clsrvconf *p;
     struct list_node *node;
     fd_set readfds;
+    struct client *c = NULL;
     
     for (;;) {
 	if (rad) {
@@ -103,26 +104,27 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 
 	if (client) {
 	    pthread_mutex_lock(p->lock);
-	    for (node = list_first(p->clients); node; node = list_next(node))
-		if (addr_equal((struct sockaddr *)&from, ((struct client *)node->data)->addr))
+	    for (node = list_first(p->clients); node; node = list_next(node)) {
+		c = (struct client *)node->data;
+		if (s == c->sock && addr_equal((struct sockaddr *)&from, c->addr))
 		    break;
-	    if (node) {
-		*client = (struct client *)node->data;
-		pthread_mutex_unlock(p->lock);
-		break;
 	    }
-	    fromcopy = addr_copy((struct sockaddr *)&from);
-	    if (!fromcopy) {
-		pthread_mutex_unlock(p->lock);
-		continue;
+	    if (!node) {
+		fromcopy = addr_copy((struct sockaddr *)&from);
+		if (!fromcopy) {
+		    pthread_mutex_unlock(p->lock);
+		    continue;
+		}
+		c = addclient(p, 0);
+		if (!c) {
+		    free(fromcopy);
+		    pthread_mutex_unlock(p->lock);
+		    continue;
+		}
+		c->sock = s;
+		c->addr = fromcopy;
 	    }
-	    *client = addclient(p, 0);
-	    if (!*client) {
-		free(fromcopy);
-		pthread_mutex_unlock(p->lock);
-		continue;
-	    }
-	    (*client)->addr = fromcopy;
+	    *client = c;
 	    pthread_mutex_unlock(p->lock);
 	} else if (server)
 	    *server = p->servers;

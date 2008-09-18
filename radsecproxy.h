@@ -49,8 +49,8 @@ struct request {
     struct radmsg *msg;
     struct client *from;
     char *origusername;
-    char origauth[16];
-    uint8_t origid;
+    uint8_t rqid;
+    uint8_t rqauth[16];
     int udpsock; /* only for UDP */
     uint16_t udpport; /* only for UDP */
 };
@@ -102,9 +102,8 @@ struct clsrvconf {
 
 struct client {
     struct clsrvconf *conf;
-    int sock; /* for tcp/dtls */
+    int sock;
     SSL *ssl;
-    pthread_mutex_t lock; /* used for updating rqs */
     struct request *rqs[MAX_REQUESTS];
     struct queue *replyq;
     struct queue *rbios; /* for dtls */
