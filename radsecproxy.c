@@ -35,8 +35,10 @@
 */
 
 /* Bugs:
- * TCP accounting not yet supported
+ * Multiple outgoing connections if not enough IDs? (multiple servers per conf?)
+ * Also useful for TCP accounting which is not yet supported?
  * We are not removing client requests from dynamic servers, see removeclientrqs()
+ * Reserve ID 0 for statusserver requests?
  * Need to remove UDP clients when no activity for a while...
  * Remove expired stuff from clients request list?
  */
