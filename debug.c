@@ -24,7 +24,7 @@ static char *debug_ident = NULL;
 static uint8_t debug_level = DBG_INFO;
 static FILE *debug_file = NULL;
 static int debug_syslogfacility = 0;
-static uint8_t debug_timestamp = 1;
+static uint8_t debug_timestamp = 0;
 
 void debug_init(char *ident) {
     debug_file = stderr;
@@ -49,8 +49,8 @@ void debug_set_level(uint8_t level) {
     }
 }
 
-void debug_no_timestamp() {
-    debug_timestamp = 0;
+void debug_timestamp_on() {
+    debug_timestamp = 1;
 }
 
 uint8_t debug_get_level() {
