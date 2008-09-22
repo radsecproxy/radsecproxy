@@ -35,12 +35,12 @@
 */
 
 /* Bugs:
- * Multiple outgoing connections if not enough IDs? (multiple servers per conf?)
- * Also useful for TCP accounting which is not yet supported?
- * We are not removing client requests from dynamic servers, see removeclientrqs()
- * Reserve ID 0 for statusserver requests?
+ * May segfault when dtls connections go down? More testing needed
  * Need to remove UDP clients when no activity for a while...
  * Remove expired stuff from clients request list?
+ * We are not removing client requests from dynamic servers, see removeclientrqs()
+ * Multiple outgoing connections if not enough IDs? (multiple servers per conf?)
+ * Useful for TCP accounting? Now we require separate server config for alt port
  */
 
 #include <signal.h>
