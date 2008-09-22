@@ -956,20 +956,23 @@ void freerqoutdata(struct rqout *rqout) {
 }
 
 void sendrq(struct server *to, struct request *rq) {
-    int i;
+    int i, start;
     
+    start = to->conf->statusserver ? 1 : 0;
     pthread_mutex_lock(&to->newrq_mutex);
-    /* might simplify if only try nextid, might be ok */
-    for (i = to->nextid; i < MAX_REQUESTS; i++) {
-	if (!to->requests[i].rq) {
-	    pthread_mutex_lock(to->requests[i].lock);
-	    if (!to->requests[i].rq)
-		break;
-	    pthread_mutex_unlock(to->requests[i].lock);
+    if (start && rq->msg->code == RAD_Status_Server) {
+	pthread_mutex_lock(to->requests[0].lock);
+	if (to->requests[0].rq) {
+	    pthread_mutex_unlock(to->requests[0].lock);
+	    debug(DBG_WARN, "sendrq: status server already in queue, dropping request");
+	    goto errexit;
 	}
-    }
-    if (i == MAX_REQUESTS) {
-	for (i = 0; i < to->nextid; i++) {
+	i = 0;
+    } else {
+	if (!to->nextid)
+	    to->nextid = start;
+	/* might simplify if only try nextid, might be ok */
+	for (i = to->nextid; i < MAX_REQUESTS; i++) {
 	    if (!to->requests[i].rq) {
 		pthread_mutex_lock(to->requests[i].lock);
 		if (!to->requests[i].rq)
@@ -977,28 +980,34 @@ void sendrq(struct server *to, struct request *rq) {
 		pthread_mutex_unlock(to->requests[i].lock);
 	    }
 	}
-	if (i == to->nextid) {
-	    debug(DBG_WARN, "sendrq: no room in queue, dropping request");
-	    rmclientrq(rq, rq->msg->id);
-	    freerq(rq);
-	    goto exit;
+	if (i == MAX_REQUESTS) {
+	    for (i = start; i < to->nextid; i++) {
+		if (!to->requests[i].rq) {
+		    pthread_mutex_lock(to->requests[i].lock);
+		    if (!to->requests[i].rq)
+			break;
+		    pthread_mutex_unlock(to->requests[i].lock);
+		}
+	    }
+	    if (i == to->nextid) {
+		debug(DBG_WARN, "sendrq: no room in queue, dropping request");
+		goto errexit;
+	    }
 	}
     }
-
     rq->msg->id = (uint8_t)i;
     rq->buf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
     if (!rq->buf) {
 	pthread_mutex_unlock(to->requests[i].lock);
 	debug(DBG_ERR, "sendrq: radmsg2buf failed");
-	rmclientrq(rq, rq->msg->id);
-	freerq(rq);
-	goto exit;
+	goto errexit;
     }
     
     debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->conf->host);
     to->requests[i].rq = rq;
     pthread_mutex_unlock(to->requests[i].lock);
-    to->nextid = i + 1;
+    if (i >= start) /* i is not reserved for statusserver */
+	to->nextid = i + 1;
 
     if (!to->newrq) {
 	to->newrq = 1;
@@ -1006,7 +1015,12 @@ void sendrq(struct server *to, struct request *rq) {
 	pthread_cond_signal(&to->newrq_cond);
     }
 
- exit:
+    pthread_mutex_unlock(&to->newrq_mutex);
+    return;
+
+ errexit:
+    rmclientrq(rq, rq->msg->id);
+    freerq(rq);
     pthread_mutex_unlock(&to->newrq_mutex);
 }
 
