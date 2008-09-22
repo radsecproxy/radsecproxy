@@ -17,7 +17,7 @@
 
 void debug_init(char *ident);
 void debug_set_level(uint8_t level);
-void debug_no_timestamp();
+void debug_timestamp_on();
 uint8_t debug_get_level();
 void debug(uint8_t level, char *format, ...);
 void debugx(int status, uint8_t level, char *format, ...);

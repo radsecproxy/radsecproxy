@@ -3457,6 +3457,7 @@ int main(int argc, char **argv) {
     if (!foreground && (daemon(0, 0) < 0))
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
     
+    debug_timestamp_on();
     debug(DBG_INFO, "radsecproxy 1.1 starting");
 
     sigemptyset(&sigset);
