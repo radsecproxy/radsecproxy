@@ -81,6 +81,8 @@ static long *ssl_lock_count;
 extern int optind;
 extern char *optarg;
 
+SSL_CTX *tlsgetctx(struct tls *t);
+
 /* callbacks for making OpenSSL thread safe */
 unsigned long ssl_thread_id() {
         return (unsigned long)pthread_self();
@@ -783,6 +785,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
     struct timeval now;
     time_t elapsed;
     X509 *cert;
+    SSL_CTX *ctx = NULL;
     
     debug(DBG_DBG, "tlsconnect called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -793,7 +796,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	return;
     }
 
-    debug(DBG_DBG, "tlsconnect %s", text);
+    debug(DBG_DBG, "tlsconnect(%s)", text);
 
     for (;;) {
 	gettimeofday(&now, NULL);
@@ -820,7 +823,14 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	}
 	
 	SSL_free(server->ssl);
-	server->ssl = SSL_new(server->conf->ssl_ctx);
+	server->ssl = NULL;
+	ctx = tlsgetctx(server->conf->tlsconf);
+	if (!ctx)
+	    continue;
+	server->ssl = SSL_new(ctx);
+	if (!server->ssl)
+	    continue;
+	    
 	SSL_set_fd(server->ssl, server->sock);
 	if (SSL_connect(server->ssl) <= 0)
 	    continue;
@@ -834,6 +844,7 @@ void tlsconnect(struct server *server, struct timeval *when, char *text) {
 	X509_free(cert);
     }
     debug(DBG_WARN, "tlsconnect: TLS connection to %s port %s up", server->conf->host, server->conf->port);
+    server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
 }
@@ -917,19 +928,17 @@ int clientradputtls(struct server *server, unsigned char *rad) {
     int cnt;
     size_t len;
     unsigned long error;
-    struct timeval lastconnecttry;
     struct clsrvconf *conf = server->conf;
-    
+
+    if (!server->connectionok)
+	return 0;
     len = RADLEN(rad);
-    lastconnecttry = server->lastconnecttry;
-    while ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
+    if ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "clientradputtls: TLS: %s", ERR_error_string(error, NULL));
-	tlsconnect(server, &lastconnecttry, "clientradputtls");
-	lastconnecttry = server->lastconnecttry;
+	return 0;
     }
 
-    server->connectionok = 1;
     debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->host);
     return 1;
 }
@@ -2221,6 +2230,7 @@ void *clientwr(void *arg) {
     int i;
     uint8_t rnd;
     struct timeval now, lastsend;
+    time_t secs;
     struct timespec timeout;
     struct request statsrvrq;
     unsigned char statsrvbuf[38];
@@ -2254,8 +2264,9 @@ void *clientwr(void *arg) {
 		/* random 0-7 seconds */
 		RAND_bytes(&rnd, 1);
 		rnd /= 32;
-		if (!timeout.tv_sec || timeout.tv_sec > lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd)
-		    timeout.tv_sec = lastsend.tv_sec + STATUS_SERVER_PERIOD + rnd;
+		secs = now.tv_sec - lastsend.tv_sec < STATUS_SERVER_PERIOD ? lastsend.tv_sec : now.tv_sec;
+		if (!timeout.tv_sec || timeout.tv_sec > secs + STATUS_SERVER_PERIOD + rnd)
+		    timeout.tv_sec = secs + STATUS_SERVER_PERIOD + rnd;
 	    }   
 	    if (timeout.tv_sec) {
 		debug(DBG_DBG, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
@@ -2334,7 +2345,7 @@ void *clientwr(void *arg) {
 	    clientradput(server, server->requests[i].buf);
 	    gettimeofday(&lastsend, NULL);
 	}
-	if (server->conf->statusserver) {
+	if (server->conf->statusserver && server->connectionok) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - lastsend.tv_sec >= STATUS_SERVER_PERIOD) {
 		if (!RAND_bytes(statsrvbuf + 4, 16)) {
@@ -2505,6 +2516,7 @@ void *tlsservernew(void *arg) {
     struct list_node *cur = NULL;
     SSL *ssl = NULL;
     X509 *cert = NULL;
+    SSL_CTX *ctx = NULL;
     unsigned long error;
     struct client *client;
 
@@ -2517,7 +2529,12 @@ void *tlsservernew(void *arg) {
 
     conf = find_conf('T', (struct sockaddr *)&from, clconfs, &cur);
     if (conf) {
-	ssl = SSL_new(conf->ssl_ctx);
+	ctx = tlsgetctx(conf->tlsconf);
+	if (!ctx)
+	    goto exit;
+	ssl = SSL_new(ctx);
+	if (!ssl)
+	    goto exit;
 	SSL_set_fd(ssl, s);
 
 	if (SSL_accept(ssl) <= 0) {
@@ -2593,20 +2610,13 @@ int tlslistener() {
     return 0;
 }
 
-void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, char *certkeyfile, char *certkeypwd, uint8_t crlcheck) {
-    struct tls *new;
-    SSL_CTX *ctx;
+SSL_CTX *tlscreatectx(struct tls *conf) {
+    SSL_CTX *ctx = NULL;
     STACK_OF(X509_NAME) *calist;
     X509_STORE *x509_s;
     int i;
     unsigned long error;
     
-    if (!certfile || !certkeyfile)
-	debugx(1, DBG_ERR, "TLSCertificateFile and TLSCertificateKeyFile must be specified in TLS context %s", value);
-
-    if (!cacertfile && !cacertpath)
-	debugx(1, DBG_ERR, "CA Certificate file or path need to be specified in TLS context %s", value);
-
     if (!ssl_locks) {
 	ssl_locks = calloc(CRYPTO_num_locks(), sizeof(pthread_mutex_t));
 	ssl_lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
@@ -2627,26 +2637,34 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
 	    RAND_seed((unsigned char *)&pid, sizeof(pid));
 	}
     }
+
     ctx = SSL_CTX_new(TLSv1_method());
-    if (certkeypwd) {
-	SSL_CTX_set_default_passwd_cb_userdata(ctx, certkeypwd);
-	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
-    }
-    if (!SSL_CTX_use_certificate_chain_file(ctx, certfile) ||
-	!SSL_CTX_use_PrivateKey_file(ctx, certkeyfile, SSL_FILETYPE_PEM) ||
-	!SSL_CTX_check_private_key(ctx) ||
-	!SSL_CTX_load_verify_locations(ctx, cacertfile, cacertpath)) {
-	while ((error = ERR_get_error()))
-	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-	debugx(1, DBG_ERR, "Error initialising SSL/TLS in TLS context %s", value);
+    if (!ctx) {
+        debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
+        return NULL;
     }
 
-    calist = cacertfile ? SSL_load_client_CA_file(cacertfile) : NULL;
-    if (!cacertfile || calist) {
-	if (cacertpath) {
+    if (conf->certkeypwd) {
+	SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
+	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
+    }
+    if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
+	!SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+	!SSL_CTX_check_private_key(ctx) ||
+	!SSL_CTX_load_verify_locations(ctx, conf->cacertfile, conf->cacertpath)) {
+	while ((error = ERR_get_error()))
+	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+	debug(DBG_ERR, "tlscreatectx: error initialising SSL/TLS in TLS context %s", conf->name);
+	SSL_CTX_free(ctx);
+        return NULL;
+    }
+
+    calist = conf->cacertfile ? SSL_load_client_CA_file(conf->cacertfile) : NULL;
+    if (!conf->cacertfile || calist) {
+	if (conf->cacertpath) {
 	    if (!calist)
 		calist = sk_X509_NAME_new_null();
-	    if (!SSL_add_dir_cert_subjects_to_stack(calist, cacertpath)) {
+	    if (!SSL_add_dir_cert_subjects_to_stack(calist, conf->cacertpath)) {
 		sk_X509_NAME_free(calist);
 		calist = NULL;
 	    }
@@ -2655,7 +2673,9 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
     if (!calist) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-	debugx(1, DBG_ERR, "Error adding CA subjects in TLS context %s", value);
+	debug(DBG_ERR, "tlscreatectx: error initialising SSL/TLS in TLS context %s", conf->name);
+	SSL_CTX_free(ctx);
+        return NULL;
     }
     ERR_clear_error(); /* add_dir_cert_subj returns errors on success */
     SSL_CTX_set_client_CA_list(ctx, calist);
@@ -2663,40 +2683,16 @@ void tlsadd(char *value, char *cacertfile, char *cacertpath, char *certfile, cha
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
 
-    if (crlcheck) {
+    if (conf->crlcheck) {
 	x509_s = SSL_CTX_get_cert_store(ctx);
 	X509_STORE_set_flags(x509_s, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
     }
-    
-    new = malloc(sizeof(struct tls));
-    if (!new || !list_push(tlsconfs, new))
-	debugx(1, DBG_ERR, "malloc failed");
 
-    memset(new, 0, sizeof(struct tls));
-    new->name = stringcopy(value, 0);
-    if (!new->name)
-	debugx(1, DBG_ERR, "malloc failed");
-    new->ctx = ctx;
-    new->count = 0;
-    debug(DBG_DBG, "tlsadd: added TLS context %s", value);
+    debug(DBG_DBG, "tlscreatectx: created tls context %s", conf->name);
+    return ctx;
 }
 
-void tlsfree() {
-    struct list_node *entry;
-    struct tls *t;
-    
-    for (entry = list_first(tlsconfs); entry; entry = list_next(entry)) {
-	t = (struct tls *)entry->data;
-	if (t->name)
-	    free(t->name);
-	if (!t->count)
-	    SSL_CTX_free(t->ctx);
-    }
-    list_destroy(tlsconfs);
-    tlsconfs = NULL;
-}
-
-SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
+struct tls *tlsgettls(char *alt1, char *alt2) {
     struct list_node *entry;
     struct tls *t, *t1 = NULL, *t2 = NULL;
     
@@ -2710,10 +2706,27 @@ SSL_CTX *tlsgetctx(char *alt1, char *alt2) {
 	    t2 = t;
     }
 
-    t = (t1 ? t1 : t2);
+    return t1 ? t1 : t2;
+}
+
+SSL_CTX *tlsgetctx(struct tls *t) {
+    struct timeval now;
+    
     if (!t)
 	return NULL;
-    t->count++;
+    gettimeofday(&now, NULL);
+    if (t->expiry && t->ctx) {
+	if (t->expiry < now.tv_sec) {
+	    t->expiry = now.tv_sec + t->cacheexpiry;
+	    SSL_CTX_free(t->ctx);
+	    return t->ctx = tlscreatectx(t);
+	}
+    }
+    if (!t->ctx) {
+	t->ctx = tlscreatectx(t);
+	if (t->cacheexpiry)
+	    t->expiry = now.tv_sec + t->cacheexpiry;
+    }
     return t->ctx;
 }
 
@@ -3112,8 +3125,8 @@ void confclient_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	conf->type = 'U';
 	client_udp_count++;
     } else if (type && !strcasecmp(type, "tls")) {
-	conf->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultclient", "default");
-	if (!conf->ssl_ctx)
+	conf->tlsconf = tls ? tlsgettls(tls, NULL) : tlsgettls("defaultclient", "default");
+	if (!conf->tlsconf)
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
 	if (matchcertattr && !addmatchcertattr(conf, matchcertattr))
 	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
@@ -3194,8 +3207,8 @@ void confserver_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 	if (!conf->port)
 	    conf->port = stringcopy(DEFAULT_UDP_PORT, 0);
     } else if (type && !strcasecmp(type, "tls")) {
-	conf->ssl_ctx = tls ? tlsgetctx(tls, NULL) : tlsgetctx("defaultserver", "default");
-	if (!conf->ssl_ctx)
+	conf->tlsconf = tls ? tlsgettls(tls, NULL) : tlsgettls("defaultserver", "default");
+	if (!conf->tlsconf)
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
 	if (matchcertattr && !addmatchcertattr(conf, matchcertattr))
 	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
@@ -3263,27 +3276,41 @@ void confrealm_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 }
 
 void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {
-    char *cacertfile = NULL, *cacertpath = NULL, *certfile = NULL, *certkeyfile = NULL, *certkeypwd = NULL;
-    uint8_t crlcheck = 0;
+    struct tls *conf;
+    long int expiry = LONG_MIN;
     
     debug(DBG_DBG, "conftls_cb called for %s", block);
+
+    conf = malloc(sizeof(struct tls));
+    if (!conf)
+        debugx(1, DBG_ERR, "conftls_cb: malloc failed");
+    memset(conf, 0, sizeof(struct tls));
     
     getgenericconfig(cf, block,
-		     "CACertificateFile", CONF_STR, &cacertfile,
-		     "CACertificatePath", CONF_STR, &cacertpath,
-		     "CertificateFile", CONF_STR, &certfile,
-		     "CertificateKeyFile", CONF_STR, &certkeyfile,
-		     "CertificateKeyPassword", CONF_STR, &certkeypwd,
-		     "CRLCheck", CONF_BLN, &crlcheck,
+		     "CACertificateFile", CONF_STR, &conf->cacertfile,
+		     "CACertificatePath", CONF_STR, &conf->cacertpath,
+		     "CertificateFile", CONF_STR, &conf->certfile,
+		     "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
+		     "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
+		     "CacheExpiry", CONF_LINT, &expiry,
+		     "CRLCheck", CONF_BLN, &conf->crlcheck,
 		     NULL
 		     );
     
-    tlsadd(val, cacertfile, cacertpath, certfile, certkeyfile, certkeypwd, crlcheck);
-    free(cacertfile);
-    free(cacertpath);
-    free(certfile);
-    free(certkeyfile);
-    free(certkeypwd);
+    if (!conf->certfile || !conf->certkeyfile)
+        debugx(1, DBG_ERR, "conftls_cb: TLSCertificateFile and TLSCertificateKeyFile must be specified in block %s", val);
+    if (!conf->cacertfile && !conf->cacertpath)
+	debugx(1, DBG_ERR, "CA Certificate file or path need to be specified in TLS context %s", val);
+    if (expiry != LONG_MIN) {
+	if (expiry < 0)
+	    debugx(1, DBG_ERR, "error in block %s, value of option CacheExpiry is %ld, may not be negative", val, expiry);
+	conf->cacheexpiry = expiry;
+    }    
+    conf->name = stringcopy(val, 0);
+    if (!conf->name || !list_push(tlsconfs, conf))
+        debugx(1, DBG_ERR, "conftls_cb: malloc failed");
+    
+    debug(DBG_DBG, "conftls_cb: added TLS block %s", val);
 }
 
 void confrewrite_cb(struct gconffile **cf, char *block, char *opt, char *val) {
@@ -3344,7 +3371,6 @@ void getmainconfig(const char *configfile) {
 		     "Rewrite", CONF_CBK, confrewrite_cb,
 		     NULL
 		     );
-    tlsfree();
     rewritefree();
     
     if (loglevel != LONG_MIN) {

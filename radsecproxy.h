@@ -88,11 +88,11 @@ struct clsrvconf {
     uint8_t retryinterval;
     uint8_t retrycount;
     uint8_t certnamecheck;
-    SSL_CTX *ssl_ctx;
     struct rewrite *rewritein;
     struct rewrite *rewriteout;
     struct addrinfo *addrinfo;
     uint8_t prefixlen;
+    struct tls *tlsconf;
     struct list *clients;
     struct server *servers;
 };
@@ -131,8 +131,15 @@ struct realm {
 
 struct tls {
     char *name;
+    char *cacertfile;
+    char *cacertpath;
+    char *certfile;
+    char *certkeyfile;
+    char *certkeypwd;
+    uint8_t crlcheck;
+    uint32_t cacheexpiry;
+    uint32_t expiry;
     SSL_CTX *ctx;
-    int count;
 };
 
 struct attribute {
