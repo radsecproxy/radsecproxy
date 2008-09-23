@@ -36,6 +36,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
     struct timeval now;
     time_t elapsed;
     X509 *cert;
+    SSL_CTX *ctx = NULL;
     unsigned long error;
     
     debug(DBG_DBG, "tlsconnect: called from %s", text);
@@ -81,7 +82,14 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	}
 	
 	SSL_free(server->ssl);
-	server->ssl = SSL_new(server->conf->ssl_ctx);
+	server->ssl = NULL;
+	ctx = tlsgetctx(RAD_TLS, server->conf->tlsconf);
+	if (!ctx)
+	    continue;
+	server->ssl = SSL_new(ctx);
+	if (!server->ssl)
+	    continue;
+
 	SSL_set_fd(server->ssl, server->sock);
 	if (SSL_connect(server->ssl) <= 0) {
 	    while ((error = ERR_get_error()))
@@ -98,6 +106,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	X509_free(cert);
     }
     debug(DBG_WARN, "tlsconnect: TLS connection to %s port %s up", server->conf->host, server->conf->port);
+    server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
     return 1;
@@ -186,21 +195,17 @@ int clientradputtls(struct server *server, unsigned char *rad) {
     int cnt;
     size_t len;
     unsigned long error;
-    struct timeval lastconnecttry;
     struct clsrvconf *conf = server->conf;
-    
+
+    if (!server->connectionok)
+	return 0;
     len = RADLEN(rad);
-    lastconnecttry = server->lastconnecttry;
-    while ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
+    if ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "clientradputtls: TLS: %s", ERR_error_string(error, NULL));
-	if (server->dynamiclookuparg)
-	    return 0;
-	tlsconnect(server, &lastconnecttry, 0, "clientradputtls");
-	lastconnecttry = server->lastconnecttry;
+	return 0;
     }
 
-    server->connectionok = 1;
     debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->host);
     return 1;
 }
@@ -325,6 +330,7 @@ void *tlsservernew(void *arg) {
     struct list_node *cur = NULL;
     SSL *ssl = NULL;
     X509 *cert = NULL;
+    SSL_CTX *ctx = NULL;
     unsigned long error;
     struct client *client;
 
@@ -337,7 +343,12 @@ void *tlsservernew(void *arg) {
 
     conf = find_clconf(RAD_TLS, (struct sockaddr *)&from, &cur);
     if (conf) {
-	ssl = SSL_new(conf->ssl_ctx);
+	ctx = tlsgetctx(RAD_TLS, conf->tlsconf);
+	if (!ctx)
+	    goto exit;
+	ssl = SSL_new(ctx);
+	if (!ssl)
+	    goto exit;
 	SSL_set_fd(ssl, s);
 
 	if (SSL_accept(ssl) <= 0) {

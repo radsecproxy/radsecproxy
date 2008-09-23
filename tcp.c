@@ -75,6 +75,7 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 	debug(DBG_ERR, "tcpconnect: connecttcp failed");
     }
     debug(DBG_WARN, "tcpconnect: TCP connection to %s port %s up", server->conf->host, server->conf->port);
+    server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
     return 1;
@@ -150,18 +151,15 @@ unsigned char *radtcpget(int s, int timeout) {
 int clientradputtcp(struct server *server, unsigned char *rad) {
     int cnt;
     size_t len;
-    struct timeval lastconnecttry;
     struct clsrvconf *conf = server->conf;
-    
-    len = RADLEN(rad);
-    lastconnecttry = server->lastconnecttry;
-    while ((cnt = write(server->sock, rad, len)) <= 0) {
-	debug(DBG_ERR, "clientradputtcp: write error");
-	tcpconnect(server, &lastconnecttry, 0, "clientradputtcp");
-	lastconnecttry = server->lastconnecttry;
-    }
 
-    server->connectionok = 1;
+    if (!server->connectionok)
+	return 0;
+    len = RADLEN(rad);
+    if ((cnt = write(server->sock, rad, len)) <= 0) {
+	debug(DBG_ERR, "clientradputtcp: write error");
+	return 0;
+    }
     debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %d to TCP peer %s", cnt, len, conf->host);
     return 1;
 }

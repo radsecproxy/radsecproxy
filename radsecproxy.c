@@ -1019,7 +1019,8 @@ void sendrq(struct server *to, struct request *rq) {
     return;
 
  errexit:
-    rmclientrq(rq, rq->msg->id);
+    if (rq->from)
+	rmclientrq(rq, rq->msg->id);
     freerq(rq);
     pthread_mutex_unlock(&to->newrq_mutex);
 }
@@ -2061,7 +2062,8 @@ void *clientwr(void *arg) {
     struct server *server = (struct server *)arg;
     struct rqout *rqout = NULL;
     pthread_t clientrdth;
-    int i, secs, dynconffail = 0;
+    int i, dynconffail = 0;
+    time_t secs;
     uint8_t rnd;
     struct timeval now, laststatsrv;
     struct timespec timeout;
@@ -2107,6 +2109,8 @@ void *clientwr(void *arg) {
 	    rnd /= 32;
 	    if (conf->statusserver) {
 		secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
+		if (now.tv_sec - secs > STATUS_SERVER_PERIOD)
+		    secs = now.tv_sec;
 		if (!timeout.tv_sec || timeout.tv_sec > secs + STATUS_SERVER_PERIOD + rnd)
 		    timeout.tv_sec = secs + STATUS_SERVER_PERIOD + rnd;
 	    } else {
@@ -2182,7 +2186,7 @@ void *clientwr(void *arg) {
 	    conf->pdef->clientradput(server, rqout->rq->buf);
 	    pthread_mutex_unlock(rqout->lock);
 	}
-	if (conf->statusserver) {
+	if (conf->statusserver && server->connectionok) {
 	    secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - secs > STATUS_SERVER_PERIOD) {
@@ -2388,24 +2392,50 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     return ctx;
 }
 
-SSL_CTX *tlsgetctx(uint8_t type, char *alt1, char *alt2) {
+struct tls *tlsgettls(char *alt1, char *alt2) {
     struct tls *t;
 
     t = hash_read(tlsconfs, alt1, strlen(alt1));
-    if (!t) {
+    if (!t)
 	t = hash_read(tlsconfs, alt2, strlen(alt2));
-	if (!t)
-	    return NULL;
-    }
+    return t;
+}
 
+SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
+    struct timeval now;
+    
+    if (!t)
+	return NULL;
+    gettimeofday(&now, NULL);
+    
     switch (type) {
     case RAD_TLS:
-	if (!t->tlsctx)
+	if (t->tlsexpiry && t->tlsctx) {
+	    if (t->tlsexpiry < now.tv_sec) {
+		t->tlsexpiry = now.tv_sec + t->cacheexpiry;
+		SSL_CTX_free(t->tlsctx);
+		return t->tlsctx = tlscreatectx(RAD_TLS, t);
+	    }
+	}
+	if (!t->tlsctx) {
 	    t->tlsctx = tlscreatectx(RAD_TLS, t);
+	    if (t->cacheexpiry)
+		t->tlsexpiry = now.tv_sec + t->cacheexpiry;
+	}
 	return t->tlsctx;
     case RAD_DTLS:
-	if (!t->dtlsctx)
+	if (t->dtlsexpiry && t->dtlsctx) {
+	    if (t->dtlsexpiry < now.tv_sec) {
+		t->dtlsexpiry = now.tv_sec + t->cacheexpiry;
+		SSL_CTX_free(t->dtlsctx);
+		return t->dtlsctx = tlscreatectx(RAD_DTLS, t);
+	    }
+	}
+	if (!t->dtlsctx) {
 	    t->dtlsctx = tlscreatectx(RAD_DTLS, t);
+	    if (t->cacheexpiry)
+		t->dtlsexpiry = now.tv_sec + t->cacheexpiry;
+	}
 	return t->dtlsctx;
     }
     return NULL;
@@ -3066,8 +3096,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     free(conftype);
     
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->type, conf->tls, NULL) : tlsgetctx(conf->type, "defaultclient", "default");
-	if (!conf->ssl_ctx)
+	conf->tlsconf = conf->tls ? tlsgettls(conf->tls, NULL) : tlsgettls("defaultclient", "default");
+	if (!conf->tlsconf)
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
 	if (conf->matchcertattr && !addmatchcertattr(conf))
 	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
@@ -3117,8 +3147,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-    	conf->ssl_ctx = conf->tls ? tlsgetctx(conf->type, conf->tls, NULL) : tlsgetctx(conf->type, "defaultserver", "default");
-	if (!conf->ssl_ctx) {
+    	conf->tlsconf = conf->tls ? tlsgettls(conf->tls, NULL) : tlsgettls("defaultserver", "default");
+	if (!conf->tlsconf) {
 	    debug(DBG_ERR, "error in block %s, no tls context defined", block);
 	    return 0;
 	}
@@ -3306,6 +3336,7 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
 
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct tls *conf;
+    long int expiry = LONG_MIN;
     
     debug(DBG_DBG, "conftls_cb called for %s", block);
     
@@ -3322,6 +3353,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 		     "CertificateFile", CONF_STR, &conf->certfile,
 		     "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
 		     "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
+		     "CacheExpiry", CONF_LINT, &expiry,
 		     "CRLCheck", CONF_BLN, &conf->crlcheck,
 		     NULL
 			  )) {
@@ -3336,6 +3368,13 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 	debug(DBG_ERR, "conftls_cb: CA Certificate file or path need to be specified in block %s", val);
 	goto errexit;
     }
+    if (expiry != LONG_MIN) {
+	if (expiry < 0) {
+	    debug(DBG_ERR, "error in block %s, value of option CacheExpiry is %ld, may not be negative", val, expiry);
+	    goto errexit;
+	}
+	conf->cacheexpiry = expiry;
+    }    
 
     conf->name = stringcopy(val, 0);
     if (!conf->name) {

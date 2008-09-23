@@ -297,12 +297,16 @@ void *dtlsservernew(void *arg) {
     struct list_node *cur = NULL;
     SSL *ssl = NULL;
     X509 *cert = NULL;
+    SSL_CTX *ctx = NULL;
     uint8_t delay = 60;
 
     debug(DBG_DBG, "dtlsservernew: starting");
     conf = find_clconf(RAD_DTLS, (struct sockaddr *)&params->addr, NULL);
     if (conf) {
-	ssl = dtlsacccon(1, conf->ssl_ctx, params->sock, (struct sockaddr *)&params->addr, params->sesscache->rbios);
+	ctx = tlsgetctx(RAD_DTLS, conf->tlsconf);
+	if (!ctx)
+	    goto exit;
+	ssl = dtlsacccon(1, ctx, params->sock, (struct sockaddr *)&params->addr, params->sesscache->rbios);
 	if (!ssl)
 	    goto exit;
 	cert = verifytlscert(ssl);
@@ -472,7 +476,8 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
     struct timeval now;
     time_t elapsed;
     X509 *cert;
-    
+    SSL_CTX *ctx = NULL;
+
     debug(DBG_DBG, "dtlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
     if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
@@ -510,7 +515,11 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 	debug(DBG_WARN, "dtlsconnect: trying to open DTLS connection to %s port %s", server->conf->host, server->conf->port);
 
 	SSL_free(server->ssl);
-	server->ssl = dtlsacccon(0, server->conf->ssl_ctx, server->sock, server->conf->addrinfo->ai_addr, server->rbios);
+	server->ssl = NULL;
+	ctx = tlsgetctx(RAD_DTLS, server->conf->tlsconf);
+	if (!ctx)
+	    continue;
+	server->ssl = dtlsacccon(0, ctx, server->sock, server->conf->addrinfo->ai_addr, server->rbios);
 	if (!server->ssl)
 	    continue;
 	debug(DBG_DBG, "dtlsconnect: DTLS: ok");
@@ -525,6 +534,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
     }
     X509_free(cert);
     debug(DBG_WARN, "dtlsconnect: DTLS connection to %s port %s up", server->conf->host, server->conf->port);
+    server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
     return 1;
@@ -536,12 +546,13 @@ int clientradputdtls(struct server *server, unsigned char *rad) {
     unsigned long error;
     struct clsrvconf *conf = server->conf;
 
-    if (!server->ssl)
+    if (!server->connectionok)
 	return 0;
     len = RADLEN(rad);
-    while ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
+    if ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "clientradputdtls: DTLS: %s", ERR_error_string(error, NULL));
+	return 0;
     }
     debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %d to DTLS peer %s", cnt, len, conf->host);
     return 1;

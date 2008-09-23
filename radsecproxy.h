@@ -90,12 +90,12 @@ struct clsrvconf {
     uint8_t retrycount;
     uint8_t dupinterval;
     uint8_t certnamecheck;
-    SSL_CTX *ssl_ctx;
     struct rewrite *rewritein;
     struct rewrite *rewriteout;
     struct addrinfo *addrinfo;
     uint8_t prefixlen;
     pthread_mutex_t *lock; /* only used for updating clients so far */
+    struct tls *tlsconf;
     struct list *clients;
     struct server *servers;
 };
@@ -150,6 +150,9 @@ struct tls {
     char *certkeyfile;
     char *certkeypwd;
     uint8_t crlcheck;
+    uint32_t cacheexpiry;
+    uint32_t tlsexpiry;
+    uint32_t dtlsexpiry;
     SSL_CTX *tlsctx;
     SSL_CTX *dtlsctx;
 };
@@ -212,3 +215,4 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf);
 void replyh(struct server *server, unsigned char *buf);
 int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src);
 int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only);
+SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
