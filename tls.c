@@ -324,7 +324,7 @@ void tlsserverrd(struct client *client) {
 void *tlsservernew(void *arg) {
     int s;
     struct sockaddr_storage from;
-    socklent_t fromlen = sizeof(from);
+    socklen_t fromlen = sizeof(from);
     struct clsrvconf *conf;
     struct list_node *cur = NULL;
     SSL *ssl = NULL;
