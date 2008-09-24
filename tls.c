@@ -318,7 +318,6 @@ void tlsserverrd(struct client *client) {
     pthread_mutex_unlock(&client->replyq->mutex);
     debug(DBG_DBG, "tlsserverrd: waiting for writer to end");
     pthread_join(tlsserverwrth, NULL);
-    removeclientrqs(client);
     debug(DBG_DBG, "tlsserverrd: reader for %s exiting", addr2string(client->addr));
 }
 

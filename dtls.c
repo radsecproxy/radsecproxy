@@ -286,7 +286,6 @@ void dtlsserverrd(struct client *client) {
     pthread_mutex_unlock(&client->replyq->mutex);
     debug(DBG_DBG, "dtlsserverrd: waiting for writer to end");
     pthread_join(dtlsserverwrth, NULL);
-    removeclientrqs(client);
     debug(DBG_DBG, "dtlsserverrd: reader for %s exiting", addr2string(client->addr));
 }
 

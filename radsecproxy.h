@@ -48,9 +48,11 @@ struct request {
     uint8_t *buf, *replybuf;
     struct radmsg *msg;
     struct client *from;
+    struct server *to;
     char *origusername;
     uint8_t rqid;
     uint8_t rqauth[16];
+    uint8_t newid;
     int udpsock; /* only for UDP */
     uint16_t udpport; /* only for UDP */
 };
@@ -203,9 +205,7 @@ struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf, uint8_t lock);
 void removeclient(struct client *client);
-void removeclientrqs(struct client *client);
 struct queue *newqueue();
-void removequeue(struct queue *q);
 void freebios(struct queue *q);
 struct request *newrequest();
 void freerq(struct request *rq);
@@ -213,6 +213,4 @@ int radsrv(struct request *rq);
 X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);
 void replyh(struct server *server, unsigned char *buf);
-int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src);
-int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only);
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);

@@ -258,7 +258,6 @@ void tcpserverrd(struct client *client) {
     pthread_mutex_unlock(&client->replyq->mutex);
     debug(DBG_DBG, "tcpserverrd: waiting for writer to end");
     pthread_join(tcpserverwrth, NULL);
-    removeclientrqs(client);
     debug(DBG_DBG, "tcpserverrd: reader for %s exiting", addr2string(client->addr));
 }
 void *tcpservernew(void *arg) {

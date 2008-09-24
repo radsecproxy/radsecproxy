@@ -390,52 +390,6 @@ void freeclsrvres(struct clsrvconf *res) {
     free(res);
 }
 
-int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
-    int s, on = 1;
-    struct addrinfo *res;
-
-    for (res = addrinfo; res; res = res->ai_next) {
-	if (family != AF_UNSPEC && family != res->ai_family)
-	    continue;
-	s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-	if (s < 0) {
-	    debug(DBG_WARN, "bindtoaddr: socket failed");
-	    continue;
-	}
-	if (reuse)
-	    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-#ifdef IPV6_V6ONLY
-	if (v6only)
-	    setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
-#endif
-	if (!bind(s, res->ai_addr, res->ai_addrlen))
-	    return s;
-	debug(DBG_WARN, "bindtoaddr: bind failed");
-	close(s);
-    }
-    return -1;
-}
-	
-int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src) {
-    int s;
-    struct addrinfo *res;
-
-    s = -1;
-    for (res = addrinfo; res; res = res->ai_next) {
-	s = bindtoaddr(src, res->ai_family, 1, 1);
-        if (s < 0) {
-            debug(DBG_WARN, "connecttoserver: socket failed");
-            continue;
-        }
-        if (connect(s, res->ai_addr, res->ai_addrlen) == 0)
-            break;
-        debug(DBG_WARN, "connecttoserver: connect failed");
-        close(s);
-        s = -1;
-    }
-    return s;
-}	  
-
 /* returns 1 if the len first bits are equal, else 0 */
 int prefixmatch(void *a1, void *a2, uint8_t len) {
     static uint8_t mask[] = { 0, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe };
@@ -590,6 +544,24 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
     return new;
 }
 
+void removeclientrqs(struct client *client) {
+    struct request *rq;
+    struct rqout *rqout;
+    int i;
+
+    for (i = 0; i < MAX_REQUESTS; i++) {
+	rq = client->rqs[i];
+	if (!rq)
+	    continue;
+	rqout = rq->to->requests + rq->newid;
+	pthread_mutex_lock(rqout->lock);
+	if (rqout->rq == rq) /* still pointing to our request */
+	    freerqoutdata(rqout);
+	pthread_mutex_unlock(rqout->lock);				
+	freerq(rq);
+    }
+}
+
 void removeclient(struct client *client) {
     struct clsrvconf *conf;
     
@@ -598,32 +570,13 @@ void removeclient(struct client *client) {
     conf = client->conf;
     pthread_mutex_lock(conf->lock);
     if (conf->clients) {
+	removeclientrqs(client);
 	removequeue(client->replyq);
 	list_removedata(conf->clients, client);
 	free(client->addr);
 	free(client);
     }
     pthread_mutex_unlock(conf->lock);
-}
-
-void removeclientrqs(struct client *client) {
-    struct list_node *entry;
-    struct server *server;
-    struct rqout *rqout;
-    int i;
-    
-    for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
-	server = ((struct clsrvconf *)entry->data)->servers;
-	if (!server)
-	    continue;
-	for (i = 0; i < MAX_REQUESTS; i++) {
-	    rqout = server->requests + i;
-	    pthread_mutex_lock(rqout->lock);
-	    if (rqout->rq && rqout->rq->from == client)
-		freerqoutdata(rqout);
-	    pthread_mutex_unlock(rqout->lock);
-	}
-    }
 }
 
 void freeserver(struct server *server, uint8_t destroymutex) {
@@ -955,8 +908,9 @@ void freerqoutdata(struct rqout *rqout) {
     memset(&rqout->expiry, 0, sizeof(struct timeval));
 }
 
-void sendrq(struct server *to, struct request *rq) {
+void sendrq(struct request *rq) {
     int i, start;
+    struct server *to = rq->to;
     
     start = to->conf->statusserver ? 1 : 0;
     pthread_mutex_lock(&to->newrq_mutex);
@@ -995,6 +949,7 @@ void sendrq(struct server *to, struct request *rq) {
 	    }
 	}
     }
+    rq->newid = (uint8_t)i;
     rq->msg->id = (uint8_t)i;
     rq->buf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
     if (!rq->buf) {
@@ -1884,7 +1839,8 @@ int radsrv(struct request *rq) {
 	goto rmclrqexit;
     
     free(userascii);
-    sendrq(to, rq);
+    rq->to = to;
+    sendrq(rq);
     return 1;
     
  rmclrqexit:
@@ -2193,8 +2149,9 @@ void *clientwr(void *arg) {
 		laststatsrv = now;
 		statsrvrq = createstatsrvrq();
 		if (statsrvrq) {
+		    statsrvrq->to = server;
 		    debug(DBG_DBG, "clientwr: sending status server to %s", conf->host);
-		    sendrq(server, statsrvrq);
+		    sendrq(statsrvrq);
 		}
 	    }
 	}

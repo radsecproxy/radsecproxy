@@ -18,3 +18,5 @@ void port_set(struct sockaddr *sa, uint16_t port);
 
 void printfchars(char *prefixfmt, char *prefix, char *charfmt, char *chars, int len);
 int connectport(int type, char *host, char *port);
+int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only);
+int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src);
