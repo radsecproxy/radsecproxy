@@ -38,7 +38,7 @@
  * May segfault when dtls connections go down? More testing needed
  * Need to remove UDP clients when no activity for a while...
  * Remove expired stuff from clients request list?
- * We are not removing client requests from dynamic servers, see removeclientrqs()
+ * Need refcounting for configs? Bad if remove dynsrvconf while in radsrv()
  * Multiple outgoing connections if not enough IDs? (multiple servers per conf?)
  * Useful for TCP accounting? Now we require separate server config for alt port
  */
