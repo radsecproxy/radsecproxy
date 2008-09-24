@@ -364,7 +364,7 @@ uint8_t hexdigit2int(char d) {
 void unhex(char *s) {
     char *t;
     for (t = s; *t; s++) {
-	if (*t == '%' && isxdigit(t[1]) && isxdigit(t[2])) {
+	if (*t == '%' && isxdigit((int)t[1]) && isxdigit((int)t[2])) {
 	    *s = 16 * hexdigit2int(t[1]) + hexdigit2int(t[2]);
 	    t += 3;
 	} else
