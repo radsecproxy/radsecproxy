@@ -263,7 +263,7 @@ void tcpserverrd(struct client *client) {
 void *tcpservernew(void *arg) {
     int s;
     struct sockaddr_storage from;
-    size_t fromlen = sizeof(from);
+    socklen_t fromlen = sizeof(from);
     struct clsrvconf *conf;
     struct client *client;
 
@@ -297,7 +297,7 @@ void *tcplistener(void *arg) {
     pthread_t tcpserverth;
     int s, *sp = (int *)arg;
     struct sockaddr_storage from;
-    size_t fromlen = sizeof(from);
+    socklen_t fromlen = sizeof(from);
 
     listen(*sp, 0);
 
