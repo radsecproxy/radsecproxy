@@ -3309,7 +3309,8 @@ void conftls_cb(struct gconffile **cf, char *block, char *opt, char *val) {
     conf->name = stringcopy(val, 0);
     if (!conf->name || !list_push(tlsconfs, conf))
         debugx(1, DBG_ERR, "conftls_cb: malloc failed");
-    
+    if (!tlsgetctx(conf))
+	debug(DBG_ERR, "conftls_cb: error creating ctx for TLS block %s", val);
     debug(DBG_DBG, "conftls_cb: added TLS block %s", val);
 }
 
