@@ -2610,53 +2610,41 @@ int tlslistener() {
     return 0;
 }
 
-SSL_CTX *tlscreatectx(struct tls *conf) {
-    SSL_CTX *ctx = NULL;
+void tlsinit() {
+    int i;
+    time_t t;
+    pid_t pid;
+    
+    ssl_locks = calloc(CRYPTO_num_locks(), sizeof(pthread_mutex_t));
+    ssl_lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
+    for (i = 0; i < CRYPTO_num_locks(); i++) {
+	ssl_lock_count[i] = 0;
+	pthread_mutex_init(&ssl_locks[i], NULL);
+    }
+    CRYPTO_set_id_callback(ssl_thread_id);
+    CRYPTO_set_locking_callback(ssl_locking_callback);
+
+    SSL_load_error_strings();
+    SSL_library_init();
+
+    while (!RAND_status()) {
+	t = time(NULL);
+	pid = getpid();
+	RAND_seed((unsigned char *)&t, sizeof(time_t));
+	RAND_seed((unsigned char *)&pid, sizeof(pid));
+    }
+}
+
+int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     STACK_OF(X509_NAME) *calist;
     X509_STORE *x509_s;
-    int i;
     unsigned long error;
     
-    if (!ssl_locks) {
-	ssl_locks = calloc(CRYPTO_num_locks(), sizeof(pthread_mutex_t));
-	ssl_lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
-	for (i = 0; i < CRYPTO_num_locks(); i++) {
-	    ssl_lock_count[i] = 0;
-	    pthread_mutex_init(&ssl_locks[i], NULL);
-	}
-	CRYPTO_set_id_callback(ssl_thread_id);
-	CRYPTO_set_locking_callback(ssl_locking_callback);
-
-	SSL_load_error_strings();
-	SSL_library_init();
-
-	while (!RAND_status()) {
-	    time_t t = time(NULL);
-	    pid_t pid = getpid();
-	    RAND_seed((unsigned char *)&t, sizeof(time_t));
-	    RAND_seed((unsigned char *)&pid, sizeof(pid));
-	}
-    }
-
-    ctx = SSL_CTX_new(TLSv1_method());
-    if (!ctx) {
-        debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
-        return NULL;
-    }
-
-    if (conf->certkeypwd) {
-	SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
-	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
-    }
-    if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
-	!SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
-	!SSL_CTX_check_private_key(ctx) ||
-	!SSL_CTX_load_verify_locations(ctx, conf->cacertfile, conf->cacertpath)) {
+    if (!SSL_CTX_load_verify_locations(ctx, conf->cacertfile, conf->cacertpath)) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-	debug(DBG_ERR, "tlscreatectx: error initialising SSL/TLS in TLS context %s", conf->name);
-	SSL_CTX_free(ctx);
-        return NULL;
+	debug(DBG_ERR, "tlsaddcacrl: Error updating TLS context %s", conf->name);
+	return 0;
     }
 
     calist = conf->cacertfile ? SSL_load_client_CA_file(conf->cacertfile) : NULL;
@@ -2673,9 +2661,8 @@ SSL_CTX *tlscreatectx(struct tls *conf) {
     if (!calist) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-	debug(DBG_ERR, "tlscreatectx: error initialising SSL/TLS in TLS context %s", conf->name);
-	SSL_CTX_free(ctx);
-        return NULL;
+	debug(DBG_ERR, "tlsaddcacrl: Error adding CA subjects in TLS context %s", conf->name);
+        return 0;
     }
     ERR_clear_error(); /* add_dir_cert_subj returns errors on success */
     SSL_CTX_set_client_CA_list(ctx, calist);
@@ -2686,6 +2673,42 @@ SSL_CTX *tlscreatectx(struct tls *conf) {
     if (conf->crlcheck) {
 	x509_s = SSL_CTX_get_cert_store(ctx);
 	X509_STORE_set_flags(x509_s, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+    }
+
+    debug(DBG_DBG, "tlsaddcacrl: updated TLS context %s", conf->name);
+    return 1;
+}
+    
+SSL_CTX *tlscreatectx(struct tls *conf) {
+    SSL_CTX *ctx = NULL;
+    unsigned long error;
+    
+    if (!ssl_locks)
+	tlsinit();
+
+    ctx = SSL_CTX_new(TLSv1_method());
+    if (!ctx) {
+        debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
+        return NULL;
+    }
+
+    if (conf->certkeypwd) {
+	SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
+	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
+    }
+    if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
+	!SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+	!SSL_CTX_check_private_key(ctx)) {
+	while ((error = ERR_get_error()))
+	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+	debug(DBG_ERR, "tlscreatectx: error initialising SSL/TLS in TLS context %s", conf->name);
+	SSL_CTX_free(ctx);
+        return NULL;
+    }
+
+    if (!tlsaddcacrl(ctx, conf)) {
+	SSL_CTX_free(ctx);
+        return NULL;
     }
 
     debug(DBG_DBG, "tlscreatectx: created tls context %s", conf->name);
@@ -2718,8 +2741,7 @@ SSL_CTX *tlsgetctx(struct tls *t) {
     if (t->expiry && t->ctx) {
 	if (t->expiry < now.tv_sec) {
 	    t->expiry = now.tv_sec + t->cacheexpiry;
-	    SSL_CTX_free(t->ctx);
-	    return t->ctx = tlscreatectx(t);
+	    tlsaddcacrl(t->ctx, t);
 	}
     }
     if (!t->ctx) {
