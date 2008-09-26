@@ -897,6 +897,11 @@ unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
     return NULL;
 }
 
+struct request *newrqref(struct request *rq) {
+    rq->refcount++;
+    return rq;
+}
+
 void freerq(struct request *rq) {
     if (!rq)
 	return;
@@ -1648,8 +1653,7 @@ void respond(struct request *rq, uint8_t code, char *message) {
     radmsg_free(rq->msg);
     rq->msg = msg;
     debug(DBG_DBG, "respond: sending %s to %s", radmsgtype2string(msg->code), rq->from->conf->host);
-    rq->refcount++;
-    sendreply(rq);
+    sendreply(newrqref(rq));
 }
 
 struct clsrvconf *choosesrvconf(struct list *srvconfs) {
@@ -1725,8 +1729,7 @@ int addclientrq(struct request *rq) {
 	    if (now.tv_sec - r->created.tv_sec < r->from->conf->dupinterval) {
 		if (r->replybuf) {
 		    debug(DBG_INFO, "addclientrq: already sent reply to request with id %d from %s, resending", rq->rqid, addr2string(r->from->addr));
-		    r->refcount++;
-		    sendreply(r);
+		    sendreply(newrqref(r));
 		} else
 		    debug(DBG_INFO, "addclientrq: already got request with id %d from %s, ignoring", rq->rqid, addr2string(r->from->addr));
 		return 0;
@@ -1734,8 +1737,7 @@ int addclientrq(struct request *rq) {
 	}
 	freerq(r);
     }
-    rq->refcount++;
-    rq->from->rqs[rq->rqid] = rq;
+    rq->from->rqs[rq->rqid] = newrqref(rq);
     return 1;
 }
 
@@ -2001,8 +2003,7 @@ void replyh(struct server *server, unsigned char *buf) {
     debug(DBG_INFO, "replyh: passing reply to client %s", from->conf->name);
     radmsg_free(rqout->rq->msg);
     rqout->rq->msg = msg;
-    rqout->rq->refcount++;
-    sendreply(rqout->rq);
+    sendreply(newrqref(rqout->rq));
     freerqoutdata(rqout);
     pthread_mutex_unlock(rqout->lock);
     return;
