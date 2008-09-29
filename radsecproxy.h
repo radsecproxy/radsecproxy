@@ -44,7 +44,7 @@ struct options {
 
 struct request {
     struct timeval created;
-    uint8_t refcount;
+    uint32_t refcount;
     uint8_t *buf, *replybuf;
     struct radmsg *msg;
     struct client *from;
@@ -138,7 +138,9 @@ struct realm {
     char *message;
     uint8_t accresp;
     regex_t regex;
-    pthread_mutex_t subrealms_mutex;
+    uint32_t refcount;
+    pthread_mutex_t mutex;
+    struct realm *parent;
     struct list *subrealms;
     struct list *srvconfs;
     struct list *accsrvconfs;

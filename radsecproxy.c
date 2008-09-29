@@ -92,7 +92,7 @@ extern int optind;
 extern char *optarg;
 
 /* minimum required declarations to avoid reordering code */
-void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id);
+struct realm *adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id);
 int dynamicconfig(struct server *server);
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 void freerealm(struct realm *realm);
@@ -898,7 +898,8 @@ unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
 }
 
 struct request *newrqref(struct request *rq) {
-    rq->refcount++;
+    if (rq)
+	rq->refcount++;
     return rq;
 }
 
@@ -1244,19 +1245,30 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     return 1;
 }
 
+struct realm *newrealmref(struct realm *r) {
+    if (r)
+	r->refcount++;
+    return r;
+}
+
+/* returns with lock on realm */
 struct realm *id2realm(struct list *realmlist, char *id) {
     struct list_node *entry;
-    struct realm *realm, *subrealm = NULL;
+    struct realm *realm, *subrealm;
 
     /* need to do locking for subrealms and check subrealm timers */
     for (entry = list_first(realmlist); entry; entry = list_next(entry)) {
 	realm = (struct realm *)entry->data;
 	if (!regexec(&realm->regex, id, 0, NULL, 0)) {
-	    pthread_mutex_lock(&realm->subrealms_mutex);
-	    if (realm->subrealms)
+	    pthread_mutex_lock(&realm->mutex);
+	    if (realm->subrealms) {
 		subrealm = id2realm(realm->subrealms, id);
-	    pthread_mutex_unlock(&realm->subrealms_mutex);
-	    return subrealm ? subrealm : realm;
+		if (subrealm) {
+		    pthread_mutex_unlock(&realm->mutex);
+		    return subrealm;
+		}
+	    }
+	    return newrealmref(realm);
 	}
     }
     return NULL;
@@ -1264,13 +1276,18 @@ struct realm *id2realm(struct list *realmlist, char *id) {
 
 /* helper function, only used by removeserversubrealms() */
 void _internal_removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
-    struct list_node *entry;
+    struct list_node *entry, *entry2;
     struct realm *realm;
-    
+
     for (entry = list_first(realmlist); entry;) {
-	realm = (struct realm *)entry->data;
+	realm = newrealmref((struct realm *)entry->data);
+	pthread_mutex_lock(&realm->mutex);
 	entry = list_next(entry);
+
 	if (realm->srvconfs) {
+	    for (entry2 = list_first(realm->srvconfs); entry2; entry2 = list_next(entry2))
+		if (entry2->data == srv)
+		    freerealm(realm);
 	    list_removedata(realm->srvconfs, srv);
 	    if (!list_first(realm->srvconfs)) {
 		list_destroy(realm->srvconfs);
@@ -1278,6 +1295,9 @@ void _internal_removeserversubrealms(struct list *realmlist, struct clsrvconf *s
 	    }
 	}
 	if (realm->accsrvconfs) {
+	    for (entry2 = list_first(realm->accsrvconfs); entry2; entry2 = list_next(entry2))
+		if (entry2->data == srv)
+		    freerealm(realm);
 	    list_removedata(realm->accsrvconfs, srv);
 	    if (!list_first(realm->accsrvconfs)) {
 		list_destroy(realm->accsrvconfs);
@@ -1286,10 +1306,11 @@ void _internal_removeserversubrealms(struct list *realmlist, struct clsrvconf *s
 	}
 
 	/* remove subrealm if no servers */
-	if (!realm->srvconfs && !realm->accsrvconfs) {
+	if (!realm->srvconfs && !realm->accsrvconfs)
 	    list_removedata(realmlist, realm);
-	    freerealm(realm);
-	}
+
+	pthread_mutex_unlock(&realm->mutex);
+	freerealm(realm);
     }
 }
 
@@ -1299,7 +1320,7 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
     
     for (entry = list_first(realmlist); entry; entry = list_next(entry)) {
 	realm = (struct realm *)entry->data;
-	pthread_mutex_lock(&realm->subrealms_mutex);
+	pthread_mutex_lock(&realm->mutex);
 	if (realm->subrealms) {
 	    _internal_removeserversubrealms(realm->subrealms, srv);
 	    if (!list_first(realm->subrealms)) {
@@ -1307,7 +1328,7 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
 		realm->subrealms = NULL;
 	    }
 	}
-	pthread_mutex_unlock(&realm->subrealms_mutex);
+	pthread_mutex_unlock(&realm->mutex);
     }
 }
 			
@@ -1680,12 +1701,15 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
     return best ? best : first;
 }
 
+/* returns with lock on realm, protects from server changes while in use by radsrv/sendrq */
 struct server *findserver(struct realm **realm, struct tlv *username, uint8_t acc) {
     struct clsrvconf *srvconf;
+    struct realm *subrealm;
     char *id = (char *)tlv2str(username);
     
     if (!id)
 	return NULL;
+    /* returns with lock on realm */
     *realm = id2realm(realms, id);
     if (!*realm) {
 	free(id);
@@ -1697,8 +1721,15 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
 	free(id);
 	return NULL;
     }
-    if (!acc && !srvconf->servers)
-	adddynamicrealmserver(*realm, srvconf, id);
+    if (!acc && !(*realm)->parent && !srvconf->servers) {
+	subrealm = adddynamicrealmserver(*realm, srvconf, id);
+	if (subrealm) {
+	    pthread_mutex_lock(&subrealm->mutex);
+	    pthread_mutex_unlock(&(*realm)->mutex);
+	    freerealm(*realm);
+	    *realm = subrealm;
+	}
+    }
     free(id);
     return srvconf->servers;
 }
@@ -1813,6 +1844,7 @@ int radsrv(struct request *rq) {
 	goto rmclrqexit;
     debug(DBG_DBG, "%s with username: %s", radmsgtype2string(msg->code), userascii);
 
+    /* will return with lock on the realm */
     to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
     if (!realm) {
 	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
@@ -1867,6 +1899,8 @@ int radsrv(struct request *rq) {
     free(userascii);
     rq->to = to;
     sendrq(rq);
+    pthread_mutex_unlock(&realm->mutex);
+    freerealm(realm);
     return 1;
     
  rmclrqexit:
@@ -1874,6 +1908,10 @@ int radsrv(struct request *rq) {
  exit:
     freerq(rq);
     free(userascii);
+    if (realm) {
+	pthread_mutex_unlock(&realm->mutex);
+	freerealm(realm);
+    }
     return 1;
 }
 
@@ -2483,22 +2521,21 @@ struct list *addsrvconfs(char *value, char **names) {
 void freerealm(struct realm *realm) {
     if (!realm)
 	return;
+    debug(DBG_DBG, "freerealm: called with refcount %d", realm->refcount);
+    if (--realm->refcount)
+	return;
+
     free(realm->name);
     free(realm->message);
     regfree(&realm->regex);
-    pthread_mutex_destroy(&realm->subrealms_mutex);
-    if (realm->subrealms)
-	list_destroy(realm->subrealms);
-    if (realm->srvconfs) {
-	/* emptying list without freeing data */
-	while (list_shift(realm->srvconfs));
-	list_destroy(realm->srvconfs);
-    }
-    if (realm->accsrvconfs) {
-	/* emptying list without freeing data */
-	while (list_shift(realm->accsrvconfs));
-	list_destroy(realm->accsrvconfs);
-    }
+    pthread_mutex_destroy(&realm->mutex);
+    /* if refcount == 0, all subrealms gone */
+    list_destroy(realm->subrealms);
+    /* if refcount == 0, all srvconfs gone */
+    list_destroy(realm->srvconfs);
+    /* if refcount == 0, all accsrvconfs gone */
+    list_destroy(realm->accsrvconfs);
+    freerealm(realm->parent);
     free(realm);
 }
 
@@ -2546,7 +2583,7 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
     }
     memset(realm, 0, sizeof(struct realm));
     
-    if (pthread_mutex_init(&realm->subrealms_mutex, NULL)) {
+    if (pthread_mutex_init(&realm->mutex, NULL)) {
 	debug(DBG_ERR, "mutex init failed");
 	free(realm);
 	realm = NULL;
@@ -2584,7 +2621,7 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
 
     if (!list_push(realmlist, realm)) {
 	debug(DBG_ERR, "malloc failed");
-	pthread_mutex_destroy(&realm->subrealms_mutex);
+	pthread_mutex_destroy(&realm->mutex);
 	goto errexit;
     }
     
@@ -2592,52 +2629,55 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
     goto exit;
 
  errexit:
+    while (list_shift(realm->srvconfs));
+    while (list_shift(realm->accsrvconfs));
     freerealm(realm);
     realm = NULL;
-    
  exit:
     free(regex);
     if (servers) {
+	if (realm)
+	    for (n = 0; servers[n]; n++)
+		newrealmref(realm);
 	for (n = 0; servers[n]; n++)
 	    free(servers[n]);
 	free(servers);
     }
     if (accservers) {
+	if (realm)
+	    for (n = 0; accservers[n]; n++)
+		newrealmref(realm);
 	for (n = 0; accservers[n]; n++)
 	    free(accservers[n]);
 	free(accservers);
     }
-    return realm;
+    return newrealmref(realm);
 }
 
-void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id) {
+struct realm *adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id) {
     struct clsrvconf *srvconf;
     struct realm *newrealm = NULL;
     char *realmname, *s;
     pthread_t clientth;
     
     if (!conf->dynamiclookupcommand)
-	return;
+	return NULL;
 
     /* create dynamic for the realm (string after last @, exit if nothing after @ */
     realmname = strrchr(id, '@');
     if (!realmname)
-	return;
+	return NULL;
     realmname++;
     if (!*realmname)
-	return;
+	return NULL;
     for (s = realmname; *s; s++)
 	if (*s != '.' && *s != '-' && !isalnum((int)*s))
-	    return;
+	    return NULL;
     
-    pthread_mutex_lock(&realm->subrealms_mutex);
-    /* exit if we now already got a matching subrealm */
-    if (id2realm(realm->subrealms, id))
-	goto exit;
     srvconf = malloc(sizeof(struct clsrvconf));
     if (!srvconf) {
 	debug(DBG_ERR, "malloc failed");
-	goto exit;
+	return NULL;
     }
     *srvconf = *conf;
     if (!addserver(srvconf))
@@ -2650,27 +2690,35 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
     newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, NULL, 0);
     if (!newrealm)
 	goto errexit;
-
+    newrealm->parent = newrealmref(realm);
+    
     /* add server and accserver to newrealm */
     newrealm->srvconfs = list_create();
     if (!newrealm->srvconfs || !list_push(newrealm->srvconfs, srvconf)) {
 	debug(DBG_ERR, "malloc failed");
 	goto errexit;
     }
+    newrealmref(newrealm);
     newrealm->accsrvconfs = list_create();
     if (!newrealm->accsrvconfs || !list_push(newrealm->accsrvconfs, srvconf)) {
 	debug(DBG_ERR, "malloc failed");
+	list_shift(realm->srvconfs);
+	freerealm(newrealm);
 	goto errexit;
     }
+    newrealmref(newrealm);
 
     srvconf->servers->dynamiclookuparg = stringcopy(realmname, 0);
-
     if (pthread_create(&clientth, NULL, clientwr, (void *)(srvconf->servers))) {
 	debug(DBG_ERR, "pthread_create failed");
+	list_shift(realm->srvconfs);
+	freerealm(newrealm);
+	list_shift(realm->accsrvconfs);
+	freerealm(newrealm);
 	goto errexit;
     }
     pthread_detach(clientth);
-    goto exit;
+    return newrealm;
     
  errexit:
     if (newrealm) {
@@ -2684,9 +2732,7 @@ void adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id
     freeserver(srvconf->servers, 1);
     free(srvconf);
     debug(DBG_ERR, "failed to create dynamic server");
-
- exit:
-    pthread_mutex_unlock(&realm->subrealms_mutex);
+    return NULL;
 }
 
 int dynamicconfig(struct server *server) {
