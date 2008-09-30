@@ -36,7 +36,6 @@
 
 /* Bugs:
  * May segfault when dtls connections go down? More testing needed
- * Need to remove UDP clients when no activity for a while...
  * Remove expired stuff from clients request list?
  * Multiple outgoing connections if not enough IDs? (multiple servers per conf?)
  * Useful for TCP accounting? Now we require separate server config for alt port
@@ -574,13 +573,10 @@ void removeclientrqs(struct client *client) {
     removeclientrqs_sendrq_freeserver_lock(0);
 }
 
-void removeclient(struct client *client) {
+void removelockedclient(struct client *client) {
     struct clsrvconf *conf;
     
-    if (!client)
-	return;
     conf = client->conf;
-    pthread_mutex_lock(conf->lock);
     if (conf->clients) {
 	removeclientrqs(client);
 	removequeue(client->replyq);
@@ -588,6 +584,17 @@ void removeclient(struct client *client) {
 	free(client->addr);
 	free(client);
     }
+}
+
+void removeclient(struct client *client) {
+    struct clsrvconf *conf;
+    
+    if (!client)
+	return;
+
+    conf = client->conf;
+    pthread_mutex_lock(conf->lock);
+    removelockedclient(client);
     pthread_mutex_unlock(conf->lock);
 }
 
@@ -2037,7 +2044,7 @@ void replyh(struct server *server, unsigned char *buf) {
 	goto errunlock;
     }
 
-    debug(DBG_INFO, "replyh: passing reply to client %s", from->conf->name);
+    debug(DBG_INFO, "replyh: passing reply to client %s (%s)", from->conf->name, addr2string(from->addr));
     radmsg_free(rqout->rq->msg);
     rqout->rq->msg = msg;
     sendreply(newrqref(rqout->rq));

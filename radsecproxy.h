@@ -110,6 +110,7 @@ struct client {
     struct queue *replyq;
     struct queue *rbios; /* for dtls */
     struct sockaddr *addr;
+    time_t expiry; /* for udp */
 };
 
 struct server {
@@ -206,6 +207,7 @@ struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_n
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf, uint8_t lock);
+void removelockedclient(struct client *client);
 void removeclient(struct client *client);
 struct queue *newqueue();
 void freebios(struct queue *q);

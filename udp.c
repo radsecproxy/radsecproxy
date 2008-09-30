@@ -35,6 +35,20 @@ static int client4_sock = -1;
 static int client6_sock = -1;
 static struct queue *server_replyq = NULL;
 
+void removeudpclientfromreplyq(struct client *c) {
+    struct list_node *n;
+    struct request *r;
+    
+    /* lock the common queue and remove replies for this client */
+    pthread_mutex_lock(&c->replyq->mutex);
+    for (n = list_first(c->replyq->entries); n; n = list_next(n)) {
+	r = (struct request *)n->data;
+	if (r->from == c)
+	    r->from = NULL;
+    }
+    pthread_mutex_unlock(&c->replyq->mutex);
+}	
+
 /* exactly one of client and server must be non-NULL */
 /* return who we received from in *client or *server */
 /* return from in sa if not NULL */
@@ -48,6 +62,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     struct list_node *node;
     fd_set readfds;
     struct client *c = NULL;
+    struct timeval now;
     
     for (;;) {
 	if (rad) {
@@ -103,13 +118,28 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
 
 	if (client) {
+	    *client = NULL;
 	    pthread_mutex_lock(p->lock);
-	    for (node = list_first(p->clients); node; node = list_next(node)) {
+	    for (node = list_first(p->clients); node;) {
 		c = (struct client *)node->data;
-		if (s == c->sock && addr_equal((struct sockaddr *)&from, c->addr))
-		    break;
+		node = list_next(node);
+		if (s != c->sock)
+		    continue;
+		gettimeofday(&now, NULL);
+		if (!*client && addr_equal((struct sockaddr *)&from, c->addr)) {
+		    c->expiry = now.tv_sec + 60;
+		    *client = c;
+		}
+		if (c->expiry >= now.tv_sec)
+		    continue;
+		
+		debug(DBG_DBG, "radudpget: removing expired client (%s)", addr2string(c->addr));
+		removeudpclientfromreplyq(c);
+		c->replyq = NULL; /* stop removeclient() from removing common udp replyq */
+		removelockedclient(c);
+		break;
 	    }
-	    if (!node) {
+	    if (!*client) {
 		fromcopy = addr_copy((struct sockaddr *)&from);
 		if (!fromcopy) {
 		    pthread_mutex_unlock(p->lock);
@@ -123,8 +153,10 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 		}
 		c->sock = s;
 		c->addr = fromcopy;
+		gettimeofday(&now, NULL);
+		c->expiry = now.tv_sec + 60;
+		*client = c;
 	    }
-	    *client = c;
 	    pthread_mutex_unlock(p->lock);
 	} else if (server)
 	    *server = p->servers;
@@ -202,12 +234,15 @@ void *udpserverwr(void *arg) {
 	    pthread_cond_wait(&replyq->cond, &replyq->mutex);
 	    debug(DBG_DBG, "udp server writer, got signal");
 	}
+	/* do this with lock, udpserverrd may set from = NULL if from expires */
+	if (reply->from)
+	    memcpy(&to, reply->from->addr, SOCKADDRP_SIZE(reply->from->addr));
 	pthread_mutex_unlock(&replyq->mutex);
-
-	memcpy(&to, reply->from->addr, SOCKADDRP_SIZE(reply->from->addr));
-	port_set((struct sockaddr *)&to, reply->udpport);
-	if (sendto(reply->udpsock, reply->replybuf, RADLEN(reply->replybuf), 0, (struct sockaddr *)&to, SOCKADDR_SIZE(to)) < 0)
-	    debug(DBG_WARN, "udpserverwr: send failed");
+	if (reply->from) {
+	    port_set((struct sockaddr *)&to, reply->udpport);
+	    if (sendto(reply->udpsock, reply->replybuf, RADLEN(reply->replybuf), 0, (struct sockaddr *)&to, SOCKADDR_SIZE(to)) < 0)
+		debug(DBG_WARN, "udpserverwr: send failed");
+	}
 	debug(DBG_DBG, "udpserverwr: refcount %d", reply->refcount);
 	freerq(reply);
     }
