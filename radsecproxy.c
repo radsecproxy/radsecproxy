@@ -1704,22 +1704,20 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
 struct server *findserver(struct realm **realm, struct tlv *username, uint8_t acc) {
     struct clsrvconf *srvconf;
     struct realm *subrealm;
+    struct server *server = NULL;
     char *id = (char *)tlv2str(username);
     
     if (!id)
 	return NULL;
     /* returns with lock on realm */
     *realm = id2realm(realms, id);
-    if (!*realm) {
-	free(id);
-	return NULL;
-    }
+    if (!*realm)
+	goto exit;
     debug(DBG_DBG, "found matching realm: %s", (*realm)->name);
     srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
-    if (!srvconf) {
-	free(id);
-	return NULL;
-    }
+    if (!srvconf)
+	goto exit;
+    server = srvconf->servers;
     if (!acc && !(*realm)->parent && !srvconf->servers) {
 	subrealm = adddynamicrealmserver(*realm, srvconf, id);
 	if (subrealm) {
@@ -1727,10 +1725,12 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
 	    pthread_mutex_unlock(&(*realm)->mutex);
 	    freerealm(*realm);
 	    *realm = subrealm;
+	    server = ((struct clsrvconf *)subrealm->srvconfs->first->data)->servers;
 	}
     }
+ exit:    
     free(id);
-    return srvconf->servers;
+    return server;
 }
 
 
