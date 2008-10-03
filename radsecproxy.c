@@ -69,7 +69,7 @@ static int client_udp_count = 0;
 static int client_tls_count = 0;
 
 static struct addrinfo *srcudpres = NULL;
-static struct addrinfo *srctcpres = NULL;
+static struct addrinfo *srctlsres = NULL;
 
 static struct replyq *udp_server_replyq = NULL;
 static int udp_server_sock = -1;
@@ -316,7 +316,7 @@ int connecttcp(struct addrinfo *addrinfo) {
 
     s = -1;
     for (res = addrinfo; res; res = res->ai_next) {
-	s = bindtoaddr(srctcpres, res->ai_family, 1, 1);
+	s = bindtoaddr(srctlsres, res->ai_family, 1, 1);
         if (s < 0) {
             debug(DBG_WARN, "connecttoserver: socket failed");
             continue;
@@ -503,9 +503,9 @@ void addserver(struct clsrvconf *conf) {
 	}
 	
     } else {
-	if (!srctcpres) {
-	    res = resolve_hostport('T', options.sourcetcp, NULL);
-	    srctcpres = res->addrinfo;
+	if (!srctlsres) {
+	    res = resolve_hostport('T', options.sourcetls, NULL);
+	    srctlsres = res->addrinfo;
 	    res->addrinfo = NULL;
 	    freeclsrvres(res);
 	}
@@ -2585,7 +2585,7 @@ int tlslistener() {
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *listenres;
 
-    listenres = resolve_hostport('T', options.listentcp, DEFAULT_TLS_PORT);
+    listenres = resolve_hostport('T', options.listentls, DEFAULT_TLS_PORT);
     if ((s = bindtoaddr(listenres->addrinfo, AF_UNSPEC, 1, 0)) < 0)
 	debugx(1, DBG_ERR, "tlslistener: socket/bind failed");
 
@@ -3353,6 +3353,7 @@ void confrewrite_cb(struct gconffile **cf, char *block, char *opt, char *val) {
 
 void getmainconfig(const char *configfile) {
     long int loglevel = LONG_MIN;
+    char *listentlsalias = NULL, *sourcetlsalias = NULL;
     struct gconffile *cfs;
 
     cfs = openconfigfile(configfile);
@@ -3380,10 +3381,12 @@ void getmainconfig(const char *configfile) {
  
     getgenericconfig(&cfs, NULL,
 		     "ListenUDP", CONF_STR, &options.listenudp,
-		     "ListenTCP", CONF_STR, &options.listentcp,
+		     "ListenTLS", CONF_STR, &options.listentls,
+		     "ListenTCP", CONF_STR, &listentlsalias,
 		     "ListenAccountingUDP", CONF_STR, &options.listenaccudp,
 		     "SourceUDP", CONF_STR, &options.sourceudp,
-		     "SourceTCP", CONF_STR, &options.sourcetcp,
+		     "SourceTLS", CONF_STR, &options.sourcetls,
+		     "SourceTCP", CONF_STR, &sourcetlsalias,
 		     "LogLevel", CONF_LINT, &loglevel,
 		     "LogDestination", CONF_STR, &options.logdestination,
 		     "LoopPrevention", CONF_BLN, &options.loopprevention,
@@ -3401,6 +3404,15 @@ void getmainconfig(const char *configfile) {
 	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %d, must be 1, 2, 3 or 4", configfile, loglevel);
 	options.loglevel = (uint8_t)loglevel;
     }
+
+    if (!options.listentls)
+	options.listentls = listentlsalias;
+    else
+	free(listentlsalias);
+    if (!options.sourcetls)
+	options.sourcetls = sourcetlsalias;
+    else
+	free(sourcetlsalias);
 }
 
 void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8_t *loglevel, char **configfile) {

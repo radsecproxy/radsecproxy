@@ -1,4 +1,4 @@
-.TH radsecproxy.conf 5 "23 July 2008"
+.TH radsecproxy.conf 5 "2 October 2008"
 
 .SH "NAME"
 radsecproxy.conf - Radsec proxy configuration file
@@ -23,11 +23,11 @@ non-whitespace character is a \fB#\fR. The configuration is generally case
 insensitive, but in some cases the option values (see below) are not.
 .sp
 There are two types of configuration structures than can be used. The first
-and simplest are lines of the format \fIoption value\fR. That is, an option name,
+and simplest are lines of the format \fBoption value\fR. That is, an option name,
 see below for a list of valid options, followed by whitespace (at least one
 space or tab character), followed by a value. Note that if the value contains
-whitespace, then it must be quoted using "" or ''. Any whitespace in front of
-the option or after the value will be ignored.
+whitespace, then it must be quoted using \fB""\fR or \fB''\fR. Any whitespace
+in front of the option or after the value will be ignored.
 .sp
 The other type of structure is a block. A block spans at least two lines, and
 has the format:
@@ -43,10 +43,9 @@ blocktype name {
 .LP
 That is, some blocktype, see below for a list of the different block types, and
 then enclosed in braces you have zero or more lines that each have the previously
-described \fIoption value\fR format. Different block types have different rules for
+described \fBoption value\fR format. Different block types have different rules for
 which options can be specified, they are listed below. The rules regarding white
 space, comments and quotes are as above. Hence you may do things like:
-.sp
 .IP
 .nf
 blocktype name {
@@ -57,8 +56,14 @@ blocktype name {
 .fi
 .LP
 .sp
+Option value characters can also be written in hex. This is done by writing the
+character \fB%\fR followed by two hexadecimal digits. If a \fB%\fR is used without
+two following hexadecimal digits, the \fB%\fR and the following characters are used
+as written. If you want to write a \fB%\fR and not use this decoding, you may of
+course write \fB%\fR in hex; i.e., %25.
+.sp
 There is one special option that can be used both as a basic option and inside all
-blocks. That is the option \fBInclude\fR where the value specifies files to be
+blocks. That is the option \fBinclude\fR where the value specifies files to be
 included. The value can be a single file, or it can use normal shell globbing to
 specify multiple files, e.g.:
 .IP
@@ -69,7 +74,7 @@ include /etc/radsecproxy.conf.d/*.conf
 The files are sorted alphabetically. Included files are read in the order they are
 specified, when reaching the end of a file, the next file is read. When reaching
 the end of the last included file, the proxy returns to read the next line
-following the \fBInclude\fR option. Included files may again include other files.
+following the \fBinclude\fR option. Included files may again include other files.
 .sp
 
 .SH "BASIC OPTIONS"
@@ -80,18 +85,18 @@ should specify each at most once. The behaviour with multiple occurences is
 undefined.
 .sp
 .TP
-\fBLogLevel\fR
+\fBlogLevel\fR
 This option specifies the debug level. It must be set to 1, 2, 3 or 4, where 1
-logs only serious errors, and 4 logs \fIeverything\fR. The default is 3 which logs
+logs only serious errors, and 4 logs everything. The default is 3 which logs
 errors, warnings and some informational messages. Note that the command line option
 \fB-d\fR overrides this if present.
 .sp
 .TP
-\fBLogDestination\fR
+\fBlogDestination\fR
 This specifies where the log messages should go. By default the messages go to
 syslog with facility \fBLOG_DAEMON\fR. Using this option you can specify another
 syslog facility, or you may specify that logging should be to a particular file,
-not using syslog. The value must be either a \fIfile\fR or \fIsyslog\fR URL. The
+not using syslog. The value must be either a \fBfile\fR or \fBsyslog\fR URL. The
 file URL is the standard one, specifying a local file that should be used. For
 syslog, you must use the syntax: \fBx-syslog:///FACILITY\fR where
 \fBFACILITY\fR must be one of \fBLOG_DAEMON\fR, \fBLOG_MAIL\fR, \fBLOG_USER\fR,
@@ -102,7 +107,7 @@ this is not very useful since this is the default log destination. Note that thi
 option is ignored if \fB-f\fR is specified on the command line.
 .sp
 .TP
-\fBListenUDP\fR
+\fBlistenUDP\fR
 Normally the proxy will listen to the standard RADIUS UDP port \fB1812\fR if
 configured to handle UDP clients. On most systems it will do this for all of the
 system's IP addresses (both IPv4 and IPv6). On some systems however, it may respond
@@ -115,45 +120,56 @@ specify a specific address you can do e.g. \fB192.168.1.1:1812\fR or
 you specify port number.
 .sp
 .TP
-\fBListenTCP\fR
-This is similar to the \fBListenUDP\fR option, except that it used for receiving
-connections from TCP clients. The default port number is \fB2083\fR.
+\fBlistenTLS\fR
+This is similar to the \fBlistenUDP\fR option, except that it used for receiving
+connections from TLS clients. The default port number is \fB2083\fR. Note that
+this option was previously called \fBlistenTCP\fR.
 .sp
 .TP
-\fBListenAccountingUDP\fR
-This is similar to the \fBListenUDP\fR option, except that it used for specifying
+\fBlistenTCP\fR
+This option is deprecated. \fBlistenTLS\fR should be used instead. In future
+versions \fBlistenTCP\fR will be used for RADIUS over TCP (not TLS encrypted).
+.sp
+.TP
+\fBlistenAccountingUDP\fR
+This is similar to the \fBlistenUDP\fR option, except that it used for specifying
 port and optionally the address to receive UDP Accounting messages on.
 .sp
 .TP
-\fBSourceUDP\fR
+\fBsourceUDP\fR
 This can be used to specify source address and/or source port that the proxy
 will use for sending UDP client messages (e.g. Access Request).
 .sp
 .TP
-\fBSourceTCP\fR
-This can be used to specify source address and/or source port that the proxy
-will use for sending TCP client messages (e.g. Access Request).
+\fBsourceTLS\fR
+This can be used to specify source address and/or source port that the proxy will
+use for TLS connections. Note that this option was previously called \fBsourceTCP\fR.
 .sp
 .TP
-\fBLoopPrevention\fR
+\fBsourceTCP\fR
+This option is deprecated. \fBsourceTLS\fR should be used instead. In future
+versions \fBsourceTCP\fR will be used for RADIUS over TCP (not TLS encrypted).
+.sp
+.TP
+\fBloopPrevention\fR
 This can be set to \fBon\fR or \fBoff\fR with \fBoff\fR being the default. When
 this is enabled, a request will never be sent to a server named the same as the
 client it was received from. I.e., the names of the client block and the server
 block are compared. Note that this only gives limited protection against loops.
 .sp
 .TP
-\fBInclude\fR
+\fBinclude\fR
 This is not a normal configuration option; it can be specified multiple times.
 It can both be used as a basic option and inside blocks. For the full description,
 see the configuration syntax section above.
 .sp
 
 .SH "BLOCKS"
-There are five types of blocks, they are \fBClient\fR, \fBServer\fR, \fBRealm\fR,
-\fBTLS\fR and \fBRewrite\fR. At least one instance of each of \fBClient\fR,
-\fBServer\fR and \fBRealm\fR is required.
+There are five types of blocks, they are \fBclient\fR, \fBserver\fR, \fBrealm\fR,
+\fBtls\fR and \fBrewrite\fR. At least one instance of each of \fBclient\fR and
+\fBrealm\fR is required.
 This is necessary for the proxy to do anything useful,
-and it will exit if not. The \fBTLS\fR block is required if at least one TLS
+and it will exit if not. The \fBtls\fR block is required if at least one TLS
 client or server is configured. Note that there can be multiple blocks for each
 type. For each type, the block names should be unique. The behaviour with multiple
 occurences of the same name for the same block type is undefined. Also note that
@@ -188,46 +204,54 @@ case, the value of the \fBhost\fR option is used as above, while the name of the
 block is only used as a descriptive name for the administrator.
 .sp
 The allowed options in a client block are \fBhost\fR, \fBtype\fR, \fBsecret\fR,
-\fBtls\fR, \fBcertificatenamecheck\fR, \fBmatchcertificateattribute\fR,
-\fBrewrite\fR and \fBrewriteattribute\fR. We already
-discussed the \fBhost\fR option.
+\fBtls\fR, \fBcertificateNameCheck\fR, \fBmatchCertificateAttribute\fR,
+\fBrewrite\fR, \fBrewriteIn\fR, \fBrewriteOut\fR and \fBrewriteAttribute\fR.
+We already discussed the \fBhost\fR option.
 The value of \fBtype\fR must be either \fBudp\fR or \fBtls\fR. The value of
 \fBsecret\fR is the shared RADIUS key used with this client. If the secret
 contains whitespace, the value must be quoted. This option is optional for TLS.
 .sp
 For a TLS client you may also specify the \fBtls\fR option. The option value must
 be the name of a previously defined TLS block. If this option is not specified,
-the TLS block with the name \fBdefaultclient\fR will be used if defined. If not
+the TLS block with the name \fBdefaultClient\fR will be used if defined. If not
 defined, it will try to use the TLS block named \fBdefault\fR. If the specified
 TLS block name does not exist, or the option is not specified and none of the
 defaults exist, the proxy will exit with an error.
 .sp
-For a TLS client, the option \fBcertificatenamecheck\fR can be set to \fBoff\fR,
+For a TLS client, the option \fBcertificateNameCheck\fR can be set to \fBoff\fR,
 to disable the default behaviour of matching CN or SubjectAltName against the
 specified hostname or IP address.
 .sp
 Additional validation of certificate attributes can be done by use of the
-\fBmatchcertificateattribute\fR option. Currently one can only do some
+\fBmatchCertificateAttribute\fR option. Currently one can only do some
 matching of CN and SubjectAltName. For regexp matching on CN, one can use
 the value \fBCN:/regexp/\fR. For SubjectAltName one can only do regexp
 matching of the URI, this is specified as \fBSubjectAltName:URI:/regexp/\fR.
 Note that currently this option can only be specified once in a client block.
 .sp
-The \fBrewrite\fR option can be used to refer to a rewrite block that
-specifies certain rewrite operations that should be performed on messages
-from the client. For details, see the rewrite block text below. Similar to
-\fBtls\fR discussed above, if this option is not used, there is a fallback to
-using the \fBrewrite\fR block named \fBdefaultclient\fR if it exists; and
-finally, if not, a fallback to a block named \fBdefault\fR.
+The \fBrewrite\fR option is deprecated. Use \fBrewriteIn\fR instead.
 .sp
-The \fBrewriteattribute\fR option currently makes it possible to specify that
+The \fBrewriteIn\fR option can be used to refer to a rewrite block that
+specifies certain rewrite operations that should be performed on incoming
+messages from the client. The rewriting is done before other processing.
+For details, see the rewrite block text below. Similarly to
+\fBtls\fR discussed above, if this option is not used, there is a fallback to
+using the \fBrewrite\fR block named \fBdefaultClient\fR if it exists; and
+if not, a fallback to a block named \fBdefault\fR.
+.sp
+The \fBrewriteOut\fR option is used in the same way as \fBrewriteIn\fR,
+except that it specifies rewrite operations that should be performed on
+outgoing messages to the client. The rewriting is done after other processing.
+Also, there is no rewrite fallback if this option is not used.
+.sp
+The \fBrewriteAttribute\fR option currently makes it possible to specify that
 the User-Name attribute in a client request shall be rewritten in the request
 sent by the proxy. The User-Name attribute is written back to the original
 value if a matching response is later sent back to the client. The value must
 be of the form User-Name:/regexpmatch/replacement/. Example usage:
 .IP
 .nf
-rewriteattribute User-Name:/^(.*)@local$/$1@example.com/
+rewriteAttribute User-Name:/^(.*)@local$/$1@example.com/
 .fi
 .LP
 
@@ -250,25 +274,26 @@ case, the value of the \fBhost\fR option is used as above, while the name of the
 block is only used as a descriptive name for the administrator.
 .sp
 The allowed options in a server block are \fBhost\fR, \fBport\fR, \fBtype\fR,
-\fBsecret\fR, \fBtls\fR, \fBcertificatenamecheck\fR,
-\fBmatchcertificateattribute\fR, \fBrewrite\fR, \fBstatusserver\fR,
-\fBretrycount\fR and \fBretryinterval\fR.
-
+\fBsecret\fR, \fBtls\fR, \fBcertificateNameCheck\fR,
+\fBmatchCertificateAttribute\fR, \fBrewrite\fR, \fBrewriteIn\fR, \fBrewriteOut\fR,
+\fBstatusServer\fR, \fBretryCount\fR and \fBretryInterval\fR.
+.sp
 We already discussed the \fBhost\fR option.
 The \fBport\fR option allows you to specify which port number the server uses.
-The values of \fBtype\fR, \fBsecret\fR, \fBtls\fR, \fBcertificatenamecheck\fR,
-\fBmatchcertificateattribute\fR and \fBrewrite\fR are just as specified for the
-\fIclient block\fR above, except that \fBdefaultserve\fRr
-(and not \fBdefaultclient\fR) are fallbacks if either of the \fBtls\fR or
-\fBrewrite\fR options are not used.
+The usage of \fBtype\fR, \fBsecret\fR, \fBtls\fR, \fBcertificateNameCheck\fR,
+\fBmatchCertificateAttribute\fR, \fBrewrite\fR, \fBrewriteIn\fR and
+\fBrewriteOut\fR are just as specified for the
+\fBclient block\fR above, except that \fBdefaultServer\fR
+(and not \fBdefaultClient\fR) is the fallback for the \fBtls\fR,
+\fBrewrite\fR, \fBrewriteIn\fR and \fBrewriteOut\fR options.
 .sp
-\fBstatusserver\fR can be specified to enable the use of status-server messages
+\fBstatusServer\fR can be specified to enable the use of status-server messages
 for this server. The value must be either \fBon\fR or \fBoff\fR. The default
 when not specified, is \fBoff\fR. If statusserver is enabled, the proxy will
 during idle periods send regular status-server messages to the server to verify
 that it is alive. This should only be enabled if the server supports it.
 .sp
-The options \fBretrycount\fR and \fBretryinterval\fR can be used to specify how
+The options \fBretryCount\fR and \fBretryInterval\fR can be used to specify how
 many times the proxy should retry sending a request and how long it should
 wait between each retry. The defaults are 2 retries and an interval of 5s.
 
@@ -281,7 +306,7 @@ the first match if any. If no realm matches, the proxy will simply ignore the
 request. Each realm block specifies what the server should do when a match is
 found. A realm block may contain none, one or multiple \fBserver\fR options,
 and similarly \fBaccountingServer\fR options. There are also \fBreplyMessage\fR
-and \fBAccountingResponse\fR options. We will discuss these later.
+and \fBaccountingResponse\fR options. We will discuss these later.
 .sp
 
 .TP
@@ -293,7 +318,7 @@ the name of the realm block. So if you get a request with the attribute value
 \fBanonymous@example.com\fR, the proxy will go through the realm names in the
 order they are specified, looking for a realm block named \fBexample.com\fR.
 .sp
-There are two exceptions to this, one is the realm name \fB*\fT which means
+There are two exceptions to this, one is the realm name \fB*\fR which means
 match everything. Hence if you have a realm block named \fB*\fR, then it will
 always match. This should then be the last realm block defined, since any
 blocks after this would never be checked. This is useful for having a default.
@@ -325,15 +350,18 @@ comes back up, it will go back to using that one. Currently detection of
 servers being up or down is based on the use of StatusServer (if enabled),
 and that TLS connections are up.
 .sp
-A realm block may also contain none, one or multiple \fBaccountingserver\fR
+A realm block may also contain none, one or multiple \fBaccountingServer\fR
 options. This is used exactly like the \fBserver\fR options, except that
 it is used for specifying where to send matching accounting requests. The
 values must be the names of previously defined server blocks. When multiple
 accounting servers are defined, there is a failover mechanism similar to
 the one for \fBserver\fR options.
 .sp
-If there is no \fBserver\fR option, the proxy will reply back to the client
-with an Access Reject message. Note that this is different from having no
+If there is no \fBserver\fR option, the proxy will if \fBreplyMessage\fR
+is specified reply back to the client with an Access Reject message. The
+message contains a replyMessage attribute with the value as specified by
+the \fBreplyMessage\fR option.
+Note that this is different from having no
 match since then the request is simply ignored. You may wonder why this is
 useful. One example is if you handle say all domains under say \fB.bv\fR.
 Then you may have several realm blocks matching the domains that exists,
@@ -344,14 +372,9 @@ definitions. One with the name \fB/@.*\\.bv$\fR with no servers, followed
 by one with the name \fB*\fR with the default server defined. This may also
 be useful for blocking particular usernames.
 .sp
-When sending reject messages, the proxy will check if the option
-\fBreplyMessage\fR is set for the realm. If it is, it will add a replyMessage
-attribute to the reject message with this value. Note that you need to quote
-the message if it contains white space.
-.sp
-If there is no \fBaccountingserver\fR option, the proxy will normally do
+If there is no \fBaccountingServer\fR option, the proxy will normally do
 nothing, ignoring accounting requests. There is however an option called
-\fBAccountingResponse\fR. If this is set to \fBon\fR, the proxy will log
+\fBaccountingResponse\fR. If this is set to \fBon\fR, the proxy will log
 some of the accounting information and send an Accounting-Response back.
 This is useful if you do not care much about accounting, but want to stop
 clients from retransmitting accounting requests. By default this option
@@ -359,31 +382,31 @@ is set to \fBoff\fR.
 .sp
 
 .SH "TLS BLOCK"
-The TLS block specifies TLS configuration options and you need at least one
+The tls block specifies TLS configuration options and you need at least one
 of these if you have clients or servers using TLS. As discussed in the client
 and server block descriptions, a client or server block may reference a
-particular TLS block by name. There are also however the special TLS block
-names \fBdefault\fR, \fBdefaultclient\fR and \fBdefaultserver\fR which are
-used as defaults if the client or server block does not reference a TLS block.
-Also note that a TLS block must be defined before the client or server block
+particular TLS block by name. There are also however the special tls block
+names \fBdefault\fR, \fBdefaultClient\fR and \fBdefaultServer\fR which are
+used as defaults if the client or server block does not reference a tls block.
+Also note that a tls block must be defined before the client or server block
 that would use it. If you want the same TLS configuration for all TLS clients
-and servers, you need just a single TLS block named \fBdefault\fR, and the client
+and servers, you need just a single tls block named \fBdefault\fR, and the client
 and servers need not refer to it. If you want all TLS clients to use one
 config, and all TLS servers to use another, then you would be fine only
-defining two TLS blocks named \fBdefaultclient\fR and \fBdefaultserver\fR.
+defining two tls blocks named \fBdefaultClient\fR and \fBdefaultServer\fR.
 If you want different clients (or different servers) to have different TLS
-parameters, then you may need to create other TLS blocks with other names,
+parameters, then you may need to create other tls blocks with other names,
 and reference those from the client or server definitions. Note that you could
-also have say a client block refer to a default, even \fBdefaultserver\fR
+also have say a client block refer to a default, even \fBdefaultServer\fR
 if you really want to.
 .sp
-The available TLS block options are \fBCACertificateFile\fR,
-\fBCACertificatePath\fR, \fBCertificateFile\fR, \fBCertificateKeyFile\fR,
-\fBCertificateKeyPassword\fR and \fBCRLCheck\fR. When doing RADIUS over
-TLS, both the
+The available tls block options are \fBCACertificateFile\fR,
+\fBCACertificatePath\fR, \fBcertificateFile\fR, \fBcertificateKeyFile\fR,
+\fBcertificateKeyPassword\fR. \fBcacheExpiry\fR and \fBCRLCheck\fR.
+When doing RADIUS over TLS, both the
 client and the server present certificates, and they are both verified
-by the peer. Hence you must always specify \fBCertificateFile\fR and
-\fBCertificateKeyFile\fR options, as well as \fBCertificateKeyPassword\fR
+by the peer. Hence you must always specify \fBcertificateFile\fR and
+\fBcertificateKeyFile\fR options, as well as \fBcertificateKeyPassword\fR
 if a password is needed to decrypt the private key. Note that
 \fBCACertificateFile\fR may be a certificate chain. In order to verify
 certificates, or send a chain of certificates to a peer, you also always
@@ -391,32 +414,60 @@ need to specify \fBCACertificateFile\fR or \fBCACertificatePath\fR. Note
 that you may specify both, in which case the certificates in
 \fBCACertificateFile\fR are checked first. By default CRLs are not
 checked. This can be changed by setting \fBCRLCheck\fR to \fBon\fR.
-
+.sp
+CA certificates and CRLs are normally cached permanently. That is, once a CA
+or CRL has been read, the proxy will never attempt to re-read it. CRLs may
+change relatively often and the proxy should ideally always use the latest
+CRLs. Rather than restarting the proxy, there is an option \fBcacheExpiry\fR
+that specifies how many seconds the CA and CRL information should be cached.
+Reasonable values might be say 3600 (1 hour) or 86400 (24 hours), depending
+on how frequently CRLs are updated and how critical it is to be up to date.
+This option may be set to zero to disable caching.
 .SH "REWRITE BLOCK"
 The rewrite block specifies rules that may rewrite RADIUS messages. It
-can currently be used to remove specific attributes from messages
-received from clients or servers. As discussed in the client and server
-block descriptions, a client or server block may reference a particular
-rewrite block by name. There are also however the special rewrite block
-names \fBdefault\fR, \fBdefaultclient\fR and \fBdefaultserver\fR which are
+can be used to add, remove and modify specific attributes from messages
+received from and sent to clients and servers. As discussed in the client and
+server block descriptions, a client or server block may reference a particular
+rewrite block by name. There are however also the special rewrite block
+names \fBdefault\fR, \fBdefaultClient\fR and \fBdefaultServer\fR which are
 used as defaults if the client or server block does not reference a block.
 Also note that a rewrite block must be defined before the client or server
-block that would use it. If you want the same rewrite rules for all clients
-and servers, you need just a single rewrite block named \fBdefault\fR, and
-the client and servers need not refer to it. If you want all clients to use
-one config, and all servers to use another, then you would be fine only
-defining two rewrite blocks named \fBdefaultclient\fR and \fBdefaultserver\fR.
+block that would use it. If you want the same rewrite rules for input from
+all clients and servers, you need just a single rewrite block named
+\fBdefault\fR, and the client and servers need not refer to it. If you want
+all clients to use one config, and all servers to use another, then you would
+be fine only defining two rewrite blocks named \fBdefaultClient\fR and
+\fBdefaultServer\fR. Note that these defaults are only used for rewrite on
+input. No rewriting is done on output unless explicitly specifed using the
+\fBrewriteOut\fR option.
 .sp
-The available rewrite block options are \fBremoveattribute\fR and
-\fBremovevendorattribute\fR, they can both be specified none, one or multiple
-times. The \fBremoveattribute\fR option is used to specify an attribute that
+The available rewrite block options are \fBaddAttribute\fR,
+\fBremoveAttribute\fR, \fBremoveVendorAttribute\fR and \fBmodifyAttribute\fR.
+They can all be specified none, one or multiple times.
+.sp
+\fBaddAttribute\fR is used to add attributes to a message. The option value
+must be of the form \fBattribute:value\fR where attribute is a numerical value
+specifying the attribute.
+.sp
+The \fBremoveAttribute\fR option is used to specify an attribute that 
 should be removed from received messages. The option value must be a numerical
 value specifying which attribute is to be removed. Similarly,
-\fBremovevendorattribute\fR is used to specify a vendor attribute that is to
+\fBremoveVendorAttribute\fR is used to specify a vendor attribute that is to
 be removed. The value can be a numerical value for removing all attributes
-from a given vendor, or of the form vendor:subattribute, where vendor and
+from a given vendor, or of the form \fBvendor:subattribute\fR, where vendor and
 subattribute are numerical values, for removing a specific subattribute for a
 specific vendor.
+.sp
+\fBmodifyAttribute\fR is used to specify modification of attributes. The
+value must be of the form \fBattribute:/regexpmatch/replacement/\fR where
+attribute is a numerical attribute type, regexpmatch is regexp matching rule
+and replacement specifies how to replace the matching regexp. Example usage:
+.IP
+.nf
+modifyAttribute 1:/^(.*)@local$/$1@example.com/
+.fi
+.LP
 
 .SH "SEE ALSO"
-radsecproxy(1), RadSec draft paper.
+radsecproxy(1), RadSec internet draft
+http://tools.ietf.org/html/draft-ietf-radext-radsec
