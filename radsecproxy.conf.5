@@ -285,7 +285,7 @@ The usage of \fBtype\fR, \fBsecret\fR, \fBtls\fR, \fBcertificateNameCheck\fR,
 \fBrewriteOut\fR are just as specified for the
 \fBclient block\fR above, except that \fBdefaultServer\fR
 (and not \fBdefaultClient\fR) is the fallback for the \fBtls\fR,
-\fBrewrite\fR, \fBrewriteIn\fR and \fBrewriteOut\fR options.
+\fBrewrite\fR and \fBrewriteIn\fR options.
 .sp
 \fBstatusServer\fR can be specified to enable the use of status-server messages
 for this server. The value must be either \fBon\fR or \fBoff\fR. The default
@@ -402,7 +402,7 @@ if you really want to.
 .sp
 The available tls block options are \fBCACertificateFile\fR,
 \fBCACertificatePath\fR, \fBcertificateFile\fR, \fBcertificateKeyFile\fR,
-\fBcertificateKeyPassword\fR. \fBcacheExpiry\fR and \fBCRLCheck\fR.
+\fBcertificateKeyPassword\fR, \fBcacheExpiry\fR and \fBCRLCheck\fR.
 When doing RADIUS over TLS, both the
 client and the server present certificates, and they are both verified
 by the peer. Hence you must always specify \fBcertificateFile\fR and
