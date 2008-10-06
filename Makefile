@@ -17,4 +17,4 @@ man:
 	docbook2man.pl --to-stdout radsecproxy.conf.5.xml > radsecproxy.conf.5
 
 html:
-	openjade -E10000 -t sgml -d /usr/share/sgml/docbook/dsssl-stylesheets-1.79/html/docbook.dsl -o radsecproxy.conf.5.html radsecproxy.conf.5.xml
+	openjade -E10000 -t sgml-raw -d /usr/share/sgml/docbook/dsssl-stylesheets-1.79/html/docbook.dsl -o radsecproxy.conf.5.html radsecproxy.conf.5.xml
