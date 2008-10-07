@@ -33,8 +33,7 @@
 	rewriteIn (replacing rewrite) and rewriteOut in client and server
 	  blocks for specifying rewrite on input/output. rewrite deprecated
 	  but available as an alias for rewriteIn for backwards compatibility.
-	rewritein rewriteout rewrite
-	regular expressions in realms etc can now be more advanced, including
+	Regular expressions in realms etc can now be more advanced, including
 	  use of "or".
         cacheExpiry option in tls blocks for specifying expiry time for the
 	  cache of CA certificates and CRLs. This is particularly useful for
