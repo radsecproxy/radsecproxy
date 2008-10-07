@@ -15,7 +15,7 @@
 	matchCertificateAttribute now also supports CN matching
 	Forwarding of accounting messages, accountingServer option for realms
 	Supports multiple client blocks for same source address with different
-	     certificate checks
+	  certificate checks
 	Removed weekday from log timestamps
 2008-07-24 1.1
 	Logging stationid attribute
@@ -24,3 +24,19 @@
 	Options for RetryCount and RetryInterval
 	Working accounting and AccountingResponse option
 	CRL checking and option for enabling it
+2008-10-07 1.2
+	listenTCP and sourceTCP options renamed to listenTLS and sourceTLS
+	  Old options deprecated but available for backwards compatiblity
+	Logging reply-message attribute from Reject messages
+	  Contribution from Arne Schwabe
+	Rewrite blocks have new options addAttribute and modifyAttribute
+	rewriteIn (replacing rewrite) and rewriteOut in client and server
+	  blocks for specifying rewrite on input/output. rewrite deprecated
+	  but available as an alias for rewriteIn for backwards compatibility.
+	rewritein rewriteout rewrite
+	regular expressions in realms etc can now be more advanced, including
+	  use of "or".
+        cacheExpiry option in tls blocks for specifying expiry time for the
+	  cache of CA certificates and CRLs. This is particularly useful for
+	  regularly updating CRLs.
+	Some logging has been made more informative

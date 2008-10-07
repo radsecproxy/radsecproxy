@@ -1,4 +1,4 @@
-AC_INIT(radsecproxy, 1.1, venaas@uninett.no)
+AC_INIT(radsecproxy, 1.2, venaas@uninett.no)
 AM_INIT_AUTOMAKE
 AC_PROG_CC
 AM_PROG_CC_C_O
