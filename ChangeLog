@@ -40,3 +40,4 @@
 	  cache of CA certificates and CRLs. This is particularly useful for
 	  regularly updating CRLs.
 	Some logging has been made more informative
+	Allowing %xx notation (as in URLs) for writing characters in hex
