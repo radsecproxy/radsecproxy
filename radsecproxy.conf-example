@@ -7,14 +7,18 @@
 #	Max one of each, below are just multiple examples
 #ListenUDP		*:1814
 #listenUDP		localhost
-#listenTCP		10.10.10.10:2084
-#ListenTCP		[2001:700:1:7:215:f2ff:fe35:307d]:2084
+#ListenTCP		[2001:700:1:7:215:f2ff:fe35:307d]:1812
+#listenTLS		10.10.10.10:2084
+#ListenTLS		[2001:700:1:7:215:f2ff:fe35:307d]:2084
+#ListenDTLS		[2001:700:1:7:215:f2ff:fe35:307d]:2084
 # To listen to the default or other Accounting port for UDP you need e.g.
 #ListenAccountingUDP	*:1813
 
 # To specify a certain address/port for UDP/TLS requests you can use e.g.
 #SourceUDP		127.0.0.1:33000
-#SourceTCP		*:33001
+#SourceTCP		*:33000
+#SourceTLS		*:33001
+#SourceDTLS		*:33001
 # Optional log level. 3 is default, 1 is less, 4 is more
 #LogLevel		3
 #Optional LogDestinatinon, else stderr used for logging
@@ -51,6 +55,8 @@ tls default {
     CertificateKeyPassword	"follow the white rabbit"
     # Optionally enable CRL checking
     # CRLCheck on
+    # Optionally specify how long CAs and CRLs are cached, default forever
+    # CacheExpiry 3600
 }
 
 #If you want one cert for all clients and another for all servers, use
@@ -72,6 +78,14 @@ tls default {
 #To treat local users separately you might try first specifying "@"
 #and after that "*".
 
+# Configure a rewrite block if you want to add/remove/modify attributes
+# rewrite example {
+#	removeAttribute 5
+#	removeVendorAttribute 99:100
+#	addAttribute 4 attribute%20value
+#	modifyAttribute 1:/^(.*)@local$/$1@example.com/
+# }
+
 client 2001:db8::1 {
 	type	tls
 	secret	verysecret
@@ -84,15 +98,31 @@ client 2001:db8::1 {
 client 127.0.0.1 {
 	type	udp
 	secret	secret
+#	Might do rewriting of incoming messages using rewrite block example
+#	rewriteIn example
+#	Can also do rewriting of outgoing messages
+#	rewriteOut example	
+}
+client 127.0.0.1 {
+	type	tcp
+	secret	secret
 }
 client radius.example.com {
-	type TLS
+	type tls
 # secret is optional for TLS
+}
+client radius.example.com {
+	type dtls
+# secret is optional for DTLS
 }
 
 server 127.0.0.1 {
 	type	UDP
 	secret	secret
+#	Might do rewriting of incoming messages using rewrite block example
+#	rewriteIn example
+#	Can also do rewriting of outgoing messages
+#	rewriteOut example	
 }
 realm	eduroam.cc {
 	server	127.0.0.1
@@ -116,6 +146,12 @@ server radius.example.com {
 	StatusServer on
 # statusserver is optional, can be on or off. Off is default
 }
+#server radius.example.com {
+#	type	dtls
+#	secret	verysecret
+#	StatusServer on
+## statusserver is optional, can be on or off. Off is default
+#}
 
 # Equivalent to example.com
 realm /@example\.com$ {
