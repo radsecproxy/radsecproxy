@@ -2697,17 +2697,13 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
 	if (realm)
 	    for (n = 0; servers[n]; n++)
 		newrealmref(realm);
-	for (n = 0; servers[n]; n++)
-	    free(servers[n]);
-	free(servers);
+	freegconfmstr(servers);
     }
     if (accservers) {
 	if (realm)
 	    for (n = 0; accservers[n]; n++)
 		newrealmref(realm);
-	for (n = 0; accservers[n]; n++)
-	    free(accservers[n]);
-	free(accservers);
+	freegconfmstr(accservers);
     }
     return newrealmref(realm);
 }
@@ -3016,12 +3012,10 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	if (!rma)
 	    debugx(1, DBG_ERR, "malloc failed");
     
-	for (i = 0; i < n; i++) {
+	for (i = 0; i < n; i++)
 	    if (!(rma[i] = attrname2val(rmattrs[i])))
 		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", rmattrs[i]);
-	    free(rmattrs[i]);
-	}
-	free(rmattrs);
+	freegconfmstr(rmattrs);
 	rma[i] = 0;
     }
     
@@ -3031,12 +3025,10 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	if (!rmva)
 	    debugx(1, DBG_ERR, "malloc failed");
     
-	for (p = rmva, i = 0; i < n; i++, p += 2) {
+	for (p = rmva, i = 0; i < n; i++, p += 2)
 	    if (!vattrname2val(rmvattrs[i], p, p + 1))
 		debugx(1, DBG_ERR, "addrewrite: invalid vendor attribute %s", rmvattrs[i]);
-	    free(rmvattrs[i]);
-	}
-	free(rmvattrs);
+	freegconfmstr(rmvattrs);
 	*p = 0;
     }
     
@@ -3048,11 +3040,10 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	    a = extractattr(addattrs[i]);
 	    if (!a)
 		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", addattrs[i]);
-	    free(addattrs[i]);
 	    if (!list_push(adda, a))
 		debugx(1, DBG_ERR, "malloc failed");
 	}
-	free(addattrs);
+	freegconfmstr(addattrs);
     }
 
     if (modattrs) {
@@ -3063,11 +3054,10 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	    m = extractmodattr(modattrs[i]);
 	    if (!m)
 		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", modattrs[i]);
-	    free(modattrs[i]);
 	    if (!list_push(moda, m))
 		debugx(1, DBG_ERR, "malloc failed");
 	}
-	free(modattrs);
+	freegconfmstr(modattrs);
     }
 	
     if (rma || rmva || adda || moda) {
