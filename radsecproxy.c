@@ -205,45 +205,57 @@ static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
 }
 
 static int verify_cb(int ok, X509_STORE_CTX *ctx) {
-  char buf[256];
-  X509 *err_cert;
-  int err, depth;
+    char *buf = NULL;
+    X509 *err_cert;
+    int err, depth;
 
-  err_cert = X509_STORE_CTX_get_current_cert(ctx);
-  err = X509_STORE_CTX_get_error(ctx);
-  depth = X509_STORE_CTX_get_error_depth(ctx);
+    err_cert = X509_STORE_CTX_get_current_cert(ctx);
+    err = X509_STORE_CTX_get_error(ctx);
+    depth = X509_STORE_CTX_get_error_depth(ctx);
 
-  if (depth > MAX_CERT_DEPTH) {
-      ok = 0;
-      err = X509_V_ERR_CERT_CHAIN_TOO_LONG;
-      X509_STORE_CTX_set_error(ctx, err);
-  }
+    if (depth > MAX_CERT_DEPTH) {
+	ok = 0;
+	err = X509_V_ERR_CERT_CHAIN_TOO_LONG;
+	X509_STORE_CTX_set_error(ctx, err);
+    }
 
-  if (!ok) {
-      X509_NAME_oneline(X509_get_subject_name(err_cert), buf, 256);
-      debug(DBG_WARN, "verify error: num=%d:%s:depth=%d:%s", err, X509_verify_cert_error_string(err), depth, buf);
-
-      switch (err) {
-      case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
-	  X509_NAME_oneline(X509_get_issuer_name(ctx->current_cert), buf, 256);
-	  debug(DBG_WARN, "\tIssuer=%s", buf);
-	  break;
-      case X509_V_ERR_CERT_NOT_YET_VALID:
-      case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
-	  debug(DBG_WARN, "\tCertificate not yet valid");
-	  break;
-      case X509_V_ERR_CERT_HAS_EXPIRED:
-	  debug(DBG_WARN, "Certificate has expired");
-	  break;
-      case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
-	  debug(DBG_WARN, "Certificate no longer valid (after notAfter)");
-	  break;
-      }
-  }
+    if (!ok) {
+	if (err_cert)
+	    buf = X509_NAME_oneline(X509_get_subject_name(err_cert), NULL, 0);
+	debug(DBG_WARN, "verify error: num=%d:%s:depth=%d:%s", err, X509_verify_cert_error_string(err), depth, buf ? buf : "");
+	free(buf);
+	buf = NULL;
+	
+	switch (err) {
+	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
+	    if (err_cert) {
+		buf = X509_NAME_oneline(X509_get_issuer_name(err_cert), NULL, 0);
+		if (buf) {
+		    debug(DBG_WARN, "\tIssuer=%s", buf);
+		    free(buf);
+		    buf = NULL;
+		}
+	    }
+	    break;
+	case X509_V_ERR_CERT_NOT_YET_VALID:
+	case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
+	    debug(DBG_WARN, "\tCertificate not yet valid");
+	    break;
+	case X509_V_ERR_CERT_HAS_EXPIRED:
+	    debug(DBG_WARN, "Certificate has expired");
+	    break;
+	case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
+	    debug(DBG_WARN, "Certificate no longer valid (after notAfter)");
+	    break;
+	case X509_V_ERR_NO_EXPLICIT_POLICY:
+	    debug(DBG_WARN, "No Explicit Certificate Policy");
+	    break;
+	}
+    }
 #ifdef DEBUG  
-  printf("certificate verify returns %d\n", ok);
+    printf("certificate verify returns %d\n", ok);
 #endif  
-  return ok;
+    return ok;
 }
 
 struct addrinfo *getsrcprotores(uint8_t type) {
@@ -2347,6 +2359,27 @@ void tlsinit() {
     }
 }
 
+int setpolicyoids(X509_STORE *store, char **poids) {
+    X509_VERIFY_PARAM *pm;
+    ASN1_OBJECT *pobject;
+    int i;
+    
+    pm = X509_VERIFY_PARAM_new();
+    if (!pm)
+	return 0;
+    
+    for (i = 0; poids[i]; i++) {
+	pobject =  OBJ_txt2obj(poids[i], 0);
+	if (!pobject)
+	    return 0;	    
+	X509_VERIFY_PARAM_add0_policy(pm, pobject);
+    }
+
+    X509_VERIFY_PARAM_set_flags(pm, X509_V_FLAG_POLICY_CHECK | X509_V_FLAG_EXPLICIT_POLICY);
+    X509_STORE_set1_param(store, pm);
+    return 1;
+}
+
 int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     STACK_OF(X509_NAME) *calist;
     X509_STORE *x509_s;
@@ -2382,9 +2415,14 @@ int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
 
-    if (conf->crlcheck) {
+    if (conf->crlcheck || conf->policyoids) {
 	x509_s = SSL_CTX_get_cert_store(ctx);
-	X509_STORE_set_flags(x509_s, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+	if (conf->crlcheck)
+	    X509_STORE_set_flags(x509_s, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+	if (conf->policyoids && !setpolicyoids(x509_s, conf->policyoids)) {
+	    debug(DBG_ERR, "tlsaddcacrl: Failed to add policyOIDs in TLS context %s", conf->name);
+	    return 0; /* should free memory */
+	}
     }
 
     debug(DBG_DBG, "tlsaddcacrl: updated TLS context %s", conf->name);
@@ -3410,6 +3448,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 		     "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
 		     "CacheExpiry", CONF_LINT, &expiry,
 		     "CRLCheck", CONF_BLN, &conf->crlcheck,
+		     "PolicyOID", CONF_MSTR, &conf->policyoids,
 		     NULL
 			  )) {
 	debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);

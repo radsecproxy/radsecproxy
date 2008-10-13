@@ -155,6 +155,7 @@ struct tls {
     char *certkeyfile;
     char *certkeypwd;
     uint8_t crlcheck;
+    char **policyoids;
     uint32_t cacheexpiry;
     uint32_t tlsexpiry;
     uint32_t dtlsexpiry;
