@@ -2359,25 +2359,26 @@ void tlsinit() {
     }
 }
 
-int setpolicyoids(X509_STORE *store, char **poids) {
+X509_VERIFY_PARAM *createverifyparams(char **poids) {
     X509_VERIFY_PARAM *pm;
     ASN1_OBJECT *pobject;
     int i;
     
     pm = X509_VERIFY_PARAM_new();
     if (!pm)
-	return 0;
+	return NULL;
     
     for (i = 0; poids[i]; i++) {
-	pobject =  OBJ_txt2obj(poids[i], 0);
-	if (!pobject)
-	    return 0;	    
+	pobject = OBJ_txt2obj(poids[i], 0);
+	if (!pobject) {
+	    X509_VERIFY_PARAM_free(pm);
+	    return NULL;
+	}
 	X509_VERIFY_PARAM_add0_policy(pm, pobject);
     }
 
     X509_VERIFY_PARAM_set_flags(pm, X509_V_FLAG_POLICY_CHECK | X509_V_FLAG_EXPLICIT_POLICY);
-    X509_STORE_set1_param(store, pm);
-    return 1;
+    return pm;
 }
 
 int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
@@ -2415,14 +2416,12 @@ int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
 
-    if (conf->crlcheck || conf->policyoids) {
+    if (conf->crlcheck || conf->vpm) {
 	x509_s = SSL_CTX_get_cert_store(ctx);
 	if (conf->crlcheck)
 	    X509_STORE_set_flags(x509_s, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
-	if (conf->policyoids && !setpolicyoids(x509_s, conf->policyoids)) {
-	    debug(DBG_ERR, "tlsaddcacrl: Failed to add policyOIDs in TLS context %s", conf->name);
-	    return 0; /* should free memory */
-	}
+	if (conf->vpm)
+	    X509_STORE_set1_param(x509_s, conf->vpm);
     }
 
     debug(DBG_DBG, "tlsaddcacrl: updated TLS context %s", conf->name);
@@ -2470,7 +2469,22 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 	return NULL;
     }
 
+    if (conf->policyoids) {
+	if (!conf->vpm) {
+	    conf->vpm = createverifyparams(conf->policyoids);
+	    if (!conf->vpm) {
+		debug(DBG_ERR, "tlsaddcacrl: Failed to add policyOIDs in TLS context %s", conf->name);
+		SSL_CTX_free(ctx);
+		return NULL;
+	    }
+	}
+    }
+
     if (!tlsaddcacrl(ctx, conf)) {
+	if (conf->vpm) {
+	    X509_VERIFY_PARAM_free(conf->vpm);
+	    conf->vpm = NULL;
+	}
 	SSL_CTX_free(ctx);
 	return NULL;
     }
@@ -3491,6 +3505,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     free(conf->certfile);
     free(conf->certkeyfile);
     free(conf->certkeypwd);
+    freegconfmstr(conf->policyoids);
     free(conf);
     return 0;
 }

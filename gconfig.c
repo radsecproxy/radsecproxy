@@ -189,6 +189,16 @@ int popgconf(struct gconffile **cf) {
     return 1;
 }
 
+void freegconfmstr(char **mstr) {
+    int i;
+
+    if (mstr) {
+	for (i = 0; mstr[i]; i++)
+	    free(mstr[i]);
+	free(mstr);
+    }
+}
+
 void freegconf(struct gconffile **cf) {
     int i;
 

@@ -18,5 +18,6 @@ FILE *pushgconfpath(struct gconffile **cf, const char *path);
 FILE *pushgconffile(struct gconffile **cf, FILE *file, const char *description);
 FILE *pushgconfpaths(struct gconffile **cf, const char *path);
 int popgconf(struct gconffile **cf);
+void freegconfmstr(char **mstr);
 void freegconf(struct gconffile **cf);
 struct gconffile *openconfigfile(const char *file);

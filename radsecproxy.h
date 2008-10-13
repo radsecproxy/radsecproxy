@@ -159,6 +159,7 @@ struct tls {
     uint32_t cacheexpiry;
     uint32_t tlsexpiry;
     uint32_t dtlsexpiry;
+    X509_VERIFY_PARAM *vpm;
     SSL_CTX *tlsctx;
     SSL_CTX *dtlsctx;
 };
