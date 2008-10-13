@@ -82,7 +82,7 @@ static struct list *clconfs, *srvconfs;
 struct list *realms;
 struct hash *tlsconfs, *rewriteconfs;
 
-static struct addrinfo *srcprotores[4] = { NULL, NULL, NULL, NULL };
+static struct addrinfo *srcprotores[RAD_PROTOCOUNT];
 
 static pthread_mutex_t *ssl_locks = NULL;
 static long *ssl_lock_count;
@@ -116,6 +116,7 @@ static const struct protodefs protodefs[] = {
 	clientradputudp, /* clientradput */
 	addclientudp, /* addclient */
 	addserverextraudp, /* addserverextra */
+	1, /* freesrcprotores */
 	initextraudp /* initextra */
     },
     {   "tls", /* TLS, assuming RAD_TLS defined as 1 */
@@ -134,6 +135,7 @@ static const struct protodefs protodefs[] = {
 	clientradputtls, /* clientradput */
 	NULL, /* addclient */
 	NULL, /* addserverextra */
+	0, /* freesrcprotores */
 	NULL /* initextra */
     },
     {   "tcp", /* TCP, assuming RAD_TCP defined as 2 */
@@ -152,6 +154,7 @@ static const struct protodefs protodefs[] = {
 	clientradputtcp, /* clientradput */
 	NULL, /* addclient */
 	NULL, /* addserverextra */
+	0, /* freesrcprotores */
 	NULL /* initextra */
     },
     {   "dtls", /* DTLS, assuming RAD_DTLS defined as 3 */
@@ -170,6 +173,7 @@ static const struct protodefs protodefs[] = {
 	clientradputdtls, /* clientradput */
 	NULL, /* addclient */
 	addserverextradtls, /* addserverextra */
+	1, /* freesrcprotores */
 	initextradtls /* initextra */
     },
     {   NULL
@@ -3545,11 +3549,10 @@ void getmainconfig(const char *configfile) {
 	debugx(1, DBG_ERR, "malloc failed");    
  
     if (!getgenericconfig(&cfs, NULL,
-			  "ListenUDP", CONF_MSTR, &options.listenudp,
-			  "ListenTCP", CONF_MSTR, &options.listentcp,
-			  "ListenTLS", CONF_MSTR, &options.listentls,
-			  "ListenDTLS", CONF_MSTR, &options.listendtls,
-			  "ListenAccountingUDP", CONF_MSTR, &options.listenaccudp,
+			  "ListenUDP", CONF_MSTR, &options.listenargs[RAD_UDP],
+			  "ListenTCP", CONF_MSTR, &options.listenargs[RAD_TCP],
+			  "ListenTLS", CONF_MSTR, &options.listenargs[RAD_TLS],
+			  "ListenDTLS", CONF_MSTR, &options.listenargs[RAD_DTLS],
 			  "SourceUDP", CONF_STR, &options.sourceudp,
 			  "SourceTCP", CONF_STR, &options.sourcetcp,
 			  "SourceTLS", CONF_STR, &options.sourcetls,
@@ -3655,7 +3658,7 @@ int main(int argc, char **argv) {
     
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
-    
+ 
     getargs(argc, argv, &foreground, &pretend, &loglevel, &configfile);
     if (loglevel)
 	debug_set_level(loglevel);
@@ -3688,6 +3691,7 @@ int main(int argc, char **argv) {
     pthread_sigmask(SIG_BLOCK, &sigset, NULL);
     pthread_create(&sigth, NULL, sighandler, NULL);
 
+    memset(srcprotores, 0, sizeof(srcprotores));
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	srvconf = (struct clsrvconf *)entry->data;
 	if (srvconf->dynamiclookupcommand)
@@ -3698,29 +3702,16 @@ int main(int argc, char **argv) {
 			   (void *)(srvconf->servers)))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
-    /* srcprotores for UDP no longer needed */
-    if (srcprotores[RAD_UDP]) {
-	freeaddrinfo(srcprotores[RAD_UDP]);
-	srcprotores[RAD_UDP] = NULL;
-    }
 
-    for (i = 0; protodefs[i].name; i++)
+    for (i = 0; protodefs[i].name; i++) {
+	if (protodefs[i].freesrcprotores && srcprotores[i]) {
+	    freeaddrinfo(srcprotores[i]);
+	    srcprotores[i] = NULL;
+	}
 	if (protodefs[i].initextra)
 	    protodefs[i].initextra();
-    
-    if (find_clconf_type(RAD_TCP, NULL))
-	createlisteners(RAD_TCP, options.listentcp);
-    
-    if (find_clconf_type(RAD_TLS, NULL))
-	createlisteners(RAD_TLS, options.listentls);
-    
-    if (find_clconf_type(RAD_DTLS, NULL))
-	createlisteners(RAD_DTLS, options.listendtls);
-    
-    if (find_clconf_type(RAD_UDP, NULL)) {
-	createlisteners(RAD_UDP, options.listenudp);
-	if (options.listenaccudp)
-	    createlisteners(RAD_UDP, options.listenaccudp);
+        if (find_clconf_type(i, NULL))
+	    createlisteners(i, options.listenargs[i]);
     }
     
     /* just hang around doing nothing, anything to do here? */

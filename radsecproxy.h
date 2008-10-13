@@ -26,13 +26,10 @@
 #define RAD_TLS 1
 #define RAD_TCP 2
 #define RAD_DTLS 3
+#define RAD_PROTOCOUNT 4
 
 struct options {
-    char **listenudp;
-    char **listentcp;
-    char **listentls;
-    char **listendtls;
-    char **listenaccudp;
+    char **listenargs[RAD_PROTOCOUNT];
     char *sourceudp;
     char *sourcetcp;
     char *sourcetls;
@@ -194,6 +191,7 @@ struct protodefs {
     int (*clientradput)(struct server *, unsigned char *);
     void (*addclient)(struct client *);
     void (*addserverextra)(struct clsrvconf *);
+    uint8_t freesrcprotores;
     void (*initextra)();
 };
 

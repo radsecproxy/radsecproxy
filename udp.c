@@ -169,23 +169,11 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 
 int clientradputudp(struct server *server, unsigned char *rad) {
     size_t len;
-    struct sockaddr_storage sa;
-    struct sockaddr *sap;
     struct clsrvconf *conf = server->conf;
-    uint16_t port;
     
     len = RADLEN(rad);
-    port = port_get(conf->addrinfo->ai_addr);
-    
-    if (*rad == RAD_Accounting_Request) {
-	sap = (struct sockaddr *)&sa;
-	memcpy(sap, conf->addrinfo->ai_addr, conf->addrinfo->ai_addrlen);
-	port_set(sap, ++port);
-    } else
-	sap = conf->addrinfo->ai_addr;
-
-    if (sendto(server->sock, rad, len, 0, sap, conf->addrinfo->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, port);
+    if (sendto(server->sock, rad, len, 0, conf->addrinfo->ai_addr, conf->addrinfo->ai_addrlen) >= 0) {
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, port_get(conf->addrinfo->ai_addr));
 	return 1;
     }
 
