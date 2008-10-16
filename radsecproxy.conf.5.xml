@@ -264,7 +264,7 @@ description, see the configuration syntax section above.
     <title>Blocks</title>
     <para>
 There are five types of blocks, they are <literal>client</literal>,
-<literal>server</literal>, <literal>realm</literal>, <literal>Btls</literal>
+<literal>server</literal>, <literal>realm</literal>, <literal>tls</literal>
 and <literal>rewrite</literal>. At least one instance of each of
 <literal>client</literal> and <literal>realm</literal> is required. This is
 necessary for the proxy to do anything useful, and it will exit if not. The
