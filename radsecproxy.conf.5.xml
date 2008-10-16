@@ -2,14 +2,14 @@
 "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
 <refentry>
   <refentryinfo>
-    <date>2008-10-06</date>
+    <date>2008-10-16</date>
   </refentryinfo>
   <refmeta>
     <refentrytitle>
       <application>radsecproxy.conf</application>
     </refentrytitle>
     <manvolnum>5</manvolnum>
-    <refmiscinfo>radsecproxy devel 2008-10-06</refmiscinfo>
+    <refmiscinfo>radsecproxy devel 2008-10-16</refmiscinfo>
   </refmeta>
   <refnamediv>
     <refname>
@@ -283,7 +283,7 @@ description, see the configuration syntax section above.
     <title>Blocks</title>
     <para>
 There are five types of blocks, they are <literal>client</literal>,
-<literal>server</literal>, <literal>realm</literal>, <literal>Btls</literal>
+<literal>server</literal>, <literal>realm</literal>, <literal>tls</literal>
 and <literal>rewrite</literal>. At least one instance of each of
 <literal>client</literal> and <literal>realm</literal> is required. This is
 necessary for the proxy to do anything useful, and it will exit if not. The
@@ -594,8 +594,9 @@ default, even <literal>defaultServer</literal> if you really want to.
 The available TLS block options are <literal>CACertificateFile</literal>,
 <literal>CACertificatePath</literal>, <literal>certificateFile</literal>,
 <literal>certificateKeyFile</literal>,
-<literal>certificateKeyPassword</literal>, <literal>cacheExpiry</literal>
-and <literal>CRLCheck</literal>. When doing RADIUS over TLS/DTLS, both the
+<literal>certificateKeyPassword</literal>, <literal>cacheExpiry</literal>,
+<literal>CRLCheck</literal> and <literal>policyOID</literal>.
+When doing RADIUS over TLS/DTLS, both the
 client and the server present certificates, and they are both verified by
 the peer. Hence you must always specify <literal>certificateFile</literal>
 and <literal>certificateKeyFile</literal> options, as well as
@@ -607,7 +608,9 @@ certificates to a peer, you also always need to specify
 Note that you may specify both, in which case the certificates in
 <literal>CACertificateFile</literal> are checked first. By default CRLs are
 not checked. This can be changed by setting <literal>CRLCheck</literal> to
-<literal>on</literal>.
+<literal>on</literal>. One can require peer certificates to adhere to certain
+policies by specifying one or multiple policyOIDs using one or multiple
+<literal>policyOID</literal> options.
     </para>
     <para>
 CA certificates and CRLs are normally cached permanently. That is, once a CA

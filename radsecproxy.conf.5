@@ -5,7 +5,7 @@
 \\$2 \(la\\$1\(ra\\$3
 ..
 .if \n(.g .mso www.tmac
-.TH "radsecproxy.conf " 5 2008-10-06 "radsecproxy devel 2008-10-06" ""
+.TH "radsecproxy.conf " 5 2008-10-16 "radsecproxy devel 2008-10-16" ""
 .SH NAME
 radsecproxy.conf
 \- Radsec proxy configuration file 
@@ -184,7 +184,7 @@ It can both be used as a basic option and inside blocks. For the full
 description, see the configuration syntax section above.
 .SH BLOCKS
 There are five types of blocks, they are \*(T<client\*(T>,
-\*(T<server\*(T>, \*(T<realm\*(T>, \*(T<Btls\*(T>
+\*(T<server\*(T>, \*(T<realm\*(T>, \*(T<tls\*(T>
 and \*(T<rewrite\*(T>. At least one instance of each of
 \*(T<client\*(T> and \*(T<realm\*(T> is required. This is
 necessary for the proxy to do anything useful, and it will exit if not. The
@@ -444,8 +444,9 @@ default, even \*(T<defaultServer\*(T> if you really want to.
 The available TLS block options are \*(T<CACertificateFile\*(T>,
 \*(T<CACertificatePath\*(T>, \*(T<certificateFile\*(T>,
 \*(T<certificateKeyFile\*(T>,
-\*(T<certificateKeyPassword\*(T>, \*(T<cacheExpiry\*(T>
-and \*(T<CRLCheck\*(T>. When doing RADIUS over TLS/DTLS, both the
+\*(T<certificateKeyPassword\*(T>, \*(T<cacheExpiry\*(T>,
+\*(T<CRLCheck\*(T> and \*(T<policyOID\*(T>.
+When doing RADIUS over TLS/DTLS, both the
 client and the server present certificates, and they are both verified by
 the peer. Hence you must always specify \*(T<certificateFile\*(T>
 and \*(T<certificateKeyFile\*(T> options, as well as
@@ -457,7 +458,9 @@ certificates to a peer, you also always need to specify
 Note that you may specify both, in which case the certificates in
 \*(T<CACertificateFile\*(T> are checked first. By default CRLs are
 not checked. This can be changed by setting \*(T<CRLCheck\*(T> to
-\*(T<on\*(T>.
+\*(T<on\*(T>. One can require peer certificates to adhere to certain
+policies by specifying one or multiple policyOIDs using one or multiple
+\*(T<policyOID\*(T> options.
 .PP
 CA certificates and CRLs are normally cached permanently. That is, once a CA
 or CRL has been read, the proxy will never attempt to re-read it. CRLs may
