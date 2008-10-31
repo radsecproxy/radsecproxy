@@ -22,6 +22,9 @@
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
 
+/* 27262 is vendor DANTE Ltd. */
+#define DEFAULT_TTL_ATTR "27262:1"
+
 #define RAD_UDP 0
 #define RAD_TLS 1
 #define RAD_TCP 2
@@ -30,11 +33,11 @@
 
 struct options {
     char **listenargs[RAD_PROTOCOUNT];
-    char *sourceudp;
-    char *sourcetcp;
-    char *sourcetls;
-    char *sourcedtls;
+    char *sourcearg[RAD_PROTOCOUNT];
     char *logdestination;
+    char *ttlattr;
+    uint32_t ttlattrtype[2];
+    uint8_t addttl;
     uint8_t loglevel;
     uint8_t loopprevention;
 };
@@ -185,7 +188,6 @@ struct protodefs {
     uint8_t retryintervalmax;
     uint8_t duplicateintervaldefault;
     void *(*listener)(void*);
-    char **srcaddrport;
     int (*connecter)(struct server *, struct timeval *, int, char *);
     void *(*clientconnreader)(void*);
     int (*clientradput)(struct server *, unsigned char *);

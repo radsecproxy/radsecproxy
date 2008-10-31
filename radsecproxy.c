@@ -110,7 +110,6 @@ static const struct protodefs protodefs[] = {
 	60, /* retryintervalmax */
 	DUPLICATE_INTERVAL, /* duplicateintervaldefault */
 	udpserverrd, /* listener */
-	&options.sourceudp, /* srcaddrport */
 	NULL, /* connecter */
 	NULL, /* clientconnreader */
 	clientradputudp, /* clientradput */
@@ -129,7 +128,6 @@ static const struct protodefs protodefs[] = {
 	60, /* retryintervalmax */
 	DUPLICATE_INTERVAL, /* duplicateintervaldefault */
 	tlslistener, /* listener */
-	&options.sourcetls, /* srcaddrport */
 	tlsconnect, /* connecter */
 	tlsclientrd, /* clientconnreader */
 	clientradputtls, /* clientradput */
@@ -148,7 +146,6 @@ static const struct protodefs protodefs[] = {
 	60, /* retryintervalmax */
 	DUPLICATE_INTERVAL, /* duplicateintervaldefault */
 	tcplistener, /* listener */
-	&options.sourcetcp, /* srcaddrport */
 	tcpconnect, /* connecter */
 	tcpclientrd, /* clientconnreader */
 	clientradputtcp, /* clientradput */
@@ -167,7 +164,6 @@ static const struct protodefs protodefs[] = {
 	60, /* retryintervalmax */
 	DUPLICATE_INTERVAL, /* duplicateintervaldefault */
 	udpdtlsserverrd, /* listener */
-	&options.sourcedtls, /* srcaddrport */
 	dtlsconnect, /* connecter */
 	dtlsclientrd, /* clientconnreader */
 	clientradputdtls, /* clientradput */
@@ -668,7 +664,7 @@ int addserver(struct clsrvconf *conf) {
 	conf->servers->rbios = newqueue();
     
     if (!srcprotores[type]) {
-	res = resolve_hostport(type, *conf->pdef->srcaddrport, NULL);
+	res = resolve_hostport(type, options.sourcearg[type], NULL);
 	srcprotores[type] = res->addrinfo;
 	res->addrinfo = NULL;
 	freeclsrvres(res);
@@ -1610,6 +1606,100 @@ int rewriteusername(struct request *rq, struct tlv *attr) {
     return 1;
 }
 
+int addvendorattr(struct radmsg *msg, uint32_t vendor, struct tlv *attr) {
+    struct tlv *vattr;
+    uint8_t l, *v;
+
+    l = attr->l + 6;
+    v = malloc(l);
+    if (v) {
+	vendor = htonl(vendor);
+	memcpy(v, &vendor, 4);
+	tlv2buf(v + 4, attr);
+	vattr = maketlv(RAD_Attr_Vendor_Specific, l, v);
+	if (vattr && radmsg_add(msg, vattr))
+	    return 1;
+	freetlv(vattr);
+    }
+    return 0;
+}
+
+void addttlattr(struct radmsg *msg, uint32_t *attrtype, uint8_t addttl) {
+    uint8_t ttl[4];
+    struct tlv *attr;
+
+    memset(ttl, 0, 4);
+    ttl[3] = addttl;
+    
+    if (attrtype[1] == -1) { /* not vendor */
+	attr = maketlv(attrtype[0], 4, ttl);
+	if (attr && !radmsg_add(msg, attr))
+	    freetlv(attr);
+    } else {
+	attr = maketlv(attrtype[1], 4, ttl);
+	if (attr) {
+	    addvendorattr(msg, attrtype[0], attr);
+	    freetlv(attr);
+	}
+    }
+}
+
+int decttl(uint8_t l, uint8_t *v) {
+    int i;
+
+    i = l - 1;
+    if (v[i]) {
+	if (--v[i--])
+	    return 1;
+	while (i >= 0 && !v[i])
+	    i--;
+	return i >= 0;
+    }
+    for (i--; i >= 0 && !v[i]; i--);
+    if (i < 0)
+	return 0;
+    v[i]--;
+    while (++i < l)
+	v[i] = 255;
+    return 1;
+}
+
+int dottl(struct radmsg *msg, uint32_t *attrtype, uint8_t addttl) {
+    uint8_t alen, *subattrs;
+    struct tlv *attr;
+    struct list_node *node;
+    uint32_t vendor;
+    int sublen;
+    
+    if (attrtype[1] == -1) { /* not vendor */
+	attr = radmsg_gettype(msg, attrtype[0]);
+	if (attr)
+	    return decttl(attr->l, attr->v);
+    } else
+	for (node = list_first(msg->attrs); node; node = list_next(node)) {
+	    attr = (struct tlv *)node->data;
+	    if (attr->t != RAD_Attr_Vendor_Specific || attr->l <= 4)
+		continue;
+	    memcpy(&vendor, attr->v, 4);
+	    if (ntohl(vendor) != attrtype[0])
+		continue;
+	    sublen = attr->l - 4;
+	    subattrs = attr->v + 4;  
+	    if (!attrvalidate(subattrs, sublen))
+		continue;
+	    while (sublen > 1) {
+		if (ATTRTYPE(subattrs) == attrtype[1])
+		    return decttl(ATTRVALLEN(subattrs), ATTRVAL(subattrs));
+		alen = ATTRLEN(subattrs);
+		sublen -= alen;
+		subattrs += alen;
+	    }
+	}
+    if (addttl)
+	addttlattr(msg, attrtype, addttl);
+    return 1;
+}
+	  
 const char *radmsgtype2string(uint8_t code) {
     static const char *rad_msg_names[] = {
 	"", "Access-Request", "Access-Accept", "Access-Reject",
@@ -1846,6 +1936,11 @@ int radsrv(struct request *rq) {
     if (from->conf->rewritein && !dorewrite(msg, from->conf->rewritein))
 	goto rmclrqexit;
 
+    if (!dottl(msg, options.ttlattrtype, options.addttl)) {
+	debug(DBG_WARN, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr));
+	goto exit;
+    }
+	
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
 	if (msg->code == RAD_Accounting_Request) {
@@ -1885,8 +1980,8 @@ int radsrv(struct request *rq) {
     }
     
     if (options.loopprevention && !strcmp(from->conf->name, to->conf->name)) {
-	debug(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s to server %s, discarding",
-	      from->conf->name, to->conf->name);
+	debug(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s, discarding",
+	      from->conf->name, addr2string(from->addr), to->conf->name);
 	goto exit;
     }
 
@@ -1986,6 +2081,11 @@ void replyh(struct server *server, unsigned char *buf) {
 	
     if (server->conf->rewritein && !dorewrite(msg, from->conf->rewritein)) {
 	debug(DBG_WARN, "replyh: rewritein failed");
+	goto errunlock;
+    }
+    
+    if (!dottl(msg, options.ttlattrtype, options.addttl)) {
+	debug(DBG_WARN, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->host);
 	goto errunlock;
     }
     
@@ -3079,6 +3179,16 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
     debug(DBG_DBG, "addrewrite: added rewrite block %s", value);
 }
 
+int setttlattr(struct options *opts, char *defaultattr) {
+    char *ttlattr = opts->ttlattr ? opts->ttlattr : defaultattr;
+     
+    if (vattrname2val(ttlattr, opts->ttlattrtype, opts->ttlattrtype + 1) &&
+	(opts->ttlattrtype[1] != -1 || opts->ttlattrtype[0] < 256))
+	return 1;
+    debug(DBG_ERR, "setttlattr: invalid TTLAttribute value %s", ttlattr);
+    return 0;
+}
+
 void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->name);
     free(conf->host);
@@ -3522,7 +3632,7 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
 }
 
 void getmainconfig(const char *configfile) {
-    long int loglevel = LONG_MIN;
+    long int addttl = LONG_MIN, loglevel = LONG_MIN;
     struct gconffile *cfs;
 
     cfs = openconfigfile(configfile);
@@ -3553,10 +3663,12 @@ void getmainconfig(const char *configfile) {
 			  "ListenTCP", CONF_MSTR, &options.listenargs[RAD_TCP],
 			  "ListenTLS", CONF_MSTR, &options.listenargs[RAD_TLS],
 			  "ListenDTLS", CONF_MSTR, &options.listenargs[RAD_DTLS],
-			  "SourceUDP", CONF_STR, &options.sourceudp,
-			  "SourceTCP", CONF_STR, &options.sourcetcp,
-			  "SourceTLS", CONF_STR, &options.sourcetls,
-			  "SourceDTLS", CONF_STR, &options.sourcedtls,
+			  "SourceUDP", CONF_STR, &options.sourcearg[RAD_UDP],
+			  "SourceTCP", CONF_STR, &options.sourcearg[RAD_TCP],
+			  "SourceTLS", CONF_STR, &options.sourcearg[RAD_TLS],
+			  "SourceDTLS", CONF_STR, &options.sourcearg[RAD_DTLS],
+			  "TTLAttribute", CONF_STR, &options.ttlattr,
+			  "addTTL", CONF_LINT, &addttl,
 			  "LogLevel", CONF_LINT, &loglevel,
 			  "LogDestination", CONF_STR, &options.logdestination,
 			  "LoopPrevention", CONF_BLN, &options.loopprevention,
@@ -3574,6 +3686,13 @@ void getmainconfig(const char *configfile) {
 	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %d, must be 1, 2, 3 or 4", configfile, loglevel);
 	options.loglevel = (uint8_t)loglevel;
     }
+    if (addttl != LONG_MIN) {
+	if (addttl < 1 || addttl > 255)
+	    debugx(1, DBG_ERR, "error in %s, value of option addTTL is %d, must be 1-255", configfile, addttl);
+	options.addttl = (uint8_t)addttl;
+    }
+    if (!setttlattr(&options, DEFAULT_TTL_ATTR))
+    	debugx(1, DBG_ERR, "Failed to set TTLAttribute, exiting");
 }
 
 void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8_t *loglevel, char **configfile) {
