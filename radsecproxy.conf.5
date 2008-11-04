@@ -5,7 +5,7 @@
 \\$2 \(la\\$1\(ra\\$3
 ..
 .if \n(.g .mso www.tmac
-.TH "radsecproxy.conf " 5 2008-10-16 "radsecproxy devel 2008-10-16" ""
+.TH "radsecproxy.conf " 5 2008-11-05 "radsecproxy devel 2008-11-05" ""
 .SH NAME
 radsecproxy.conf
 \- Radsec proxy configuration file 
@@ -171,6 +171,21 @@ will use for TLS connections.
 This can be used to specify source address and/or source port that the proxy
 will use for DTLS connections.
 .TP 
+\*(T<TTLAttribute\*(T>
+This can be used to change the default TTL attribute. Only change this if
+you know what you are doing. The syntax is either a numerical value
+denoting the TTL attribute, or two numerical values separated by column
+specifying a vendor attribute, i.e. \*(T<vendorid:attribute\*(T>.
+.TP 
+\*(T<addTTL\*(T>
+If a TTL attribute is present, the proxy will decrement the value and
+discard the message if zero. Normally the proxy does nothing if no TTL
+attribute is present. If you use the addTTL option with a value 1-255,
+the proxy will when forwarding a message with no TTL attribute, add one
+with the specified value. Note that this option can also be specified
+for a client/server. It will then override this setting when forwarding
+a message to that client/server.
+.TP 
 \*(T<loopPrevention\*(T>
 This can be set to \*(T<on\*(T> or \*(T<off\*(T> with
 \*(T<off\*(T> being the default. When this is enabled, a request
@@ -225,9 +240,10 @@ The allowed options in a client block are \*(T<host\*(T>,
 \*(T<type\*(T>, \*(T<secret\*(T>, \*(T<tls\*(T>,
 \*(T<certificateNameCheck\*(T>,
 \*(T<matchCertificateAttribute\*(T>,
-\*(T<duplicateInterval\*(T>, \*(T<rewrite\*(T>,
-\*(T<rewriteIn\*(T>, \*(T<rewriteOut\*(T> and
-\*(T<rewriteAttribute\*(T>. We already discussed the
+\*(T<duplicateInterval\*(T>, \*(T<addTTL\*(T>,
+\*(T<rewrite\*(T>, \*(T<rewriteIn\*(T>,
+\*(T<rewriteOut\*(T> and \*(T<rewriteAttribute\*(T>.
+We already discussed the
 \*(T<host\*(T> option. The value of \*(T<type\*(T> must be
 one of \*(T<udp\*(T>, \*(T<tcp\*(T>, \*(T<tls\*(T>
 or \*(T<dtls\*(T>. The value of \*(T<secret\*(T> is the
@@ -261,6 +277,11 @@ request within a few seconds of a previous one, it may be treated the same if
 from the same client, with the same authenticator etc. The proxy will then
 ignore the new request (if it is still processing the previous one), or
 returned a copy of the previous reply.
+.PP
+The \*(T<addTTL\*(T> option is similar to the
+\*(T<addTTL\*(T> option used in the basic config. See that for
+details. Any value configured here overrides the basic one when sending
+messages to this client.
 .PP
 The \*(T<rewrite\*(T> option is deprecated. Use
 \*(T<rewriteIn\*(T> instead.
@@ -309,7 +330,8 @@ administrator.
 The allowed options in a server block are \*(T<host\*(T>,
 \*(T<port\*(T>, \*(T<type\*(T>, \*(T<secret\*(T>,
 \*(T<tls\*(T>, \*(T<certificateNameCheck\*(T>,
-\*(T<matchCertificateAttribute\*(T>, \*(T<rewrite\*(T>,
+\*(T<matchCertificateAttribute\*(T>, \*(T<addTTL\*(T>,
+\*(T<rewrite\*(T>,
 \*(T<rewriteIn\*(T>, \*(T<rewriteOut\*(T>,
 \*(T<statusServer\*(T>, \*(T<retryCount\*(T>,
 \*(T<retryInterval\*(T> and \*(T<dynamicLookupCommand\*(T>.
@@ -318,7 +340,8 @@ We already discussed the \*(T<host\*(T> option. The
 \*(T<port\*(T> option allows you to specify which port number the
 server uses. The usage of \*(T<type\*(T>, \*(T<secret\*(T>,
 \*(T<tls\*(T>, \*(T<certificateNameCheck\*(T>,
-\*(T<matchCertificateAttribute\*(T>, \*(T<rewrite\*(T>,
+\*(T<matchCertificateAttribute\*(T>, \*(T<addTTL\*(T>,
+\*(T<rewrite\*(T>,
 \*(T<rewriteIn\*(T> and \*(T<rewriteOut\*(T> are just as
 specified for the \*(T<client block\*(T> above, except that
 \*(T<defaultServer\*(T> (and not \*(T<defaultClient\*(T>)
