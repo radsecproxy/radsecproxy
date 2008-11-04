@@ -1616,6 +1616,7 @@ int addvendorattr(struct radmsg *msg, uint32_t vendor, struct tlv *attr) {
 	vendor = htonl(vendor);
 	memcpy(v, &vendor, 4);
 	tlv2buf(v + 4, attr);
+	v[5] += 2;
 	vattr = maketlv(RAD_Attr_Vendor_Specific, l, v);
 	if (vattr && radmsg_add(msg, vattr))
 	    return 1;
