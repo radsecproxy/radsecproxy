@@ -1665,7 +1665,8 @@ int decttl(uint8_t l, uint8_t *v) {
     return 1;
 }
 
-int dottl(struct radmsg *msg, uint32_t *attrtype, uint8_t addttl) {
+/* returns -1 if no ttl, 0 if exceeded, 1 if ok */
+int checkttl(struct radmsg *msg, uint32_t *attrtype) {
     uint8_t alen, *subattrs;
     struct tlv *attr;
     struct list_node *node;
@@ -1696,9 +1697,7 @@ int dottl(struct radmsg *msg, uint32_t *attrtype, uint8_t addttl) {
 		subattrs += alen;
 	    }
 	}
-    if (addttl)
-	addttlattr(msg, attrtype, addttl);
-    return 1;
+    return -1;
 }
 	  
 const char *radmsgtype2string(uint8_t code) {
@@ -1903,6 +1902,7 @@ int radsrv(struct request *rq) {
     struct realm *realm = NULL;
     struct server *to = NULL;
     struct client *from = rq->from;
+    int ttlres;
     
     msg = buf2radmsg(rq->buf, (uint8_t *)from->conf->secret, NULL);
     free(rq->buf);
@@ -1937,7 +1937,8 @@ int radsrv(struct request *rq) {
     if (from->conf->rewritein && !dorewrite(msg, from->conf->rewritein))
 	goto rmclrqexit;
 
-    if (!dottl(msg, options.ttlattrtype, options.addttl)) {
+    ttlres = checkttl(msg, options.ttlattrtype);
+    if (!ttlres) {
 	debug(DBG_WARN, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr));
 	goto exit;
     }
@@ -2014,6 +2015,9 @@ int radsrv(struct request *rq) {
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
 	goto rmclrqexit;
     
+    if (ttlres == -1 && (options.addttl || to->conf->addttl))
+	addttlattr(msg, options.ttlattrtype, to->conf->addttl ? to->conf->addttl : options.addttl);
+    
     free(userascii);
     rq->to = to;
     sendrq(rq);
@@ -2036,7 +2040,7 @@ int radsrv(struct request *rq) {
 void replyh(struct server *server, unsigned char *buf) {
     struct client *from;
     struct rqout *rqout;
-    int sublen;
+    int sublen, ttlres;
     unsigned char *subattrs;
     uint8_t *username, *stationid, *replymsg;
     struct radmsg *msg = NULL;
@@ -2085,7 +2089,8 @@ void replyh(struct server *server, unsigned char *buf) {
 	goto errunlock;
     }
     
-    if (!dottl(msg, options.ttlattrtype, options.addttl)) {
+    ttlres = checkttl(msg, options.ttlattrtype);
+    if (!ttlres) {    
 	debug(DBG_WARN, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->host);
 	goto errunlock;
     }
@@ -2160,6 +2165,9 @@ void replyh(struct server *server, unsigned char *buf) {
 	debug(DBG_WARN, "replyh: rewriteout failed");
 	goto errunlock;
     }
+    
+    if (ttlres == -1 && (options.addttl || from->conf->addttl))
+	addttlattr(msg, options.ttlattrtype, from->conf->addttl ? from->conf->addttl : options.addttl);
 
     debug(DBG_INFO, "replyh: passing reply to client %s (%s)", from->conf->name, addr2string(from->addr));
     radmsg_free(rqout->rq->msg);
@@ -3267,7 +3275,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf;
     char *conftype = NULL, *rewriteinalias = NULL;
-    long int dupinterval = LONG_MIN;
+    long int dupinterval = LONG_MIN, addttl = LONG_MIN;
     
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -3278,18 +3286,19 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->certnamecheck = 1;
     
     if (!getgenericconfig(cf, block,
-		     "type", CONF_STR, &conftype,
-		     "host", CONF_STR, &conf->host,
-		     "secret", CONF_STR, &conf->secret,
-		     "tls", CONF_STR, &conf->tls,
-		     "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
-		     "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
-		     "DuplicateInterval", CONF_LINT, &dupinterval,
-		     "rewrite", CONF_STR, &rewriteinalias,
-		     "rewriteIn", CONF_STR, &conf->confrewritein,
-		     "rewriteOut", CONF_STR, &conf->confrewriteout,
-		     "rewriteattribute", CONF_STR, &conf->confrewriteusername,
-		     NULL
+			  "type", CONF_STR, &conftype,
+			  "host", CONF_STR, &conf->host,
+			  "secret", CONF_STR, &conf->secret,
+			  "tls", CONF_STR, &conf->tls,
+			  "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
+			  "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+			  "DuplicateInterval", CONF_LINT, &dupinterval,
+			  "addTTL", CONF_LINT, &addttl,
+			  "rewrite", CONF_STR, &rewriteinalias,
+			  "rewriteIn", CONF_STR, &conf->confrewritein,
+			  "rewriteOut", CONF_STR, &conf->confrewriteout,
+			  "rewriteattribute", CONF_STR, &conf->confrewriteusername,
+			  NULL
 			  ))
 	debugx(1, DBG_ERR, "configuration error");
     
@@ -3321,6 +3330,12 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	conf->dupinterval = (uint8_t)dupinterval;
     } else
 	conf->dupinterval = conf->pdef->duplicateintervaldefault;
+    
+    if (addttl != LONG_MIN) {
+	if (addttl < 1 || addttl > 255)
+	    debugx(1, DBG_ERR, "error in block %s, value of option addTTL is %d, must be 1-255", block, addttl);
+	conf->addttl = (uint8_t)addttl;
+    }
     
     if (!conf->confrewritein)
 	conf->confrewritein = rewriteinalias;
@@ -3409,7 +3424,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *resconf;
     char *conftype = NULL, *rewriteinalias = NULL;
-    long int retryinterval = LONG_MIN, retrycount = LONG_MIN;
+    long int retryinterval = LONG_MIN, retrycount = LONG_MIN, addttl = LONG_MIN;
     
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
@@ -3433,6 +3448,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "secret", CONF_STR, &conf->secret,
 			  "tls", CONF_STR, &conf->tls,
 			  "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
+			  "addTTL", CONF_LINT, &addttl,
 			  "rewrite", CONF_STR, &rewriteinalias,
 			  "rewriteIn", CONF_STR, &conf->confrewritein,
 			  "rewriteOut", CONF_STR, &conf->confrewriteout,
@@ -3495,6 +3511,14 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     } else
 	conf->retrycount = 255;
     
+    if (addttl != LONG_MIN) {
+	if (addttl < 1 || addttl > 255) {
+	    debug(DBG_ERR, "error in block %s, value of option addTTL is %d, must be 1-255", block, addttl);
+	    goto errexit;
+	}
+	conf->addttl = (uint8_t)addttl;
+    }
+    
     if (resconf) {
 	if (!mergesrvconf(resconf, conf))
 	    goto errexit;
@@ -3534,11 +3558,11 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
     debug(DBG_DBG, "confrealm_cb called for %s", block);
     
     if (!getgenericconfig(cf, block,
-		     "server", CONF_MSTR, &servers,
-		     "accountingServer", CONF_MSTR, &accservers,
-		     "ReplyMessage", CONF_STR, &msg,
-		     "AccountingResponse", CONF_BLN, &accresp,
-		     NULL
+			  "server", CONF_MSTR, &servers,
+			  "accountingServer", CONF_MSTR, &accservers,
+			  "ReplyMessage", CONF_STR, &msg,
+			  "AccountingResponse", CONF_BLN, &accresp,
+			  NULL
 			  ))
 	debugx(1, DBG_ERR, "configuration error");
 
@@ -3560,15 +3584,15 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     memset(conf, 0, sizeof(struct tls));
     
     if (!getgenericconfig(cf, block,
-		     "CACertificateFile", CONF_STR, &conf->cacertfile,
-		     "CACertificatePath", CONF_STR, &conf->cacertpath,
-		     "CertificateFile", CONF_STR, &conf->certfile,
-		     "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
-		     "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
-		     "CacheExpiry", CONF_LINT, &expiry,
-		     "CRLCheck", CONF_BLN, &conf->crlcheck,
-		     "PolicyOID", CONF_MSTR, &conf->policyoids,
-		     NULL
+			  "CACertificateFile", CONF_STR, &conf->cacertfile,
+			  "CACertificatePath", CONF_STR, &conf->cacertpath,
+			  "CertificateFile", CONF_STR, &conf->certfile,
+			  "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
+			  "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
+			  "CacheExpiry", CONF_LINT, &expiry,
+			  "CRLCheck", CONF_BLN, &conf->crlcheck,
+			  "PolicyOID", CONF_MSTR, &conf->policyoids,
+			  NULL
 			  )) {
 	debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
 	goto errexit;
@@ -3621,11 +3645,11 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
     
     if (!getgenericconfig(cf, block,
-		     "removeAttribute", CONF_MSTR, &rmattrs,
-		     "removeVendorAttribute", CONF_MSTR, &rmvattrs,
-		     "addAttribute", CONF_MSTR, &addattrs,
-		     "modifyAttribute", CONF_MSTR, &modattrs,
-		     NULL
+			  "removeAttribute", CONF_MSTR, &rmattrs,
+			  "removeVendorAttribute", CONF_MSTR, &rmvattrs,
+			  "addAttribute", CONF_MSTR, &addattrs,
+			  "modifyAttribute", CONF_MSTR, &modattrs,
+			  NULL
 			  ))
 	debugx(1, DBG_ERR, "configuration error");
     addrewrite(val, rmattrs, rmvattrs, addattrs, modattrs);
