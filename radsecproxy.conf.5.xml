@@ -2,14 +2,14 @@
 "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
 <refentry>
   <refentryinfo>
-    <date>2008-10-16</date>
+    <date>2008-11-06</date>
   </refentryinfo>
   <refmeta>
     <refentrytitle>
       <application>radsecproxy.conf</application>
     </refentrytitle>
     <manvolnum>5</manvolnum>
-    <refmiscinfo>radsecproxy devel 2008-10-16</refmiscinfo>
+    <refmiscinfo>radsecproxy devel-20081106</refmiscinfo>
   </refmeta>
   <refnamediv>
     <refname>
@@ -256,6 +256,31 @@ will use for DTLS connections.
         </listitem>
       </varlistentry>
       <varlistentry>
+        <term><literal>TTLAttribute</literal></term>
+        <listitem>
+	  <para>
+This can be used to change the default TTL attribute. Only change this if
+you know what you are doing. The syntax is either a numerical value
+denoting the TTL attribute, or two numerical values separated by column
+specifying a vendor attribute, i.e. <literal>vendorid:attribute</literal>.
+	  </para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><literal>addTTL</literal></term>
+        <listitem>
+	  <para>
+If a TTL attribute is present, the proxy will decrement the value and
+discard the message if zero. Normally the proxy does nothing if no TTL
+attribute is present. If you use the addTTL option with a value 1-255,
+the proxy will when forwarding a message with no TTL attribute, add one
+with the specified value. Note that this option can also be specified
+for a client/server. It will then override this setting when forwarding
+a message to that client/server.
+	  </para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
         <term><literal>loopPrevention</literal></term>
         <listitem>
 	  <para>
@@ -333,9 +358,10 @@ The allowed options in a client block are <literal>host</literal>,
 <literal>type</literal>, <literal>secret</literal>, <literal>tls</literal>,
 <literal>certificateNameCheck</literal>,
 <literal>matchCertificateAttribute</literal>,
-<literal>duplicateInterval</literal>, <literal>rewrite</literal>,
-<literal>rewriteIn</literal>, <literal>rewriteOut</literal> and
-<literal>rewriteAttribute</literal>. We already discussed the
+<literal>duplicateInterval</literal>, <literal>addTTL</literal>,
+<literal>rewrite</literal>, <literal>rewriteIn</literal>,
+<literal>rewriteOut</literal> and <literal>rewriteAttribute</literal>.
+We already discussed the
 <literal>host</literal> option. The value of <literal>type</literal> must be
 one of <literal>udp</literal>, <literal>tcp</literal>, <literal>tls</literal>
 or <literal>dtls</literal>. The value of <literal>secret</literal> is the
@@ -373,6 +399,12 @@ request within a few seconds of a previous one, it may be treated the same if
 from the same client, with the same authenticator etc. The proxy will then
 ignore the new request (if it is still processing the previous one), or
 returned a copy of the previous reply.
+    </para>
+    <para>
+The <literal>addTTL</literal> option is similar to the
+<literal>addTTL</literal> option used in the basic config. See that for
+details. Any value configured here overrides the basic one when sending
+messages to this client.
     </para>
     <para>
 The <literal>rewrite</literal> option is deprecated. Use
@@ -433,7 +465,8 @@ administrator.
 The allowed options in a server block are <literal>host</literal>,
 <literal>port</literal>, <literal>type</literal>, <literal>secret</literal>,
 <literal>tls</literal>, <literal>certificateNameCheck</literal>,
-<literal>matchCertificateAttribute</literal>, <literal>rewrite</literal>,
+<literal>matchCertificateAttribute</literal>, <literal>addTTL</literal>,
+<literal>rewrite</literal>,
 <literal>rewriteIn</literal>, <literal>rewriteOut</literal>,
 <literal>statusServer</literal>, <literal>retryCount</literal>,
 <literal>retryInterval</literal> and <literal>dynamicLookupCommand</literal>.
@@ -443,7 +476,8 @@ We already discussed the <literal>host</literal> option. The
 <literal>port</literal> option allows you to specify which port number the
 server uses. The usage of <literal>type</literal>, <literal>secret</literal>,
 <literal>tls</literal>, <literal>certificateNameCheck</literal>,
-<literal>matchCertificateAttribute</literal>, <literal>rewrite</literal>,
+<literal>matchCertificateAttribute</literal>, <literal>addTTL</literal>,
+<literal>rewrite</literal>,
 <literal>rewriteIn</literal> and <literal>rewriteOut</literal> are just as
 specified for the <literal>client block</literal> above, except that
 <literal>defaultServer</literal> (and not <literal>defaultClient</literal>)
