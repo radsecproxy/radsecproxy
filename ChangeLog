@@ -47,3 +47,9 @@ Additional features in devel-20081006
 	Dynamic server discovery
 	DuplicateInterval option in client block for specifying for how
 	  long a request/reply shall be stored for duplicate detection
+Additional features in devel-20081106
+	Support for RADIUS TTL (hopcount) attribute. Decrements value of
+	  the TTL attribute if present, discards message if becomes 0.
+	  If addTTL option is used, the TTL attribute is added with the
+	    specified value if the forwarded message does not have one.
+        PolicyOID option can be used to require certain CA policies.
