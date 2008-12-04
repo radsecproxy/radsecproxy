@@ -40,14 +40,12 @@
 	  cache of CA certificates and CRLs. This is particularly useful for
 	  regularly updating CRLs.
 	Some logging has been made more informative
-
-Additional features in devel-20081006
+2008-12-04 1.3-alpha
 	Support for TCP and DTLS transports (type tcp, type dtls)
 	Listen... options can be specified multiple times
 	Dynamic server discovery
 	DuplicateInterval option in client block for specifying for how
 	  long a request/reply shall be stored for duplicate detection
-Additional features in devel-20081106
 	Support for RADIUS TTL (hopcount) attribute. Decrements value of
 	  the TTL attribute if present, discards message if becomes 0.
 	  If addTTL option is used, the TTL attribute is added with the

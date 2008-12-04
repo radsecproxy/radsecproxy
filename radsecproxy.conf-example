@@ -32,6 +32,8 @@
 
 #There is an option for doing some simple loop prevention
 #LoopPrevention		on
+#Add TTL attribute with value 20 if not present (prevents endless loops)
+#addTTL 20
 
 #If we have TLS clients or servers we must define at least one tls block.
 #You can name them whatever you like and then reference them by name when
@@ -57,6 +59,9 @@ tls default {
     # CRLCheck on
     # Optionally specify how long CAs and CRLs are cached, default forever
     # CacheExpiry 3600
+    # Optionally require that peer certs have one of the specified policyOIDs
+    # policyoid     1.2.3 # this option can be used multiple times
+    # policyoid     1.3.4
 }
 
 #If you want one cert for all clients and another for all servers, use
