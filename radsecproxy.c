@@ -942,6 +942,10 @@ void freerqoutdata(struct rqout *rqout) {
     if (!rqout)
 	return;
     if (rqout->rq) {
+	if (rqout->rq->buf) {
+	    free(rqout->rq->buf);
+	    rqout->rq->buf = NULL;
+	}
 	freerq(rqout->rq);
 	rqout->rq = NULL;
     }
