@@ -181,7 +181,7 @@ struct rewrite {
 struct protodefs {
     char *name;
     char *secretdefault;
-    uint8_t socktype;
+    int socktype;
     char *portdefault;
     uint8_t retrycountdefault;
     uint8_t retrycountmax;

@@ -6,7 +6,9 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#ifndef SYS_SOLARIS9
 #include <stdint.h>
+#endif
 
 struct hash {
     struct list *hashlist;
