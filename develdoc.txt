@@ -194,13 +194,11 @@ Finally, in sendreply() rq->replybuf is created from rq->msg, and
 rq->msg is freed. rq->replybuf is kept so that if a duplicate request
 is received later, we can just return rq->replybuf.
 
-It appears that rq->buf created by sendrq() is stored until the
-request is replaced, it should be freed when replyh replaces rq->msg
-or in freerqoutdata().
+rq->buf is removed by freerqoutdata(), because then we will not try
+to send the request in rq->buf any more.
 
 Request structs should perhaps be freed when they "expire", rather
 than wait until a new request with the same ID comes along.
-
 
 x. Transports
 
