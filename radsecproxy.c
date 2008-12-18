@@ -172,12 +172,12 @@ static const struct protodefs protodefs[] = {
 	1, /* freesrcprotores */
 	initextradtls /* initextra */
     },
-    {   NULL
+    {   NULL, NULL, 0, NULL, 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL
     }
 };
 
 uint8_t protoname2int(const char *name) {
-    int i;
+    uint8_t i;
 
     for (i = 0; protodefs[i].name && strcasecmp(protodefs[i].name, name); i++);
     return i;
@@ -322,7 +322,7 @@ int resolvepeer(struct clsrvconf *conf, int ai_flags) {
 		freeaddrinfo(addrinfo);
 		return 0;
 	    }
-	    conf->prefixlen = plen;
+	    conf->prefixlen = (uint8_t)plen;
 	} else
 	    conf->prefixlen = 255;
     }
@@ -403,7 +403,7 @@ void freeclsrvres(struct clsrvconf *res) {
 /* returns 1 if the len first bits are equal, else 0 */
 int prefixmatch(void *a1, void *a2, uint8_t len) {
     static uint8_t mask[] = { 0, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe };
-    int r, l = len / 8;
+    uint8_t r, l = len / 8;
     if (l && memcmp(a1, a2, l))
 	return 0;
     r = len % 8;
