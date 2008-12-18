@@ -32,6 +32,13 @@
 #include "radsecproxy.h"
 #include "tls.h"
 
+static struct addrinfo *srcres = NULL;
+
+void tlssetsrcres(char *source) {
+    if (!srcres)
+	srcres = resolve_hostport_addrinfo(RAD_TLS, source);
+}
+
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval now;
     time_t elapsed;
@@ -76,7 +83,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	debug(DBG_WARN, "tlsconnect: trying to open TLS connection to %s port %s", server->conf->host, server->conf->port);
 	if (server->sock >= 0)
 	    close(server->sock);
-	if ((server->sock = connecttcp(server->conf->addrinfo, getsrcprotores(RAD_TLS))) < 0) {
+	if ((server->sock = connecttcp(server->conf->addrinfo, srcres)) < 0) {
 	    debug(DBG_ERR, "tlsconnect: connecttcp failed");
 	    continue;
 	}

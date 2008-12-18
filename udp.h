@@ -6,6 +6,7 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+void udpsetsrcres(char *source);
 int clientradputudp(struct server *server, unsigned char *rad);
 void *udpclientrd(void *arg);
 void *udpserverrd(void *arg);

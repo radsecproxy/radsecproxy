@@ -194,7 +194,7 @@ struct protodefs {
     int (*clientradput)(struct server *, unsigned char *);
     void (*addclient)(struct client *);
     void (*addserverextra)(struct clsrvconf *);
-    uint8_t freesrcprotores;
+    void (*setsrcres)(char *source);
     void (*initextra)();
 };
 
@@ -205,7 +205,6 @@ struct protodefs {
 #define ATTRVAL(x) ((x) + 2)
 #define ATTRVALLEN(x) ((x)[1] - 2)
 
-struct addrinfo *getsrcprotores(uint8_t type);
 struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
@@ -221,3 +220,4 @@ X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);
 void replyh(struct server *server, unsigned char *buf);
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
+struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);

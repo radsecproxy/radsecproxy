@@ -82,8 +82,6 @@ static struct list *clconfs, *srvconfs;
 struct list *realms;
 struct hash *tlsconfs, *rewriteconfs;
 
-static struct addrinfo *srcprotores[RAD_PROTOCOUNT];
-
 static pthread_mutex_t *ssl_locks = NULL;
 static long *ssl_lock_count;
 extern int optind;
@@ -115,7 +113,7 @@ static const struct protodefs protodefs[] = {
 	clientradputudp, /* clientradput */
 	addclientudp, /* addclient */
 	addserverextraudp, /* addserverextra */
-	1, /* freesrcprotores */
+	udpsetsrcres, /* setsrcres */
 	initextraudp /* initextra */
     },
     {   "tls", /* TLS, assuming RAD_TLS defined as 1 */
@@ -133,7 +131,7 @@ static const struct protodefs protodefs[] = {
 	clientradputtls, /* clientradput */
 	NULL, /* addclient */
 	NULL, /* addserverextra */
-	0, /* freesrcprotores */
+	tlssetsrcres, /* setsrcres */
 	NULL /* initextra */
     },
     {   "tcp", /* TCP, assuming RAD_TCP defined as 2 */
@@ -151,7 +149,7 @@ static const struct protodefs protodefs[] = {
 	clientradputtcp, /* clientradput */
 	NULL, /* addclient */
 	NULL, /* addserverextra */
-	0, /* freesrcprotores */
+	tcpsetsrcres, /* setsrcres */
 	NULL /* initextra */
     },
     {   "dtls", /* DTLS, assuming RAD_DTLS defined as 3 */
@@ -169,10 +167,10 @@ static const struct protodefs protodefs[] = {
 	clientradputdtls, /* clientradput */
 	NULL, /* addclient */
 	addserverextradtls, /* addserverextra */
-	1, /* freesrcprotores */
+	dtlssetsrcres, /* setsrcres */
 	initextradtls /* initextra */
     },
-    {   NULL, NULL, 0, NULL, 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL
+    {   NULL, NULL, 0, NULL, 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
     }
 };
 
@@ -256,10 +254,6 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
     printf("certificate verify returns %d\n", ok);
 #endif  
     return ok;
-}
-
-struct addrinfo *getsrcprotores(uint8_t type) {
-    return srcprotores[type];
 }
 
 int resolvepeer(struct clsrvconf *conf, int ai_flags) {
@@ -400,6 +394,17 @@ void freeclsrvres(struct clsrvconf *res) {
     free(res);
 }
 
+struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport) {
+    struct addrinfo *ai;
+    struct clsrvconf *res;
+
+    res = resolve_hostport(type, hostport, NULL);
+    ai = res->addrinfo;
+    res->addrinfo = NULL;
+    freeclsrvres(res);
+    return ai;
+}
+    
 /* returns 1 if the len first bits are equal, else 0 */
 int prefixmatch(void *a1, void *a2, uint8_t len) {
     static uint8_t mask[] = { 0, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe };
@@ -643,7 +648,6 @@ void freeserver(struct server *server, uint8_t destroymutex) {
 }
 
 int addserver(struct clsrvconf *conf) {
-    struct clsrvconf *res;
     uint8_t type;
     int i;
     
@@ -662,13 +666,8 @@ int addserver(struct clsrvconf *conf) {
     type = conf->type;
     if (type == RAD_DTLS)
 	conf->servers->rbios = newqueue();
-    
-    if (!srcprotores[type]) {
-	res = resolve_hostport(type, options.sourcearg[type], NULL);
-	srcprotores[type] = res->addrinfo;
-	res->addrinfo = NULL;
-	freeclsrvres(res);
-    }
+
+    conf->pdef->setsrcres(options.sourcearg[type]);
 
     conf->servers->sock = -1;
     if (conf->pdef->addserverextra)
@@ -3839,7 +3838,6 @@ int main(int argc, char **argv) {
     pthread_sigmask(SIG_BLOCK, &sigset, NULL);
     pthread_create(&sigth, NULL, sighandler, NULL);
 
-    memset(srcprotores, 0, sizeof(srcprotores));
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	srvconf = (struct clsrvconf *)entry->data;
 	if (srvconf->dynamiclookupcommand)
@@ -3852,10 +3850,6 @@ int main(int argc, char **argv) {
     }
 
     for (i = 0; protodefs[i].name; i++) {
-	if (protodefs[i].freesrcprotores && srcprotores[i]) {
-	    freeaddrinfo(srcprotores[i]);
-	    srcprotores[i] = NULL;
-	}
 	if (protodefs[i].initextra)
 	    protodefs[i].initextra();
         if (find_clconf_type(i, NULL))

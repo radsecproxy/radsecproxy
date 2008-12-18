@@ -6,6 +6,7 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+void tlssetsrcres(char *source);
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
 int clientradputtls(struct server *server, unsigned char *rad);
 void *tlsclientrd(void *arg);

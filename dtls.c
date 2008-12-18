@@ -35,6 +35,7 @@
 
 static int client4_sock = -1;
 static int client6_sock = -1;
+static struct addrinfo *srcres = NULL;
 
 struct sessioncacheentry {
     pthread_mutex_t mutex;
@@ -47,6 +48,11 @@ struct dtlsservernewparams {
     int sock;
     struct sockaddr_storage addr;    
 };
+
+void dtlssetsrcres(char *source) {
+    if (!srcres)
+	srcres = resolve_hostport_addrinfo(RAD_DTLS, source);
+}
 
 int udp2bio(int s, struct queue *q, int cnt) {
     unsigned char *buf;
@@ -613,7 +619,7 @@ void addserverextradtls(struct clsrvconf *conf) {
     switch (conf->addrinfo->ai_family) {
     case AF_INET:
 	if (client4_sock < 0) {
-	    client4_sock = bindtoaddr(getsrcprotores(RAD_DTLS), AF_INET, 0, 1);
+	    client4_sock = bindtoaddr(srcres, AF_INET, 0, 1);
 	    if (client4_sock < 0)
 		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
 	}
@@ -621,7 +627,7 @@ void addserverextradtls(struct clsrvconf *conf) {
 	break;
     case AF_INET6:
 	if (client6_sock < 0) {
-	    client6_sock = bindtoaddr(getsrcprotores(RAD_DTLS), AF_INET6, 0, 1);
+	    client6_sock = bindtoaddr(srcres, AF_INET6, 0, 1);
 	    if (client6_sock < 0)
 		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
 	}
@@ -634,6 +640,11 @@ void addserverextradtls(struct clsrvconf *conf) {
 
 void initextradtls() {
     pthread_t cl4th, cl6th;
+
+    if (srcres) {
+	freeaddrinfo(srcres);
+	srcres = NULL;
+    }
     
     if (client4_sock >= 0)
 	if (pthread_create(&cl4th, NULL, udpdtlsclientrd, (void *)&client4_sock))

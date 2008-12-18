@@ -35,6 +35,13 @@ static int client4_sock = -1;
 static int client6_sock = -1;
 static struct queue *server_replyq = NULL;
 
+static struct addrinfo *srcres = NULL;
+
+void udpsetsrcres(char *source) {
+    if (!srcres)
+	srcres = resolve_hostport_addrinfo(RAD_UDP, source);
+}
+
 void removeudpclientfromreplyq(struct client *c) {
     struct list_node *n;
     struct request *r;
@@ -244,7 +251,7 @@ void addserverextraudp(struct clsrvconf *conf) {
     switch (conf->addrinfo->ai_family) {
     case AF_INET:
 	if (client4_sock < 0) {
-	    client4_sock = bindtoaddr(getsrcprotores(RAD_UDP), AF_INET, 0, 1);
+	    client4_sock = bindtoaddr(srcres, AF_INET, 0, 1);
 	    if (client4_sock < 0)
 		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
 	}
@@ -252,7 +259,7 @@ void addserverextraudp(struct clsrvconf *conf) {
 	break;
     case AF_INET6:
 	if (client6_sock < 0) {
-	    client6_sock = bindtoaddr(getsrcprotores(RAD_UDP), AF_INET6, 0, 1);
+	    client6_sock = bindtoaddr(srcres, AF_INET6, 0, 1);
 	    if (client6_sock < 0)
 		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
 	}
@@ -265,6 +272,11 @@ void addserverextraudp(struct clsrvconf *conf) {
 
 void initextraudp() {
     pthread_t cl4th, cl6th, srvth;
+
+    if (srcres) {
+	freeaddrinfo(srcres);
+	srcres = NULL;
+    }
     
     if (client4_sock >= 0)
 	if (pthread_create(&cl4th, NULL, udpclientrd, (void *)&client4_sock))

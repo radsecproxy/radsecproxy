@@ -31,6 +31,13 @@
 #include "radsecproxy.h"
 #include "tcp.h"
 
+static struct addrinfo *srcres = NULL;
+
+void tcpsetsrcres(char *source) {
+    if (!srcres)
+	srcres = resolve_hostport_addrinfo(RAD_TCP, source);
+}
+    
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval now;
     time_t elapsed;
@@ -70,7 +77,7 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 	debug(DBG_WARN, "tcpconnect: trying to open TCP connection to %s port %s", server->conf->host, server->conf->port);
 	if (server->sock >= 0)
 	    close(server->sock);
-	if ((server->sock = connecttcp(server->conf->addrinfo, getsrcprotores(RAD_TCP))) >= 0)
+	if ((server->sock = connecttcp(server->conf->addrinfo, srcres)) >= 0)
 	    break;
 	debug(DBG_ERR, "tcpconnect: connecttcp failed");
     }

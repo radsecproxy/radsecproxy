@@ -6,6 +6,7 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+void dtlssetsrcres(char *source);
 void *udpdtlsserverrd(void *arg);
 int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
 void *dtlsclientrd(void *arg);
