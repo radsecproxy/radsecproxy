@@ -6,6 +6,7 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#ifdef RADPROT_UDP
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -336,3 +337,8 @@ void initextraudp() {
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
 }
+#else
+const struct protodefs *udpinit(uint8_t h) {
+    return NULL;
+}
+#endif

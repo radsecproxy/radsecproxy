@@ -6,6 +6,7 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#ifdef RADPROT_DTLS
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -700,3 +701,8 @@ void initextradtls() {
 	if (pthread_create(&cl6th, NULL, udpdtlsclientrd, (void *)&client6_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
 }
+#else
+const struct protodefs *dtlsinit(uint8_t h) {
+    return NULL;
+}
+#endif

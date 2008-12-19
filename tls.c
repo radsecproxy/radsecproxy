@@ -6,6 +6,7 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#ifdef RADPROT_TLS
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -468,3 +469,8 @@ void *tlslistener(void *arg) {
     free(sp);
     return NULL;
 }
+#else
+const struct protodefs *tlsinit(uint8_t h) {
+    return NULL;
+}
+#endif

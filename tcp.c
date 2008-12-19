@@ -6,6 +6,7 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#ifdef RADPROT_TCP
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -368,3 +369,8 @@ void *tcplistener(void *arg) {
     free(sp);
     return NULL;
 }
+#else
+const struct protodefs *tcpinit(uint8_t h) {
+    return NULL;
+}
+#endif

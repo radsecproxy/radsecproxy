@@ -2482,12 +2482,15 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 	sslinit();
 
     switch (type) {
+#ifdef RADPROT_TLS	
     case RAD_TLS:
 	ctx = SSL_CTX_new(TLSv1_method());
 #ifdef DEBUG	
 	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
 #endif	
 	break;
+#endif	
+#ifdef RADPROT_DTLS	
     case RAD_DTLS:
 	ctx = SSL_CTX_new(DTLSv1_method());
 #ifdef DEBUG	
@@ -2495,6 +2498,7 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #endif	
 	SSL_CTX_set_read_ahead(ctx, 1);
 	break;
+#endif	
     }
     if (!ctx) {
 	debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
@@ -2556,6 +2560,7 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
     gettimeofday(&now, NULL);
     
     switch (type) {
+#ifdef RADPROT_TLS
     case RAD_TLS:
 	if (t->tlsexpiry && t->tlsctx) {
 	    if (t->tlsexpiry < now.tv_sec) {
@@ -2569,6 +2574,8 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
 		t->tlsexpiry = now.tv_sec + t->cacheexpiry;
 	}
 	return t->tlsctx;
+#endif
+#ifdef RADPROT_DTLS
     case RAD_DTLS:
 	if (t->dtlsexpiry && t->dtlsctx) {
 	    if (t->dtlsexpiry < now.tv_sec) {
@@ -2582,6 +2589,7 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
 		t->dtlsexpiry = now.tv_sec + t->cacheexpiry;
 	}
 	return t->dtlsctx;
+#endif
     }
     return NULL;
 }
@@ -3636,14 +3644,30 @@ void getmainconfig(const char *configfile) {
 	debugx(1, DBG_ERR, "malloc failed");    
  
     if (!getgenericconfig(&cfs, NULL,
+#ifdef RADPROT_UDP			  
 			  "ListenUDP", CONF_MSTR, &listenargs[RAD_UDP],
+#endif			  
+#ifdef RADPROT_TCP			  
 			  "ListenTCP", CONF_MSTR, &listenargs[RAD_TCP],
+#endif			  
+#ifdef RADPROT_TLS
 			  "ListenTLS", CONF_MSTR, &listenargs[RAD_TLS],
+#endif			  
+#ifdef RADPROT_DTLS
 			  "ListenDTLS", CONF_MSTR, &listenargs[RAD_DTLS],
+#endif			  
+#ifdef RADPROT_UDP			  
 			  "SourceUDP", CONF_STR, &sourcearg[RAD_UDP],
+#endif			  
+#ifdef RADPROT_TCP			  
 			  "SourceTCP", CONF_STR, &sourcearg[RAD_TCP],
+#endif			  
+#ifdef RADPROT_TLS
 			  "SourceTLS", CONF_STR, &sourcearg[RAD_TLS],
+#endif			  
+#ifdef RADPROT_DTLS
 			  "SourceDTLS", CONF_STR, &sourcearg[RAD_DTLS],
+#endif			  
 			  "TTLAttribute", CONF_STR, &options.ttlattr,
 			  "addTTL", CONF_LINT, &addttl,
 			  "LogLevel", CONF_LINT, &loglevel,
@@ -3806,6 +3830,8 @@ int main(int argc, char **argv) {
     }
 
     for (i = 0; i < RAD_PROTOCOUNT; i++) {
+	if (!protodefs[i])
+	    continue;
 	if (protodefs[i]->initextra)
 	    protodefs[i]->initextra();
         if (find_clconf_type(i, NULL))
