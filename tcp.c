@@ -30,11 +30,13 @@
 #include "util.h"
 #include "radsecproxy.h"
 
+static void setprotoopts(struct commonprotoopts *opts);
+static char **getlistenerargs();
 void *tcplistener(void *arg);
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char * text);
 void *tcpclientrd(void *arg);
 int clientradputtcp(struct server *server, unsigned char *rad);
-void tcpsetsrcres(char *source);
+void tcpsetsrcres();
 
 static const struct protodefs protodefs = {
     "tcp",
@@ -46,6 +48,8 @@ static const struct protodefs protodefs = {
     REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
     60, /* retryintervalmax */
     DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    setprotoopts, /* setprotoopts */
+    getlistenerargs, /* getlistenerargs */
     tcplistener, /* listener */
     tcpconnect, /* connecter */
     tcpclientrd, /* clientconnreader */
@@ -58,15 +62,23 @@ static const struct protodefs protodefs = {
 
 static struct addrinfo *srcres = NULL;
 static uint8_t handle;
-
+static struct commonprotoopts *protoopts = NULL;
 const struct protodefs *tcpinit(uint8_t h) {
     handle = h;
     return &protodefs;
 }
 
-void tcpsetsrcres(char *source) {
+static void setprotoopts(struct commonprotoopts *opts) {
+    protoopts = opts;
+}
+
+static char **getlistenerargs() {
+    return protoopts ? protoopts->listenargs : NULL;
+}
+
+void tcpsetsrcres() {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(handle, source);
+	srcres = resolve_hostport_addrinfo(handle, protoopts ? protoopts->sourcearg : NULL);
 }
     
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {

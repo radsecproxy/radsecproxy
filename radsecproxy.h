@@ -32,14 +32,17 @@
 #define RAD_PROTOCOUNT 4
 
 struct options {
-    char **listenargs[RAD_PROTOCOUNT];
-    char *sourcearg[RAD_PROTOCOUNT];
     char *logdestination;
     char *ttlattr;
     uint32_t ttlattrtype[2];
     uint8_t addttl;
     uint8_t loglevel;
     uint8_t loopprevention;
+};
+
+struct commonprotoopts {
+    char **listenargs;
+    char *sourcearg;
 };
 
 struct request {
@@ -188,13 +191,15 @@ struct protodefs {
     uint8_t retryintervaldefault;
     uint8_t retryintervalmax;
     uint8_t duplicateintervaldefault;
+    void (*setprotoopts)(struct commonprotoopts *);
+    char **(*getlistenerargs)();
     void *(*listener)(void*);
     int (*connecter)(struct server *, struct timeval *, int, char *);
     void *(*clientconnreader)(void*);
     int (*clientradput)(struct server *, unsigned char *);
     void (*addclient)(struct client *);
     void (*addserverextra)(struct clsrvconf *);
-    void (*setsrcres)(char *source);
+    void (*setsrcres)();
     void (*initextra)();
 };
 

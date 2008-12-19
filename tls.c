@@ -31,11 +31,13 @@
 #include "util.h"
 #include "radsecproxy.h"
 
+static void setprotoopts(struct commonprotoopts *opts);
+static char **getlistenerargs();
 void *tlslistener(void *arg);
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
 void *tlsclientrd(void *arg);
 int clientradputtls(struct server *server, unsigned char *rad);
-void tlssetsrcres(char *source);
+void tlssetsrcres();
 
 static const struct protodefs protodefs = {
     "tls",
@@ -47,6 +49,8 @@ static const struct protodefs protodefs = {
     REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
     60, /* retryintervalmax */
     DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    setprotoopts, /* setprotoopts */
+    getlistenerargs, /* getlistenerargs */
     tlslistener, /* listener */
     tlsconnect, /* connecter */
     tlsclientrd, /* clientconnreader */
@@ -59,15 +63,25 @@ static const struct protodefs protodefs = {
 
 static struct addrinfo *srcres = NULL;
 static uint8_t handle;
+static struct commonprotoopts *protoopts = NULL;
 
 const struct protodefs *tlsinit(uint8_t h) {
     handle = h;
     return &protodefs;
 }
 
-void tlssetsrcres(char *source) {
+static void setprotoopts(struct commonprotoopts *opts) {
+    protoopts = opts;
+}
+
+static char **getlistenerargs() {
+    return protoopts ? protoopts->listenargs : NULL;
+}
+
+void tlssetsrcres() {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(handle, source);
+	srcres = resolve_hostport_addrinfo(handle, protoopts ? protoopts->sourcearg : NULL);
+    
 }
 
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {

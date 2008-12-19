@@ -86,7 +86,7 @@ static pthread_mutex_t *ssl_locks = NULL;
 static long *ssl_lock_count;
 extern int optind;
 extern char *optarg;
-static const struct protodefs *protodefs[RAD_PROTOCOUNT + 1];
+static const struct protodefs *protodefs[RAD_PROTOCOUNT];
 
 /* minimum required declarations to avoid reordering code */
 struct realm *adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id);
@@ -98,11 +98,15 @@ void freerq(struct request *rq);
 void freerqoutdata(struct rqout *rqout);
 void rmclientrq(struct request *rq, uint8_t id);
 
+static const struct protodefs *(*protoinits[])(uint8_t) = { udpinit, tlsinit, tcpinit, dtlsinit };
+
 uint8_t protoname2int(const char *name) {
     uint8_t i;
 
-    for (i = 0; protodefs[i]->name && strcasecmp(protodefs[i]->name, name); i++);
-    return i;
+    for (i = 0; i < RAD_PROTOCOUNT; i++)
+	if (protodefs[i] && protodefs[i]->name && !strcasecmp(protodefs[i]->name, name))
+	    return i;
+    return 255;
 }
     
 /* callbacks for making OpenSSL thread safe */
@@ -591,7 +595,7 @@ int addserver(struct clsrvconf *conf) {
     if (type == RAD_DTLS)
 	conf->servers->rbios = newqueue();
 
-    conf->pdef->setsrcres(options.sourcearg[type]);
+    conf->pdef->setsrcres();
 
     conf->servers->sock = -1;
     if (conf->pdef->addserverextra)
@@ -2335,9 +2339,11 @@ void createlistener(uint8_t type, char *arg) {
     freeclsrvres(listenres);
 }
 
-void createlisteners(uint8_t type, char **args) {
+void createlisteners(uint8_t type) {
     int i;
+    char **args;
 
+    args = protodefs[type]->getlistenerargs();
     if (args)
 	for (i = 0; args[i]; i++)
 	    createlistener(type, args[i]);
@@ -3238,10 +3244,10 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (!conftype)
 	debugx(1, DBG_ERR, "error in block %s, option type missing", block);
     conf->type = protoname2int(conftype);
-    conf->pdef = protodefs[conf->type];
-    if (!conf->pdef->name)
+    if (conf->type == 255)
 	debugx(1, DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
     free(conftype);
+    conf->pdef = protodefs[conf->type];
     
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
 	conf->tlsconf = conf->tls ? tlsgettls(conf->tls, NULL) : tlsgettls("defaultclient", "default");
@@ -3406,13 +3412,14 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (!conftype)
 	debugx(1, DBG_ERR, "error in block %s, option type missing", block);
     conf->type = protoname2int(conftype);
-    conf->pdef = protodefs[conf->type];
-    if (!conf->pdef->name) {
+    if (conf->type == 255) {
 	debug(DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
 	goto errexit;
     }
     free(conftype);
     conftype = NULL;
+	
+    conf->pdef = protodefs[conf->type];
 
     if (!conf->confrewritein)
 	conf->confrewritein = rewriteinalias;
@@ -3583,12 +3590,30 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
     return 1;
 }
 
+int setprotoopts(uint8_t type, char **listenargs, char *sourcearg) {
+    struct commonprotoopts *protoopts;
+
+    protoopts = malloc(sizeof(struct commonprotoopts));
+    if (!protoopts)
+	return 0;
+    memset(protoopts, 0, sizeof(struct commonprotoopts));
+    protoopts->listenargs = listenargs;
+    protoopts->sourcearg = sourcearg;
+    protodefs[type]->setprotoopts(protoopts);
+    return 1;
+}
+
 void getmainconfig(const char *configfile) {
     long int addttl = LONG_MIN, loglevel = LONG_MIN;
     struct gconffile *cfs;
-
+    char **listenargs[RAD_PROTOCOUNT];
+    char *sourcearg[RAD_PROTOCOUNT];
+    int i;
+    
     cfs = openconfigfile(configfile);
     memset(&options, 0, sizeof(options));
+    memset(&listenargs, 0, sizeof(listenargs));
+    memset(&sourcearg, 0, sizeof(sourcearg));
     
     clconfs = list_create();
     if (!clconfs)
@@ -3611,14 +3636,14 @@ void getmainconfig(const char *configfile) {
 	debugx(1, DBG_ERR, "malloc failed");    
  
     if (!getgenericconfig(&cfs, NULL,
-			  "ListenUDP", CONF_MSTR, &options.listenargs[RAD_UDP],
-			  "ListenTCP", CONF_MSTR, &options.listenargs[RAD_TCP],
-			  "ListenTLS", CONF_MSTR, &options.listenargs[RAD_TLS],
-			  "ListenDTLS", CONF_MSTR, &options.listenargs[RAD_DTLS],
-			  "SourceUDP", CONF_STR, &options.sourcearg[RAD_UDP],
-			  "SourceTCP", CONF_STR, &options.sourcearg[RAD_TCP],
-			  "SourceTLS", CONF_STR, &options.sourcearg[RAD_TLS],
-			  "SourceDTLS", CONF_STR, &options.sourcearg[RAD_DTLS],
+			  "ListenUDP", CONF_MSTR, &listenargs[RAD_UDP],
+			  "ListenTCP", CONF_MSTR, &listenargs[RAD_TCP],
+			  "ListenTLS", CONF_MSTR, &listenargs[RAD_TLS],
+			  "ListenDTLS", CONF_MSTR, &listenargs[RAD_DTLS],
+			  "SourceUDP", CONF_STR, &sourcearg[RAD_UDP],
+			  "SourceTCP", CONF_STR, &sourcearg[RAD_TCP],
+			  "SourceTLS", CONF_STR, &sourcearg[RAD_TLS],
+			  "SourceDTLS", CONF_STR, &sourcearg[RAD_DTLS],
 			  "TTLAttribute", CONF_STR, &options.ttlattr,
 			  "addTTL", CONF_LINT, &addttl,
 			  "LogLevel", CONF_LINT, &loglevel,
@@ -3645,6 +3670,10 @@ void getmainconfig(const char *configfile) {
     }
     if (!setttlattr(&options, DEFAULT_TTL_ATTR))
     	debugx(1, DBG_ERR, "Failed to set TTLAttribute, exiting");
+
+    for (i = 0; i < RAD_PROTOCOUNT; i++)
+	if (listenargs[i] || sourcearg[i])
+	    setprotoopts(i, listenargs[i], sourcearg[i]);
 }
 
 void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8_t *loglevel, char **configfile) {
@@ -3730,11 +3759,8 @@ int main(int argc, char **argv) {
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
 
-    protodefs[RAD_UDP] = udpinit(RAD_UDP);
-    protodefs[RAD_TLS] = tlsinit(RAD_TLS);
-    protodefs[RAD_TCP] = tcpinit(RAD_TCP);
-    protodefs[RAD_DTLS] = dtlsinit(RAD_DTLS);
-    protodefs[RAD_PROTOCOUNT + 1] = NULL;
+    for (i = 0; i < RAD_PROTOCOUNT; i++)
+	protodefs[i] = protoinits[i](i);
     
     getargs(argc, argv, &foreground, &pretend, &loglevel, &configfile);
     if (loglevel)
@@ -3779,11 +3805,11 @@ int main(int argc, char **argv) {
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
 
-    for (i = 0; protodefs[i]; i++) {
+    for (i = 0; i < RAD_PROTOCOUNT; i++) {
 	if (protodefs[i]->initextra)
 	    protodefs[i]->initextra();
         if (find_clconf_type(i, NULL))
-	    createlisteners(i, options.listenargs[i]);
+	    createlisteners(i);
     }
     
     /* just hang around doing nothing, anything to do here? */

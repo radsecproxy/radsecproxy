@@ -30,11 +30,13 @@
 #include "util.h"
 #include "radsecproxy.h"
 
+static void setprotoopts(struct commonprotoopts *opts);
+static char **getlistenerargs();
 void *udpserverrd(void *arg);
 int clientradputudp(struct server *server, unsigned char *rad);
 void addclientudp(struct client *client);
 void addserverextraudp(struct clsrvconf *conf);
-void udpsetsrcres(char *source);
+void udpsetsrcres();
 void initextraudp();
 
 static const struct protodefs protodefs = {
@@ -47,6 +49,8 @@ static const struct protodefs protodefs = {
     REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
     60, /* retryintervalmax */
     DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    setprotoopts, /* setprotoopts */
+    getlistenerargs, /* getlistenerargs */
     udpserverrd, /* listener */
     NULL, /* connecter */
     NULL, /* clientconnreader */
@@ -63,15 +67,24 @@ static struct queue *server_replyq = NULL;
 
 static struct addrinfo *srcres = NULL;
 static uint8_t handle;
+static struct commonprotoopts *protoopts = NULL;
 
 const struct protodefs *udpinit(uint8_t h) {
     handle = h;
     return &protodefs;
 }
 
-void udpsetsrcres(char *source) {
+static void setprotoopts(struct commonprotoopts *opts) {
+    protoopts = opts;
+}
+
+static char **getlistenerargs() {
+    return protoopts ? protoopts->listenargs : NULL;
+}
+
+void udpsetsrcres() {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(handle, source);
+	srcres = resolve_hostport_addrinfo(handle, protoopts ? protoopts->sourcearg : NULL);
 }
 
 void removeudpclientfromreplyq(struct client *c) {

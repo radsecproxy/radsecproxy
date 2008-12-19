@@ -32,12 +32,14 @@
 #include "util.h"
 #include "radsecproxy.h"
 
+static void setprotoopts(struct commonprotoopts *opts);
+static char **getlistenerargs();
 void *udpdtlsserverrd(void *arg);
 int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
 void *dtlsclientrd(void *arg);
 int clientradputdtls(struct server *server, unsigned char *rad);
 void addserverextradtls(struct clsrvconf *conf);
-void dtlssetsrcres(char *source);
+void dtlssetsrcres();
 void initextradtls();
 
 static const struct protodefs protodefs = {
@@ -50,6 +52,8 @@ static const struct protodefs protodefs = {
     REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
     60, /* retryintervalmax */
     DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    setprotoopts, /* setprotoopts */
+    getlistenerargs, /* getlistenerargs */
     udpdtlsserverrd, /* listener */
     dtlsconnect, /* connecter */
     dtlsclientrd, /* clientconnreader */
@@ -64,10 +68,19 @@ static int client4_sock = -1;
 static int client6_sock = -1;
 static struct addrinfo *srcres = NULL;
 static uint8_t handle;
+static struct commonprotoopts *protoopts = NULL;
 
 const struct protodefs *dtlsinit(uint8_t h) {
     handle = h;
     return &protodefs;
+}
+
+static void setprotoopts(struct commonprotoopts *opts) {
+    protoopts = opts;
+}
+
+static char **getlistenerargs() {
+    return protoopts ? protoopts->listenargs : NULL;
 }
 
 struct sessioncacheentry {
@@ -82,9 +95,10 @@ struct dtlsservernewparams {
     struct sockaddr_storage addr;    
 };
 
-void dtlssetsrcres(char *source) {
+void dtlssetsrcres() {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(handle, source);
+	srcres = resolve_hostport_addrinfo(handle, protoopts ? protoopts->sourcearg : NULL);
+    
 }
 
 int udp2bio(int s, struct queue *q, int cnt) {
