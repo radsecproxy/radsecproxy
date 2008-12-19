@@ -29,13 +29,44 @@
 #include "list.h"
 #include "util.h"
 #include "radsecproxy.h"
-#include "tcp.h"
+
+void *tcplistener(void *arg);
+int tcpconnect(struct server *server, struct timeval *when, int timeout, char * text);
+void *tcpclientrd(void *arg);
+int clientradputtcp(struct server *server, unsigned char *rad);
+void tcpsetsrcres(char *source);
+
+static const struct protodefs protodefs = {
+    "tcp",
+    NULL, /* secretdefault */
+    SOCK_STREAM, /* socktype */
+    "1812", /* portdefault */
+    0, /* retrycountdefault */
+    0, /* retrycountmax */
+    REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
+    60, /* retryintervalmax */
+    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    tcplistener, /* listener */
+    tcpconnect, /* connecter */
+    tcpclientrd, /* clientconnreader */
+    clientradputtcp, /* clientradput */
+    NULL, /* addclient */
+    NULL, /* addserverextra */
+    tcpsetsrcres, /* setsrcres */
+    NULL /* initextra */
+};
 
 static struct addrinfo *srcres = NULL;
+static uint8_t handle;
+
+const struct protodefs *tcpinit(uint8_t h) {
+    handle = h;
+    return &protodefs;
+}
 
 void tcpsetsrcres(char *source) {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(RAD_TCP, source);
+	srcres = resolve_hostport_addrinfo(handle, source);
 }
     
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {
@@ -281,7 +312,7 @@ void *tcpservernew(void *arg) {
     }
     debug(DBG_WARN, "tcpservernew: incoming TCP connection from %s", addr2string((struct sockaddr *)&from));
 
-    conf = find_clconf(RAD_TCP, (struct sockaddr *)&from, NULL);
+    conf = find_clconf(handle, (struct sockaddr *)&from, NULL);
     if (conf) {
 	client = addclient(conf, 1);
 	if (client) {

@@ -31,11 +31,44 @@
 #include "hash.h"
 #include "util.h"
 #include "radsecproxy.h"
-#include "dtls.h"
+
+void *udpdtlsserverrd(void *arg);
+int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
+void *dtlsclientrd(void *arg);
+int clientradputdtls(struct server *server, unsigned char *rad);
+void addserverextradtls(struct clsrvconf *conf);
+void dtlssetsrcres(char *source);
+void initextradtls();
+
+static const struct protodefs protodefs = {
+    "dtls",
+    "mysecret", /* secretdefault */
+    SOCK_DGRAM, /* socktype */
+    "2083", /* portdefault */
+    REQUEST_RETRY_COUNT, /* retrycountdefault */
+    10, /* retrycountmax */
+    REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
+    60, /* retryintervalmax */
+    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    udpdtlsserverrd, /* listener */
+    dtlsconnect, /* connecter */
+    dtlsclientrd, /* clientconnreader */
+    clientradputdtls, /* clientradput */
+    NULL, /* addclient */
+    addserverextradtls, /* addserverextra */
+    dtlssetsrcres, /* setsrcres */
+    initextradtls /* initextra */
+};
 
 static int client4_sock = -1;
 static int client6_sock = -1;
 static struct addrinfo *srcres = NULL;
+static uint8_t handle;
+
+const struct protodefs *dtlsinit(uint8_t h) {
+    handle = h;
+    return &protodefs;
+}
 
 struct sessioncacheentry {
     pthread_mutex_t mutex;
@@ -51,7 +84,7 @@ struct dtlsservernewparams {
 
 void dtlssetsrcres(char *source) {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(RAD_DTLS, source);
+	srcres = resolve_hostport_addrinfo(handle, source);
 }
 
 int udp2bio(int s, struct queue *q, int cnt) {
@@ -306,9 +339,9 @@ void *dtlsservernew(void *arg) {
     uint8_t delay = 60;
 
     debug(DBG_DBG, "dtlsservernew: starting");
-    conf = find_clconf(RAD_DTLS, (struct sockaddr *)&params->addr, NULL);
+    conf = find_clconf(handle, (struct sockaddr *)&params->addr, NULL);
     if (conf) {
-	ctx = tlsgetctx(RAD_DTLS, conf->tlsconf);
+	ctx = tlsgetctx(handle, conf->tlsconf);
 	if (!ctx)
 	    goto exit;
 	ssl = dtlsacccon(1, ctx, params->sock, (struct sockaddr *)&params->addr, params->sesscache->rbios);
@@ -336,7 +369,7 @@ void *dtlsservernew(void *arg) {
 	    }
 	    goto exit;
 	}
-	conf = find_clconf(RAD_DTLS, (struct sockaddr *)&params->addr, &cur);
+	conf = find_clconf(handle, (struct sockaddr *)&params->addr, &cur);
     }
     debug(DBG_WARN, "dtlsservernew: ignoring request, no matching TLS client");
 
@@ -521,7 +554,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 
 	SSL_free(server->ssl);
 	server->ssl = NULL;
-	ctx = tlsgetctx(RAD_DTLS, server->conf->tlsconf);
+	ctx = tlsgetctx(handle, server->conf->tlsconf);
 	if (!ctx)
 	    continue;
 	server->ssl = dtlsacccon(0, ctx, server->sock, server->conf->addrinfo->ai_addr, server->rbios);
@@ -583,7 +616,7 @@ void *udpdtlsclientrd(void *arg) {
 	    continue;
 	}
 	
-	conf = find_srvconf(RAD_DTLS, (struct sockaddr *)&from, NULL);
+	conf = find_srvconf(handle, (struct sockaddr *)&from, NULL);
 	if (!conf) {
 	    debug(DBG_WARN, "udpdtlsclientrd: got packet from wrong or unknown DTLS peer %s, ignoring", addr2string((struct sockaddr *)&from));
 	    recv(s, buf, 4, 0);

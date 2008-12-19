@@ -6,10 +6,4 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
-void dtlssetsrcres(char *source);
-void *udpdtlsserverrd(void *arg);
-int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
-void *dtlsclientrd(void *arg);
-int clientradputdtls(struct server *server, unsigned char *rad);
-void addserverextradtls(struct clsrvconf *conf);
-void initextradtls();
+const struct protodefs *dtlsinit(uint8_t h);

@@ -86,6 +86,7 @@ static pthread_mutex_t *ssl_locks = NULL;
 static long *ssl_lock_count;
 extern int optind;
 extern char *optarg;
+static const struct protodefs *protodefs[RAD_PROTOCOUNT + 1];
 
 /* minimum required declarations to avoid reordering code */
 struct realm *adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id);
@@ -97,87 +98,10 @@ void freerq(struct request *rq);
 void freerqoutdata(struct rqout *rqout);
 void rmclientrq(struct request *rq, uint8_t id);
 
-static const struct protodefs protodefs[] = {
-    {   "udp", /* UDP, assuming RAD_UDP defined as 0 */
-	NULL, /* secretdefault */
-	SOCK_DGRAM, /* socktype */
-	"1812", /* portdefault */
-	REQUEST_RETRY_COUNT, /* retrycountdefault */
-	10, /* retrycountmax */
-	REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
-	60, /* retryintervalmax */
-	DUPLICATE_INTERVAL, /* duplicateintervaldefault */
-	udpserverrd, /* listener */
-	NULL, /* connecter */
-	NULL, /* clientconnreader */
-	clientradputudp, /* clientradput */
-	addclientudp, /* addclient */
-	addserverextraudp, /* addserverextra */
-	udpsetsrcres, /* setsrcres */
-	initextraudp /* initextra */
-    },
-    {   "tls", /* TLS, assuming RAD_TLS defined as 1 */
-	"mysecret", /* secretdefault */
-	SOCK_STREAM, /* socktype */
-	"2083", /* portdefault */
-	0, /* retrycountdefault */
-	0, /* retrycountmax */
-	REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
-	60, /* retryintervalmax */
-	DUPLICATE_INTERVAL, /* duplicateintervaldefault */
-	tlslistener, /* listener */
-	tlsconnect, /* connecter */
-	tlsclientrd, /* clientconnreader */
-	clientradputtls, /* clientradput */
-	NULL, /* addclient */
-	NULL, /* addserverextra */
-	tlssetsrcres, /* setsrcres */
-	NULL /* initextra */
-    },
-    {   "tcp", /* TCP, assuming RAD_TCP defined as 2 */
-	NULL, /* secretdefault */
-	SOCK_STREAM, /* socktype */
-	"1812", /* portdefault */
-	0, /* retrycountdefault */
-	0, /* retrycountmax */
-	REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
-	60, /* retryintervalmax */
-	DUPLICATE_INTERVAL, /* duplicateintervaldefault */
-	tcplistener, /* listener */
-	tcpconnect, /* connecter */
-	tcpclientrd, /* clientconnreader */
-	clientradputtcp, /* clientradput */
-	NULL, /* addclient */
-	NULL, /* addserverextra */
-	tcpsetsrcres, /* setsrcres */
-	NULL /* initextra */
-    },
-    {   "dtls", /* DTLS, assuming RAD_DTLS defined as 3 */
-	"mysecret", /* secretdefault */
-	SOCK_DGRAM, /* socktype */
-	"2083", /* portdefault */
-	REQUEST_RETRY_COUNT, /* retrycountdefault */
-	10, /* retrycountmax */
-	REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
-	60, /* retryintervalmax */
-	DUPLICATE_INTERVAL, /* duplicateintervaldefault */
-	udpdtlsserverrd, /* listener */
-	dtlsconnect, /* connecter */
-	dtlsclientrd, /* clientconnreader */
-	clientradputdtls, /* clientradput */
-	NULL, /* addclient */
-	addserverextradtls, /* addserverextra */
-	dtlssetsrcres, /* setsrcres */
-	initextradtls /* initextra */
-    },
-    {   NULL, NULL, 0, NULL, 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
-    }
-};
-
 uint8_t protoname2int(const char *name) {
     uint8_t i;
 
-    for (i = 0; protodefs[i].name && strcasecmp(protodefs[i].name, name); i++);
+    for (i = 0; protodefs[i]->name && strcasecmp(protodefs[i]->name, name); i++);
     return i;
 }
     
@@ -372,7 +296,7 @@ struct clsrvconf *resolve_hostport(uint8_t type, char *lconf, char *default_port
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
     conf->type = type;
-    conf->pdef = &protodefs[conf->type];
+    conf->pdef = protodefs[conf->type];
     if (lconf) {
 	parsehostport(lconf, conf, default_port);
 	if (!strcmp(conf->host, "*")) {
@@ -2373,7 +2297,7 @@ void createlistener(uint8_t type, char *arg) {
     struct addrinfo *res;
     int s = -1, on = 1, *sp = NULL;
     
-    listenres = resolve_hostport(type, arg, protodefs[type].portdefault);
+    listenres = resolve_hostport(type, arg, protodefs[type]->portdefault);
     if (!listenres)
 	debugx(1, DBG_ERR, "createlistener: failed to resolve %s", arg);
     
@@ -2399,14 +2323,14 @@ void createlistener(uint8_t type, char *arg) {
         if (!sp)
             debugx(1, DBG_ERR, "malloc failed");
 	*sp = s;
-	if (pthread_create(&th, NULL, protodefs[type].listener, (void *)sp))
+	if (pthread_create(&th, NULL, protodefs[type]->listener, (void *)sp))
             debugx(1, DBG_ERR, "pthread_create failed");
 	pthread_detach(th);
     }
     if (!sp)
 	debugx(1, DBG_ERR, "createlistener: socket/bind failed");
     
-    debug(DBG_WARN, "createlistener: listening for %s on %s:%s", protodefs[type].name,
+    debug(DBG_WARN, "createlistener: listening for %s on %s:%s", protodefs[type]->name,
 	  listenres->host ? listenres->host : "*", listenres->port);
     freeclsrvres(listenres);
 }
@@ -2450,7 +2374,7 @@ void ssl_info_callback(const SSL *ssl, int where, int ret) {
 }
 #endif
 
-void tlsinit() {
+void sslinit() {
     int i;
     time_t t;
     pid_t pid;
@@ -2549,7 +2473,7 @@ SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     unsigned long error;
 
     if (!ssl_locks)
-	tlsinit();
+	sslinit();
 
     switch (type) {
     case RAD_TLS:
@@ -3314,7 +3238,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (!conftype)
 	debugx(1, DBG_ERR, "error in block %s, option type missing", block);
     conf->type = protoname2int(conftype);
-    conf->pdef = &protodefs[conf->type];
+    conf->pdef = protodefs[conf->type];
     if (!conf->pdef->name)
 	debugx(1, DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
     free(conftype);
@@ -3397,9 +3321,9 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     }
     
     if (conf->retryinterval == 255)
-	conf->retryinterval = protodefs[conf->type].retryintervaldefault;
+	conf->retryinterval = conf->pdef->retryintervaldefault;
     if (conf->retrycount == 255)
-	conf->retrycount = protodefs[conf->type].retrycountdefault;
+	conf->retrycount = conf->pdef->retrycountdefault;
     
     conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultserver", "default");
     if (conf->confrewriteout)
@@ -3482,7 +3406,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (!conftype)
 	debugx(1, DBG_ERR, "error in block %s, option type missing", block);
     conf->type = protoname2int(conftype);
-    conf->pdef = &protodefs[conf->type];
+    conf->pdef = protodefs[conf->type];
     if (!conf->pdef->name) {
 	debug(DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
 	goto errexit;
@@ -3805,7 +3729,13 @@ int main(int argc, char **argv) {
     
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
- 
+
+    protodefs[RAD_UDP] = udpinit(RAD_UDP);
+    protodefs[RAD_TLS] = tlsinit(RAD_TLS);
+    protodefs[RAD_TCP] = tcpinit(RAD_TCP);
+    protodefs[RAD_DTLS] = dtlsinit(RAD_DTLS);
+    protodefs[RAD_PROTOCOUNT + 1] = NULL;
+    
     getargs(argc, argv, &foreground, &pretend, &loglevel, &configfile);
     if (loglevel)
 	debug_set_level(loglevel);
@@ -3849,9 +3779,9 @@ int main(int argc, char **argv) {
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
 
-    for (i = 0; protodefs[i].name; i++) {
-	if (protodefs[i].initextra)
-	    protodefs[i].initextra();
+    for (i = 0; protodefs[i]; i++) {
+	if (protodefs[i]->initextra)
+	    protodefs[i]->initextra();
         if (find_clconf_type(i, NULL))
 	    createlisteners(i, options.listenargs[i]);
     }

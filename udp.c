@@ -29,17 +29,49 @@
 #include "list.h"
 #include "util.h"
 #include "radsecproxy.h"
-#include "tls.h"
+
+void *udpserverrd(void *arg);
+int clientradputudp(struct server *server, unsigned char *rad);
+void addclientudp(struct client *client);
+void addserverextraudp(struct clsrvconf *conf);
+void udpsetsrcres(char *source);
+void initextraudp();
+
+static const struct protodefs protodefs = {
+    "udp",
+    NULL, /* secretdefault */
+    SOCK_DGRAM, /* socktype */
+    "1812", /* portdefault */
+    REQUEST_RETRY_COUNT, /* retrycountdefault */
+    10, /* retrycountmax */
+    REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
+    60, /* retryintervalmax */
+    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    udpserverrd, /* listener */
+    NULL, /* connecter */
+    NULL, /* clientconnreader */
+    clientradputudp, /* clientradput */
+    addclientudp, /* addclient */
+    addserverextraudp, /* addserverextra */
+    udpsetsrcres, /* setsrcres */
+    initextraudp /* initextra */
+};
 
 static int client4_sock = -1;
 static int client6_sock = -1;
 static struct queue *server_replyq = NULL;
 
 static struct addrinfo *srcres = NULL;
+static uint8_t handle;
+
+const struct protodefs *udpinit(uint8_t h) {
+    handle = h;
+    return &protodefs;
+}
 
 void udpsetsrcres(char *source) {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(RAD_UDP, source);
+	srcres = resolve_hostport_addrinfo(handle, source);
 }
 
 void removeudpclientfromreplyq(struct client *c) {
@@ -92,8 +124,8 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	}
 	
 	p = client
-	    ? find_clconf(RAD_UDP, (struct sockaddr *)&from, NULL)
-	    : find_srvconf(RAD_UDP, (struct sockaddr *)&from, NULL);
+	    ? find_clconf(handle, (struct sockaddr *)&from, NULL)
+	    : find_srvconf(handle, (struct sockaddr *)&from, NULL);
 	if (!p) {
 	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from));
 	    recv(s, buf, 4, 0);
@@ -285,7 +317,7 @@ void initextraudp() {
 	if (pthread_create(&cl6th, NULL, udpclientrd, (void *)&client6_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
 
-    if (find_clconf_type(RAD_UDP, NULL)) {
+    if (find_clconf_type(handle, NULL)) {
 	server_replyq = newqueue();
 	if (pthread_create(&srvth, NULL, udpserverwr, (void *)server_replyq))
 	    debugx(1, DBG_ERR, "pthread_create failed");

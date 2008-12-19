@@ -6,8 +6,4 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
-void tcpsetsrcres(char *source);
-int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text);
-int clientradputtcp(struct server *server, unsigned char *rad);
-void *tcpclientrd(void *arg);
-void *tcplistener(void *arg);
+const struct protodefs *tcpinit(uint8_t h);

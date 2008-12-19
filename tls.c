@@ -30,13 +30,44 @@
 #include "list.h"
 #include "util.h"
 #include "radsecproxy.h"
-#include "tls.h"
+
+void *tlslistener(void *arg);
+int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
+void *tlsclientrd(void *arg);
+int clientradputtls(struct server *server, unsigned char *rad);
+void tlssetsrcres(char *source);
+
+static const struct protodefs protodefs = {
+    "tls",
+    "mysecret", /* secretdefault */
+    SOCK_STREAM, /* socktype */
+    "2083", /* portdefault */
+    0, /* retrycountdefault */
+    0, /* retrycountmax */
+    REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
+    60, /* retryintervalmax */
+    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    tlslistener, /* listener */
+    tlsconnect, /* connecter */
+    tlsclientrd, /* clientconnreader */
+    clientradputtls, /* clientradput */
+    NULL, /* addclient */
+    NULL, /* addserverextra */
+    tlssetsrcres, /* setsrcres */
+    NULL /* initextra */
+};
 
 static struct addrinfo *srcres = NULL;
+static uint8_t handle;
+
+const struct protodefs *tlsinit(uint8_t h) {
+    handle = h;
+    return &protodefs;
+}
 
 void tlssetsrcres(char *source) {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(RAD_TLS, source);
+	srcres = resolve_hostport_addrinfo(handle, source);
 }
 
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
@@ -90,7 +121,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	
 	SSL_free(server->ssl);
 	server->ssl = NULL;
-	ctx = tlsgetctx(RAD_TLS, server->conf->tlsconf);
+	ctx = tlsgetctx(handle, server->conf->tlsconf);
 	if (!ctx)
 	    continue;
 	server->ssl = SSL_new(ctx);
@@ -347,9 +378,9 @@ void *tlsservernew(void *arg) {
     }
     debug(DBG_WARN, "tlsservernew: incoming TLS connection from %s", addr2string((struct sockaddr *)&from));
 
-    conf = find_clconf(RAD_TLS, (struct sockaddr *)&from, &cur);
+    conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
     if (conf) {
-	ctx = tlsgetctx(RAD_TLS, conf->tlsconf);
+	ctx = tlsgetctx(handle, conf->tlsconf);
 	if (!ctx)
 	    goto exit;
 	ssl = SSL_new(ctx);
@@ -381,7 +412,7 @@ void *tlsservernew(void *arg) {
 		debug(DBG_WARN, "tlsservernew: failed to create new client instance");
 	    goto exit;
 	}
-	conf = find_clconf(RAD_TLS, (struct sockaddr *)&from, &cur);
+	conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
     }
     debug(DBG_WARN, "tlsservernew: ignoring request, no matching TLS client");
     if (cert)

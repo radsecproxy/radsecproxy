@@ -6,10 +6,4 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
-void udpsetsrcres(char *source);
-int clientradputudp(struct server *server, unsigned char *rad);
-void *udpclientrd(void *arg);
-void *udpserverrd(void *arg);
-void addclientudp(struct client *client);
-void addserverextraudp(struct clsrvconf *conf);
-void initextraudp();
+const struct protodefs *udpinit(uint8_t h);
