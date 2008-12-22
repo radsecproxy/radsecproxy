@@ -6,7 +6,6 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
-#ifdef RADPROT_TLS
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -27,10 +26,12 @@
 #include <pthread.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include "debug.h"
 #include "list.h"
-#include "util.h"
 #include "radsecproxy.h"
+
+#ifdef RADPROT_TLS
+#include "debug.h"
+#include "util.h"
 
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();

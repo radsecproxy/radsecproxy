@@ -151,23 +151,6 @@ struct realm {
     struct list *accsrvconfs;
 };
 
-struct tls {
-    char *name;
-    char *cacertfile;
-    char *cacertpath;
-    char *certfile;
-    char *certkeyfile;
-    char *certkeypwd;
-    uint8_t crlcheck;
-    char **policyoids;
-    uint32_t cacheexpiry;
-    uint32_t tlsexpiry;
-    uint32_t dtlsexpiry;
-    X509_VERIFY_PARAM *vpm;
-    SSL_CTX *tlsctx;
-    SSL_CTX *dtlsctx;
-};
-
 struct modattr {
     uint8_t t;
     char *replacement;
