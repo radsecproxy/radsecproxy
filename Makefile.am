@@ -1,6 +1,7 @@
 sbin_PROGRAMS        = radsecproxy
 
 radsecproxy_SOURCES = radsecproxy.c \
+		      tlscommon.c \
                       gconfig.c \
                       util.c \
                       debug.c \
@@ -13,6 +14,7 @@ radsecproxy_SOURCES = radsecproxy.c \
 		      tls.c \
 		      dtls.c \
                       radsecproxy.h \
+                      tlscommon.h \
                       gconfig.h \
                       debug.h \
                       util.h \
