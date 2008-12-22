@@ -3145,7 +3145,21 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8
 	    *pretend = 1;
 	    break;
 	case 'v':
-		debugx(0, DBG_ERR, "radsecproxy revision $Rev$");
+		debug(DBG_ERR, "radsecproxy revision $Rev$");
+		debug(DBG_ERR, "This binary was built with support for the following transports:");
+#ifdef RADPROT_UDP
+		debug(DBG_ERR, "  UDP");
+#endif		
+#ifdef RADPROT_TCP
+		debug(DBG_ERR, "  TCP");
+#endif		
+#ifdef RADPROT_TLS
+		debug(DBG_ERR, "  TLS");
+#endif		
+#ifdef RADPROT_DTLS
+		debug(DBG_ERR, "  DTLS");
+#endif
+		exit(0);
 	default:
 	    goto usage;
 	}
