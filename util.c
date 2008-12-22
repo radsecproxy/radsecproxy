@@ -39,16 +39,6 @@ void printfchars(char *prefixfmt, char *prefix, char *charfmt, char *chars, int 
     printf("\n");
 }
 
-uint16_t port_get(struct sockaddr *sa) {
-    switch (sa->sa_family) {
-    case AF_INET:
-	return ntohs(((struct sockaddr_in *)sa)->sin_port);
-    case AF_INET6:
-	return ntohs(((struct sockaddr_in6 *)sa)->sin6_port);
-    }
-    return 0;
-}
-
 void port_set(struct sockaddr *sa, uint16_t port) {
     switch (sa->sa_family) {
     case AF_INET:
@@ -57,21 +47,6 @@ void port_set(struct sockaddr *sa, uint16_t port) {
     case AF_INET6:
 	((struct sockaddr_in6 *)sa)->sin6_port = htons(port);
 	break;
-    }
-}
-
-int addr_equal(struct sockaddr *a, struct sockaddr *b) {
-    switch (a->sa_family) {
-    case AF_INET:
-	return !memcmp(&((struct sockaddr_in*)a)->sin_addr,
-		       &((struct sockaddr_in*)b)->sin_addr,
-		       sizeof(struct in_addr));
-    case AF_INET6:
-	return IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6*)a)->sin6_addr,
-				  &((struct sockaddr_in6*)b)->sin6_addr);
-    default:
-	/* Must not reach */
-	return 0;
     }
 }
 
@@ -122,6 +97,8 @@ char *addr2string(struct sockaddr *addr) {
     return addr_buf[i];
 }
 
+#if 0
+/* not in use */
 int connectport(int type, char *host, char *port) {
     struct addrinfo hints, *res0, *res;
     int s = -1;
@@ -150,6 +127,7 @@ int connectport(int type, char *host, char *port) {
     freeaddrinfo(res0);
     return s;
 }
+#endif
 
 int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
     int s, on = 1;

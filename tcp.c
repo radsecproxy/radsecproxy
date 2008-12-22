@@ -6,7 +6,6 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
-#ifdef RADPROT_TCP
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -25,12 +24,12 @@
 #include <arpa/inet.h>
 #include <regex.h>
 #include <pthread.h>
-#include <openssl/ssl.h>
-#include "debug.h"
 #include "list.h"
-#include "util.h"
 #include "radsecproxy.h"
 
+#ifdef RADPROT_TCP
+#include "debug.h"
+#include "util.h"
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
 void *tcplistener(void *arg);

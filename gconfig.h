@@ -4,6 +4,8 @@
 #define CONF_BLN 4
 #define CONF_LINT 5
 
+#include <stdio.h>
+
 struct gconffile {
     char *path;
     FILE *file;

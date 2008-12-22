@@ -8,6 +8,7 @@
 
 #include "tlv11.h"
 #include "radmsg.h"
+#include "gconfig.h"
 
 #define DEBUG_LEVEL 3
 
@@ -105,6 +106,8 @@ struct clsrvconf {
     struct list *clients;
     struct server *servers;
 };
+
+#include "tlscommon.h"
 
 struct client {
     struct clsrvconf *conf;
@@ -204,8 +207,5 @@ void freebios(struct queue *q);
 struct request *newrequest();
 void freerq(struct request *rq);
 int radsrv(struct request *rq);
-X509 *verifytlscert(SSL *ssl);
-int verifyconfcert(X509 *cert, struct clsrvconf *conf);
 void replyh(struct server *server, unsigned char *buf);
-SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);

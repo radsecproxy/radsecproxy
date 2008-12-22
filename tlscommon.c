@@ -36,25 +36,7 @@
 #include "list.h"
 #include "hash.h"
 #include "util.h"
-#include "gconfig.h"
 #include "radsecproxy.h"
-
-struct tls {
-    char *name;
-    char *cacertfile;
-    char *cacertpath;
-    char *certfile;
-    char *certkeyfile;
-    char *certkeypwd;
-    uint8_t crlcheck;
-    char **policyoids;
-    uint32_t cacheexpiry;
-    uint32_t tlsexpiry;
-    uint32_t dtlsexpiry;
-    X509_VERIFY_PARAM *vpm;
-    SSL_CTX *tlsctx;
-    SSL_CTX *dtlsctx;
-};
 
 static struct hash *tlsconfs = NULL;
 
@@ -335,6 +317,194 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
     return NULL;
 }
 
+X509 *verifytlscert(SSL *ssl) {
+    X509 *cert;
+    unsigned long error;
+    
+    if (SSL_get_verify_result(ssl) != X509_V_OK) {
+	debug(DBG_ERR, "verifytlscert: basic validation failed");
+	while ((error = ERR_get_error()))
+	    debug(DBG_ERR, "verifytlscert: TLS: %s", ERR_error_string(error, NULL));
+	return NULL;
+    }
+
+    cert = SSL_get_peer_certificate(ssl);
+    if (!cert)
+	debug(DBG_ERR, "verifytlscert: failed to obtain certificate");
+    return cert;
+}
+
+static int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
+    int loc, i, l, n, r = 0;
+    char *v;
+    X509_EXTENSION *ex;
+    STACK_OF(GENERAL_NAME) *alt;
+    GENERAL_NAME *gn;
+    
+    debug(DBG_DBG, "subjectaltnameaddr");
+    
+    loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
+    if (loc < 0)
+	return r;
+    
+    ex = X509_get_ext(cert, loc);
+    alt = X509V3_EXT_d2i(ex);
+    if (!alt)
+	return r;
+    
+    n = sk_GENERAL_NAME_num(alt);
+    for (i = 0; i < n; i++) {
+	gn = sk_GENERAL_NAME_value(alt, i);
+	if (gn->type != GEN_IPADD)
+	    continue;
+	r = -1;
+	v = (char *)ASN1_STRING_data(gn->d.ia5);
+	l = ASN1_STRING_length(gn->d.ia5);
+	if (((family == AF_INET && l == sizeof(struct in_addr)) || (family == AF_INET6 && l == sizeof(struct in6_addr)))
+	    && !memcmp(v, &addr, l)) {
+	    r = 1;
+	    break;
+	}
+    }
+    GENERAL_NAMES_free(alt);
+    return r;
+}
+
+static int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *regex) {
+    int loc, i, l, n, r = 0;
+    char *s, *v;
+    X509_EXTENSION *ex;
+    STACK_OF(GENERAL_NAME) *alt;
+    GENERAL_NAME *gn;
+    
+    debug(DBG_DBG, "subjectaltnameregexp");
+    
+    loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
+    if (loc < 0)
+	return r;
+    
+    ex = X509_get_ext(cert, loc);
+    alt = X509V3_EXT_d2i(ex);
+    if (!alt)
+	return r;
+    
+    n = sk_GENERAL_NAME_num(alt);
+    for (i = 0; i < n; i++) {
+	gn = sk_GENERAL_NAME_value(alt, i);
+	if (gn->type != type)
+	    continue;
+	r = -1;
+	v = (char *)ASN1_STRING_data(gn->d.ia5);
+	l = ASN1_STRING_length(gn->d.ia5);
+	if (l <= 0)
+	    continue;
+#ifdef DEBUG
+	printfchars(NULL, gn->type == GEN_DNS ? "dns" : "uri", NULL, v, l);
+#endif	
+	if (exact) {
+	    if (memcmp(v, exact, l))
+		continue;
+	} else {
+	    s = stringcopy((char *)v, l);
+	    if (!s) {
+		debug(DBG_ERR, "malloc failed");
+		continue;
+	    }
+	    if (regexec(regex, s, 0, NULL, 0)) {
+		free(s);
+		continue;
+	    }
+	    free(s);
+	}
+	r = 1;
+	break;
+    }
+    GENERAL_NAMES_free(alt);
+    return r;
+}
+
+static int cnregexp(X509 *cert, char *exact, regex_t *regex) {
+    int loc, l;
+    char *v, *s;
+    X509_NAME *nm;
+    X509_NAME_ENTRY *e;
+    ASN1_STRING *t;
+
+    nm = X509_get_subject_name(cert);
+    loc = -1;
+    for (;;) {
+	loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
+	if (loc == -1)
+	    break;
+	e = X509_NAME_get_entry(nm, loc);
+	t = X509_NAME_ENTRY_get_data(e);
+	v = (char *) ASN1_STRING_data(t);
+	l = ASN1_STRING_length(t);
+	if (l < 0)
+	    continue;
+	if (exact) {
+	    if (l == strlen(exact) && !strncasecmp(exact, v, l))
+		return 1;
+	} else {
+	    s = stringcopy((char *)v, l);
+	    if (!s) {
+		debug(DBG_ERR, "malloc failed");
+		continue;
+	    }
+	    if (regexec(regex, s, 0, NULL, 0)) {
+		free(s);
+		continue;
+	    }
+	    free(s);
+	    return 1;
+	}
+    }
+    return 0;
+}
+
+int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
+    int r;
+    uint8_t type = 0; /* 0 for DNS, AF_INET for IPv4, AF_INET6 for IPv6 */
+    struct in6_addr addr;
+    
+    if (conf->certnamecheck && conf->prefixlen == 255) {
+	if (inet_pton(AF_INET, conf->host, &addr))
+	    type = AF_INET;
+	else if (inet_pton(AF_INET6, conf->host, &addr))
+	    type = AF_INET6;
+
+	r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, conf->host, NULL);
+	if (r) {
+	    if (r < 0) {
+		debug(DBG_WARN, "verifyconfcert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
+		return 0;
+	    }
+	    debug(DBG_DBG, "verifyconfcert: Found subjectaltname matching %s %s", type ? "address" : "host", conf->host);
+	} else {
+	    if (!cnregexp(cert, conf->host, NULL)) {
+		debug(DBG_WARN, "verifyconfcert: cn not matching host %s", conf->host);
+		return 0;
+	    }		
+	    debug(DBG_DBG, "verifyconfcert: Found cn matching host %s", conf->host);
+	}
+    }
+    if (conf->certcnregex) {
+	if (cnregexp(cert, NULL, conf->certcnregex) < 1) {
+	    debug(DBG_WARN, "verifyconfcert: CN not matching regex");
+	    return 0;
+	}
+	debug(DBG_DBG, "verifyconfcert: CN matching regex");
+    }
+    if (conf->certuriregex) {
+	if (subjectaltnameregexp(cert, GEN_URI, NULL, conf->certuriregex) < 1) {
+	    debug(DBG_WARN, "verifyconfcert: subjectaltname URI not matching regex");
+	    return 0;
+	}
+	debug(DBG_DBG, "verifyconfcert: subjectaltname URI matching regex");
+    }
+    return 1;
+}
+
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct tls *conf;
     long int expiry = LONG_MIN;
@@ -404,6 +574,40 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     freegconfmstr(conf->policyoids);
     free(conf);
     return 0;
+}
+
+int addmatchcertattr(struct clsrvconf *conf) {
+    char *v;
+    regex_t **r;
+    
+    if (!strncasecmp(conf->matchcertattr, "CN:/", 4)) {
+	r = &conf->certcnregex;
+	v = conf->matchcertattr + 4;
+    } else if (!strncasecmp(conf->matchcertattr, "SubjectAltName:URI:/", 20)) {
+	r = &conf->certuriregex;
+	v = conf->matchcertattr + 20;
+    } else
+	return 0;
+    if (!*v)
+	return 0;
+    /* regexp, remove optional trailing / if present */
+    if (v[strlen(v) - 1] == '/')
+	v[strlen(v) - 1] = '\0';
+    if (!*v)
+	return 0;
+
+    *r = malloc(sizeof(regex_t));
+    if (!*r) {
+	debug(DBG_ERR, "malloc failed");
+	return 0;
+    }
+    if (regcomp(*r, v, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
+	free(*r);
+	*r = NULL;
+	debug(DBG_ERR, "failed to compile regular expression %s", v);
+	return 0;
+    }
+    return 1;
 }
 #else
 /* Just to makes file non-empty, should rather avoid compiling this file when not needed */

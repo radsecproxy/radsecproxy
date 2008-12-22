@@ -6,7 +6,6 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
-#ifdef RADPROT_UDP
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -25,11 +24,12 @@
 #include <arpa/inet.h>
 #include <regex.h>
 #include <pthread.h>
-#include <openssl/ssl.h>
-#include "debug.h"
 #include "list.h"
-#include "util.h"
 #include "radsecproxy.h"
+
+#ifdef RADPROT_UDP
+#include "debug.h"
+#include "util.h"
 
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
@@ -101,6 +101,31 @@ void removeudpclientfromreplyq(struct client *c) {
     }
     pthread_mutex_unlock(&c->replyq->mutex);
 }	
+
+static int addr_equal(struct sockaddr *a, struct sockaddr *b) {
+    switch (a->sa_family) {
+    case AF_INET:
+	return !memcmp(&((struct sockaddr_in*)a)->sin_addr,
+		       &((struct sockaddr_in*)b)->sin_addr,
+		       sizeof(struct in_addr));
+    case AF_INET6:
+	return IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6*)a)->sin6_addr,
+				  &((struct sockaddr_in6*)b)->sin6_addr);
+    default:
+	/* Must not reach */
+	return 0;
+    }
+}
+
+uint16_t port_get(struct sockaddr *sa) {
+    switch (sa->sa_family) {
+    case AF_INET:
+	return ntohs(((struct sockaddr_in *)sa)->sin_port);
+    case AF_INET6:
+	return ntohs(((struct sockaddr_in6 *)sa)->sin6_port);
+    }
+    return 0;
+}
 
 /* exactly one of client and server must be non-NULL */
 /* return who we received from in *client or *server */
@@ -261,6 +286,7 @@ void *udpserverrd(void *arg) {
 	radsrv(rq);
     }
     free(sp);
+    return NULL;
 }
 
 void *udpserverwr(void *arg) {
