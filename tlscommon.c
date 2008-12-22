@@ -30,7 +30,6 @@
 #include <openssl/rand.h>
 #include <openssl/err.h>
 #include <openssl/md5.h>
-#include <openssl/hmac.h>
 #include <openssl/x509v3.h>
 #include "debug.h"
 #include "list.h"
