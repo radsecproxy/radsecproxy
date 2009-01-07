@@ -351,10 +351,10 @@ struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur) {
     return NULL;
 }
 
-struct queue *newqueue() {
-    struct queue *q;
+struct gqueue *newqueue() {
+    struct gqueue *q;
     
-    q = malloc(sizeof(struct queue));
+    q = malloc(sizeof(struct gqueue));
     if (!q)
 	debugx(1, DBG_ERR, "malloc failed");
     q->entries = list_create();
@@ -365,7 +365,7 @@ struct queue *newqueue() {
     return q;
 }
 
-void removequeue(struct queue *q) {
+void removequeue(struct gqueue *q) {
     struct list_node *entry;
 
     if (!q)
@@ -380,7 +380,7 @@ void removequeue(struct queue *q) {
     free(q);
 }
 
-void freebios(struct queue *q) {
+void freebios(struct gqueue *q) {
     BIO *bio;
     
     pthread_mutex_lock(&q->mutex);

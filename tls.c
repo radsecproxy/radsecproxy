@@ -299,7 +299,7 @@ void *tlsserverwr(void *arg) {
     int cnt;
     unsigned long error;
     struct client *client = (struct client *)arg;
-    struct queue *replyq;
+    struct gqueue *replyq;
     struct request *reply;
     
     debug(DBG_DBG, "tlsserverwr: starting for %s", addr2string(client->addr));

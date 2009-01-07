@@ -64,7 +64,7 @@ static const struct protodefs protodefs = {
 
 static int client4_sock = -1;
 static int client6_sock = -1;
-static struct queue *server_replyq = NULL;
+static struct gqueue *server_replyq = NULL;
 
 static struct addrinfo *srcres = NULL;
 static uint8_t handle;
@@ -290,7 +290,7 @@ void *udpserverrd(void *arg) {
 }
 
 void *udpserverwr(void *arg) {
-    struct queue *replyq = (struct queue *)arg;
+    struct gqueue *replyq = (struct gqueue *)arg;
     struct request *reply;
     struct sockaddr_storage to;
     

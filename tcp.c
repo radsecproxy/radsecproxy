@@ -237,7 +237,7 @@ void *tcpclientrd(void *arg) {
 void *tcpserverwr(void *arg) {
     int cnt;
     struct client *client = (struct client *)arg;
-    struct queue *replyq;
+    struct gqueue *replyq;
     struct request *reply;
     
     debug(DBG_DBG, "tcpserverwr: starting for %s", addr2string(client->addr));

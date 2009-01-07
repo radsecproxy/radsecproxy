@@ -69,7 +69,7 @@ struct rqout {
     struct timeval expiry;
 };
 
-struct queue {
+struct gqueue {
     struct list *entries;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
@@ -114,8 +114,8 @@ struct client {
     int sock;
     SSL *ssl;
     struct request *rqs[MAX_REQUESTS];
-    struct queue *replyq;
-    struct queue *rbios; /* for dtls */
+    struct gqueue *replyq;
+    struct gqueue *rbios; /* for dtls */
     struct sockaddr *addr;
     time_t expiry; /* for udp */
 };
@@ -138,7 +138,7 @@ struct server {
     uint8_t newrq;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
-    struct queue *rbios; /* for dtls */
+    struct gqueue *rbios; /* for dtls */
 };
 
 struct realm {
@@ -202,8 +202,8 @@ struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf, uint8_t lock);
 void removelockedclient(struct client *client);
 void removeclient(struct client *client);
-struct queue *newqueue();
-void freebios(struct queue *q);
+struct gqueue *newqueue();
+void freebios(struct gqueue *q);
 struct request *newrequest();
 void freerq(struct request *rq);
 int radsrv(struct request *rq);

@@ -87,7 +87,7 @@ static char **getlistenerargs() {
 
 struct sessioncacheentry {
     pthread_mutex_t mutex;
-    struct queue *rbios;
+    struct gqueue *rbios;
     struct timeval expiry;
 };
 
@@ -103,7 +103,7 @@ void dtlssetsrcres() {
     
 }
 
-int udp2bio(int s, struct queue *q, int cnt) {
+int udp2bio(int s, struct gqueue *q, int cnt) {
     unsigned char *buf;
     BIO *rbio;
 
@@ -139,7 +139,7 @@ int udp2bio(int s, struct queue *q, int cnt) {
     return 1;
 }
 
-BIO *getrbio(SSL *ssl, struct queue *q, int timeout) {
+BIO *getrbio(SSL *ssl, struct gqueue *q, int timeout) {
     BIO *rbio;
     struct timeval now;
     struct timespec to;
@@ -159,7 +159,7 @@ BIO *getrbio(SSL *ssl, struct queue *q, int timeout) {
     return rbio;
 }
 
-int dtlsread(SSL *ssl, struct queue *q, unsigned char *buf, int num, int timeout) {
+int dtlsread(SSL *ssl, struct gqueue *q, unsigned char *buf, int num, int timeout) {
     int len, cnt;
     BIO *rbio;
     
@@ -190,7 +190,7 @@ int dtlsread(SSL *ssl, struct queue *q, unsigned char *buf, int num, int timeout
 }
 
 /* accept if acc == 1, else connect */
-SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct queue *rbios) {
+SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct gqueue *rbios) {
     SSL *ssl;
     int i, res;
     unsigned long error;
@@ -226,7 +226,7 @@ SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct 
     return NULL;
 }
 
-unsigned char *raddtlsget(SSL *ssl, struct queue *rbios, int timeout) {
+unsigned char *raddtlsget(SSL *ssl, struct gqueue *rbios, int timeout) {
     int cnt, len;
     unsigned char buf[4], *rad;
 
@@ -267,7 +267,7 @@ void *dtlsserverwr(void *arg) {
     int cnt;
     unsigned long error;
     struct client *client = (struct client *)arg;
-    struct queue *replyq;
+    struct gqueue *replyq;
     struct request *reply;
     
     debug(DBG_DBG, "dtlsserverwr: starting for %s", addr2string(client->addr));
