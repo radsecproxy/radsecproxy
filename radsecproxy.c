@@ -2843,18 +2843,6 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     if (conf->confrewriteout)
 	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
 
-    if (!conf->secret) {
-	if (!conf->pdef->secretdefault) {
-	    debug(DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
-	    return 0;
-	}
-	conf->secret = stringcopy(conf->pdef->secretdefault, 0);
-	if (!conf->secret) {
-	    debug(DBG_ERR, "malloc failed");
-	    return 0;
-	}
-    }
-    
     if (!conf->dynamiclookupcommand && !resolvepeer(conf, 0)) {
 	debug(DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
 	return 0;
@@ -2979,9 +2967,21 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    goto errexit;
     }
     
+    if (!conf->secret) {
+	if (!conf->pdef->secretdefault) {
+	    debug(DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
+	    return 0;
+	}
+	conf->secret = stringcopy(conf->pdef->secretdefault, 0);
+	if (!conf->secret) {
+	    debug(DBG_ERR, "malloc failed");
+	    return 0;
+	}
+    }
+    
     if (resconf)
 	return 1;
-	
+
     if (!list_push(srvconfs, conf)) {
 	debug(DBG_ERR, "malloc failed");
 	goto errexit;
