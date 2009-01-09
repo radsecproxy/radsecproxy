@@ -156,11 +156,6 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_WARN, "radudpget: recv failed");
 	    continue;
 	}
-	if (cnt < 20) {
-	    debug(DBG_WARN, "radudpget: length too small");
-	    recv(s, buf, 4, 0);
-	    continue;
-	}
 	
 	p = client
 	    ? find_clconf(handle, (struct sockaddr *)&from, NULL)
