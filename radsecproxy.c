@@ -2907,8 +2907,10 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         }
     }
 
-    if (!conftype)
-	debugx(1, DBG_ERR, "error in block %s, option type missing", block);
+    if (!conftype) {
+	debug(DBG_ERR, "error in block %s, option type missing", block);
+	goto errexit;
+    }
     conf->type = protoname2int(conftype);
     if (conf->type == 255) {
 	debug(DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
