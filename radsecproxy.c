@@ -30,7 +30,7 @@
  * If TLS peers are configured, there will initially be 2 * #peers TLS threads
  * For each TLS peer connecting to us there will be 2 more TLS threads
  *       This is only for connected peers
- * Example: With 3 UDP peer and 30 TLS peers, there will be a max of
+ * Example: With 3 UDP peers and 30 TLS peers, there will be a max of
  *          1 + (2 + 2 * 3) + (2 * 30) + (2 * 30) = 129 threads
 */
 
@@ -86,7 +86,7 @@ extern char *optarg;
 static const struct protodefs *protodefs[RAD_PROTOCOUNT];
 
 /* minimum required declarations to avoid reordering code */
-struct realm *adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id);
+struct realm *adddynamicrealmserver(struct realm *realm, char *id);
 int dynamicconfig(struct server *server);
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 void freerealm(struct realm *realm);
@@ -969,6 +969,15 @@ struct realm *id2realm(struct list *realmlist, char *id) {
     return NULL;
 }
 
+int hasdynamicserver(struct list *srvconfs) {
+    struct list_node *entry;
+
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry))
+	if (((struct clsrvconf *)entry->data)->dynamiclookupcommand)
+	    return 1;
+    return 0;
+}
+
 /* helper function, only used by removeserversubrealms() */
 void _internal_removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
     struct list_node *entry, *entry2;
@@ -984,26 +993,26 @@ void _internal_removeserversubrealms(struct list *realmlist, struct clsrvconf *s
 		if (entry2->data == srv)
 		    freerealm(realm);
 	    list_removedata(realm->srvconfs, srv);
-	    if (!list_first(realm->srvconfs)) {
-		list_destroy(realm->srvconfs);
-		realm->srvconfs = NULL;
-	    }
 	}
 	if (realm->accsrvconfs) {
 	    for (entry2 = list_first(realm->accsrvconfs); entry2; entry2 = list_next(entry2))
 		if (entry2->data == srv)
 		    freerealm(realm);
 	    list_removedata(realm->accsrvconfs, srv);
-	    if (!list_first(realm->accsrvconfs)) {
-		list_destroy(realm->accsrvconfs);
-		realm->accsrvconfs = NULL;
-	    }
 	}
 
-	/* remove subrealm if no servers */
-	if (!realm->srvconfs && !realm->accsrvconfs)
+	/* remove subrealm if no dynamic servers left */
+	if (!hasdynamicserver(realm->srvconfs) && !hasdynamicserver(realm->accsrvconfs)) {
+	    while (list_shift(realm->srvconfs))
+		freerealm(realm);
+	    list_destroy(realm->srvconfs);
+	    realm->srvconfs = NULL;
+	    while (list_shift(realm->accsrvconfs))
+		freerealm(realm);
+	    list_destroy(realm->accsrvconfs);
+	    realm->accsrvconfs = NULL;
 	    list_removedata(realmlist, realm);
-
+	}
 	pthread_mutex_unlock(&realm->mutex);
 	freerealm(realm);
     }
@@ -1476,7 +1485,7 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
 	    return server;
 	if (!first)
 	    first = server;
-	if (!server->servers->connectionok)
+	if (!server->servers->connectionok && !server->servers->dynstartup)
 	    continue;
 	if (!server->servers->lostrqs)
 	    return server;
@@ -1505,19 +1514,19 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
 	goto exit;
     debug(DBG_DBG, "found matching realm: %s", (*realm)->name);
     srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
-    if (!srvconf)
-	goto exit;
-    server = srvconf->servers;
-    if (!acc && !(*realm)->parent && !srvconf->servers) {
-	subrealm = adddynamicrealmserver(*realm, srvconf, id);
+    if (srvconf && !(*realm)->parent && !srvconf->servers && srvconf->dynamiclookupcommand) {
+	subrealm = adddynamicrealmserver(*realm, id);
 	if (subrealm) {
 	    pthread_mutex_lock(&subrealm->mutex);
 	    pthread_mutex_unlock(&(*realm)->mutex);
 	    freerealm(*realm);
 	    *realm = subrealm;
-	    server = ((struct clsrvconf *)subrealm->srvconfs->first->data)->servers;
+	    srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
 	}
     }
+    if (srvconf)
+	server = srvconf->servers;
+
  exit:    
     free(id);
     return server;
@@ -1917,8 +1926,13 @@ void *clientwr(void *arg) {
     }
 
     if (conf->pdef->connecter) {
-	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 6 : 0, "clientwr"))
+	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 6 : 0, "clientwr")) {
+	    if (server->dynamiclookuparg) {
+		server->dynstartup = 0;
+		sleep(900);
+	    }
 	    goto errexit;
+	}
 	server->connectionok = 1;
 	if (pthread_create(&clientrdth, NULL, conf->pdef->clientconnreader, (void *)server)) {
 	    debug(DBG_ERR, "clientwr: pthread_create failed");
@@ -1926,6 +1940,7 @@ void *clientwr(void *arg) {
 	}
     } else
 	server->connectionok = 1;
+    server->dynstartup = 0;
     
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
@@ -2290,15 +2305,53 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
     return newrealmref(realm);
 }
 
-struct realm *adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf, char *id) {
-    struct clsrvconf *srvconf;
+struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
+    struct list_node *entry;
+    struct clsrvconf *conf, *srvconf;
+    struct list *subrealmservers = NULL;
+    pthread_t clientth;
+
+    if (list_first(srvconfs)) {
+	subrealmservers = list_create();
+	if (!subrealmservers)
+	    return NULL;
+    }
+    
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
+	conf = (struct clsrvconf *)entry->data;
+	if (!conf->servers && conf->dynamiclookupcommand) {
+	    srvconf = malloc(sizeof(struct clsrvconf));
+	    if (!srvconf) {
+		debug(DBG_ERR, "malloc failed");
+		continue;
+	    }
+	    *srvconf = *conf;
+	    if (addserver(srvconf)) {
+		srvconf->servers->dynamiclookuparg = stringcopy(realm->name, 0);
+		srvconf->servers->dynstartup = 1;
+		if (pthread_create(&clientth, NULL, clientwr, (void *)(srvconf->servers))) {
+		    debug(DBG_ERR, "pthread_create failed");
+		    freeserver(srvconf->servers, 1);
+		    srvconf->servers = NULL;
+		} else
+		    pthread_detach(clientth);
+	    }
+	    conf = srvconf;
+	}
+	if (conf->servers) {
+	    if (list_push(subrealmservers, conf))
+		newrealmref(realm);
+	    else
+		debug(DBG_ERR, "malloc failed");
+	}
+    }
+    return subrealmservers;
+}
+    
+struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
     struct realm *newrealm = NULL;
     char *realmname, *s;
-    pthread_t clientth;
     
-    if (!conf->dynamiclookupcommand)
-	return NULL;
-
     /* create dynamic for the realm (string after last @, exit if nothing after @ */
     realmname = strrchr(id, '@');
     if (!realmname)
@@ -2310,65 +2363,23 @@ struct realm *adddynamicrealmserver(struct realm *realm, struct clsrvconf *conf,
 	if (*s != '.' && *s != '-' && !isalnum((int)*s))
 	    return NULL;
     
-    srvconf = malloc(sizeof(struct clsrvconf));
-    if (!srvconf) {
-	debug(DBG_ERR, "malloc failed");
-	return NULL;
-    }
-    *srvconf = *conf;
-    if (!addserver(srvconf))
-	goto errexit;
-
     if (!realm->subrealms)
 	realm->subrealms = list_create();
     if (!realm->subrealms)
-	goto errexit;
-    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, NULL, 0);
-    if (!newrealm)
-	goto errexit;
-    newrealm->parent = newrealmref(realm);
+	return NULL;
     
-    /* add server and accserver to newrealm */
-    newrealm->srvconfs = list_create();
-    if (!newrealm->srvconfs || !list_push(newrealm->srvconfs, srvconf)) {
-	debug(DBG_ERR, "malloc failed");
-	goto errexit;
+    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, stringcopy(realm->message, 0), realm->accresp);
+    if (!newrealm) {
+	list_destroy(realm->subrealms);
+	realm->subrealms = NULL;
+	return NULL;
     }
-    newrealmref(newrealm);
-    newrealm->accsrvconfs = list_create();
-    if (!newrealm->accsrvconfs || !list_push(newrealm->accsrvconfs, srvconf)) {
-	debug(DBG_ERR, "malloc failed");
-	list_shift(realm->srvconfs);
-	freerealm(newrealm);
-	goto errexit;
-    }
-    newrealmref(newrealm);
 
-    srvconf->servers->dynamiclookuparg = stringcopy(realmname, 0);
-    if (pthread_create(&clientth, NULL, clientwr, (void *)(srvconf->servers))) {
-	debug(DBG_ERR, "pthread_create failed");
-	list_shift(realm->srvconfs);
-	freerealm(newrealm);
-	list_shift(realm->accsrvconfs);
-	freerealm(newrealm);
-	goto errexit;
-    }
-    pthread_detach(clientth);
+    newrealm->parent = newrealmref(realm);
+    /* add server and accserver to newrealm */
+    newrealm->srvconfs = createsubrealmservers(newrealm, realm->srvconfs);
+    newrealm->accsrvconfs = createsubrealmservers(newrealm, realm->accsrvconfs);
     return newrealm;
-    
- errexit:
-    if (newrealm) {
-	list_removedata(realm->subrealms, newrealm);
-	freerealm(newrealm);
-	if (!list_first(realm->subrealms)) {
-	    list_destroy(realm->subrealms);
-	    realm->subrealms = NULL;
-	}
-    }
-    freeserver(srvconf->servers, 1);
-    free(srvconf);
-    debug(DBG_ERR, "failed to create dynamic server");
-    return NULL;
 }
 
 int dynamicconfig(struct server *server) {

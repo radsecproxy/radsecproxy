@@ -19,6 +19,8 @@
 
 char *stringcopy(const char *s, int len) {
     char *r;
+    if (!s)
+	return NULL;
     if (!len)
 	len = strlen(s);
     r = malloc(len + 1);
