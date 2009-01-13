@@ -1910,11 +1910,15 @@ void *clientwr(void *arg) {
     
     if (server->dynamiclookuparg && !dynamicconfig(server)) {
 	dynconffail = 1;
+	server->dynstartup = 0;
+	sleep(900);
 	goto errexit;
     }
     
     if (!conf->addrinfo && !resolvepeer(conf, 0)) {
 	debug(DBG_WARN, "failed to resolve host %s port %s", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
+	server->dynstartup = 0;
+	sleep(900);
 	goto errexit;
     }
 
