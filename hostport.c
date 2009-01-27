@@ -28,6 +28,10 @@ static int parsehostport(struct hostportres *hp, char *hostport, char *default_p
     char *p, *field;
     int ipv6 = 0;
 
+    if (!hostport) {
+	hp->port = default_port ? stringcopy(default_port, 0) : NULL;
+	return 1;
+    }
     p = hostport;
     /* allow literal addresses and port, e.g. [2001:db8::1]:1812 */
     if (*p == '[') {
@@ -85,7 +89,7 @@ static struct hostportres *newhostport(char *hostport, char *default_port, uint8
     if (!parsehostport(hp, hostport, default_port))
 	goto errexit;
 
-    if (!strcmp(hp->host, "*")) {
+    if (hp->host && !strcmp(hp->host, "*")) {
 	free(hp->host);
 	hp->host = NULL;
     }
