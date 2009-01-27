@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -79,8 +79,9 @@ struct clsrvconf {
     char *name;
     uint8_t type; /* RAD_UDP/RAD_TLS/RAD_TCP */
     const struct protodefs *pdef;
-    char *host;
-    char *port;
+    char *hostsrc;
+    char *portsrc;
+    struct list *hostports;
     char *secret;
     char *tls;
     char *matchcertattr;
@@ -99,8 +100,6 @@ struct clsrvconf {
     uint8_t addttl;
     struct rewrite *rewritein;
     struct rewrite *rewriteout;
-    struct addrinfo *addrinfo;
-    uint8_t prefixlen;
     pthread_mutex_t *lock; /* only used for updating clients so far */
     struct tls *tlsconf;
     struct list *clients;

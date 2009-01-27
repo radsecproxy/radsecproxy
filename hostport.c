@@ -11,9 +11,10 @@
 #include <netdb.h>
 #include "debug.h"
 #include "util.h"
-#include "resolve.h"
+#include "list.h"
+#include "hostport.h"
 
-void resolve_freehostport(struct hostportres *hp) {
+static void freehostport(struct hostportres *hp) {
     if (hp) {
 	free(hp->host);
 	free(hp->port);
@@ -23,7 +24,7 @@ void resolve_freehostport(struct hostportres *hp) {
     }
 }
 
-static int resolve_parsehostport(struct hostportres *hp, char *hostport, char *default_port) {
+static int parsehostport(struct hostportres *hp, char *hostport, char *default_port) {
     char *p, *field;
     int ipv6 = 0;
 
@@ -69,7 +70,7 @@ static int resolve_parsehostport(struct hostportres *hp, char *hostport, char *d
     return 1;
 }
     
-struct hostportres *resolve_newhostport(char *hostport, char *default_port, uint8_t prefixok) {
+static struct hostportres *newhostport(char *hostport, char *default_port, uint8_t prefixok) {
     struct hostportres *hp;
     char *slash, *s;
     int plen;
@@ -81,7 +82,7 @@ struct hostportres *resolve_newhostport(char *hostport, char *default_port, uint
     }
     memset(hp, 0, sizeof(struct hostportres));
 
-    if (!resolve_parsehostport(hp, hostport, default_port))
+    if (!parsehostport(hp, hostport, default_port))
 	goto errexit;
 
     if (!strcmp(hp->host, "*")) {
@@ -92,22 +93,22 @@ struct hostportres *resolve_newhostport(char *hostport, char *default_port, uint
     slash = hp->host ? strchr(hp->host, '/') : NULL;
     if (slash) {
 	if (!prefixok) {
-	    debug(DBG_WARN, "resolve_newhostport: prefix not allowed here", hp->host);
+	    debug(DBG_WARN, "newhostport: prefix not allowed here", hp->host);
 	    goto errexit;
 	}
 	s = slash + 1;
 	if (!*s) {
-	    debug(DBG_WARN, "resolve_newhostport: prefix length must be specified after the / in %s", hp->host);
+	    debug(DBG_WARN, "newhostport: prefix length must be specified after the / in %s", hp->host);
 	    goto errexit;
 	}
 	for (; *s; s++)
 	    if (*s < '0' || *s > '9') {
-		debug(DBG_WARN, "resolve_newhostport: %s in %s is not a valid prefix length", slash + 1, hp->host);
+		debug(DBG_WARN, "newhostport: %s in %s is not a valid prefix length", slash + 1, hp->host);
 		goto errexit;
 	    }
 	plen = atoi(slash + 1);
 	if (plen < 0 || plen > 128) {
-	    debug(DBG_WARN, "resolve_newhostport: %s in %s is not a valid prefix length", slash + 1, hp->host);
+	    debug(DBG_WARN, "newhostport: %s in %s is not a valid prefix length", slash + 1, hp->host);
 	    goto errexit;
 	}
 	hp->prefixlen = plen;
@@ -117,11 +118,11 @@ struct hostportres *resolve_newhostport(char *hostport, char *default_port, uint
     return hp;
 
  errexit:
-    resolve_freehostport(hp);
+    freehostport(hp);
     return NULL;
 }
 
-static int resolve_resolve(struct hostportres *hp, int socktype, uint8_t passive) {
+static int resolvehostport(struct hostportres *hp, int socktype, uint8_t passive) {
     struct addrinfo hints, *res;
 
     memset(&hints, 0, sizeof(hints));
@@ -133,7 +134,7 @@ static int resolve_resolve(struct hostportres *hp, int socktype, uint8_t passive
     if (!hp->host && !hp->port) {
 	/* getaddrinfo() doesn't like host and port to be NULL */
 	if (getaddrinfo(hp->host, "1812" /* can be anything */, &hints, &hp->addrinfo)) {
-	    debug(DBG_WARN, "resolve_resolve: can't resolve (null) port (null)");
+	    debug(DBG_WARN, "resolvehostport: can't resolve (null) port (null)");
 	    goto errexit;
 	}
 	for (res = hp->addrinfo; res; res = res->ai_next)
@@ -142,21 +143,21 @@ static int resolve_resolve(struct hostportres *hp, int socktype, uint8_t passive
 	if (hp->prefixlen != 255)
 	    hints.ai_flags |= AI_NUMERICHOST;
 	if (getaddrinfo(hp->host, hp->port, &hints, &hp->addrinfo)) {
-	    debug(DBG_WARN, "resolve_resolve: can't resolve %s port %s", hp->host ? hp->host : "(null)", hp->port ? hp->port : "(null)");
+	    debug(DBG_WARN, "resolvehostport: can't resolve %s port %s", hp->host ? hp->host : "(null)", hp->port ? hp->port : "(null)");
 	    goto errexit;
 	}
 	if (hp->prefixlen != 255) {
 	    switch (hp->addrinfo->ai_family) {
 	    case AF_INET:
 		if (hp->prefixlen > 32) {
-		    debug(DBG_WARN, "resolve_resolve: prefix length must be <= 32 in %s", hp->host);
+		    debug(DBG_WARN, "resolvehostport: prefix length must be <= 32 in %s", hp->host);
 		    goto errexit;
 		}
 		break;
 	    case AF_INET6:
 		break;
 	    default:
-		debug(DBG_WARN, "resolve_resolve: prefix must be IPv4 or IPv6 in %s", hp->host);
+		debug(DBG_WARN, "resolvehostport: prefix must be IPv4 or IPv6 in %s", hp->host);
 		goto errexit;
 	    }
 	}
@@ -169,26 +170,50 @@ static int resolve_resolve(struct hostportres *hp, int socktype, uint8_t passive
     return 0;
 }	  
 
-int resolve_hostports(struct list *hostports, int socktype) {
+int addhostport(struct list **hostports, char *hostport, char *portdefault, uint8_t prefixok) {
+    struct hostportres *hp;
+
+    hp = newhostport(hostport, portdefault, prefixok);
+    if (!hp)
+	return 0;
+    if (!*hostports)
+	*hostports = list_create();
+    if (!*hostports || !list_push(*hostports, hp)) {
+	freehostport(hp);
+	debug(DBG_ERR, "addhostport: malloc failed");
+	return 0;
+    }
+    return 1;
+}
+
+void freehostports(struct list *hostports) {
+    struct hostportres *hp;
+
+    while ((hp = (struct hostportres *)list_shift(hostports)))
+	freehostport(hp);
+    list_destroy(hostports);
+}
+
+int resolvehostports(struct list *hostports, int socktype) {
     struct list_node *entry;
     struct hostportres *hp;
     
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
 	hp = (struct hostportres *)entry->data;
-	if (!hp->addrinfo && !resolve_resolve(hp, socktype, 0))
+	if (!hp->addrinfo && !resolvehostport(hp, socktype, 0))
 	    return 0;
     }
     return 1;
 }
 
-struct addrinfo *resolve_passiveaddrinfo(char *hostport, char *default_port, int socktype) {
+struct addrinfo *resolvepassiveaddrinfo(char *hostport, char *default_port, int socktype) {
     struct addrinfo *ai = NULL;
-    struct hostportres *hp = resolve_newhostport(hostport, default_port, 0);
-    if (hp && resolve_resolve(hp, socktype, 1)) {
+    struct hostportres *hp = newhostport(hostport, default_port, 0);
+    if (hp && resolvehostport(hp, socktype, 1)) {
 	ai = hp->addrinfo;
 	hp->addrinfo = NULL;
     }
-    resolve_freehostport(hp);
+    freehostport(hp);
     return ai;
 }
 
@@ -202,4 +227,40 @@ static int prefixmatch(void *a1, void *a2, uint8_t len) {
     if (!r)
 	return 1;
     return (((uint8_t *)a1)[l] & mask[r]) == (((uint8_t *)a2)[l] & mask[r]);
+}
+
+int addressmatches(struct list *hostports, struct sockaddr *addr) {
+    struct sockaddr_in6 *sa6 = NULL;
+    struct in_addr *a4 = NULL;
+    struct addrinfo *res;
+    struct list_node *entry;
+    struct hostportres *hp = NULL;
+    
+    if (addr->sa_family == AF_INET6) {
+        sa6 = (struct sockaddr_in6 *)addr;
+        if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) {
+            a4 = (struct in_addr *)&sa6->sin6_addr.s6_addr[12];
+	    sa6 = NULL;
+	}
+    } else
+	a4 = &((struct sockaddr_in *)addr)->sin_addr;
+
+    for (entry = list_first(hostports); entry; entry = list_next(entry)) {
+	hp = (struct hostportres *)entry->data;
+	for (res = hp->addrinfo; res; res = res->ai_next)
+	    if (hp->prefixlen == 255) {
+		if ((a4 && res->ai_family == AF_INET &&
+		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
+		    (sa6 && res->ai_family == AF_INET6 &&
+		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
+		    return 1;
+	    } else {
+		if ((a4 && res->ai_family == AF_INET &&
+		     prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, hp->prefixlen)) ||
+		    (sa6 && res->ai_family == AF_INET6 &&
+		     prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, hp->prefixlen)))
+		    return 1;
+	    }
+    }
+    return 0;
 }

@@ -8,6 +8,7 @@ radsecproxy_SOURCES = radsecproxy.c \
                       list.c \
                       hash.c \
 		      tlv11.c \
+		      hostport.c \
 		      radmsg.c \
 		      udp.c \
 		      tcp.c \

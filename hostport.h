@@ -13,6 +13,8 @@ struct hostportres {
     struct addrinfo *addrinfo;
 };
 
-void resolve_freehostport(struct hostportres *hp);
-struct hostportres *resolve_newhostport(char *hostport, char *default_port, uint8_t prefixok);
-int resolve_resolve(struct hostportres *hp, int socktype, uint8_t passive);
+int addhostport(struct list **hostports, char *hostport, char *portdefault, uint8_t prefixok);
+void freehostports(struct list *hostports);
+int resolvehostports(struct list *hostports, int socktype);
+struct addrinfo *resolvepassiveaddrinfo(char *hostport, char *default_port, int socktype);
+int addressmatches(struct list *hostports, struct sockaddr *addr);

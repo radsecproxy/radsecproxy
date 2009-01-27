@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -68,6 +68,7 @@
 #include "list.h"
 #include "hash.h"
 #include "util.h"
+#include "hostport.h"
 #include "radsecproxy.h"
 #include "udp.h"
 #include "tcp.h"
@@ -119,155 +120,6 @@ void ssl_locking_callback(int mode, int type, const char *file, int line) {
 	pthread_mutex_unlock(&ssl_locks[type]);
 }
 
-int resolvepeer(struct clsrvconf *conf, int ai_flags) {
-    struct addrinfo hints, *addrinfo, *res;
-    char *slash, *s;
-    int plen = 0;
-
-    slash = conf->host ? strchr(conf->host, '/') : NULL;
-    if (slash) {
-	s = slash + 1;
-	if (!*s) {
-	    debug(DBG_WARN, "resolvepeer: prefix length must be specified after the / in %s", conf->host);
-	    return 0;
-	}
-	for (; *s; s++)
-	    if (*s < '0' || *s > '9') {
-		debug(DBG_WARN, "resolvepeer: %s in %s is not a valid prefix length", slash + 1, conf->host);
-		return 0;
-	    }
-	plen = atoi(slash + 1);
-	if (plen < 0 || plen > 128) {
-	    debug(DBG_WARN, "resolvepeer: %s in %s is not a valid prefix length", slash + 1, conf->host);
-	    return 0;
-	}
-	*slash = '\0';
-    }
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype = conf->pdef->socktype;
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_flags = ai_flags;
-    if (!conf->host && !conf->port) {
-	/* getaddrinfo() doesn't like host and port to be NULL */
-	if (getaddrinfo(conf->host, conf->pdef->portdefault, &hints, &addrinfo)) {
-	    debug(DBG_WARN, "resolvepeer: can't resolve (null) port (null)");
-	    return 0;
-	}
-	for (res = addrinfo; res; res = res->ai_next)
-	    port_set(res->ai_addr, 0);
-    } else {
-	if (slash)
-	    hints.ai_flags |= AI_NUMERICHOST;
-	if (getaddrinfo(conf->host, conf->port, &hints, &addrinfo)) {
-	    debug(DBG_WARN, "resolvepeer: can't resolve %s port %s", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
-	    return 0;
-	}
-	if (slash) {
-	    *slash = '/';
-	    switch (addrinfo->ai_family) {
-	    case AF_INET:
-		if (plen > 32) {
-		    debug(DBG_WARN, "resolvepeer: prefix length must be <= 32 in %s", conf->host);
-		    freeaddrinfo(addrinfo);
-		    return 0;
-		}
-		break;
-	    case AF_INET6:
-		break;
-	    default:
-		debug(DBG_WARN, "resolvepeer: prefix must be IPv4 or IPv6 in %s", conf->host);
-		freeaddrinfo(addrinfo);
-		return 0;
-	    }
-	    conf->prefixlen = (uint8_t)plen;
-	} else
-	    conf->prefixlen = 255;
-    }
-    if (conf->addrinfo)
-	freeaddrinfo(conf->addrinfo);
-    conf->addrinfo = addrinfo;
-    return 1;
-}	  
-
-char *parsehostport(char *s, struct clsrvconf *conf, char *default_port) {
-    char *p, *field;
-    int ipv6 = 0;
-
-    p = s;
-    /* allow literal addresses and port, e.g. [2001:db8::1]:1812 */
-    if (*p == '[') {
-	p++;
-	field = p;
-	for (; *p && *p != ']' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	if (*p != ']')
-	    debugx(1, DBG_ERR, "no ] matching initial [");
-	ipv6 = 1;
-    } else {
-	field = p;
-	for (; *p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-    }
-    if (field == p)
-	debugx(1, DBG_ERR, "missing host/address");
-
-    conf->host = stringcopy(field, p - field);
-    if (ipv6) {
-	p++;
-	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n')
-	    debugx(1, DBG_ERR, "unexpected character after ]");
-    }
-    if (*p == ':') {
-	    /* port number or service name is specified */;
-	    field = ++p;
-	    for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	    if (field == p)
-		debugx(1, DBG_ERR, "syntax error, : but no following port");
-	    conf->port = stringcopy(field, p - field);
-    } else
-	conf->port = default_port ? stringcopy(default_port, 0) : NULL;
-    return p;
-}
-
-struct clsrvconf *resolve_hostport(uint8_t type, char *lconf, char *default_port) {
-    struct clsrvconf *conf;
-
-    conf = malloc(sizeof(struct clsrvconf));
-    if (!conf)
-	debugx(1, DBG_ERR, "malloc failed");
-    memset(conf, 0, sizeof(struct clsrvconf));
-    conf->type = type;
-    conf->pdef = protodefs[conf->type];
-    if (lconf) {
-	parsehostport(lconf, conf, default_port);
-	if (!strcmp(conf->host, "*")) {
-	    free(conf->host);
-	    conf->host = NULL;
-	}
-    } else
-	conf->port = default_port ? stringcopy(default_port, 0) : NULL;
-    if (!resolvepeer(conf, AI_PASSIVE))
-	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
-    return conf;
-}
-
-void freeclsrvres(struct clsrvconf *res) {
-    free(res->host);
-    free(res->port);
-    if (res->addrinfo)
-	freeaddrinfo(res->addrinfo);
-    free(res);
-}
-
-struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport) {
-    struct addrinfo *ai;
-    struct clsrvconf *res;
-
-    res = resolve_hostport(type, hostport, NULL);
-    ai = res->addrinfo;
-    res->addrinfo = NULL;
-    freeclsrvres(res);
-    return ai;
-}
-    
 /* returns 1 if the len first bits are equal, else 0 */
 int prefixmatch(void *a1, void *a2, uint8_t len) {
     static uint8_t mask[] = { 0, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe };
@@ -282,46 +134,15 @@ int prefixmatch(void *a1, void *a2, uint8_t len) {
 
 /* returns next config with matching address, or NULL */
 struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *confs, struct list_node **cur) {
-    struct sockaddr_in6 *sa6 = NULL;
-    struct in_addr *a4 = NULL;
-    struct addrinfo *res;
     struct list_node *entry;
     struct clsrvconf *conf;
     
-    if (addr->sa_family == AF_INET6) {
-        sa6 = (struct sockaddr_in6 *)addr;
-        if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) {
-            a4 = (struct in_addr *)&sa6->sin6_addr.s6_addr[12];
-	    sa6 = NULL;
-	}
-    } else
-	a4 = &((struct sockaddr_in *)addr)->sin_addr;
-
     for (entry = (cur && *cur ? list_next(*cur) : list_first(confs)); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
-	if (conf->type == type) {
-	    if (conf->prefixlen == 255) {
-		for (res = conf->addrinfo; res; res = res->ai_next)
-		    if ((a4 && res->ai_family == AF_INET &&
-			 !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
-			(sa6 && res->ai_family == AF_INET6 &&
-			 !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16))) {
-			if (cur)
-			    *cur = entry;
-			return conf;
-		    }
-	    } else {
-		res = conf->addrinfo;
-		if (res &&
-		    ((a4 && res->ai_family == AF_INET &&
-		      prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, conf->prefixlen)) ||
-		     (sa6 && res->ai_family == AF_INET6 &&
-		      prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, conf->prefixlen)))) {
-		    if (cur)
-			*cur = entry;
-		    return conf;
-		}
-	    }
+	if (conf->type == type && addressmatches(conf->hostports, addr)) {
+	    if (cur)
+		*cur = entry;
+	    return conf;
 	}
     }    
     return NULL;
@@ -681,7 +502,7 @@ void sendrq(struct request *rq) {
 	goto errexit;
     }
     
-    debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->conf->host);
+    debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->conf->name);
     to->requests[i].rq = rq;
     pthread_mutex_unlock(to->requests[i].lock);
     if (i >= start) /* i is not reserved for statusserver */
@@ -1434,18 +1255,19 @@ uint8_t *radattr2ascii(struct tlv *attr) {
     return a;
 }
 
-void acclog(struct radmsg *msg, char *host) {
+void acclog(struct radmsg *msg, struct client *from) {
     struct tlv *attr;
     uint8_t *username;
-    
+
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
-	debug(DBG_INFO, "acclog: accounting-request from %s without username attribute", host);
+	debug(DBG_INFO, "acclog: accounting-request from client %s (%s) without username attribute", from->conf->name, addr2string(from->addr));
 	return;
     }
     username = radattr2ascii(attr);
     if (username) {
-	debug(DBG_INFO, "acclog: accounting-request from %s with username: %s", host, username);
+	debug(DBG_INFO, "acclog: accounting-request from client %s (%s) with username: %s", from->conf->name, addr2string(from->addr), username);
+	      
 	free(username);
     }
 }
@@ -1471,7 +1293,7 @@ void respond(struct request *rq, uint8_t code, char *message) {
 
     radmsg_free(rq->msg);
     rq->msg = msg;
-    debug(DBG_DBG, "respond: sending %s to %s", radmsgtype2string(msg->code), rq->from->conf->host);
+    debug(DBG_DBG, "respond: sending %s to %s (%s)", radmsgtype2string(msg->code), rq->from->conf->name, addr2string(rq->from->addr));
     sendreply(newrqref(rq));
 }
 
@@ -1632,7 +1454,7 @@ int radsrv(struct request *rq) {
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
 	if (msg->code == RAD_Accounting_Request) {
-	    acclog(msg, from->conf->host);
+	    acclog(msg, from);
 	    respond(rq, RAD_Accounting_Response, NULL);
 	} else
 	    debug(DBG_WARN, "radsrv: ignoring access request, no username attribute");
@@ -1658,10 +1480,10 @@ int radsrv(struct request *rq) {
 
     if (!to) {
 	if (realm->message && msg->code == RAD_Access_Request) {
-	    debug(DBG_INFO, "radsrv: sending reject to %s for %s", from->conf->host, userascii);
+	    debug(DBG_INFO, "radsrv: sending reject to %s (%s) for %s", from->conf->name, addr2string(from->addr), userascii);
 	    respond(rq, RAD_Access_Reject, realm->message);
 	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
-	    acclog(msg, from->conf->host);
+	    acclog(msg, from);
 	    respond(rq, RAD_Accounting_Response, NULL);
 	}
 	goto exit;
@@ -1763,7 +1585,7 @@ void replyh(struct server *server, unsigned char *buf) {
     
     if (rqout->rq->msg->code == RAD_Status_Server) {
 	freerqoutdata(rqout);
-	debug(DBG_DBG, "replyh: got status server response from %s", server->conf->host);
+	debug(DBG_DBG, "replyh: got status server response from %s", server->conf->name);
 	goto errunlock;
     }
 
@@ -1777,7 +1599,7 @@ void replyh(struct server *server, unsigned char *buf) {
     
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {    
-	debug(DBG_WARN, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->host);
+	debug(DBG_WARN, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->name);
 	goto errunlock;
     }
     
@@ -1813,20 +1635,20 @@ void replyh(struct server *server, unsigned char *buf) {
 	    if (stationid) {
 		if (replymsg) {
 		    debug(DBG_INFO, "%s for user %s stationid %s from %s (%s)",
-			  radmsgtype2string(msg->code), username, stationid, server->conf->host, replymsg);
+			  radmsgtype2string(msg->code), username, stationid, server->conf->name, replymsg);
 		    free(replymsg);
 		} else
 		    debug(DBG_INFO, "%s for user %s stationid %s from %s",
-			  radmsgtype2string(msg->code), username, stationid, server->conf->host);
+			  radmsgtype2string(msg->code), username, stationid, server->conf->name);
 		free(stationid);
 	    } else {
 		if (replymsg) {
 		    debug(DBG_INFO, "%s for user %s from %s (%s)",
-			  radmsgtype2string(msg->code), username, server->conf->host, replymsg);
+			  radmsgtype2string(msg->code), username, server->conf->name, replymsg);
 		    free(replymsg);
 		} else
 		    debug(DBG_INFO, "%s for user %s from %s",
-			  radmsgtype2string(msg->code), username, server->conf->host);
+			  radmsgtype2string(msg->code), username, server->conf->name);
 	    }
 	    free(username);
 	}
@@ -1915,8 +1737,8 @@ void *clientwr(void *arg) {
 	goto errexit;
     }
     
-    if (!conf->addrinfo && !resolvepeer(conf, 0)) {
-	debug(DBG_WARN, "failed to resolve host %s port %s", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
+    if (!resolvehostports(conf->hostports, conf->pdef->socktype)) {
+	debug(DBG_WARN, "failed to resolve host %s port %s", conf->hostsrc ? conf->hostsrc : "(null)", conf->portsrc ? conf->portsrc : "(null)");
 	server->dynstartup = 0;
 	sleep(900);
 	goto errexit;
@@ -2011,12 +1833,12 @@ void *clientwr(void *arg) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
 		if (conf->statusserver) {
 		    if (*rqout->rq->buf == RAD_Status_Server) {
-			debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->host);
+			debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->name);
 			if (server->lostrqs < 255)
 			    server->lostrqs++;
 		    }
                 } else {
-		    debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->host);
+		    debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->name);
 		    if (server->lostrqs < 255)
 			server->lostrqs++;
 		}
@@ -2040,7 +1862,7 @@ void *clientwr(void *arg) {
 		statsrvrq = createstatsrvrq();
 		if (statsrvrq) {
 		    statsrvrq->to = server;
-		    debug(DBG_DBG, "clientwr: sending status server to %s", conf->host);
+		    debug(DBG_DBG, "clientwr: sending status server to %s", conf->name);
 		    sendrq(statsrvrq);
 		}
 	    }
@@ -2062,15 +1884,14 @@ void *clientwr(void *arg) {
 
 void createlistener(uint8_t type, char *arg) {
     pthread_t th;
-    struct clsrvconf *listenres;
-    struct addrinfo *res;
+    struct addrinfo *listenres, *res;
     int s = -1, on = 1, *sp = NULL;
-    
-    listenres = resolve_hostport(type, arg, protodefs[type]->portdefault);
+
+    listenres = resolvepassiveaddrinfo(arg, protodefs[type]->portdefault, protodefs[type]->socktype);
     if (!listenres)
 	debugx(1, DBG_ERR, "createlistener: failed to resolve %s", arg);
     
-    for (res = listenres->addrinfo; res; res = res->ai_next) {
+    for (res = listenres; res; res = res->ai_next) {
         s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
         if (s < 0) {
             debug(DBG_WARN, "createlistener: socket failed");
@@ -2080,7 +1901,7 @@ void createlistener(uint8_t type, char *arg) {
 #ifdef IPV6_V6ONLY
 	if (res->ai_family == AF_INET6)
 	    setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
-#endif		
+#endif
 	if (bind(s, res->ai_addr, res->ai_addrlen)) {
 	    debug(DBG_WARN, "createlistener: bind failed");
 	    close(s);
@@ -2099,9 +1920,8 @@ void createlistener(uint8_t type, char *arg) {
     if (!sp)
 	debugx(1, DBG_ERR, "createlistener: socket/bind failed");
     
-    debug(DBG_WARN, "createlistener: listening for %s on %s:%s", protodefs[type]->name,
-	  listenres->host ? listenres->host : "*", listenres->port);
-    freeclsrvres(listenres);
+    debug(DBG_WARN, "createlistener: listening for %s on %s", protodefs[type]->name, arg);
+    freeaddrinfo(listenres);
 }
 
 void createlisteners(uint8_t type) {
@@ -2650,8 +2470,8 @@ int setttlattr(struct options *opts, char *defaultattr) {
 
 void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->name);
-    free(conf->host);
-    free(conf->port);
+    free(conf->hostsrc);
+    free(conf->portsrc);
     free(conf->secret);
     free(conf->tls);
     free(conf->matchcertattr);
@@ -2670,8 +2490,8 @@ void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->dynamiclookupcommand);
     free(conf->rewritein);
     free(conf->rewriteout);
-    if (conf->addrinfo)
-	freeaddrinfo(conf->addrinfo);
+    if (conf->hostports)
+	freehostports(conf->hostports);
     if (conf->lock) {
 	pthread_mutex_destroy(conf->lock);
 	free(conf->lock);
@@ -2702,8 +2522,8 @@ int mergeconfstring(char **dst, char **src) {
 /* assumes dst is a shallow copy */
 int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     if (!mergeconfstring(&dst->name, &src->name) ||
-	!mergeconfstring(&dst->host, &src->host) ||
-	!mergeconfstring(&dst->port, &src->port) ||
+	!mergeconfstring(&dst->hostsrc, &src->hostsrc) ||
+	!mergeconfstring(&dst->portsrc, &src->portsrc) ||
 	!mergeconfstring(&dst->secret, &src->secret) ||
 	!mergeconfstring(&dst->tls, &src->tls) ||
 	!mergeconfstring(&dst->matchcertattr, &src->matchcertattr) ||
@@ -2737,7 +2557,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     
     if (!getgenericconfig(cf, block,
 			  "type", CONF_STR, &conftype,
-			  "host", CONF_STR, &conf->host,
+			  "host", CONF_STR, &conf->hostsrc,
 			  "secret", CONF_STR, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)    
 			  "tls", CONF_STR, &conf->tls,
@@ -2755,9 +2575,9 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	debugx(1, DBG_ERR, "configuration error");
     
     conf->name = stringcopy(val, 0);
-    if (!conf->host)
-	conf->host = stringcopy(val, 0);
-    if (!conf->name || !conf->host)
+    if (!conf->hostsrc)
+	conf->hostsrc = stringcopy(val, 0);
+    if (!conf->name || !conf->hostsrc)
 	debugx(1, DBG_ERR, "malloc failed");
 	
     if (!conftype)
@@ -2804,9 +2624,10 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	if (!conf->rewriteusername)
 	    debugx(1, DBG_ERR, "error in block %s, invalid RewriteAttributeValue", block);
     }
-    
-    if (!resolvepeer(conf, 0))
-	debugx(1, DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
+
+    if (!addhostport(&conf->hostports, conf->hostsrc, conf->pdef->portdefault, 1) ||
+	!resolvehostports(conf->hostports, conf->pdef->socktype))
+	debugx(1, DBG_ERR, "failed to resolve %s, exiting", conf->hostsrc ? conf->hostsrc : "(null)");
     
     if (!conf->secret) {
 	if (!conf->pdef->secretdefault)
@@ -2841,9 +2662,9 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     }
 #endif
     
-    if (!conf->port) {
-	conf->port = stringcopy(conf->pdef->portdefault, 0);
-	if (!conf->port) {
+    if (!conf->portsrc) {
+	conf->portsrc = stringcopy(conf->pdef->portdefault, 0);
+	if (!conf->portsrc) {
 	    debug(DBG_ERR, "malloc failed");
 	    return 0;
 	}
@@ -2857,9 +2678,14 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultserver", "default");
     if (conf->confrewriteout)
 	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
+    
+    if (!addhostport(&conf->hostports, conf->hostsrc, conf->portsrc, 0)) {
+	debug(DBG_ERR, "error in block %s, failed to parse %s", block, conf->hostsrc);
+	return 0;
+    }
 
-    if (!conf->dynamiclookupcommand && !resolvepeer(conf, 0)) {
-	debug(DBG_ERR, "failed to resolve host %s port %s, exiting", conf->host ? conf->host : "(null)", conf->port ? conf->port : "(null)");
+    if (!conf->dynamiclookupcommand && !resolvehostports(conf->hostports, conf->pdef->socktype)) {
+	debug(DBG_ERR, "resolve host %s port %s, exiting", conf->hostsrc ? conf->hostsrc : "(null)", conf->portsrc ? conf->portsrc : "(null)");
 	return 0;
     }
     return 1;
@@ -2887,8 +2713,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (!getgenericconfig(cf, block,
 			  "type", CONF_STR, &conftype,
-			  "host", CONF_STR, &conf->host,
-			  "port", CONF_STR, &conf->port,
+			  "host", CONF_STR, &conf->hostsrc,
+			  "port", CONF_STR, &conf->portsrc,
 			  "secret", CONF_STR, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)    
 			  "tls", CONF_STR, &conf->tls,
@@ -2914,9 +2740,9 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         debug(DBG_ERR, "malloc failed");
 	goto errexit;
     }
-    if (!conf->host) {
-	conf->host = stringcopy(val, 0);
-	if (!conf->host) {
+    if (!conf->hostsrc) {
+	conf->hostsrc = stringcopy(val, 0);
+	if (!conf->hostsrc) {
             debug(DBG_ERR, "malloc failed");
 	    goto errexit;
         }
