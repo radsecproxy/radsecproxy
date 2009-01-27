@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2008-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -33,6 +33,7 @@
 #ifdef RADPROT_DTLS
 #include "debug.h"
 #include "util.h"
+#include "hostport.h"
 
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
@@ -99,8 +100,7 @@ struct dtlsservernewparams {
 
 void dtlssetsrcres() {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(handle, protoopts ? protoopts->sourcearg : NULL);
-    
+	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
 }
 
 int udp2bio(int s, struct gqueue *q, int cnt) {
@@ -531,7 +531,8 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
     time_t elapsed;
     X509 *cert;
     SSL_CTX *ctx = NULL;
-
+    struct hostportres *hp;
+    
     debug(DBG_DBG, "dtlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
     if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
@@ -541,6 +542,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 	return 1;
     }
 
+    hp = (struct hostportres *)list_first(server->conf->hostports)->data;
     for (;;) {
 	gettimeofday(&now, NULL);
 	elapsed = now.tv_sec - server->lastconnecttry.tv_sec;
@@ -566,14 +568,14 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 	    sleep(60);
 	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
-	debug(DBG_WARN, "dtlsconnect: trying to open DTLS connection to %s port %s", server->conf->host, server->conf->port);
+	debug(DBG_WARN, "dtlsconnect: trying to open DTLS connection to %s port %s", hp->host, hp->port);
 
 	SSL_free(server->ssl);
 	server->ssl = NULL;
 	ctx = tlsgetctx(handle, server->conf->tlsconf);
 	if (!ctx)
 	    continue;
-	server->ssl = dtlsacccon(0, ctx, server->sock, server->conf->addrinfo->ai_addr, server->rbios);
+	server->ssl = dtlsacccon(0, ctx, server->sock, hp->addrinfo->ai_addr, server->rbios);
 	if (!server->ssl)
 	    continue;
 	debug(DBG_DBG, "dtlsconnect: DTLS: ok");
@@ -587,7 +589,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 	X509_free(cert);
     }
     X509_free(cert);
-    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s port %s up", server->conf->host, server->conf->port);
+    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s port %s up", hp->host, hp->port);
     server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
@@ -608,7 +610,7 @@ int clientradputdtls(struct server *server, unsigned char *rad) {
 	    debug(DBG_ERR, "clientradputdtls: DTLS: %s", ERR_error_string(error, NULL));
 	return 0;
     }
-    debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %d to DTLS peer %s", cnt, len, conf->host);
+    debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %d to DTLS peer %s", cnt, len, conf->name);
     return 1;
 }
 
@@ -665,12 +667,12 @@ void *dtlsclientrd(void *arg) {
 }
 
 void addserverextradtls(struct clsrvconf *conf) {
-    switch (conf->addrinfo->ai_family) {
+    switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
     case AF_INET:
 	if (client4_sock < 0) {
 	    client4_sock = bindtoaddr(srcres, AF_INET, 0, 1);
 	    if (client4_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}
 	conf->servers->sock = client4_sock;
 	break;
@@ -678,7 +680,7 @@ void addserverextradtls(struct clsrvconf *conf) {
 	if (client6_sock < 0) {
 	    client6_sock = bindtoaddr(srcres, AF_INET6, 0, 1);
 	    if (client6_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}
 	conf->servers->sock = client6_sock;
 	break;

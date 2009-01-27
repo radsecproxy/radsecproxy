@@ -264,3 +264,20 @@ int addressmatches(struct list *hostports, struct sockaddr *addr) {
     }
     return 0;
 }
+
+int connecttcphostlist(struct list *hostports,  struct addrinfo *src) {
+    int s;
+    struct list_node *entry;
+    struct hostportres *hp = NULL;
+
+    for (entry = list_first(hostports); entry; entry = list_next(entry)) {
+	hp = (struct hostportres *)entry->data;
+	debug(DBG_WARN, "connecttcphostlist: trying to open TCP connection to %s port %s", hp->host, hp->port);
+	if ((s = connecttcp(hp->addrinfo, src)) >= 0) {
+	    debug(DBG_WARN, "connecttcphostlist: TCP connection to %s port %s up", hp->host, hp->port);
+	    return s;
+	}
+    }
+    debug(DBG_ERR, "connecttcphostlist: failed");
+    return -1;
+}

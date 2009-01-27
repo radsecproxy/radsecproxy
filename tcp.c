@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2008-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -25,6 +25,7 @@
 #include <regex.h>
 #include <pthread.h>
 #include "list.h"
+#include "hostport.h"
 #include "radsecproxy.h"
 
 #ifdef RADPROT_TCP
@@ -78,9 +79,9 @@ static char **getlistenerargs() {
 
 void tcpsetsrcres() {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(handle, protoopts ? protoopts->sourcearg : NULL);
+	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
 }
-    
+
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval now;
     time_t elapsed;
@@ -117,14 +118,12 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 	    sleep(60);
 	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
-	debug(DBG_WARN, "tcpconnect: trying to open TCP connection to %s port %s", server->conf->host, server->conf->port);
+
 	if (server->sock >= 0)
 	    close(server->sock);
-	if ((server->sock = connecttcp(server->conf->addrinfo, srcres)) >= 0)
+	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) >= 0)
 	    break;
-	debug(DBG_ERR, "tcpconnect: connecttcp failed");
     }
-    debug(DBG_WARN, "tcpconnect: TCP connection to %s port %s up", server->conf->host, server->conf->port);
     server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
@@ -210,7 +209,7 @@ int clientradputtcp(struct server *server, unsigned char *rad) {
 	debug(DBG_ERR, "clientradputtcp: write error");
 	return 0;
     }
-    debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %d to TCP peer %s", cnt, len, conf->host);
+    debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %d to TCP peer %s", cnt, len, conf->name);
     return 1;
 }
 

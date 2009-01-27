@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -25,6 +25,7 @@
 #include <regex.h>
 #include <pthread.h>
 #include "list.h"
+#include "hostport.h"
 #include "radsecproxy.h"
 
 #ifdef RADPROT_UDP
@@ -85,7 +86,7 @@ static char **getlistenerargs() {
 
 void udpsetsrcres() {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(handle, protoopts ? protoopts->sourcearg : NULL);
+	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
 }
 
 void removeudpclientfromreplyq(struct client *c) {
@@ -243,10 +244,12 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 int clientradputudp(struct server *server, unsigned char *rad) {
     size_t len;
     struct clsrvconf *conf = server->conf;
-    
+    struct addrinfo *ai;
+
     len = RADLEN(rad);
-    if (sendto(server->sock, rad, len, 0, conf->addrinfo->ai_addr, conf->addrinfo->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, port_get(conf->addrinfo->ai_addr));
+    ai = ((struct hostportres *)list_first(conf->hostports)->data)->addrinfo;
+    if (sendto(server->sock, rad, len, 0, ai->ai_addr, ai->ai_addrlen) >= 0) {
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, addr2string(ai->ai_addr), port_get(ai->ai_addr));
 	return 1;
     }
 
@@ -315,12 +318,12 @@ void addclientudp(struct client *client) {
 }
 
 void addserverextraudp(struct clsrvconf *conf) {
-    switch (conf->addrinfo->ai_family) {
+    switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
     case AF_INET:
 	if (client4_sock < 0) {
 	    client4_sock = bindtoaddr(srcres, AF_INET, 0, 1);
 	    if (client4_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}
 	conf->servers->sock = client4_sock;
 	break;
@@ -328,7 +331,7 @@ void addserverextraudp(struct clsrvconf *conf) {
 	if (client6_sock < 0) {
 	    client6_sock = bindtoaddr(srcres, AF_INET6, 0, 1);
 	    if (client6_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}
 	conf->servers->sock = client6_sock;
 	break;

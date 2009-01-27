@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -27,6 +27,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include "list.h"
+#include "hostport.h"
 #include "radsecproxy.h"
 
 #ifdef RADPROT_TLS
@@ -82,8 +83,7 @@ static char **getlistenerargs() {
 
 void tlssetsrcres() {
     if (!srcres)
-	srcres = resolve_hostport_addrinfo(handle, protoopts ? protoopts->sourcearg : NULL);
-    
+	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
 }
 
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
@@ -127,13 +127,11 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	    sleep(60);
 	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
-	debug(DBG_WARN, "tlsconnect: trying to open TLS connection to %s port %s", server->conf->host, server->conf->port);
+	
 	if (server->sock >= 0)
 	    close(server->sock);
-	if ((server->sock = connecttcp(server->conf->addrinfo, srcres)) < 0) {
-	    debug(DBG_ERR, "tlsconnect: connecttcp failed");
+	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
 	    continue;
-	}
 	
 	SSL_free(server->ssl);
 	server->ssl = NULL;
@@ -159,7 +157,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	}
 	X509_free(cert);
     }
-    debug(DBG_WARN, "tlsconnect: TLS connection to %s port %s up", server->conf->host, server->conf->port);
+    debug(DBG_WARN, "tlsconnect: TLS connection to %s up", server->conf->name);
     server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
@@ -260,7 +258,7 @@ int clientradputtls(struct server *server, unsigned char *rad) {
 	return 0;
     }
 
-    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->host);
+    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->name);
     return 1;
 }
 

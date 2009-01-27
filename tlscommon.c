@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -35,6 +35,7 @@
 #include "list.h"
 #include "hash.h"
 #include "util.h"
+#include "hostport.h"
 #include "radsecproxy.h"
 
 static struct hash *tlsconfs = NULL;
@@ -461,31 +462,52 @@ static int cnregexp(X509 *cert, char *exact, regex_t *regex) {
     return 0;
 }
 
-int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
+/* this is a bit sloppy, should not always accept match to any */
+int certnamecheck(X509 *cert, struct list *hostports) {
+    struct list_node *entry;
+    struct hostportres *hp;
     int r;
     uint8_t type = 0; /* 0 for DNS, AF_INET for IPv4, AF_INET6 for IPv6 */
     struct in6_addr addr;
-    
-    if (conf->certnamecheck && conf->prefixlen == 255) {
-	if (inet_pton(AF_INET, conf->host, &addr))
-	    type = AF_INET;
-	else if (inet_pton(AF_INET6, conf->host, &addr))
-	    type = AF_INET6;
 
-	r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, conf->host, NULL);
-	if (r) {
-	    if (r < 0) {
-		debug(DBG_WARN, "verifyconfcert: No subjectaltname matching %s %s", type ? "address" : "host", conf->host);
-		return 0;
-	    }
-	    debug(DBG_DBG, "verifyconfcert: Found subjectaltname matching %s %s", type ? "address" : "host", conf->host);
-	} else {
-	    if (!cnregexp(cert, conf->host, NULL)) {
-		debug(DBG_WARN, "verifyconfcert: cn not matching host %s", conf->host);
-		return 0;
-	    }		
-	    debug(DBG_DBG, "verifyconfcert: Found cn matching host %s", conf->host);
+    for (entry = list_first(hostports); entry; entry = list_next(entry)) {
+	hp = (struct hostportres *)entry->data;
+	if (hp->prefixlen != 255) {
+	    /* we disable the check for prefixes */
+	    return 1;
 	}
+	if (inet_pton(AF_INET, hp->host, &addr))
+	    type = AF_INET;
+	else if (inet_pton(AF_INET6, hp->host, &addr))
+	    type = AF_INET6;
+	else
+	    type = 0;
+
+	r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, hp->host, NULL);
+	if (r) {
+	    if (r > 0) {
+		debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", type ? "address" : "host", hp->host);
+		return 1;
+	    }
+	    debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", type ? "address" : "host", hp->host);
+	} else {
+	    if (cnregexp(cert, hp->host, NULL)) {
+		debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
+		return 1;
+	    }
+	    debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
+	}		
+    }
+    return 0;
+}
+
+int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
+    if (conf->certnamecheck) {
+	if (!certnamecheck(cert, conf->hostports)) {
+	    debug(DBG_WARN, "verifyconfcert: certificate name check failed");
+	    return 0;
+	}
+	debug(DBG_WARN, "verifyconfcert: certificate name check ok");
     }
     if (conf->certcnregex) {
 	if (cnregexp(cert, NULL, conf->certcnregex) < 1) {
