@@ -45,7 +45,7 @@ static int parsehostport(struct hostportres *hp, char *hostport, char *default_p
 	ipv6 = 1;
     } else {
 	field = p;
-	for (; *p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
+	for (; *p && *p != ':' && *p != '/' && *p != ' ' && *p != '\t' && *p != '\n'; p++);
     }
     if (field == p) {
 	debug(DBG_ERR, "missing host/address");
@@ -55,7 +55,7 @@ static int parsehostport(struct hostportres *hp, char *hostport, char *default_p
     hp->host = stringcopy(field, p - field);
     if (ipv6) {
 	p++;
-	if (*p && *p != ':' && *p != ' ' && *p != '\t' && *p != '\n') {
+	if (*p && *p != ':' && *p != '/' && *p != ' ' && *p != '\t' && *p != '\n') {
 	    debug(DBG_ERR, "unexpected character after ]");
 	    return 0;
 	}
@@ -94,7 +94,7 @@ struct hostportres *newhostport(char *hostport, char *default_port, uint8_t pref
 	hp->host = NULL;
     }
 
-    slash = hp->host ? strchr(hp->host, '/') : NULL;
+    slash = hostport ? strchr(hostport, '/') : NULL;
     if (slash) {
 	if (!prefixok) {
 	    debug(DBG_WARN, "newhostport: prefix not allowed here", hp->host);
@@ -116,7 +116,6 @@ struct hostportres *newhostport(char *hostport, char *default_port, uint8_t pref
 	    goto errexit;
 	}
 	hp->prefixlen = plen;
-	*slash = '\0';
     } else
 	hp->prefixlen = 255;
     return hp;
