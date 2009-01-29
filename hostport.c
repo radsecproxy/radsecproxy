@@ -14,7 +14,7 @@
 #include "list.h"
 #include "hostport.h"
 
-static void freehostport(struct hostportres *hp) {
+void freehostport(struct hostportres *hp) {
     if (hp) {
 	free(hp->host);
 	free(hp->port);
@@ -74,7 +74,7 @@ static int parsehostport(struct hostportres *hp, char *hostport, char *default_p
     return 1;
 }
     
-static struct hostportres *newhostport(char *hostport, char *default_port, uint8_t prefixok) {
+struct hostportres *newhostport(char *hostport, char *default_port, uint8_t prefixok) {
     struct hostportres *hp;
     char *slash, *s;
     int plen;
@@ -126,7 +126,7 @@ static struct hostportres *newhostport(char *hostport, char *default_port, uint8
     return NULL;
 }
 
-static int resolvehostport(struct hostportres *hp, int socktype, uint8_t passive) {
+int resolvehostport(struct hostportres *hp, int socktype, uint8_t passive) {
     struct addrinfo hints, *res;
 
     memset(&hints, 0, sizeof(hints));

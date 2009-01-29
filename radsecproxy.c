@@ -1884,14 +1884,14 @@ void *clientwr(void *arg) {
 
 void createlistener(uint8_t type, char *arg) {
     pthread_t th;
-    struct addrinfo *listenres, *res;
+    struct addrinfo *res;
     int s = -1, on = 1, *sp = NULL;
-
-    listenres = resolvepassiveaddrinfo(arg, protodefs[type]->portdefault, protodefs[type]->socktype);
-    if (!listenres)
+    struct hostportres *hp = newhostport(arg, protodefs[type]->portdefault, 0);
+    
+    if (!hp || !resolvehostport(hp, protodefs[type]->socktype, 1))
 	debugx(1, DBG_ERR, "createlistener: failed to resolve %s", arg);
     
-    for (res = listenres; res; res = res->ai_next) {
+    for (res = hp->addrinfo; res; res = res->ai_next) {
         s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
         if (s < 0) {
             debug(DBG_WARN, "createlistener: socket failed");
@@ -1920,8 +1920,8 @@ void createlistener(uint8_t type, char *arg) {
     if (!sp)
 	debugx(1, DBG_ERR, "createlistener: socket/bind failed");
     
-    debug(DBG_WARN, "createlistener: listening for %s on %s", protodefs[type]->name, arg);
-    freeaddrinfo(listenres);
+    debug(DBG_WARN, "createlistener: listening for %s on %s:%s", protodefs[type]->name, hp->host ? hp->host : "*", hp->port);
+    freehostport(hp);
 }
 
 void createlisteners(uint8_t type) {
