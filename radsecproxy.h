@@ -79,7 +79,7 @@ struct clsrvconf {
     char *name;
     uint8_t type; /* RAD_UDP/RAD_TLS/RAD_TCP */
     const struct protodefs *pdef;
-    char *hostsrc;
+    char **hostsrc;
     char *portsrc;
     struct list *hostports;
     char *secret;

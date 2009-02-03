@@ -14,7 +14,7 @@ struct hostportres {
 };
 
 struct hostportres *newhostport(char *hostport, char *default_port, uint8_t prefixok);
-int addhostport(struct list **hostports, char *hostport, char *portdefault, uint8_t prefixok);
+int addhostport(struct list **hostports, char **hostport, char *portdefault, uint8_t prefixok);
 void freehostport(struct hostportres *hp);
 void freehostports(struct list *hostports);
 int resolvehostport(struct hostportres *hp, int socktype, uint8_t passive);

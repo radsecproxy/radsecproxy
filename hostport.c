@@ -173,18 +173,27 @@ int resolvehostport(struct hostportres *hp, int socktype, uint8_t passive) {
     return 0;
 }	  
 
-int addhostport(struct list **hostports, char *hostport, char *portdefault, uint8_t prefixok) {
+int addhostport(struct list **hostports, char **hostport, char *portdefault, uint8_t prefixok) {
     struct hostportres *hp;
+    int i;
 
-    hp = newhostport(hostport, portdefault, prefixok);
-    if (!hp)
-	return 0;
-    if (!*hostports)
+    if (!*hostports) {
 	*hostports = list_create();
-    if (!*hostports || !list_push(*hostports, hp)) {
-	freehostport(hp);
-	debug(DBG_ERR, "addhostport: malloc failed");
-	return 0;
+        if (!*hostports) {
+	    debug(DBG_ERR, "addhostport: malloc failed");
+	    return 0;
+	}
+    }
+    
+    for (i = 0; hostport[i]; i++) {
+	hp = newhostport(hostport[i], portdefault, prefixok);
+	if (!hp)
+	    return 0;
+	if (!list_push(*hostports, hp)) {
+	    freehostport(hp);
+	    debug(DBG_ERR, "addhostport: malloc failed");
+	    return 0;
+	}
     }
     return 1;
 }

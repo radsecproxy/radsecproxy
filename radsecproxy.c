@@ -1738,7 +1738,7 @@ void *clientwr(void *arg) {
     }
     
     if (!resolvehostports(conf->hostports, conf->pdef->socktype)) {
-	debug(DBG_WARN, "failed to resolve host %s port %s", conf->hostsrc ? conf->hostsrc : "(null)", conf->portsrc ? conf->portsrc : "(null)");
+	debug(DBG_WARN, "clientwr: resolve failed");
 	server->dynstartup = 0;
 	sleep(900);
 	goto errexit;
@@ -2470,7 +2470,8 @@ int setttlattr(struct options *opts, char *defaultattr) {
 
 void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->name);
-    free(conf->hostsrc);
+    if (conf->hostsrc)
+	freegconfmstr(conf->hostsrc);
     free(conf->portsrc);
     free(conf->secret);
     free(conf->tls);
@@ -2519,10 +2520,51 @@ int mergeconfstring(char **dst, char **src) {
     return 1;
 }
 
+char **mstringcopy(char **in) {
+    char **out;
+    int n;
+    
+    if (!in)
+	return NULL;
+
+    for (n = 0; in[n]; n++);
+    out = malloc((n + 1) * sizeof(char *));
+    if (!out)
+	return NULL;
+    for (n = 0; in[n]; n++) {
+	out[n] = stringcopy(in[n], 0);
+	if (!out[n]) {
+	    freegconfmstr(out);
+	    return NULL;
+	}
+    }
+    out[n] = NULL;
+    return out;
+}
+
+int mergeconfmstring(char ***dst, char ***src) {
+    char **t;
+    
+    if (*src) {
+	*dst = *src;
+	*src = NULL;
+	return 1;
+    }
+    if (*dst) {
+	t = mstringcopy(*dst);
+	if (!t) {
+	    debug(DBG_ERR, "malloc failed");
+	    return 0;
+	}
+	*dst = t;
+    }
+    return 1;
+}
+
 /* assumes dst is a shallow copy */
 int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     if (!mergeconfstring(&dst->name, &src->name) ||
-	!mergeconfstring(&dst->hostsrc, &src->hostsrc) ||
+	!mergeconfmstring(&dst->hostsrc, &src->hostsrc) ||
 	!mergeconfstring(&dst->portsrc, &src->portsrc) ||
 	!mergeconfstring(&dst->secret, &src->secret) ||
 	!mergeconfstring(&dst->tls, &src->tls) ||
@@ -2557,7 +2599,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     
     if (!getgenericconfig(cf, block,
 			  "type", CONF_STR, &conftype,
-			  "host", CONF_STR, &conf->hostsrc,
+			  "host", CONF_MSTR, &conf->hostsrc,
 			  "secret", CONF_STR, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)    
 			  "tls", CONF_STR, &conf->tls,
@@ -2575,9 +2617,14 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	debugx(1, DBG_ERR, "configuration error");
     
     conf->name = stringcopy(val, 0);
-    if (!conf->hostsrc)
-	conf->hostsrc = stringcopy(val, 0);
-    if (!conf->name || !conf->hostsrc)
+    if (conf->name && !conf->hostsrc) {
+	conf->hostsrc = malloc(2 * sizeof(char *));
+	if (conf->hostsrc) {
+	    conf->hostsrc[0] = stringcopy(val, 0);
+	    conf->hostsrc[1] = NULL;
+	}
+    }
+    if (!conf->name || !conf->hostsrc || !conf->hostsrc[0])
 	debugx(1, DBG_ERR, "malloc failed");
 	
     if (!conftype)
@@ -2627,7 +2674,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (!addhostport(&conf->hostports, conf->hostsrc, conf->pdef->portdefault, 1) ||
 	!resolvehostports(conf->hostports, conf->pdef->socktype))
-	debugx(1, DBG_ERR, "failed to resolve %s, exiting", conf->hostsrc ? conf->hostsrc : "(null)");
+	debugx(1, DBG_ERR, "resolve failed, exiting");
     
     if (!conf->secret) {
 	if (!conf->pdef->secretdefault)
@@ -2685,7 +2732,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     }
 
     if (!conf->dynamiclookupcommand && !resolvehostports(conf->hostports, conf->pdef->socktype)) {
-	debug(DBG_ERR, "resolve host %s port %s, exiting", conf->hostsrc ? conf->hostsrc : "(null)", conf->portsrc ? conf->portsrc : "(null)");
+	debug(DBG_ERR, "resolve failed, exiting");
 	return 0;
     }
     return 1;
@@ -2713,7 +2760,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (!getgenericconfig(cf, block,
 			  "type", CONF_STR, &conftype,
-			  "host", CONF_STR, &conf->hostsrc,
+			  "host", CONF_MSTR, &conf->hostsrc,
 			  "port", CONF_STR, &conf->portsrc,
 			  "secret", CONF_STR, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)    
@@ -2736,16 +2783,16 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
     
     conf->name = stringcopy(val, 0);
-    if (!conf->name) {
+    if (conf->name && !conf->hostsrc) {
+	conf->hostsrc = malloc(2 * sizeof(char *));
+	if (conf->hostsrc) {
+	    conf->hostsrc[0] = stringcopy(val, 0);
+	    conf->hostsrc[1] = NULL;
+	}
+    }
+    if (!conf->name || !conf->hostsrc || !conf->hostsrc[0]) {
         debug(DBG_ERR, "malloc failed");
 	goto errexit;
-    }
-    if (!conf->hostsrc) {
-	conf->hostsrc = stringcopy(val, 0);
-	if (!conf->hostsrc) {
-            debug(DBG_ERR, "malloc failed");
-	    goto errexit;
-        }
     }
 
     if (!conftype) {
