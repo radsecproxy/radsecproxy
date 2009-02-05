@@ -285,7 +285,7 @@ int connecttcphostlist(struct list *hostports,  struct addrinfo *src) {
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
 	hp = (struct hostportres *)entry->data;
 	debug(DBG_WARN, "connecttcphostlist: trying to open TCP connection to %s port %s", hp->host, hp->port);
-	if ((s = connecttcp(hp->addrinfo, src)) >= 0) {
+	if ((s = connecttcp(hp->addrinfo, src, list_count(hostports) > 1 ? 5 : 30)) >= 0) {
 	    debug(DBG_WARN, "connecttcphostlist: TCP connection to %s port %s up", hp->host, hp->port);
 	    return s;
 	}

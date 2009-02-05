@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -49,7 +49,8 @@ int list_push(struct list *list, void *data) {
     else
 	list->first = node;
     list->last = node;
-    
+
+    list->count++;
     return 1;
 }
 
@@ -67,7 +68,7 @@ void *list_shift(struct list *list) {
 	list->last = NULL;
     data = node->data;
     free(node);
-    
+    list->count--;
     return data;
 }
 
@@ -82,6 +83,7 @@ void list_removedata(struct list *list, void *data) {
     while (node->data == data) {
 	list->first = node->next;
 	free(node);
+	list->count--;
 	node = list->first;
 	if (!node) {
 	    list->last = NULL;
@@ -93,6 +95,7 @@ void list_removedata(struct list *list, void *data) {
 	    t = node->next;
 	    node->next = t->next;
 	    free(t);
+	    list->count--;
 	    if (!node->next) { /* we removed the last one */
 		list->last = node;
 		return;
@@ -108,4 +111,9 @@ struct list_node *list_first(struct list *list) {
 /* returns the next node after the argument */
 struct list_node *list_next(struct list_node *node) {
     return node->next;
+}
+
+/* returns number of nodes */
+uint32_t list_count(struct list *list) {
+    return list->count;
 }

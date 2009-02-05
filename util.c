@@ -13,6 +13,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/select.h>
 #include <stdarg.h>
 #include "debug.h"
 #include "util.h"
@@ -157,18 +160,56 @@ int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
     return -1;
 }
 
-int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src) {
+int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, struct timeval *timeout) {
+    int origflags, error = 0, r = -1;
+    fd_set writefds;
+    socklen_t len;
+    
+    origflags = fcntl(s, F_GETFL, 0);
+    fcntl(s, F_SETFL, origflags | O_NONBLOCK);
+    if (!connect(s, addr, addrlen)) {
+	r = 0;
+	goto exit;
+    }
+    if (errno != EINPROGRESS)
+	goto exit;
+
+    FD_ZERO(&writefds);
+    FD_SET(s, &writefds);
+    if (select(s + 1, NULL, &writefds, NULL, timeout) < 1)
+	goto exit;
+
+    len = sizeof(error);
+    if (!getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&error, &len) && !error)
+	r = 0;
+
+ exit:    
+    fcntl(s, F_SETFL, origflags);
+    return r;
+}
+
+int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout) {
     int s;
     struct addrinfo *res;
+    struct timeval to;
 
     s = -1;
+    if (timeout) {
+	if (res && res->ai_next && timeout > 5)
+	    timeout = 5;
+	to.tv_sec = timeout;
+	to.tv_usec = 0;
+    }
+    
     for (res = addrinfo; res; res = res->ai_next) {
 	s = bindtoaddr(src, res->ai_family, 1, 1);
 	if (s < 0) {
 	    debug(DBG_WARN, "connecttoserver: socket failed");
 	    continue;
 	}
-	if (connect(s, res->ai_addr, res->ai_addrlen) == 0)
+	if ((timeout
+	     ? connectnonblocking(s, res->ai_addr, res->ai_addrlen, &to)
+	     : connect(s, res->ai_addr, res->ai_addrlen)) == 0)
 	    break;
 	debug(DBG_WARN, "connecttoserver: connect failed");
 	close(s);
