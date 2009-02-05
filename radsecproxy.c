@@ -1751,7 +1751,7 @@ void *clientwr(void *arg) {
     }
 
     if (conf->pdef->connecter) {
-	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 6 : 0, "clientwr")) {
+	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
 	    if (server->dynamiclookuparg) {
 		server->dynstartup = 0;
 		sleep(900);
