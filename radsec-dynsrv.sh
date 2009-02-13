@@ -3,7 +3,8 @@
 # Example script!
 # This script looks up radsec srv records in DNS for the one
 # realm given as argument, and creates a server template based
-# on that. It currently ignores any weight or priority markers.
+# on that. It currently ignores weight markers, but does sort
+# servers on priority marker, lowest number first.
 
 usage() {
    echo "Usage: ${0} <realm>"
