@@ -3012,10 +3012,10 @@ void getmainconfig(const char *configfile) {
 	    setprotoopts(i, listenargs[i], sourcearg[i]);
 }
 
-void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8_t *loglevel, char **configfile) {
+void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8_t *loglevel, char **configfile, char **pidfile) {
     int c;
 
-    while ((c = getopt(argc, argv, "c:d:fpv")) != -1) {
+    while ((c = getopt(argc, argv, "c:d:i:fpv")) != -1) {
 	switch (c) {
 	case 'c':
 	    *configfile = optarg;
@@ -3027,6 +3027,9 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8
 	    break;
 	case 'f':
 	    *foreground = 1;
+	    break;
+	case 'i':
+	    *pidfile = optarg;
 	    break;
 	case 'p':
 	    *pretend = 1;
@@ -3055,7 +3058,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8
 	return;
 
  usage:
-    debugx(1, DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ] [ -p ] [ -v ]", argv[0]);
+    debugx(1, DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ] [ -i pidfile ] [ -p ] [ -v ]", argv[0]);
 }
 
 #ifdef SYS_SOLARIS9
@@ -3081,12 +3084,16 @@ void *sighandler(void *arg) {
 
     for(;;) {
 	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGHUP);
 	sigaddset(&sigset, SIGPIPE);
 	sigwait(&sigset, &sig);
-	/* only get SIGPIPE right now, so could simplify below code */
         switch (sig) {
         case 0:
             /* completely ignoring this */
+            break;
+        case SIGHUP:
+            debug(DBG_INFO, "sighandler: got SIGHUP");
+	    debug_reopen_log();
             break;
         case SIGPIPE:
             debug(DBG_WARN, "sighandler: got SIGPIPE, TLS write error?");
@@ -3097,12 +3104,20 @@ void *sighandler(void *arg) {
     }
 }
 
+int createpidfile(const char *pidfile) {
+    int r;
+    FILE *f = fopen(pidfile, "w");
+    if (f)
+	r = fprintf(f, "%d\n", getpid());
+    return f && !fclose(f) && r >= 0;
+}
+
 int main(int argc, char **argv) {
     pthread_t sigth;
     sigset_t sigset;
     struct list_node *entry;
     uint8_t foreground = 0, pretend = 0, loglevel = 0;
-    char *configfile = NULL;
+    char *configfile = NULL, *pidfile = NULL;
     struct clsrvconf *srvconf;
     int i;
     
@@ -3115,7 +3130,7 @@ int main(int argc, char **argv) {
     /* needed even if no TLS/DTLS transport */
     sslinit();
     
-    getargs(argc, argv, &foreground, &pretend, &loglevel, &configfile);
+    getargs(argc, argv, &foreground, &pretend, &loglevel, &configfile, &pidfile);
     if (loglevel)
 	debug_set_level(loglevel);
     getmainconfig(configfile ? configfile : CONFIG_MAIN);
@@ -3140,9 +3155,12 @@ int main(int argc, char **argv) {
     
     debug_timestamp_on();
     debug(DBG_INFO, "radsecproxy revision $Rev$ starting");
-
+    if (pidfile && !createpidfile(pidfile))
+	debugx(1, DBG_ERR, "failed to create pidfile %s: %s", pidfile, strerror(errno));
+    
     sigemptyset(&sigset);
-    /* exit on all but SIGPIPE, ignore more? */
+    /* exit on all but SIGHUP|SIGPIPE, ignore more? */
+    sigaddset(&sigset, SIGHUP);
     sigaddset(&sigset, SIGPIPE);
     pthread_sigmask(SIG_BLOCK, &sigset, NULL);
     pthread_create(&sigth, NULL, sighandler, NULL);
