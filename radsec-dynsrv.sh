@@ -42,7 +42,7 @@ else
 fi
 
 if test -n "${SERVERS}" ; then
-        echo "server radsec.${REALM} {\n${SERVERS}\n\ttype TLS\n}"
+        echo "server dynamic_radsec.${REALM} {\n${SERVERS}\n\ttype TLS\n}"
         exit 0
 fi
 
