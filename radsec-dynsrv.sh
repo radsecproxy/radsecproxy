@@ -13,11 +13,11 @@ usage() {
 test -n "${1}" || usage
 
 REALM="${1}"
-DIGCMD=$(command -v dig)
+DIGCMD=$(command -v digaaa)
 HOSTCMD=$(command -v host)
 
 dig_it() {
-   ${DIGCMD} +short srv _radsec._tcp.${REALM} |
+   ${DIGCMD} +short srv _radsec._tcp.${REALM} | sort -k1 |
    while read line ; do
       set $line ; PORT=$3 ; HOST=$4 
       echo "\thost ${HOST%.}:${PORT}"
@@ -25,7 +25,7 @@ dig_it() {
 }
 
 host_it() {
-   ${HOSTCMD} -t srv _radsec._tcp.${REALM} |
+   ${HOSTCMD} -t srv _radsec._tcp.${REALM} | sort -k5 | 
    while read line ; do
       set $line ; PORT=$7 ; HOST=$8 
       echo "\thost ${HOST%.}:${PORT}"
