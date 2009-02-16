@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/bash
 
 # Example script!
 # This script looks up radsec srv records in DNS for the one
@@ -22,7 +22,7 @@ dig_it() {
    ${DIGCMD} +short srv _radsec._tcp.${REALM} | sort -k1 |
    while read line ; do
       set $line ; PORT=$3 ; HOST=$4 
-      echo "\thost ${HOST%.}:${PORT}"
+      echo -e "\thost ${HOST%.}:${PORT}"
    done
 }
 
@@ -30,7 +30,7 @@ host_it() {
    ${HOSTCMD} -t srv _radsec._tcp.${REALM} | sort -k5 | 
    while read line ; do
       set $line ; PORT=$7 ; HOST=$8 
-      echo "\thost ${HOST%.}:${PORT}"
+      echo -e "\thost ${HOST%.}:${PORT}"
    done
 }
 
@@ -44,7 +44,7 @@ else
 fi
 
 if test -n "${SERVERS}" ; then
-        echo "server dynamic_radsec.${REALM} {\n${SERVERS}\n\ttype TLS\n}"
+        echo -e "server dynamic_radsec.${REALM} {\n${SERVERS}\n\ttype TLS\n}"
         exit 0
 fi
 
