@@ -2,14 +2,14 @@
 "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
 <refentry>
   <refentryinfo>
-    <date>2008-11-06</date>
+    <date>2009-02-17</date>
   </refentryinfo>
   <refmeta>
     <refentrytitle>
       <application>radsecproxy.conf</application>
     </refentrytitle>
     <manvolnum>5</manvolnum>
-    <refmiscinfo>radsecproxy devel 2008-11-06</refmiscinfo>
+    <refmiscinfo>radsecproxy devel 2009-02-17</refmiscinfo>
   </refmeta>
   <refnamediv>
     <refname>
@@ -206,16 +206,6 @@ used for receiving connections from TLS clients. The default port number is
 This is similar to the <literal>listenUDP</literal> option, except that it is
 used for receiving connections from DTLS clients. The default port number is 
 <literal>2083</literal>.
-	  </para>
-        </listitem>
-      </varlistentry>
-      <varlistentry>
-        <term><literal>listenAccountingUDP</literal></term>
-        <listitem>
-	  <para>
-This is similar to the <literal>listenUDP</literal> option, except that it is
-used for specifying port and optionally the address to receive UDP Accounting
-messages on.	  
 	  </para>
         </listitem>
       </varlistentry>
