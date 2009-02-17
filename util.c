@@ -195,7 +195,7 @@ int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout
 
     s = -1;
     if (timeout) {
-	if (res && res->ai_next && timeout > 5)
+	if (addrinfo && addrinfo->ai_next && timeout > 5)
 	    timeout = 5;
 	to.tv_sec = timeout;
 	to.tv_usec = 0;
