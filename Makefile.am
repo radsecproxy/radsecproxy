@@ -22,6 +22,7 @@ radsecproxy_SOURCES = radsecproxy.c \
                       list.h \
                       hash.h \
 		      tlv11.h \
+		      hostport.h \
 		      radmsg.h \
 		      udp.h \
 		      tcp.h \
