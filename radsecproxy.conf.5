@@ -5,7 +5,7 @@
 \\$2 \(la\\$1\(ra\\$3
 ..
 .if \n(.g .mso www.tmac
-.TH "radsecproxy.conf " 5 2008-12-04 "radsecproxy 1.3-alpha" ""
+.TH "radsecproxy.conf " 5 2009-02-18 "radsecproxy 1.3-beta" ""
 .SH NAME
 radsecproxy.conf
 \- Radsec proxy configuration file 
@@ -130,7 +130,7 @@ you can do e.g. \*(T<192.168.1.1:1812\*(T> or
 \*(T<[2001:db8::1]:1812\*(T>. The port may be omitted if you want the
 default one (like in these examples). These examples are equivalent to
 \*(T<192.168.1.1\*(T> and \*(T<2001:db8::1\*(T>. Note that
-you must use brackets around the IPv6 address if you specify port number.
+you must use brackets around the IPv6 address.
 This option may be specified multiple times to listen to multiple addresses
 and/or ports.
 .TP 
@@ -149,11 +149,6 @@ used for receiving connections from TLS clients. The default port number is
 This is similar to the \*(T<listenUDP\*(T> option, except that it is
 used for receiving connections from DTLS clients. The default port number is 
 \*(T<2083\*(T>.
-.TP 
-\*(T<listenAccountingUDP\*(T>
-This is similar to the \*(T<listenUDP\*(T> option, except that it is
-used for specifying port and optionally the address to receive UDP Accounting
-messages on. 
 .TP 
 \*(T<sourceUDP\*(T>
 This can be used to specify source address and/or source port that the proxy
@@ -215,7 +210,8 @@ The client block is used to configure a client. That is, tell the proxy about a
 client, and what parameters should be used for that client. The name of the
 client block must (with one exception, see below) be either the IP address
 (IPv4 or IPv6) of the client, an IP prefix (IPv4 or IPv6) of the form
-IpAddress/PrefixLength, or a domain name (FQDN).
+IpAddress/PrefixLength, or a domain name (FQDN). Note that literal IPv6
+addresses must be enclosed in brackets.
 .PP
 If a domain name is specified, then this will be resolved immediately to all
 the addresses associated with the name, and the proxy will not care about any
@@ -234,7 +230,8 @@ client name is an IP prefix.
 Alternatively one may use the \*(T<host\*(T> option inside a client
 block. In that case, the value of the \*(T<host\*(T> option is used as
 above, while the name of the block is only used as a descriptive name for the
-administrator.
+administrator. The host option may be used multiple times, and can be a mix of
+addresses, FQDNs and prefixes.
 .PP
 The allowed options in a client block are \*(T<host\*(T>,
 \*(T<type\*(T>, \*(T<secret\*(T>, \*(T<tls\*(T>,
@@ -325,7 +322,16 @@ name of the server must match the FQDN or IP address in the server certificate.
 Alternatively one may use the \*(T<host\*(T> option inside a server
 block. In that case, the value of the \*(T<host\*(T> option is used as
 above, while the name of the block is only used as a descriptive name for the
-administrator.
+administrator. Note that multiple host options may be used. This will then be
+treated as multiple names/addresses for the same server. When initiating a TCP/TLS
+connection, all addresses of all names may be attempted, but there is no failover
+between the different host values. For failover one must use separate server
+blocks.
+.PP
+Note that the name of the block, or values of host options may include a
+port number (separated with a column). This port number will then override the
+default port or a port option in the server block. Also note that literal IPv6
+addresses must be enclosed in brackets.
 .PP
 The allowed options in a server block are \*(T<host\*(T>,
 \*(T<port\*(T>, \*(T<type\*(T>, \*(T<secret\*(T>,

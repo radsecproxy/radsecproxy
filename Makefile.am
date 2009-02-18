@@ -1,24 +1,28 @@
 sbin_PROGRAMS        = radsecproxy
 
 radsecproxy_SOURCES = radsecproxy.c \
+		      tlscommon.c \
                       gconfig.c \
                       util.c \
                       debug.c \
                       list.c \
                       hash.c \
 		      tlv11.c \
+		      hostport.c \
 		      radmsg.c \
 		      udp.c \
 		      tcp.c \
 		      tls.c \
 		      dtls.c \
                       radsecproxy.h \
+                      tlscommon.h \
                       gconfig.h \
                       debug.h \
                       util.h \
                       list.h \
                       hash.h \
 		      tlv11.h \
+		      hostport.h \
 		      radmsg.h \
 		      udp.h \
 		      tcp.h \

@@ -19,9 +19,11 @@
 #include <syslog.h>
 #include <errno.h>
 #include "debug.h"
+#include "util.h"
 
 static char *debug_ident = NULL;
 static uint8_t debug_level = DBG_INFO;
+static char *debug_filepath = NULL;
 static FILE *debug_file = NULL;
 static int debug_syslogfacility = 0;
 static uint8_t debug_timestamp = 0;
@@ -68,11 +70,12 @@ int debug_set_destination(char *dest) {
     int i;
     
     if (!strncasecmp(dest, "file:///", 8)) {
-	debug_file = fopen(dest + 7, "a");
+	debug_filepath = stringcopy(dest + 7, 0);
+	debug_file = fopen(debug_filepath, "a");
 	if (!debug_file) {
 	    debug_file = stderr;
 	    debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
-		   dest + 7, strerror(errno));
+		   debug_filepath, strerror(errno));
 	}
 	setvbuf(debug_file, NULL, _IONBF, 0);
 	return 1;
@@ -95,6 +98,29 @@ int debug_set_destination(char *dest) {
     }
     debug(DBG_ERR, "Unknown log destination, exiting %s", dest);
     exit(1);
+}
+
+void debug_reopen_log() {
+    extern int errno;
+
+    /* not a file, noop, return success */
+    if (!debug_filepath) {
+	debug(DBG_ERR, "skipping reopen");
+	return;
+    }
+
+    if (debug_file != stderr)
+	fclose(debug_file);
+
+    debug_file = fopen(debug_filepath, "a");
+    if (debug_file)
+	debug(DBG_ERR, "Reopened logfile %s", debug_filepath);
+    else {
+	debug_file = stderr;
+	debug(DBG_ERR, "Failed to open logfile %s, using stderr\n%s",
+	      debug_filepath, strerror(errno));
+    }
+    setvbuf(debug_file, NULL, _IONBF, 0);
 }
 
 void debug_logit(uint8_t level, const char *format, va_list ap) {

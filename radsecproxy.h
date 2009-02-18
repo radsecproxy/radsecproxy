@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -8,6 +8,7 @@
 
 #include "tlv11.h"
 #include "radmsg.h"
+#include "gconfig.h"
 
 #define DEBUG_LEVEL 3
 
@@ -32,14 +33,17 @@
 #define RAD_PROTOCOUNT 4
 
 struct options {
-    char **listenargs[RAD_PROTOCOUNT];
-    char *sourcearg[RAD_PROTOCOUNT];
     char *logdestination;
     char *ttlattr;
     uint32_t ttlattrtype[2];
     uint8_t addttl;
     uint8_t loglevel;
     uint8_t loopprevention;
+};
+
+struct commonprotoopts {
+    char **listenargs;
+    char *sourcearg;
 };
 
 struct request {
@@ -65,7 +69,7 @@ struct rqout {
     struct timeval expiry;
 };
 
-struct queue {
+struct gqueue {
     struct list *entries;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
@@ -75,8 +79,9 @@ struct clsrvconf {
     char *name;
     uint8_t type; /* RAD_UDP/RAD_TLS/RAD_TCP */
     const struct protodefs *pdef;
-    char *host;
-    char *port;
+    char **hostsrc;
+    char *portsrc;
+    struct list *hostports;
     char *secret;
     char *tls;
     char *matchcertattr;
@@ -95,21 +100,21 @@ struct clsrvconf {
     uint8_t addttl;
     struct rewrite *rewritein;
     struct rewrite *rewriteout;
-    struct addrinfo *addrinfo;
-    uint8_t prefixlen;
     pthread_mutex_t *lock; /* only used for updating clients so far */
     struct tls *tlsconf;
     struct list *clients;
     struct server *servers;
 };
 
+#include "tlscommon.h"
+
 struct client {
     struct clsrvconf *conf;
     int sock;
     SSL *ssl;
     struct request *rqs[MAX_REQUESTS];
-    struct queue *replyq;
-    struct queue *rbios; /* for dtls */
+    struct gqueue *replyq;
+    struct gqueue *rbios; /* for dtls */
     struct sockaddr *addr;
     time_t expiry; /* for udp */
 };
@@ -125,6 +130,7 @@ struct server {
     struct timeval lastreply;
     uint8_t connectionok;
     uint8_t lostrqs;
+    uint8_t dynstartup;
     char *dynamiclookuparg;
     int nextid;
     struct timeval lastrcv;
@@ -132,7 +138,7 @@ struct server {
     uint8_t newrq;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
-    struct queue *rbios; /* for dtls */
+    struct gqueue *rbios; /* for dtls */
 };
 
 struct realm {
@@ -146,23 +152,6 @@ struct realm {
     struct list *subrealms;
     struct list *srvconfs;
     struct list *accsrvconfs;
-};
-
-struct tls {
-    char *name;
-    char *cacertfile;
-    char *cacertpath;
-    char *certfile;
-    char *certkeyfile;
-    char *certkeypwd;
-    uint8_t crlcheck;
-    char **policyoids;
-    uint32_t cacheexpiry;
-    uint32_t tlsexpiry;
-    uint32_t dtlsexpiry;
-    X509_VERIFY_PARAM *vpm;
-    SSL_CTX *tlsctx;
-    SSL_CTX *dtlsctx;
 };
 
 struct modattr {
@@ -188,13 +177,15 @@ struct protodefs {
     uint8_t retryintervaldefault;
     uint8_t retryintervalmax;
     uint8_t duplicateintervaldefault;
+    void (*setprotoopts)(struct commonprotoopts *);
+    char **(*getlistenerargs)();
     void *(*listener)(void*);
     int (*connecter)(struct server *, struct timeval *, int, char *);
     void *(*clientconnreader)(void*);
     int (*clientradput)(struct server *, unsigned char *);
     void (*addclient)(struct client *);
     void (*addserverextra)(struct clsrvconf *);
-    uint8_t freesrcprotores;
+    void (*setsrcres)();
     void (*initextra)();
 };
 
@@ -205,19 +196,16 @@ struct protodefs {
 #define ATTRVAL(x) ((x) + 2)
 #define ATTRVALLEN(x) ((x)[1] - 2)
 
-struct addrinfo *getsrcprotores(uint8_t type);
 struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf, uint8_t lock);
 void removelockedclient(struct client *client);
 void removeclient(struct client *client);
-struct queue *newqueue();
-void freebios(struct queue *q);
+struct gqueue *newqueue();
+void freebios(struct gqueue *q);
 struct request *newrequest();
 void freerq(struct request *rq);
 int radsrv(struct request *rq);
-X509 *verifytlscert(SSL *ssl);
-int verifyconfcert(X509 *cert, struct clsrvconf *conf);
 void replyh(struct server *server, unsigned char *buf);
-SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
+struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);

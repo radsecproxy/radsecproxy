@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -24,16 +24,70 @@
 #include <arpa/inet.h>
 #include <regex.h>
 #include <pthread.h>
-#include <openssl/ssl.h>
-#include "debug.h"
 #include "list.h"
-#include "util.h"
+#include "hostport.h"
 #include "radsecproxy.h"
-#include "tls.h"
+
+#ifdef RADPROT_UDP
+#include "debug.h"
+#include "util.h"
+
+static void setprotoopts(struct commonprotoopts *opts);
+static char **getlistenerargs();
+void *udpserverrd(void *arg);
+int clientradputudp(struct server *server, unsigned char *rad);
+void addclientudp(struct client *client);
+void addserverextraudp(struct clsrvconf *conf);
+void udpsetsrcres();
+void initextraudp();
+
+static const struct protodefs protodefs = {
+    "udp",
+    NULL, /* secretdefault */
+    SOCK_DGRAM, /* socktype */
+    "1812", /* portdefault */
+    REQUEST_RETRY_COUNT, /* retrycountdefault */
+    10, /* retrycountmax */
+    REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
+    60, /* retryintervalmax */
+    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    setprotoopts, /* setprotoopts */
+    getlistenerargs, /* getlistenerargs */
+    udpserverrd, /* listener */
+    NULL, /* connecter */
+    NULL, /* clientconnreader */
+    clientradputudp, /* clientradput */
+    addclientudp, /* addclient */
+    addserverextraudp, /* addserverextra */
+    udpsetsrcres, /* setsrcres */
+    initextraudp /* initextra */
+};
 
 static int client4_sock = -1;
 static int client6_sock = -1;
-static struct queue *server_replyq = NULL;
+static struct gqueue *server_replyq = NULL;
+
+static struct addrinfo *srcres = NULL;
+static uint8_t handle;
+static struct commonprotoopts *protoopts = NULL;
+
+const struct protodefs *udpinit(uint8_t h) {
+    handle = h;
+    return &protodefs;
+}
+
+static void setprotoopts(struct commonprotoopts *opts) {
+    protoopts = opts;
+}
+
+static char **getlistenerargs() {
+    return protoopts ? protoopts->listenargs : NULL;
+}
+
+void udpsetsrcres() {
+    if (!srcres)
+	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
+}
 
 void removeudpclientfromreplyq(struct client *c) {
     struct list_node *n;
@@ -48,6 +102,31 @@ void removeudpclientfromreplyq(struct client *c) {
     }
     pthread_mutex_unlock(&c->replyq->mutex);
 }	
+
+static int addr_equal(struct sockaddr *a, struct sockaddr *b) {
+    switch (a->sa_family) {
+    case AF_INET:
+	return !memcmp(&((struct sockaddr_in*)a)->sin_addr,
+		       &((struct sockaddr_in*)b)->sin_addr,
+		       sizeof(struct in_addr));
+    case AF_INET6:
+	return IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6*)a)->sin6_addr,
+				  &((struct sockaddr_in6*)b)->sin6_addr);
+    default:
+	/* Must not reach */
+	return 0;
+    }
+}
+
+uint16_t port_get(struct sockaddr *sa) {
+    switch (sa->sa_family) {
+    case AF_INET:
+	return ntohs(((struct sockaddr_in *)sa)->sin_port);
+    case AF_INET6:
+	return ntohs(((struct sockaddr_in6 *)sa)->sin6_port);
+    }
+    return 0;
+}
 
 /* exactly one of client and server must be non-NULL */
 /* return who we received from in *client or *server */
@@ -78,15 +157,10 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_WARN, "radudpget: recv failed");
 	    continue;
 	}
-	if (cnt < 20) {
-	    debug(DBG_WARN, "radudpget: length too small");
-	    recv(s, buf, 4, 0);
-	    continue;
-	}
 	
 	p = client
-	    ? find_clconf(RAD_UDP, (struct sockaddr *)&from, NULL)
-	    : find_srvconf(RAD_UDP, (struct sockaddr *)&from, NULL);
+	    ? find_clconf(handle, (struct sockaddr *)&from, NULL)
+	    : find_srvconf(handle, (struct sockaddr *)&from, NULL);
 	if (!p) {
 	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from));
 	    recv(s, buf, 4, 0);
@@ -170,10 +244,12 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 int clientradputudp(struct server *server, unsigned char *rad) {
     size_t len;
     struct clsrvconf *conf = server->conf;
-    
+    struct addrinfo *ai;
+
     len = RADLEN(rad);
-    if (sendto(server->sock, rad, len, 0, conf->addrinfo->ai_addr, conf->addrinfo->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, conf->host, port_get(conf->addrinfo->ai_addr));
+    ai = ((struct hostportres *)list_first(conf->hostports)->data)->addrinfo;
+    if (sendto(server->sock, rad, len, 0, ai->ai_addr, ai->ai_addrlen) >= 0) {
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, addr2string(ai->ai_addr), port_get(ai->ai_addr));
 	return 1;
     }
 
@@ -208,10 +284,11 @@ void *udpserverrd(void *arg) {
 	radsrv(rq);
     }
     free(sp);
+    return NULL;
 }
 
 void *udpserverwr(void *arg) {
-    struct queue *replyq = (struct queue *)arg;
+    struct gqueue *replyq = (struct gqueue *)arg;
     struct request *reply;
     struct sockaddr_storage to;
     
@@ -241,20 +318,20 @@ void addclientudp(struct client *client) {
 }
 
 void addserverextraudp(struct clsrvconf *conf) {
-    switch (conf->addrinfo->ai_family) {
+    switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
     case AF_INET:
 	if (client4_sock < 0) {
-	    client4_sock = bindtoaddr(getsrcprotores(RAD_UDP), AF_INET, 0, 1);
+	    client4_sock = bindtoaddr(srcres, AF_INET, 0, 1);
 	    if (client4_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}
 	conf->servers->sock = client4_sock;
 	break;
     case AF_INET6:
 	if (client6_sock < 0) {
-	    client6_sock = bindtoaddr(getsrcprotores(RAD_UDP), AF_INET6, 0, 1);
+	    client6_sock = bindtoaddr(srcres, AF_INET6, 0, 1);
 	    if (client6_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}
 	conf->servers->sock = client6_sock;
 	break;
@@ -265,6 +342,11 @@ void addserverextraudp(struct clsrvconf *conf) {
 
 void initextraudp() {
     pthread_t cl4th, cl6th, srvth;
+
+    if (srcres) {
+	freeaddrinfo(srcres);
+	srcres = NULL;
+    }
     
     if (client4_sock >= 0)
 	if (pthread_create(&cl4th, NULL, udpclientrd, (void *)&client4_sock))
@@ -273,9 +355,14 @@ void initextraudp() {
 	if (pthread_create(&cl6th, NULL, udpclientrd, (void *)&client6_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
 
-    if (find_clconf_type(RAD_UDP, NULL)) {
+    if (find_clconf_type(handle, NULL)) {
 	server_replyq = newqueue();
 	if (pthread_create(&srvth, NULL, udpserverwr, (void *)server_replyq))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
 }
+#else
+const struct protodefs *udpinit(uint8_t h) {
+    return NULL;
+}
+#endif

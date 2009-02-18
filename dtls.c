@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2008-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -26,19 +26,69 @@
 #include <pthread.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include "debug.h"
 #include "list.h"
 #include "hash.h"
-#include "util.h"
 #include "radsecproxy.h"
-#include "dtls.h"
+
+#ifdef RADPROT_DTLS
+#include "debug.h"
+#include "util.h"
+#include "hostport.h"
+
+static void setprotoopts(struct commonprotoopts *opts);
+static char **getlistenerargs();
+void *udpdtlsserverrd(void *arg);
+int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
+void *dtlsclientrd(void *arg);
+int clientradputdtls(struct server *server, unsigned char *rad);
+void addserverextradtls(struct clsrvconf *conf);
+void dtlssetsrcres();
+void initextradtls();
+
+static const struct protodefs protodefs = {
+    "dtls",
+    "mysecret", /* secretdefault */
+    SOCK_DGRAM, /* socktype */
+    "2083", /* portdefault */
+    REQUEST_RETRY_COUNT, /* retrycountdefault */
+    10, /* retrycountmax */
+    REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
+    60, /* retryintervalmax */
+    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    setprotoopts, /* setprotoopts */
+    getlistenerargs, /* getlistenerargs */
+    udpdtlsserverrd, /* listener */
+    dtlsconnect, /* connecter */
+    dtlsclientrd, /* clientconnreader */
+    clientradputdtls, /* clientradput */
+    NULL, /* addclient */
+    addserverextradtls, /* addserverextra */
+    dtlssetsrcres, /* setsrcres */
+    initextradtls /* initextra */
+};
 
 static int client4_sock = -1;
 static int client6_sock = -1;
+static struct addrinfo *srcres = NULL;
+static uint8_t handle;
+static struct commonprotoopts *protoopts = NULL;
+
+const struct protodefs *dtlsinit(uint8_t h) {
+    handle = h;
+    return &protodefs;
+}
+
+static void setprotoopts(struct commonprotoopts *opts) {
+    protoopts = opts;
+}
+
+static char **getlistenerargs() {
+    return protoopts ? protoopts->listenargs : NULL;
+}
 
 struct sessioncacheentry {
     pthread_mutex_t mutex;
-    struct queue *rbios;
+    struct gqueue *rbios;
     struct timeval expiry;
 };
 
@@ -48,7 +98,12 @@ struct dtlsservernewparams {
     struct sockaddr_storage addr;    
 };
 
-int udp2bio(int s, struct queue *q, int cnt) {
+void dtlssetsrcres() {
+    if (!srcres)
+	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
+}
+
+int udp2bio(int s, struct gqueue *q, int cnt) {
     unsigned char *buf;
     BIO *rbio;
 
@@ -84,7 +139,7 @@ int udp2bio(int s, struct queue *q, int cnt) {
     return 1;
 }
 
-BIO *getrbio(SSL *ssl, struct queue *q, int timeout) {
+BIO *getrbio(SSL *ssl, struct gqueue *q, int timeout) {
     BIO *rbio;
     struct timeval now;
     struct timespec to;
@@ -104,7 +159,7 @@ BIO *getrbio(SSL *ssl, struct queue *q, int timeout) {
     return rbio;
 }
 
-int dtlsread(SSL *ssl, struct queue *q, unsigned char *buf, int num, int timeout) {
+int dtlsread(SSL *ssl, struct gqueue *q, unsigned char *buf, int num, int timeout) {
     int len, cnt;
     BIO *rbio;
     
@@ -135,7 +190,7 @@ int dtlsread(SSL *ssl, struct queue *q, unsigned char *buf, int num, int timeout
 }
 
 /* accept if acc == 1, else connect */
-SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct queue *rbios) {
+SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct gqueue *rbios) {
     SSL *ssl;
     int i, res;
     unsigned long error;
@@ -171,7 +226,7 @@ SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct 
     return NULL;
 }
 
-unsigned char *raddtlsget(SSL *ssl, struct queue *rbios, int timeout) {
+unsigned char *raddtlsget(SSL *ssl, struct gqueue *rbios, int timeout) {
     int cnt, len;
     unsigned char buf[4], *rad;
 
@@ -212,7 +267,7 @@ void *dtlsserverwr(void *arg) {
     int cnt;
     unsigned long error;
     struct client *client = (struct client *)arg;
-    struct queue *replyq;
+    struct gqueue *replyq;
     struct request *reply;
     
     debug(DBG_DBG, "dtlsserverwr: starting for %s", addr2string(client->addr));
@@ -300,9 +355,9 @@ void *dtlsservernew(void *arg) {
     uint8_t delay = 60;
 
     debug(DBG_DBG, "dtlsservernew: starting");
-    conf = find_clconf(RAD_DTLS, (struct sockaddr *)&params->addr, NULL);
+    conf = find_clconf(handle, (struct sockaddr *)&params->addr, NULL);
     if (conf) {
-	ctx = tlsgetctx(RAD_DTLS, conf->tlsconf);
+	ctx = tlsgetctx(handle, conf->tlsconf);
 	if (!ctx)
 	    goto exit;
 	ssl = dtlsacccon(1, ctx, params->sock, (struct sockaddr *)&params->addr, params->sesscache->rbios);
@@ -330,7 +385,7 @@ void *dtlsservernew(void *arg) {
 	    }
 	    goto exit;
 	}
-	conf = find_clconf(RAD_DTLS, (struct sockaddr *)&params->addr, &cur);
+	conf = find_clconf(handle, (struct sockaddr *)&params->addr, &cur);
     }
     debug(DBG_WARN, "dtlsservernew: ignoring request, no matching TLS client");
 
@@ -476,7 +531,8 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
     time_t elapsed;
     X509 *cert;
     SSL_CTX *ctx = NULL;
-
+    struct hostportres *hp;
+    
     debug(DBG_DBG, "dtlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
     if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
@@ -486,6 +542,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 	return 1;
     }
 
+    hp = (struct hostportres *)list_first(server->conf->hostports)->data;
     for (;;) {
 	gettimeofday(&now, NULL);
 	elapsed = now.tv_sec - server->lastconnecttry.tv_sec;
@@ -511,14 +568,14 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 	    sleep(60);
 	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
-	debug(DBG_WARN, "dtlsconnect: trying to open DTLS connection to %s port %s", server->conf->host, server->conf->port);
+	debug(DBG_WARN, "dtlsconnect: trying to open DTLS connection to %s port %s", hp->host, hp->port);
 
 	SSL_free(server->ssl);
 	server->ssl = NULL;
-	ctx = tlsgetctx(RAD_DTLS, server->conf->tlsconf);
+	ctx = tlsgetctx(handle, server->conf->tlsconf);
 	if (!ctx)
 	    continue;
-	server->ssl = dtlsacccon(0, ctx, server->sock, server->conf->addrinfo->ai_addr, server->rbios);
+	server->ssl = dtlsacccon(0, ctx, server->sock, hp->addrinfo->ai_addr, server->rbios);
 	if (!server->ssl)
 	    continue;
 	debug(DBG_DBG, "dtlsconnect: DTLS: ok");
@@ -532,7 +589,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 	X509_free(cert);
     }
     X509_free(cert);
-    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s port %s up", server->conf->host, server->conf->port);
+    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s port %s up", hp->host, hp->port);
     server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
@@ -553,7 +610,7 @@ int clientradputdtls(struct server *server, unsigned char *rad) {
 	    debug(DBG_ERR, "clientradputdtls: DTLS: %s", ERR_error_string(error, NULL));
 	return 0;
     }
-    debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %d to DTLS peer %s", cnt, len, conf->host);
+    debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %d to DTLS peer %s", cnt, len, conf->name);
     return 1;
 }
 
@@ -577,7 +634,7 @@ void *udpdtlsclientrd(void *arg) {
 	    continue;
 	}
 	
-	conf = find_srvconf(RAD_DTLS, (struct sockaddr *)&from, NULL);
+	conf = find_srvconf(handle, (struct sockaddr *)&from, NULL);
 	if (!conf) {
 	    debug(DBG_WARN, "udpdtlsclientrd: got packet from wrong or unknown DTLS peer %s, ignoring", addr2string((struct sockaddr *)&from));
 	    recv(s, buf, 4, 0);
@@ -610,20 +667,20 @@ void *dtlsclientrd(void *arg) {
 }
 
 void addserverextradtls(struct clsrvconf *conf) {
-    switch (conf->addrinfo->ai_family) {
+    switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
     case AF_INET:
 	if (client4_sock < 0) {
-	    client4_sock = bindtoaddr(getsrcprotores(RAD_DTLS), AF_INET, 0, 1);
+	    client4_sock = bindtoaddr(srcres, AF_INET, 0, 1);
 	    if (client4_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}
 	conf->servers->sock = client4_sock;
 	break;
     case AF_INET6:
 	if (client6_sock < 0) {
-	    client6_sock = bindtoaddr(getsrcprotores(RAD_DTLS), AF_INET6, 0, 1);
+	    client6_sock = bindtoaddr(srcres, AF_INET6, 0, 1);
 	    if (client6_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->host);
+		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}
 	conf->servers->sock = client6_sock;
 	break;
@@ -634,6 +691,11 @@ void addserverextradtls(struct clsrvconf *conf) {
 
 void initextradtls() {
     pthread_t cl4th, cl6th;
+
+    if (srcres) {
+	freeaddrinfo(srcres);
+	srcres = NULL;
+    }
     
     if (client4_sock >= 0)
 	if (pthread_create(&cl4th, NULL, udpdtlsclientrd, (void *)&client4_sock))
@@ -642,3 +704,8 @@ void initextradtls() {
 	if (pthread_create(&cl6th, NULL, udpdtlsclientrd, (void *)&client6_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
 }
+#else
+const struct protodefs *dtlsinit(uint8_t h) {
+    return NULL;
+}
+#endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2008-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -24,12 +24,63 @@
 #include <arpa/inet.h>
 #include <regex.h>
 #include <pthread.h>
-#include <openssl/ssl.h>
-#include "debug.h"
 #include "list.h"
-#include "util.h"
+#include "hostport.h"
 #include "radsecproxy.h"
-#include "tcp.h"
+
+#ifdef RADPROT_TCP
+#include "debug.h"
+#include "util.h"
+static void setprotoopts(struct commonprotoopts *opts);
+static char **getlistenerargs();
+void *tcplistener(void *arg);
+int tcpconnect(struct server *server, struct timeval *when, int timeout, char * text);
+void *tcpclientrd(void *arg);
+int clientradputtcp(struct server *server, unsigned char *rad);
+void tcpsetsrcres();
+
+static const struct protodefs protodefs = {
+    "tcp",
+    NULL, /* secretdefault */
+    SOCK_STREAM, /* socktype */
+    "1812", /* portdefault */
+    0, /* retrycountdefault */
+    0, /* retrycountmax */
+    REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
+    60, /* retryintervalmax */
+    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    setprotoopts, /* setprotoopts */
+    getlistenerargs, /* getlistenerargs */
+    tcplistener, /* listener */
+    tcpconnect, /* connecter */
+    tcpclientrd, /* clientconnreader */
+    clientradputtcp, /* clientradput */
+    NULL, /* addclient */
+    NULL, /* addserverextra */
+    tcpsetsrcres, /* setsrcres */
+    NULL /* initextra */
+};
+
+static struct addrinfo *srcres = NULL;
+static uint8_t handle;
+static struct commonprotoopts *protoopts = NULL;
+const struct protodefs *tcpinit(uint8_t h) {
+    handle = h;
+    return &protodefs;
+}
+
+static void setprotoopts(struct commonprotoopts *opts) {
+    protoopts = opts;
+}
+
+static char **getlistenerargs() {
+    return protoopts ? protoopts->listenargs : NULL;
+}
+
+void tcpsetsrcres() {
+    if (!srcres)
+	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
+}
 
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval now;
@@ -67,14 +118,12 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 	    sleep(60);
 	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
-	debug(DBG_WARN, "tcpconnect: trying to open TCP connection to %s port %s", server->conf->host, server->conf->port);
+
 	if (server->sock >= 0)
 	    close(server->sock);
-	if ((server->sock = connecttcp(server->conf->addrinfo, getsrcprotores(RAD_TCP))) >= 0)
+	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) >= 0)
 	    break;
-	debug(DBG_ERR, "tcpconnect: connecttcp failed");
     }
-    debug(DBG_WARN, "tcpconnect: TCP connection to %s port %s up", server->conf->host, server->conf->port);
     server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
@@ -160,7 +209,7 @@ int clientradputtcp(struct server *server, unsigned char *rad) {
 	debug(DBG_ERR, "clientradputtcp: write error");
 	return 0;
     }
-    debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %d to TCP peer %s", cnt, len, conf->host);
+    debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %d to TCP peer %s", cnt, len, conf->name);
     return 1;
 }
 
@@ -187,7 +236,7 @@ void *tcpclientrd(void *arg) {
 void *tcpserverwr(void *arg) {
     int cnt;
     struct client *client = (struct client *)arg;
-    struct queue *replyq;
+    struct gqueue *replyq;
     struct request *reply;
     
     debug(DBG_DBG, "tcpserverwr: starting for %s", addr2string(client->addr));
@@ -274,7 +323,7 @@ void *tcpservernew(void *arg) {
     }
     debug(DBG_WARN, "tcpservernew: incoming TCP connection from %s", addr2string((struct sockaddr *)&from));
 
-    conf = find_clconf(RAD_TCP, (struct sockaddr *)&from, NULL);
+    conf = find_clconf(handle, (struct sockaddr *)&from, NULL);
     if (conf) {
 	client = addclient(conf, 1);
 	if (client) {
@@ -318,3 +367,8 @@ void *tcplistener(void *arg) {
     free(sp);
     return NULL;
 }
+#else
+const struct protodefs *tcpinit(uint8_t h) {
+    return NULL;
+}
+#endif

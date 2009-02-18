@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -26,11 +26,65 @@
 #include <pthread.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include "debug.h"
 #include "list.h"
-#include "util.h"
+#include "hostport.h"
 #include "radsecproxy.h"
-#include "tls.h"
+
+#ifdef RADPROT_TLS
+#include "debug.h"
+#include "util.h"
+
+static void setprotoopts(struct commonprotoopts *opts);
+static char **getlistenerargs();
+void *tlslistener(void *arg);
+int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
+void *tlsclientrd(void *arg);
+int clientradputtls(struct server *server, unsigned char *rad);
+void tlssetsrcres();
+
+static const struct protodefs protodefs = {
+    "tls",
+    "mysecret", /* secretdefault */
+    SOCK_STREAM, /* socktype */
+    "2083", /* portdefault */
+    0, /* retrycountdefault */
+    0, /* retrycountmax */
+    REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
+    60, /* retryintervalmax */
+    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
+    setprotoopts, /* setprotoopts */
+    getlistenerargs, /* getlistenerargs */
+    tlslistener, /* listener */
+    tlsconnect, /* connecter */
+    tlsclientrd, /* clientconnreader */
+    clientradputtls, /* clientradput */
+    NULL, /* addclient */
+    NULL, /* addserverextra */
+    tlssetsrcres, /* setsrcres */
+    NULL /* initextra */
+};
+
+static struct addrinfo *srcres = NULL;
+static uint8_t handle;
+static struct commonprotoopts *protoopts = NULL;
+
+const struct protodefs *tlsinit(uint8_t h) {
+    handle = h;
+    return &protodefs;
+}
+
+static void setprotoopts(struct commonprotoopts *opts) {
+    protoopts = opts;
+}
+
+static char **getlistenerargs() {
+    return protoopts ? protoopts->listenargs : NULL;
+}
+
+void tlssetsrcres() {
+    if (!srcres)
+	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
+}
 
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval now;
@@ -73,17 +127,15 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	    sleep(60);
 	} else
 	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
-	debug(DBG_WARN, "tlsconnect: trying to open TLS connection to %s port %s", server->conf->host, server->conf->port);
+	
 	if (server->sock >= 0)
 	    close(server->sock);
-	if ((server->sock = connecttcp(server->conf->addrinfo, getsrcprotores(RAD_TLS))) < 0) {
-	    debug(DBG_ERR, "tlsconnect: connecttcp failed");
+	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
 	    continue;
-	}
 	
 	SSL_free(server->ssl);
 	server->ssl = NULL;
-	ctx = tlsgetctx(RAD_TLS, server->conf->tlsconf);
+	ctx = tlsgetctx(handle, server->conf->tlsconf);
 	if (!ctx)
 	    continue;
 	server->ssl = SSL_new(ctx);
@@ -105,7 +157,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	}
 	X509_free(cert);
     }
-    debug(DBG_WARN, "tlsconnect: TLS connection to %s port %s up", server->conf->host, server->conf->port);
+    debug(DBG_WARN, "tlsconnect: TLS connection to %s up", server->conf->name);
     server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
@@ -206,7 +258,7 @@ int clientradputtls(struct server *server, unsigned char *rad) {
 	return 0;
     }
 
-    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->host);
+    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->name);
     return 1;
 }
 
@@ -245,7 +297,7 @@ void *tlsserverwr(void *arg) {
     int cnt;
     unsigned long error;
     struct client *client = (struct client *)arg;
-    struct queue *replyq;
+    struct gqueue *replyq;
     struct request *reply;
     
     debug(DBG_DBG, "tlsserverwr: starting for %s", addr2string(client->addr));
@@ -340,9 +392,9 @@ void *tlsservernew(void *arg) {
     }
     debug(DBG_WARN, "tlsservernew: incoming TLS connection from %s", addr2string((struct sockaddr *)&from));
 
-    conf = find_clconf(RAD_TLS, (struct sockaddr *)&from, &cur);
+    conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
     if (conf) {
-	ctx = tlsgetctx(RAD_TLS, conf->tlsconf);
+	ctx = tlsgetctx(handle, conf->tlsconf);
 	if (!ctx)
 	    goto exit;
 	ssl = SSL_new(ctx);
@@ -374,7 +426,7 @@ void *tlsservernew(void *arg) {
 		debug(DBG_WARN, "tlsservernew: failed to create new client instance");
 	    goto exit;
 	}
-	conf = find_clconf(RAD_TLS, (struct sockaddr *)&from, &cur);
+	conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
     }
     debug(DBG_WARN, "tlsservernew: ignoring request, no matching TLS client");
     if (cert)
@@ -416,3 +468,8 @@ void *tlslistener(void *arg) {
     free(sp);
     return NULL;
 }
+#else
+const struct protodefs *tlsinit(uint8_t h) {
+    return NULL;
+}
+#endif

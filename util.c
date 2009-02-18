@@ -13,12 +13,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/select.h>
 #include <stdarg.h>
 #include "debug.h"
 #include "util.h"
 
 char *stringcopy(const char *s, int len) {
     char *r;
+    if (!s)
+	return NULL;
     if (!len)
 	len = strlen(s);
     r = malloc(len + 1);
@@ -39,16 +44,6 @@ void printfchars(char *prefixfmt, char *prefix, char *charfmt, char *chars, int 
     printf("\n");
 }
 
-uint16_t port_get(struct sockaddr *sa) {
-    switch (sa->sa_family) {
-    case AF_INET:
-	return ntohs(((struct sockaddr_in *)sa)->sin_port);
-    case AF_INET6:
-	return ntohs(((struct sockaddr_in6 *)sa)->sin6_port);
-    }
-    return 0;
-}
-
 void port_set(struct sockaddr *sa, uint16_t port) {
     switch (sa->sa_family) {
     case AF_INET:
@@ -57,21 +52,6 @@ void port_set(struct sockaddr *sa, uint16_t port) {
     case AF_INET6:
 	((struct sockaddr_in6 *)sa)->sin6_port = htons(port);
 	break;
-    }
-}
-
-int addr_equal(struct sockaddr *a, struct sockaddr *b) {
-    switch (a->sa_family) {
-    case AF_INET:
-	return !memcmp(&((struct sockaddr_in*)a)->sin_addr,
-		       &((struct sockaddr_in*)b)->sin_addr,
-		       sizeof(struct in_addr));
-    case AF_INET6:
-	return IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6*)a)->sin6_addr,
-				  &((struct sockaddr_in6*)b)->sin6_addr);
-    default:
-	/* Must not reach */
-	return 0;
     }
 }
 
@@ -122,6 +102,8 @@ char *addr2string(struct sockaddr *addr) {
     return addr_buf[i];
 }
 
+#if 0
+/* not in use */
 int connectport(int type, char *host, char *port) {
     struct addrinfo hints, *res0, *res;
     int s = -1;
@@ -150,6 +132,7 @@ int connectport(int type, char *host, char *port) {
     freeaddrinfo(res0);
     return s;
 }
+#endif
 
 int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
     int s, on = 1;
@@ -177,18 +160,56 @@ int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
     return -1;
 }
 
-int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src) {
+int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, struct timeval *timeout) {
+    int origflags, error = 0, r = -1;
+    fd_set writefds;
+    socklen_t len;
+    
+    origflags = fcntl(s, F_GETFL, 0);
+    fcntl(s, F_SETFL, origflags | O_NONBLOCK);
+    if (!connect(s, addr, addrlen)) {
+	r = 0;
+	goto exit;
+    }
+    if (errno != EINPROGRESS)
+	goto exit;
+
+    FD_ZERO(&writefds);
+    FD_SET(s, &writefds);
+    if (select(s + 1, NULL, &writefds, NULL, timeout) < 1)
+	goto exit;
+
+    len = sizeof(error);
+    if (!getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&error, &len) && !error)
+	r = 0;
+
+ exit:    
+    fcntl(s, F_SETFL, origflags);
+    return r;
+}
+
+int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout) {
     int s;
     struct addrinfo *res;
+    struct timeval to;
 
     s = -1;
+    if (timeout) {
+	if (addrinfo && addrinfo->ai_next && timeout > 5)
+	    timeout = 5;
+	to.tv_sec = timeout;
+	to.tv_usec = 0;
+    }
+    
     for (res = addrinfo; res; res = res->ai_next) {
 	s = bindtoaddr(src, res->ai_family, 1, 1);
 	if (s < 0) {
 	    debug(DBG_WARN, "connecttoserver: socket failed");
 	    continue;
 	}
-	if (connect(s, res->ai_addr, res->ai_addrlen) == 0)
+	if ((timeout
+	     ? connectnonblocking(s, res->ai_addr, res->ai_addrlen, &to)
+	     : connect(s, res->ai_addr, res->ai_addrlen)) == 0)
 	    break;
 	debug(DBG_WARN, "connecttoserver: connect failed");
 	close(s);

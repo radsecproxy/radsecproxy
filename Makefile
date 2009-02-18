@@ -1,6 +1,7 @@
-CFLAGS = -g -Wall -pedantic -pthread
+CFLAGS = -g -Wall -pedantic -pthread -DRADPROT_UDP -DRADPROT_TLS
+# -DRADPROT_TCP -DRADPROT_DTLS
 LDFLAGS = -lssl
-OBJ = util.o debug.o list.o hash.o gconfig.o tlv11.o radmsg.o udp.o tcp.o tls.o dtls.o radsecproxy.o
+OBJ = util.o debug.o list.o hash.o gconfig.o tlv11.o hostport.o radmsg.o udp.o tcp.o tls.o dtls.o tlscommon.o radsecproxy.o
 
 all: radsecproxy
 

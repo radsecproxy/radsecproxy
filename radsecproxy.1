@@ -1,10 +1,11 @@
-.TH radsecproxy 1 "2 October 2008"
+.TH radsecproxy 1 "17 February 2009"
 
 .SH "NAME"
 radsecproxy - a generic RADIUS proxy that provides both RADIUS UDP and TCP/TLS (RadSec) transport.
 
 .SH "SYNOPSIS"
-radsecproxy [ -c configfile ] [ -d debuglevel ] [ -f ] [ -p ] [ -v ]
+.HP 12
+radsecproxy [-c configfile] [-d debuglevel] [-f] [-i pidfile] [-p] [-v]
 .sp
 
 .SH "DESCRIPTION"
@@ -31,6 +32,7 @@ a proxy on a site boundary. Since the proxy \fBsupports both IPv4
 and IPv6\fR, it could also be used to allow communication in cases
 where some RADIUS nodes use only IPv4 and some only IPv6.
 
+.SH "OPTIONS"
 .TP
 .B -f
 .sp
@@ -74,6 +76,32 @@ information and exit.
 .sp
 This option allows you to specify which config file to use. This is useful
 if you want to use a config file that is not in any of the default locations.
+
+.TP
+.B -i <pid file path>
+.sp
+\fIPID file path\fR
+.sp
+This option tells the proxy to create a PID file with the specified path.
+
+.SH "SIGNALS"
+The proxy generally exits on all signals. The exceptions are listed below.
+
+.TP
+.B SIGHUP
+.sp
+When logging to a file, this signal forces a reopen of the log file.
+
+.TP
+.B SIGPIPE
+.sp
+This signal is ignored.
+
+.SH "FILES"
+.TP
+.B /etc/radsecproxy.conf
+.sp
+The default configuration file.
 
 .SH "SEE ALSO"
 radsecproxy.conf(5), RadSec internet draft

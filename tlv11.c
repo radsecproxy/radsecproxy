@@ -6,7 +6,11 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#ifdef SYS_SOLARIS9
+#include <sys/inttypes.h>
+#else
 #include <stdint.h>
+#endif
 #include "list.h"
 #include "tlv11.h"
 #include <stdlib.h>

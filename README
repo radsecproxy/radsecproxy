@@ -1,11 +1,17 @@
-This is radsecproxy 1.3-alpha from Dec 4, 2008
+This is radsecproxy 1.3-beta from Feb 18, 2009
 
 radsecproxy is a generic RADIUS proxy that can support various
-RADIUS clients over UDP, TLS (RadSec), TCP and DTLS.
+RADIUS clients over UDP or TLS (RadSec).
 
 It should build on most Linux and BSD platforms by simply typing
-"make". You may also try to use autoconf, but this is currently
-unsupported.
+"make". You may also try to use autoconf. It is possible to
+specify which RADIUS transport the build should support. With
+just doing "make" one will support only UDP and TLS. See the
+Makefile for how to change this. With autoconf (configure) there
+will normally be support for all transport. You can use the
+configure options --enable-udp, --enable-tcp, --enable-tls and
+--enable-dtls where each of them may be set to yes or no to
+enable or disable them.
 
 To use it you need to create a config file which normally is
 called "/etc/radsecproxy.conf". You can also specify the location
@@ -37,4 +43,4 @@ let me know if you feel left out.
 For more information, feedback etc. please see the information
 at http://software.uninett.no/radsecproxy/
 
-Stig Venaas <venaas@uninett.no> -- 2008.12.04
+Stig Venaas <venaas@uninett.no> -- 2009.02.18
