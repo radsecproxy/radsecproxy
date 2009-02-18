@@ -2,14 +2,14 @@
 "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
 <refentry>
   <refentryinfo>
-    <date>2009-02-17</date>
+    <date>2009-02-18</date>
   </refentryinfo>
   <refmeta>
     <refentrytitle>
       <application>radsecproxy.conf</application>
     </refentrytitle>
     <manvolnum>5</manvolnum>
-    <refmiscinfo>radsecproxy devel 2009-02-17</refmiscinfo>
+    <refmiscinfo>radsecproxy devel 2009-02-18</refmiscinfo>
   </refmeta>
   <refnamediv>
     <refname>
@@ -172,7 +172,7 @@ you can do e.g. <literal>192.168.1.1:1812</literal> or
 <literal>[2001:db8::1]:1812</literal>. The port may be omitted if you want the
 default one (like in these examples). These examples are equivalent to
 <literal>192.168.1.1</literal> and <literal>2001:db8::1</literal>. Note that
-you must use brackets around the IPv6 address if you specify port number.
+you must use brackets around the IPv6 address.
 This option may be specified multiple times to listen to multiple addresses
 and/or ports.
 	  </para>
@@ -318,7 +318,8 @@ The client block is used to configure a client. That is, tell the proxy about a
 client, and what parameters should be used for that client. The name of the
 client block must (with one exception, see below) be either the IP address
 (IPv4 or IPv6) of the client, an IP prefix (IPv4 or IPv6) of the form
-IpAddress/PrefixLength, or a domain name (FQDN).
+IpAddress/PrefixLength, or a domain name (FQDN). Note that literal IPv6
+addresses must be enclosed in brackets.
     </para>
     <para>
 If a domain name is specified, then this will be resolved immediately to all
@@ -341,7 +342,8 @@ client name is an IP prefix.
 Alternatively one may use the <literal>host</literal> option inside a client
 block. In that case, the value of the <literal>host</literal> option is used as
 above, while the name of the block is only used as a descriptive name for the
-administrator.
+administrator. The host option may be used multiple times, and can be a mix of
+addresses, FQDNs and prefixes.
     </para>
     <para>
 The allowed options in a client block are <literal>host</literal>,
@@ -449,7 +451,17 @@ name of the server must match the FQDN or IP address in the server certificate.
 Alternatively one may use the <literal>host</literal> option inside a server
 block. In that case, the value of the <literal>host</literal> option is used as
 above, while the name of the block is only used as a descriptive name for the
-administrator.
+administrator. Note that multiple host options may be used. This will then be
+treated as multiple names/addresses for the same server. When initiating a TCP/TLS
+connection, all addresses of all names may be attempted, but there is no failover
+between the different host values. For failover one must use separate server
+blocks.
+    </para>
+    <para>
+Note that the name of the block, or values of host options may include a
+port number (separated with a column). This port number will then override the
+default port or a port option in the server block. Also note that literal IPv6
+addresses must be enclosed in brackets.
     </para>
     <para>
 The allowed options in a server block are <literal>host</literal>,
