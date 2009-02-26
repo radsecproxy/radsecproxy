@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <netdb.h>
+#include <netinet/in.h>
 #include "debug.h"
 #include "util.h"
 #include "list.h"
