@@ -75,6 +75,9 @@ struct sockaddr *addr_copy(struct sockaddr *in) {
 	break;
     }
     out->sa_family = in->sa_family;
+#ifdef SIN6_LEN
+    out->sa_len = in->sa_len;
+#endif
     return out;
 }
 
