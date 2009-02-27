@@ -1,1 +1,0 @@
-For OpenWRT packages, please see http://zandbelt.dyndns.org/radsecproxy/
