@@ -1,12 +1,12 @@
 # $NetBSD: Makefile,v 1.0 2008/01/29 13:20:00 kolla Exp $
 
-DISTNAME=	radsecproxy-1.2
+DISTNAME=	radsecproxy-1.3-beta
 CATEGORIES=	net
 MASTER_SITES=	http://software.uninett.no/radsecproxy/
 
 MAINTAINER=	netbsd@kolla.no
 HOMEPAGE=	http://software.uninett.no/radsecproxy/
-COMMENT=	RADIUS proxy that also supports RadSec
+COMMENT=	RADIUS proxy that supports RadSec
 
 EGDIR=		${PREFIX}/share/examples/radsecproxy
 CONF_FILES=     ${EGDIR}/radsecproxy.conf ${PKG_SYSCONFDIR}/radsecproxy.conf
