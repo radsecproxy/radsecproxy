@@ -33,7 +33,7 @@ do-install:
 	${INSTALL_DATA} ${WRKSRC}/README ${PREFIX}/share/doc/radsecproxy
 	${INSTALL_DATA} ${WRKSRC}/AUTHORS ${PREFIX}/share/doc/radsecproxy
 	${INSTALL_DATA} ${WRKSRC}/COPYING ${PREFIX}/share/doc/radsecproxy
-	${INSTALL_DATA} ${WRKSRC}/INSTALL ${PREFIX}/share/doc/radsecproxy
+	${INSTALL_DATA} ${WRKSRC}/LICENSE ${PREFIX}/share/doc/radsecproxy
 	${INSTALL_DATA} ${WRKSRC}/ChangeLog ${PREFIX}/share/doc/radsecproxy
 	${INSTALL_DATA} ${WRKSRC}/radsecproxy.conf-example ${EGDIR}/radsecproxy.conf
 
