@@ -29,7 +29,7 @@ radsecproxy_SOURCES = radsecproxy.c \
 		      tls.h \
 		      dtls.h
 
-radsecproxy_CFLAGS  = -g -Wall -pedantic -pthread @SSL_CFLAGS@ @TARGET_CFLAGS@
+radsecproxy_CFLAGS  = -g @SSL_CFLAGS@ @TARGET_CFLAGS@
 radsecproxy_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
 radsecproxy_LDADD   = @SSL_LIBS@
 

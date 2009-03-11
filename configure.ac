@@ -50,11 +50,11 @@ dnl Check if we're on Solaris and set CFLAGS accordingly
 AC_CANONICAL_SYSTEM
 case "${target_os}" in
   solaris*)
-    TARGET_CFLAGS="-DSYS_SOLARIS9 -D_POSIX_PTHREAD_SEMANTICS"
-    TARGET_LDFLAGS="-lsocket"
+    TARGET_CFLAGS="-mt -DSYS_SOLARIS9 -D_POSIX_PTHREAD_SEMANTICS"
+    TARGET_LDFLAGS="-lpthread -lsocket -lnsl"
     ;;
   *)
-    TARGET_CFLAGS=""
+    TARGET_CFLAGS="-Wall -pedantic -pthread"
     TARGET_LDFLAGS=""
   esac
 dnl Adding enabled options
