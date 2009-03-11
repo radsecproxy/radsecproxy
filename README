@@ -1,4 +1,4 @@
-This is radsecproxy 1.3-beta from Feb 18, 2009
+This is radsecproxy 1.3 from March 12, 2009
 
 radsecproxy is a generic RADIUS proxy that can support various
 RADIUS clients over UDP or TLS (RadSec).
@@ -43,4 +43,4 @@ let me know if you feel left out.
 For more information, feedback etc. please see the information
 at http://software.uninett.no/radsecproxy/
 
-Stig Venaas <venaas@uninett.no> -- 2009.02.18
+Stig Venaas <venaas@uninett.no> -- 2009.03.12
