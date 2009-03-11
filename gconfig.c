@@ -383,6 +383,8 @@ void unhex(char *s) {
     *s = '\0';
 }
 
+typedef int (*t_fptr)(struct gconffile **, void *, char *, char *, char *);
+
 /* returns 1 if ok, 0 on error */
 /* caller must free returned values also on error */
 int getgenericconfig(struct gconffile **cf, char *block, ...) {
@@ -391,7 +393,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
     uint8_t *bln = NULL;
     long int *lint = NULL;
     int type = 0, conftype = 0, n;
-    int (*cbk)(struct gconffile **, void *, char *, char *, char *) = NULL;
+    t_fptr cbk = NULL;
     void *cbkarg = NULL;
 
     for (;;) {
@@ -435,7 +437,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 		    goto errparam;
 		break;
 	    case CONF_CBK:
-		cbk = va_arg(ap, int (*)(struct gconffile **, void *, char *, char *, char *));
+		cbk = va_arg(ap, t_fptr);
 		if (!cbk)
 		    goto errparam;
 		cbkarg = va_arg(ap, void *);
