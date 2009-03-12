@@ -148,7 +148,7 @@ FILE *pushgconfpaths(struct gconffile **cf, const char *cfgpath) {
     }
     memset(&globbuf, 0, sizeof(glob_t));
     if (glob(path, 0, NULL, &globbuf)) {
-	debug(DBG_INFO, "could not glob %s", path);
+	debug(DBG_WARN, "could not glob %s", path);
 	goto exit;
     }
 

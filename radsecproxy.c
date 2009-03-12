@@ -461,7 +461,7 @@ void sendrq(struct request *rq) {
 	pthread_mutex_lock(to->requests[0].lock);
 	if (to->requests[0].rq) {
 	    pthread_mutex_unlock(to->requests[0].lock);
-	    debug(DBG_WARN, "sendrq: status server already in queue, dropping request");
+	    debug(DBG_INFO, "sendrq: status server already in queue, dropping request");
 	    goto errexit;
 	}
 	i = 0;
@@ -487,7 +487,7 @@ void sendrq(struct request *rq) {
 		}
 	    }
 	    if (i == to->nextid) {
-		debug(DBG_WARN, "sendrq: no room in queue, dropping request");
+		debug(DBG_INFO, "sendrq: no room in queue, dropping request");
 		goto errexit;
 	    }
 	}
@@ -859,18 +859,18 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
 int attrvalidate(unsigned char *attrs, int length) {
     while (length > 1) {
 	if (ATTRLEN(attrs) < 2) {
-	    debug(DBG_WARN, "attrvalidate: invalid attribute length %d", ATTRLEN(attrs));
+	    debug(DBG_INFO, "attrvalidate: invalid attribute length %d", ATTRLEN(attrs));
 	    return 0;
 	}
 	length -= ATTRLEN(attrs);
 	if (length < 0) {
-	    debug(DBG_WARN, "attrvalidate: attribute length %d exceeds packet length", ATTRLEN(attrs));
+	    debug(DBG_INFO, "attrvalidate: attribute length %d exceeds packet length", ATTRLEN(attrs));
 	    return 0;
 	}
 	attrs += ATTRLEN(attrs);
     }
     if (length)
-	debug(DBG_WARN, "attrvalidate: malformed packet? remaining byte after last attribute");
+	debug(DBG_INFO, "attrvalidate: malformed packet? remaining byte after last attribute");
     return 1;
 }
 
@@ -953,7 +953,7 @@ int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs) {
     subattrs = attr->v + 4;
     
     if (!attrvalidate(subattrs, sublen)) {
-	debug(DBG_WARN, "dovendorrewrite: vendor attribute validation failed, no rewrite");
+	debug(DBG_INFO, "dovendorrewrite: vendor attribute validation failed, no rewrite");
 	return 0;
     }
 
@@ -1046,7 +1046,7 @@ int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
     }
     reslen += i - start;
     if (reslen > 253) {
-	debug(DBG_WARN, "rewritten attribute length would be %d, max possible is 253, discarding message", reslen);
+	debug(DBG_INFO, "rewritten attribute length would be %d, max possible is 253, discarding message", reslen);
 	free(in);
 	return 0;
     }
@@ -1416,7 +1416,7 @@ int radsrv(struct request *rq) {
     rq->buf = NULL;
 
     if (!msg) {
-	debug(DBG_WARN, "radsrv: message validation failed, ignoring packet");
+	debug(DBG_INFO, "radsrv: message validation failed, ignoring packet");
 	freerq(rq);
 	return 0;
     }
@@ -1446,7 +1446,7 @@ int radsrv(struct request *rq) {
 
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {
-	debug(DBG_WARN, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr));
+	debug(DBG_INFO, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr));
 	goto exit;
     }
 	
@@ -1456,7 +1456,7 @@ int radsrv(struct request *rq) {
 	    acclog(msg, from);
 	    respond(rq, RAD_Accounting_Response, NULL);
 	} else
-	    debug(DBG_WARN, "radsrv: ignoring access request, no username attribute");
+	    debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
 	goto exit;
     }
     
@@ -1570,7 +1570,7 @@ void replyh(struct server *server, unsigned char *buf) {
     free(buf);
     buf = NULL;
     if (!msg) {
-        debug(DBG_WARN, "replyh: message validation failed, ignoring packet");
+        debug(DBG_INFO, "replyh: message validation failed, ignoring packet");
 	goto errunlock;
     }
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge
@@ -1592,13 +1592,13 @@ void replyh(struct server *server, unsigned char *buf) {
     from = rqout->rq->from;
 	
     if (server->conf->rewritein && !dorewrite(msg, from->conf->rewritein)) {
-	debug(DBG_WARN, "replyh: rewritein failed");
+	debug(DBG_INFO, "replyh: rewritein failed");
 	goto errunlock;
     }
     
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {    
-	debug(DBG_WARN, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->name);
+	debug(DBG_INFO, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->name);
 	goto errunlock;
     }
     
@@ -1633,20 +1633,20 @@ void replyh(struct server *server, unsigned char *buf) {
 	    replymsg = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Reply_Message));
 	    if (stationid) {
 		if (replymsg) {
-		    debug(DBG_INFO, "%s for user %s stationid %s from %s (%s)",
+		    debug(DBG_WARN, "%s for user %s stationid %s from %s (%s)",
 			  radmsgtype2string(msg->code), username, stationid, server->conf->name, replymsg);
 		    free(replymsg);
 		} else
-		    debug(DBG_INFO, "%s for user %s stationid %s from %s",
+		    debug(DBG_WARN, "%s for user %s stationid %s from %s",
 			  radmsgtype2string(msg->code), username, stationid, server->conf->name);
 		free(stationid);
 	    } else {
 		if (replymsg) {
-		    debug(DBG_INFO, "%s for user %s from %s (%s)",
+		    debug(DBG_WARN, "%s for user %s from %s (%s)",
 			  radmsgtype2string(msg->code), username, server->conf->name, replymsg);
 		    free(replymsg);
 		} else
-		    debug(DBG_INFO, "%s for user %s from %s",
+		    debug(DBG_WARN, "%s for user %s from %s",
 			  radmsgtype2string(msg->code), username, server->conf->name);
 	    }
 	    free(username);

@@ -2,14 +2,14 @@
 "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
 <refentry>
   <refentryinfo>
-    <date>2009-02-18</date>
+    <date>2009-03-12</date>
   </refentryinfo>
   <refmeta>
     <refentrytitle>
       <application>radsecproxy.conf</application>
     </refentrytitle>
     <manvolnum>5</manvolnum>
-    <refmiscinfo>radsecproxy devel 2009-02-18</refmiscinfo>
+    <refmiscinfo>radsecproxy devel 2009-03-12</refmiscinfo>
   </refmeta>
   <refnamediv>
     <refname>
@@ -129,8 +129,8 @@ occurences is undefined.
         <listitem>
 	  <para>
 This option specifies the debug level. It must be set to 1, 2, 3 or 4, where 1
-logs only serious errors, and 4 logs everything. The default is 3 which logs
-errors, warnings and some informational messages. Note that the command line
+logs only serious errors, and 4 logs everything. The default is 2 which logs
+errors, warnings and a few informational messages. Note that the command line
 option <option>-d</option> overrides this.
 	  </para>
         </listitem>

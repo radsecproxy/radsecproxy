@@ -55,3 +55,6 @@
 	Client and Server blocks may contain multiple host options.
 	Configure (Makefile) options for specifying which transports
 	  should be supported in a build.
+2009-03-12 1.3
+	Fixed some very minor bugs
+	Changed log levels for some messages, made loglevel 2 default
