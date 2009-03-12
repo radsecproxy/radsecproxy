@@ -10,7 +10,7 @@
 #include "radmsg.h"
 #include "gconfig.h"
 
-#define DEBUG_LEVEL 3
+#define DEBUG_LEVEL 2
 
 #define CONFIG_MAIN "/etc/radsecproxy.conf"
 
