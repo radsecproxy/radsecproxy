@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.0 2008/01/29 13:20:00 kolla Exp $
+# $NetBSD: Makefile,v 1.2 2009/04/01 15:20:00 kolla Exp $
 
 DISTNAME=	radsecproxy-1.3
 CATEGORIES=	net
