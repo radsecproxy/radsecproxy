@@ -6,6 +6,7 @@ share/doc/radsecproxy/README
 share/doc/radsecproxy/AUTHORS
 share/doc/radsecproxy/COPYING
 share/doc/radsecproxy/INSTALL
+share/doc/radsecproxy/LICENSE
 share/doc/radsecproxy/ChangeLog
 share/examples/rc.d/radsecproxy
 share/examples/radsecproxy/radsecproxy.conf
