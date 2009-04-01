@@ -9,5 +9,6 @@ share/doc/radsecproxy/INSTALL
 share/doc/radsecproxy/ChangeLog
 share/examples/rc.d/radsecproxy
 share/examples/radsecproxy/radsecproxy.conf
+share/examples/radsecproxy/radsec-dynsrv.sh
 @dirrm share/examples/radsecproxy
 @dirrm share/doc/radsecproxy
