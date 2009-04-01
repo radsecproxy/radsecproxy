@@ -19,17 +19,19 @@ RCD_SCRIPTS=	radsecproxy
 
 INSTALLATION_DIRS=	sbin ${PKGMANDIR}/man1 ${PKGMANDIR}/man5 ${EGDIR}
 
+CONFIGURE_ARGS+= --sysconfdir=${PKG_SYSCONFDIR}
+CONFIGURE_ARGS+= --enable-udp
+CONFIGURE_ARGS+= --enable-tcp
+CONFIGURE_ARGS+= --disable-dtls # DTLS is not supported in OpenSSL on *BSD yet!
+CONFIGURE_ARGS+= --disable-tls  # Enable only if you _really_ need it
+
 do-patch:
-	${SED} 's%\(^all: .*\)%& catgconf%1' ${WRKSRC}/Makefile > ${WRKSRC}/Makefile.tmp
-	mv ${WRKSRC}/Makefile.tmp ${WRKSRC}/Makefile
 	for f in ${WRKSRC}/* ; do \
 		${SED} 's%\(/etc/radsecproxy.conf\)%/usr/pkg&%g' < $${f} > $${f}.tmp ; mv $${f}.tmp $${f} ; \
 	done
 
-CONFIGURE_ARGS+= --enable-udp
-CONFIGURE_ARGS+= --enable-tcp
-CONFIGURE_ARGS+= --enable-tls
-CONFIGURE_ARGS+= --enable-dtls
+do-configure:
+	cd ${WRKSRC} && sh ./configure ${CONFIGURE_ARGS}
 
 do-install:
 	${INSTALL_MAN} ${WRKSRC}/radsecproxy.1 ${PREFIX}/${PKGMANDIR}/man1
