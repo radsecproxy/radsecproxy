@@ -1676,14 +1676,8 @@ void replyh(struct server *server, unsigned char *buf) {
     if (ttlres == -1 && (options.addttl || from->conf->addttl))
 	addttlattr(msg, options.ttlattrtype, from->conf->addttl ? from->conf->addttl : options.addttl);
 
-    if (msg->code == RAD_Access_Accept)
-	    debug(DBG_WARN, "replyh: passing Access_Accept to client %s (%s)", from->conf->name, addr2string(from->addr));
-    else if (msg->code == RAD_Access_Reject)
-	    debug(DBG_WARN, "replyh: passing Access_Reject to client %s (%s)", from->conf->name, addr2string(from->addr));
-    else if (msg->code == RAD_Accounting_Response)
-	    debug(DBG_WARN, "replyh: passing Accounting_Response to client %s (%s)", from->conf->name, addr2string(from->addr));
-    else
-	    debug(DBG_INFO, "replyh: passing reply to client %s (%s)", from->conf->name, addr2string(from->addr));
+    debug(msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response ? DBG_WARN : DBG_INFO,
+	"replyh: passing %s to client %s (%s)", radmsgtype2string(msg->code), from->conf->name, addr2string(from->addr));
 
     radmsg_free(rqout->rq->msg);
     rqout->rq->msg = msg;
