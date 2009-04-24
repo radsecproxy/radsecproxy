@@ -1633,21 +1633,21 @@ void replyh(struct server *server, unsigned char *buf) {
 	    replymsg = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Reply_Message));
 	    if (stationid) {
 		if (replymsg) {
-		    debug(DBG_WARN, "%s for user %s stationid %s from %s (%s)",
-			  radmsgtype2string(msg->code), username, stationid, server->conf->name, replymsg);
+		    debug(DBG_WARN, "%s for user %s stationid %s from %s (%s) to %s (%s)",
+			  radmsgtype2string(msg->code), username, stationid, server->conf->name, replymsg, from->conf->name, addr2string(from->addr));
 		    free(replymsg);
 		} else
-		    debug(DBG_WARN, "%s for user %s stationid %s from %s",
-			  radmsgtype2string(msg->code), username, stationid, server->conf->name);
+		    debug(DBG_WARN, "%s for user %s stationid %s from %s to %s (%s)",
+			  radmsgtype2string(msg->code), username, stationid, server->conf->name, from->conf->name, addr2string(from->addr));
 		free(stationid);
 	    } else {
 		if (replymsg) {
-		    debug(DBG_WARN, "%s for user %s from %s (%s)",
-			  radmsgtype2string(msg->code), username, server->conf->name, replymsg);
+		    debug(DBG_WARN, "%s for user %s from %s (%s) to %s (%s)",
+			  radmsgtype2string(msg->code), username, server->conf->name, replymsg, from->conf->name, addr2string(from->addr));
 		    free(replymsg);
 		} else
-		    debug(DBG_WARN, "%s for user %s from %s",
-			  radmsgtype2string(msg->code), username, server->conf->name);
+		    debug(DBG_WARN, "%s for user %s from %s to %s (%s)",
+			  radmsgtype2string(msg->code), username, server->conf->name, from->conf->name, addr2string(from->addr));
 	    }
 	    free(username);
 	}
