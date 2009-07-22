@@ -6,6 +6,11 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+/* Code contributions from:
+ *
+ * Simon Leinen <simon.leinen@switch.ch>
+ */
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>

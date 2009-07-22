@@ -9,6 +9,8 @@
 /* Code contributions from:
  *
  * Arne Schwabe <schwabe at uni-paderborn.de>
+ * Maja Wolniewicz <mgw@umk.pl>
+ * Simon Leinen <simon.leinen@switch.ch>
  */
 
 /* For UDP there is one server instance consisting of udpserverrd and udpserverth
