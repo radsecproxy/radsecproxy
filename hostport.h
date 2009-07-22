@@ -20,5 +20,5 @@ void freehostports(struct list *hostports);
 int resolvehostport(struct hostportres *hp, int socktype, uint8_t passive);
 int resolvehostports(struct list *hostports, int socktype);
 struct addrinfo *resolvepassiveaddrinfo(char *hostport, char *default_port, int socktype);
-int addressmatches(struct list *hostports, struct sockaddr *addr);
+int addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t checkport);
 int connecttcphostlist(struct list *hostports,  struct addrinfo *src);

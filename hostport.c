@@ -243,7 +243,7 @@ static int prefixmatch(void *a1, void *a2, uint8_t len) {
     return (((uint8_t *)a1)[l] & mask[r]) == (((uint8_t *)a2)[l] & mask[r]);
 }
 
-int addressmatches(struct list *hostports, struct sockaddr *addr) {
+int addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t checkport) {
     struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
     struct addrinfo *res;
@@ -264,9 +264,14 @@ int addressmatches(struct list *hostports, struct sockaddr *addr) {
 	for (res = hp->addrinfo; res; res = res->ai_next)
 	    if (hp->prefixlen == 255) {
 		if ((a4 && res->ai_family == AF_INET &&
-		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4)) ||
+		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4) &&
+		     (!checkport || ((struct sockaddr_in *)res->ai_addr)->sin_port ==
+		      ((struct sockaddr_in *)addr)->sin_port)) ||
 		    (sa6 && res->ai_family == AF_INET6 &&
-		     !memcmp(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16)))
+		     !memcmp(&sa6->sin6_addr,
+			     &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16) &&
+		     (!checkport || ((struct sockaddr_in6 *)res->ai_addr)->sin6_port ==
+		      ((struct sockaddr_in6 *)addr)->sin6_port)))
 		    return 1;
 	    } else {
 		if ((a4 && res->ai_family == AF_INET &&
