@@ -35,6 +35,9 @@ doing this, and the funding from GEANT2. Stefan as well as Kolbjørn
 Barmen, Ralf Paffrath and Maja Wolniewicz have helped with early
 testing of the code.
 
+Thanks for contributing code goes to Arne Schwabe, Maja Wolniewicz,
+and Simon Leinen.
+
 All of the above plus Milan Sova have provided good feedback on
 several implementation choices. Finally thanks to Hans Zandbelt
 for providing the autoconf stuff. I may have forgotten someone,
@@ -43,4 +46,4 @@ let me know if you feel left out.
 For more information, feedback etc. please see the information
 at http://software.uninett.no/radsecproxy/
 
-Stig Venaas <venaas@uninett.no> -- 2009.02.18
+Stig Venaas <venaas@uninett.no> -- 2009.07.22
