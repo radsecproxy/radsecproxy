@@ -1,6 +1,6 @@
 # $NetBSD: Makefile,v 1.2 2009/04/01 15:20:00 kolla Exp $
 
-DISTNAME=	radsecproxy-1.3
+DISTNAME=	radsecproxy-1.3.1
 CATEGORIES=	net
 MASTER_SITES=	http://software.uninett.no/radsecproxy/
 
