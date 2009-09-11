@@ -6,6 +6,11 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+/* Code contributions from:
+ *
+ * Stefan Winter <stefan.winter@restena.lu>
+ */
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
