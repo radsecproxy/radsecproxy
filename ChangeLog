@@ -62,3 +62,5 @@
 	Fixed header files for FreeBSD
 	Fix for multiple UDP servers on same IP address, solves accounting
 	problems.
+2009-09-11 1.3.2
+	Fixed UDP fragmentation issue
