@@ -137,6 +137,28 @@ int connectport(int type, char *host, char *port) {
 }
 #endif
 
+/* Disable the "Don't Fragment" bit for UDP sockets. It is set by default, which may cause an "oversized"
+   RADIUS packet to be discarded on first attempt (due to Path MTU discovery).
+*/
+
+void disable_DF_bit(int socket, struct addrinfo *res) {
+        if ((res->ai_family == AF_INET) && (res->ai_socktype == SOCK_DGRAM)) {
+#if defined(IP_MTU_DISCOVER) && defined(IP_PMTUDISC_DONT)
+        /*
+         * Turn off Path MTU discovery on IPv4/UDP sockets, Linux variant.
+         */
+	int r, action;
+        debug(DBG_INFO, "disable_DF_bit: disabling DF bit (Linux variant)");
+        action = IP_PMTUDISC_DONT;
+        r = setsockopt(socket, IPPROTO_IP, IP_MTU_DISCOVER, &action, sizeof(action));
+        if (r == -1) 
+                  debug(DBG_WARN, "Failed to set IP_MTU_DISCOVER");
+#else
+	debug(DBG_INFO, "Non-Linux platform, unable to unset DF bit for UDP. You should check with tcpdump whether radsecproxy will send its UDP packets with DF bit set!");
+#endif
+	}
+}
+
 int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
     int s, on = 1;
     struct addrinfo *res;
@@ -149,6 +171,9 @@ int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
 	    debug(DBG_WARN, "bindtoaddr: socket failed");
 	    continue;
 	}
+
+	disable_DF_bit(s,res);
+
 	if (reuse)
 	    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	#ifdef IPV6_V6ONLY
