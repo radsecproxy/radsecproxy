@@ -979,15 +979,16 @@ void dorewriterm(struct radmsg *msg, uint8_t *rmattrs, uint32_t *rmvattrs) {
     p = NULL;
     n = list_first(msg->attrs);
     while (n) {
-	attr = (struct tlv *)n->data;
-	if ((rmattrs && strchr((char *)rmattrs, attr->t)) ||
-	    (rmvattrs && attr->t == RAD_Attr_Vendor_Specific && dovendorrewriterm(attr, rmvattrs))) {
-	    list_removedata(msg->attrs, attr);
-	    freetlv(attr);
-	    n = p ? list_next(p) : list_first(msg->attrs);
-	} else
-	    p = n;
-            n = list_next(n);
+		attr = (struct tlv *)n->data;
+		if ((rmattrs && strchr((char *)rmattrs, attr->t)) ||
+		    (rmvattrs && attr->t == RAD_Attr_Vendor_Specific && dovendorrewriterm(attr, rmvattrs))) {
+		    list_removedata(msg->attrs, attr);
+		    freetlv(attr);
+		    n = p ? list_next(p) : list_first(msg->attrs);
+		} else {
+		    p = n;
+		    n = list_next(n);
+		}
     }
 }
 
