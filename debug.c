@@ -68,7 +68,7 @@ int debug_set_destination(char *dest) {
 				   LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7 };
     extern int errno;
     int i;
-    
+
     if (!strncasecmp(dest, "file:///", 8)) {
 	debug_filepath = stringcopy(dest + 7, 0);
 	debug_file = fopen(debug_filepath, "a");
@@ -127,7 +127,7 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
     struct timeval now;
     char *timebuf;
     int priority;
-    
+
     if (debug_syslogfacility) {
 	switch (level) {
 	case DBG_DBG:

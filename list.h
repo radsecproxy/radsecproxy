@@ -36,7 +36,7 @@ void *list_shift(struct list *list);
 
 /* removes first entry with matching data pointer */
 void list_removedata(struct list *list, void *data);
-    
+
 /* returns first node */
 struct list_node *list_first(struct list *list);
 

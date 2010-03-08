@@ -69,7 +69,7 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
 	debug(DBG_WARN, "verify error: num=%d:%s:depth=%d:%s", err, X509_verify_cert_error_string(err), depth, buf ? buf : "");
 	free(buf);
 	buf = NULL;
-	
+
 	switch (err) {
 	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
 	    if (err_cert) {
@@ -96,9 +96,9 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
 	    break;
 	}
     }
-#ifdef DEBUG  
+#ifdef DEBUG
     printf("certificate verify returns %d\n", ok);
-#endif  
+#endif
     return ok;
 }
 
@@ -135,11 +135,11 @@ static X509_VERIFY_PARAM *createverifyparams(char **poids) {
     X509_VERIFY_PARAM *pm;
     ASN1_OBJECT *pobject;
     int i;
-    
+
     pm = X509_VERIFY_PARAM_new();
     if (!pm)
 	return NULL;
-    
+
     for (i = 0; poids[i]; i++) {
 	pobject = OBJ_txt2obj(poids[i], 0);
 	if (!pobject) {
@@ -205,29 +205,29 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     unsigned long error;
 
     switch (type) {
-#ifdef RADPROT_TLS	
+#ifdef RADPROT_TLS
     case RAD_TLS:
 	ctx = SSL_CTX_new(TLSv1_method());
-#ifdef DEBUG	
+#ifdef DEBUG
 	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
-#endif	
+#endif
 	break;
-#endif	
-#ifdef RADPROT_DTLS	
+#endif
+#ifdef RADPROT_DTLS
     case RAD_DTLS:
 	ctx = SSL_CTX_new(DTLSv1_method());
-#ifdef DEBUG	
+#ifdef DEBUG
 	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
-#endif	
+#endif
 	SSL_CTX_set_read_ahead(ctx, 1);
 	break;
-#endif	
+#endif
     }
     if (!ctx) {
 	debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
 	return NULL;
     }
-    
+
     if (conf->certkeypwd) {
 	SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
 	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
@@ -277,11 +277,11 @@ struct tls *tlsgettls(char *alt1, char *alt2) {
 
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
     struct timeval now;
-    
+
     if (!t)
 	return NULL;
     gettimeofday(&now, NULL);
-    
+
     switch (type) {
 #ifdef RADPROT_TLS
     case RAD_TLS:
@@ -320,7 +320,7 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
 X509 *verifytlscert(SSL *ssl) {
     X509 *cert;
     unsigned long error;
-    
+
     if (SSL_get_verify_result(ssl) != X509_V_OK) {
 	debug(DBG_ERR, "verifytlscert: basic validation failed");
 	while ((error = ERR_get_error()))
@@ -340,18 +340,18 @@ static int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
     X509_EXTENSION *ex;
     STACK_OF(GENERAL_NAME) *alt;
     GENERAL_NAME *gn;
-    
+
     debug(DBG_DBG, "subjectaltnameaddr");
-    
+
     loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
     if (loc < 0)
 	return r;
-    
+
     ex = X509_get_ext(cert, loc);
     alt = X509V3_EXT_d2i(ex);
     if (!alt)
 	return r;
-    
+
     n = sk_GENERAL_NAME_num(alt);
     for (i = 0; i < n; i++) {
 	gn = sk_GENERAL_NAME_value(alt, i);
@@ -376,18 +376,18 @@ static int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *reg
     X509_EXTENSION *ex;
     STACK_OF(GENERAL_NAME) *alt;
     GENERAL_NAME *gn;
-    
+
     debug(DBG_DBG, "subjectaltnameregexp");
-    
+
     loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
     if (loc < 0)
 	return r;
-    
+
     ex = X509_get_ext(cert, loc);
     alt = X509V3_EXT_d2i(ex);
     if (!alt)
 	return r;
-    
+
     n = sk_GENERAL_NAME_num(alt);
     for (i = 0; i < n; i++) {
 	gn = sk_GENERAL_NAME_value(alt, i);
@@ -400,7 +400,7 @@ static int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *reg
 	    continue;
 #ifdef DEBUG
 	printfchars(NULL, gn->type == GEN_DNS ? "dns" : "uri", NULL, v, l);
-#endif	
+#endif
 	if (exact) {
 	    if (memcmp(v, exact, l))
 		continue;
@@ -496,7 +496,7 @@ int certnamecheck(X509 *cert, struct list *hostports) {
 		return 1;
 	    }
 	    debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
-	}		
+	}
     }
     return 0;
 }
@@ -529,16 +529,16 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct tls *conf;
     long int expiry = LONG_MIN;
-    
+
     debug(DBG_DBG, "conftls_cb called for %s", block);
-    
+
     conf = malloc(sizeof(struct tls));
     if (!conf) {
 	debug(DBG_ERR, "conftls_cb: malloc failed");
 	return 0;
     }
     memset(conf, 0, sizeof(struct tls));
-    
+
     if (!getgenericconfig(cf, block,
 			  "CACertificateFile", CONF_STR, &conf->cacertfile,
 			  "CACertificatePath", CONF_STR, &conf->cacertpath,
@@ -549,7 +549,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 			  "CRLCheck", CONF_BLN, &conf->crlcheck,
 			  "PolicyOID", CONF_MSTR, &conf->policyoids,
 			  NULL
-			  )) {
+	    )) {
 	debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
 	goto errexit;
     }
@@ -567,7 +567,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 	    goto errexit;
 	}
 	conf->cacheexpiry = expiry;
-    }    
+    }
 
     conf->name = stringcopy(val, 0);
     if (!conf->name) {
@@ -586,7 +586,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     debug(DBG_DBG, "conftls_cb: added TLS block %s", val);
     return 1;
 
- errexit:
+errexit:
     free(conf->cacertfile);
     free(conf->cacertpath);
     free(conf->certfile);
@@ -600,7 +600,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 int addmatchcertattr(struct clsrvconf *conf) {
     char *v;
     regex_t **r;
-    
+
     if (!strncasecmp(conf->matchcertattr, "CN:/", 4)) {
 	r = &conf->certcnregex;
 	v = conf->matchcertattr + 4;

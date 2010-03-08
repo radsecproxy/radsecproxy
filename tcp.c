@@ -85,7 +85,7 @@ void tcpsetsrcres() {
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval now;
     time_t elapsed;
-    
+
     debug(DBG_DBG, "tcpconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
     if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
@@ -136,7 +136,7 @@ int tcpreadtimeout(int s, unsigned char *buf, int num, int timeout) {
     int ndesc, cnt, len;
     fd_set readfds, writefds;
     struct timeval timer;
-    
+
     if (s < 0)
 	return -1;
     /* make socket non-blocking? */
@@ -178,21 +178,21 @@ unsigned char *radtcpget(int s, int timeout) {
 	    continue;
 	}
 	memcpy(rad, buf, 4);
-	
+
 	cnt = tcpreadtimeout(s, rad + 4, len - 4, timeout);
 	if (cnt < 1) {
 	    debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
 	    free(rad);
 	    return NULL;
 	}
-	
+
 	if (len >= 20)
 	    break;
-	
+
 	free(rad);
 	debug(DBG_WARN, "radtcpget: packet smaller than minimum radius size");
     }
-    
+
     debug(DBG_DBG, "radtcpget: got %d bytes", len);
     return rad;
 }
@@ -217,7 +217,7 @@ void *tcpclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
     struct timeval lastconnecttry;
-    
+
     for (;;) {
 	/* yes, lastconnecttry is really necessary */
 	lastconnecttry = server->lastconnecttry;
@@ -238,13 +238,13 @@ void *tcpserverwr(void *arg) {
     struct client *client = (struct client *)arg;
     struct gqueue *replyq;
     struct request *reply;
-    
+
     debug(DBG_DBG, "tcpserverwr: starting for %s", addr2string(client->addr));
     replyq = client->replyq;
     for (;;) {
 	pthread_mutex_lock(&replyq->mutex);
 	while (!list_first(replyq->entries)) {
-	    if (client->sock >= 0) {	    
+	    if (client->sock >= 0) {
 		debug(DBG_DBG, "tcpserverwr: waiting for signal");
 		pthread_cond_wait(&replyq->cond, &replyq->mutex);
 		debug(DBG_DBG, "tcpserverwr: got signal");
@@ -272,9 +272,9 @@ void tcpserverrd(struct client *client) {
     struct request *rq;
     uint8_t *buf;
     pthread_t tcpserverwrth;
-    
+
     debug(DBG_DBG, "tcpserverrd: starting for %s", addr2string(client->addr));
-    
+
     if (pthread_create(&tcpserverwrth, NULL, tcpserverwr, (void *)client)) {
 	debug(DBG_ERR, "tcpserverrd: pthread_create failed");
 	return;
@@ -336,7 +336,7 @@ void *tcpservernew(void *arg) {
     } else
 	debug(DBG_WARN, "tcpservernew: ignoring request, no matching TCP client");
 
- exit:
+exit:
     shutdown(s, SHUT_RDWR);
     close(s);
     pthread_exit(NULL);

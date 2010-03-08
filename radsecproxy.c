@@ -35,7 +35,7 @@
  *       This is only for connected peers
  * Example: With 3 UDP peers and 30 TLS peers, there will be a max of
  *          1 + (2 + 2 * 3) + (2 * 30) + (2 * 30) = 129 threads
-*/
+ */
 
 /* Bugs:
  * May segfault when dtls connections go down? More testing needed
@@ -108,10 +108,10 @@ uint8_t protoname2int(const char *name) {
 	    return i;
     return 255;
 }
-    
+
 /* callbacks for making OpenSSL thread safe */
 unsigned long ssl_thread_id() {
-        return (unsigned long)pthread_self();
+    return (unsigned long)pthread_self();
 }
 
 void ssl_locking_callback(int mode, int type, const char *file, int line) {
@@ -138,7 +138,7 @@ int prefixmatch(void *a1, void *a2, uint8_t len) {
 struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *confs, struct list_node **cur, uint8_t server_p) {
     struct list_node *entry;
     struct clsrvconf *conf;
-    
+
     for (entry = (cur && *cur ? list_next(*cur) : list_first(confs)); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
 	if (conf->type == type && addressmatches(conf->hostports, addr, server_p)) {
@@ -146,7 +146,7 @@ struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *co
 		*cur = entry;
 	    return conf;
 	}
-    }    
+    }
     return NULL;
 }
 
@@ -162,7 +162,7 @@ struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur) {
     struct list_node *entry;
     struct clsrvconf *conf;
-    
+
     for (entry = (cur && *cur ? list_next(*cur) : list_first(clconfs)); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
 	if (conf->type == type) {
@@ -170,13 +170,13 @@ struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur) {
 		*cur = entry;
 	    return conf;
 	}
-    }    
+    }
     return NULL;
 }
 
 struct gqueue *newqueue() {
     struct gqueue *q;
-    
+
     q = malloc(sizeof(struct gqueue));
     if (!q)
 	debugx(1, DBG_ERR, "malloc failed");
@@ -205,7 +205,7 @@ void removequeue(struct gqueue *q) {
 
 void freebios(struct gqueue *q) {
     BIO *bio;
-    
+
     pthread_mutex_lock(&q->mutex);
     while ((bio = (BIO *)list_shift(q->entries)))
 	BIO_free(bio);
@@ -215,7 +215,7 @@ void freebios(struct gqueue *q) {
 
 struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
     struct client *new = malloc(sizeof(struct client));
-    
+
     if (!new) {
 	debug(DBG_ERR, "malloc failed");
 	return NULL;
@@ -232,7 +232,7 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
 	    return NULL;
 	}
     }
-    
+
     memset(new, 0, sizeof(struct client));
     new->conf = conf;
     if (conf->pdef->addclient)
@@ -253,7 +253,7 @@ void removeclientrqs_sendrq_freeserver_lock(uint8_t wantlock) {
     else
 	pthread_mutex_unlock(&lock);
 }
-    
+
 void removeclientrqs(struct client *client) {
     struct request *rq;
     struct rqout *rqout;
@@ -278,7 +278,7 @@ void removeclientrqs(struct client *client) {
 
 void removelockedclient(struct client *client) {
     struct clsrvconf *conf;
-    
+
     conf = client->conf;
     if (conf->clients) {
 	removeclientrqs(client);
@@ -291,7 +291,7 @@ void removelockedclient(struct client *client) {
 
 void removeclient(struct client *client) {
     struct clsrvconf *conf;
-    
+
     if (!client)
 	return;
 
@@ -335,7 +335,7 @@ void freeserver(struct server *server, uint8_t destroymutex) {
 
 int addserver(struct clsrvconf *conf) {
     int i;
-    
+
     if (conf->servers) {
 	debug(DBG_ERR, "addserver: currently works with just one server per conf");
 	return 0;
@@ -348,7 +348,7 @@ int addserver(struct clsrvconf *conf) {
     memset(conf->servers, 0, sizeof(struct server));
     conf->servers->conf = conf;
 
-#ifdef RADPROT_DTLS    
+#ifdef RADPROT_DTLS
     if (conf->type == RAD_DTLS)
 	conf->servers->rbios = newqueue();
 #endif
@@ -357,7 +357,7 @@ int addserver(struct clsrvconf *conf) {
     conf->servers->sock = -1;
     if (conf->pdef->addserverextra)
 	conf->pdef->addserverextra(conf);
-    
+
     conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct rqout));
     if (!conf->servers->requests) {
 	debug(DBG_ERR, "malloc failed");
@@ -394,8 +394,8 @@ int addserver(struct clsrvconf *conf) {
     }
 
     return 1;
-    
- errexit:
+
+errexit:
     freeserver(conf->servers, 0);
     conf->servers = NULL;
     return 0;
@@ -457,7 +457,7 @@ void sendrq(struct request *rq) {
     to = rq->to;
     if (!to)
 	goto errexit;
-    
+
     start = to->conf->statusserver ? 1 : 0;
     pthread_mutex_lock(&to->newrq_mutex);
     if (start && rq->msg->code == RAD_Status_Server) {
@@ -503,7 +503,7 @@ void sendrq(struct request *rq) {
 	debug(DBG_ERR, "sendrq: radmsg2buf failed");
 	goto errexit;
     }
-    
+
     debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->conf->name);
     to->requests[i].rq = rq;
     pthread_mutex_unlock(to->requests[i].lock);
@@ -520,7 +520,7 @@ void sendrq(struct request *rq) {
     removeclientrqs_sendrq_freeserver_lock(0);
     return;
 
- errexit:
+errexit:
     if (rq->from)
 	rmclientrq(rq, rq->msg->id);
     freerq(rq);
@@ -531,7 +531,7 @@ void sendrq(struct request *rq) {
 void sendreply(struct request *rq) {
     uint8_t first;
     struct client *to = rq->from;
-    
+
     if (!rq->replybuf)
 	rq->replybuf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
     radmsg_free(rq->msg);
@@ -544,14 +544,14 @@ void sendreply(struct request *rq) {
 
     pthread_mutex_lock(&to->replyq->mutex);
     first = list_first(to->replyq->entries) == NULL;
-    
+
     if (!list_push(to->replyq->entries, rq)) {
 	pthread_mutex_unlock(&to->replyq->mutex);
 	freerq(rq);
 	debug(DBG_ERR, "sendreply: malloc failed");
 	return;
     }
-    
+
     if (first) {
 	debug(DBG_DBG, "signalling server writer");
 	pthread_cond_signal(&to->replyq->cond);
@@ -566,7 +566,7 @@ int pwdencrypt(uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_
     unsigned char hash[EVP_MAX_MD_SIZE], *input;
     unsigned int md_len;
     uint8_t i, offset = 0, out[128];
-    
+
     pthread_mutex_lock(&lock);
     if (first) {
 	EVP_MD_CTX_init(&mdctx);
@@ -602,7 +602,7 @@ int pwddecrypt(uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_
     unsigned char hash[EVP_MAX_MD_SIZE], *input;
     unsigned int md_len;
     uint8_t i, offset = 0, out[128];
-    
+
     pthread_mutex_lock(&lock);
     if (first) {
 	EVP_MD_CTX_init(&mdctx);
@@ -638,7 +638,7 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     unsigned char hash[EVP_MAX_MD_SIZE];
     unsigned int md_len;
     uint8_t i, offset;
-    
+
     pthread_mutex_lock(&lock);
     if (first) {
 	EVP_MD_CTX_init(&mdctx);
@@ -650,7 +650,7 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     printfchars(NULL, "msppencrypt salt in", "%02x ", salt, 2);
     printfchars(NULL, "msppencrypt in", "%02x ", text, len);
 #endif
-    
+
     if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
 	!EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
 	!EVP_DigestUpdate(&mdctx, auth, 16) ||
@@ -660,15 +660,15 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	return 0;
     }
 
-#if 0    
+#if 0
     printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
 #endif
-    
+
     for (i = 0; i < 16; i++)
 	text[i] ^= hash[i];
-    
+
     for (offset = 16; offset < len; offset += 16) {
-#if 0	
+#if 0
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
@@ -682,12 +682,12 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	}
 #if 0
 	printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
-#endif    
-	
+#endif
+
 	for (i = 0; i < 16; i++)
 	    text[offset + i] ^= hash[i];
     }
-    
+
 #if 0
     printfchars(NULL, "msppencrypt out", "%02x ", text, len);
 #endif
@@ -704,7 +704,7 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     unsigned int md_len;
     uint8_t i, offset;
     char plain[255];
-    
+
     pthread_mutex_lock(&lock);
     if (first) {
 	EVP_MD_CTX_init(&mdctx);
@@ -716,7 +716,7 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     printfchars(NULL, "msppdecrypt salt in", "%02x ", salt, 2);
     printfchars(NULL, "msppdecrypt in", "%02x ", text, len);
 #endif
-    
+
     if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
 	!EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
 	!EVP_DigestUpdate(&mdctx, auth, 16) ||
@@ -726,15 +726,15 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	return 0;
     }
 
-#if 0    
+#if 0
     printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
 #endif
-    
+
     for (i = 0; i < 16; i++)
 	plain[i] = text[i] ^ hash[i];
-    
+
     for (offset = 16; offset < len; offset += 16) {
-#if 0 	
+#if 0
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
@@ -748,7 +748,7 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	}
 #if 0
 	printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
-#endif    
+#endif
 
 	for (i = 0; i < 16; i++)
 	    plain[offset + i] = text[offset + i] ^ hash[i];
@@ -844,7 +844,7 @@ void _internal_removeserversubrealms(struct list *realmlist, struct clsrvconf *s
 void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
     struct list_node *entry;
     struct realm *realm;
-    
+
     for (entry = list_first(realmlist); entry; entry = list_next(entry)) {
 	realm = (struct realm *)entry->data;
 	pthread_mutex_lock(&realm->mutex);
@@ -858,7 +858,7 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
 	pthread_mutex_unlock(&realm->mutex);
     }
 }
-			
+
 int attrvalidate(unsigned char *attrs, int length) {
     while (length > 1) {
 	if (ATTRLEN(attrs) < 2) {
@@ -882,14 +882,14 @@ int pwdrecrypt(uint8_t *pwd, uint8_t len, char *oldsecret, char *newsecret, uint
 	debug(DBG_WARN, "pwdrecrypt: invalid password length");
 	return 0;
     }
-	
+
     if (!pwddecrypt(pwd, len, oldsecret, strlen(oldsecret), oldauth)) {
 	debug(DBG_WARN, "pwdrecrypt: cannot decrypt password");
 	return 0;
     }
 #ifdef DEBUG
     printfchars(NULL, "pwdrecrypt: password", "%02x ", pwd, len);
-#endif	
+#endif
     if (!pwdencrypt(pwd, len, newsecret, strlen(newsecret), newauth)) {
 	debug(DBG_WARN, "pwdrecrypt: cannot encrypt password");
 	return 0;
@@ -914,7 +914,7 @@ int msmpprecrypt(uint8_t *msmpp, uint8_t len, char *oldsecret, char *newsecret, 
 int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct request *rq,
 	   char *oldsecret, char *newsecret) {
     unsigned char *attr;
-    
+
     for (attr = attrs; (attr = attrget(attr, length - (attr - attrs), type)); attr += ATTRLEN(attr)) {
 	debug(DBG_DBG, "msmppe: Got %s", attrtxt);
 	if (!msmpprecrypt(ATTRVAL(attr), ATTRVALLEN(attr), oldsecret, newsecret, rq->buf + 4, rq->rqauth))
@@ -926,7 +926,7 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
 int findvendorsubattr(uint32_t *attrs, uint32_t vendor, uint32_t subattr) {
     if (!attrs)
 	return 0;
-    
+
     for (; attrs[0]; attrs += 2)
 	if (attrs[0] == vendor && attrs[1] == subattr)
 	    return 1;
@@ -938,7 +938,7 @@ int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs) {
     uint8_t alen, sublen;
     uint32_t vendor;
     uint8_t *subattrs;
-    
+
     if (!removevendorattrs)
 	return 0;
 
@@ -948,13 +948,13 @@ int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs) {
 	removevendorattrs += 2;
     if (!*removevendorattrs)
 	return 0;
-    
+
     if (findvendorsubattr(removevendorattrs, vendor, 256))
 	return 1; /* remove entire vendor attribute */
 
     sublen = attr->l - 4;
     subattrs = attr->v + 4;
-    
+
     if (!attrvalidate(subattrs, sublen)) {
 	debug(DBG_INFO, "dovendorrewrite: vendor attribute validation failed, no rewrite");
 	return 0;
@@ -979,23 +979,23 @@ void dorewriterm(struct radmsg *msg, uint8_t *rmattrs, uint32_t *rmvattrs) {
     p = NULL;
     n = list_first(msg->attrs);
     while (n) {
-		attr = (struct tlv *)n->data;
-		if ((rmattrs && strchr((char *)rmattrs, attr->t)) ||
-		    (rmvattrs && attr->t == RAD_Attr_Vendor_Specific && dovendorrewriterm(attr, rmvattrs))) {
-		    list_removedata(msg->attrs, attr);
-		    freetlv(attr);
-		    n = p ? list_next(p) : list_first(msg->attrs);
-		} else {
-		    p = n;
-		    n = list_next(n);
-		}
+	attr = (struct tlv *)n->data;
+	if ((rmattrs && strchr((char *)rmattrs, attr->t)) ||
+	    (rmvattrs && attr->t == RAD_Attr_Vendor_Specific && dovendorrewriterm(attr, rmvattrs))) {
+	    list_removedata(msg->attrs, attr);
+	    freetlv(attr);
+	    n = p ? list_next(p) : list_first(msg->attrs);
+	} else {
+	    p = n;
+	    n = list_next(n);
+	}
     }
 }
 
 int dorewriteadd(struct radmsg *msg, struct list *addattrs) {
     struct list_node *n;
     struct tlv *a;
-    
+
     for (n = list_first(addattrs); n; n = list_next(n)) {
 	a = copytlv((struct tlv *)n->data);
 	if (!a)
@@ -1010,7 +1010,7 @@ int dorewriteadd(struct radmsg *msg, struct list *addattrs) {
 
 int resizeattr(struct tlv *attr, uint8_t newlen) {
     uint8_t *newv;
-    
+
     if (newlen != attr->l) {
 	newv = realloc(attr->v, newlen);
 	if (!newv)
@@ -1030,14 +1030,14 @@ int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
     in = stringcopy((char *)attr->v, attr->l);
     if (!in)
 	return 0;
-    
+
     if (regexec(modattr->regex, in, nmatch, pmatch, 0)) {
 	free(in);
 	return 1;
     }
-    
+
     out = modattr->replacement;
-    
+
     for (i = start; out[i]; i++) {
 	if (out[i] == '\\' && out[i + 1] >= '1' && out[i + 1] <= '9') {
 	    pfield = &pmatch[out[i + 1] - '0'];
@@ -1141,7 +1141,7 @@ void addttlattr(struct radmsg *msg, uint32_t *attrtype, uint8_t addttl) {
 
     memset(ttl, 0, 4);
     ttl[3] = addttl;
-    
+
     if (attrtype[1] == 256) { /* not vendor */
 	attr = maketlv(attrtype[0], 4, ttl);
 	if (attr && !radmsg_add(msg, attr))
@@ -1182,7 +1182,7 @@ int checkttl(struct radmsg *msg, uint32_t *attrtype) {
     struct list_node *node;
     uint32_t vendor;
     int sublen;
-    
+
     if (attrtype[1] == 256) { /* not vendor */
 	attr = radmsg_gettype(msg, attrtype[0]);
 	if (attr)
@@ -1196,7 +1196,7 @@ int checkttl(struct radmsg *msg, uint32_t *attrtype) {
 	    if (ntohl(vendor) != attrtype[0])
 		continue;
 	    sublen = attr->l - 4;
-	    subattrs = attr->v + 4;  
+	    subattrs = attr->v + 4;
 	    if (!attrvalidate(subattrs, sublen))
 		continue;
 	    while (sublen > 1) {
@@ -1209,7 +1209,7 @@ int checkttl(struct radmsg *msg, uint32_t *attrtype) {
 	}
     return -1;
 }
-	  
+
 const char *radmsgtype2string(uint8_t code) {
     static const char *rad_msg_names[] = {
 	"", "Access-Request", "Access-Accept", "Access-Reject",
@@ -1241,7 +1241,7 @@ uint8_t *radattr2ascii(struct tlv *attr) {
 	    l += 2;
     if (l == attr->l)
 	return (uint8_t *)stringcopy((char *)attr->v, attr->l);
-    
+
     a = malloc(l + 1);
     if (!a)
 	return NULL;
@@ -1270,7 +1270,7 @@ void acclog(struct radmsg *msg, struct client *from) {
     username = radattr2ascii(attr);
     if (username) {
 	debug(DBG_INFO, "acclog: accounting-request from client %s (%s) with username: %s", from->conf->name, addr2string(from->addr), username);
-	      
+
 	free(username);
     }
 }
@@ -1330,7 +1330,7 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
     struct realm *subrealm;
     struct server *server = NULL;
     char *id = (char *)tlv2str(username);
-    
+
     if (!id)
 	return NULL;
     /* returns with lock on realm */
@@ -1352,7 +1352,7 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
     if (srvconf)
 	server = srvconf->servers;
 
- exit:    
+exit:
     free(id);
     return server;
 }
@@ -1375,7 +1375,7 @@ struct request *newrequest() {
 int addclientrq(struct request *rq) {
     struct request *r;
     struct timeval now;
-    
+
     r = rq->from->rqs[rq->rqid];
     if (r) {
 	if (rq->udpport == r->udpport && !memcmp(rq->rqauth, r->rqauth, 16)) {
@@ -1414,7 +1414,7 @@ int radsrv(struct request *rq) {
     struct server *to = NULL;
     struct client *from = rq->from;
     int ttlres;
-    
+
     msg = buf2radmsg(rq->buf, (uint8_t *)from->conf->secret, NULL);
     free(rq->buf);
     rq->buf = NULL;
@@ -1424,17 +1424,17 @@ int radsrv(struct request *rq) {
 	freerq(rq);
 	return 0;
     }
-    
+
     rq->msg = msg;
     rq->rqid = msg->id;
     memcpy(rq->rqauth, msg->auth, 16);
 
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
-	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");	
+	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
 	goto exit;
     }
-    
+
     if (!addclientrq(rq))
 	goto exit;
 
@@ -1453,7 +1453,7 @@ int radsrv(struct request *rq) {
 	debug(DBG_INFO, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr));
 	goto exit;
     }
-	
+
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
 	if (msg->code == RAD_Accounting_Request) {
@@ -1463,12 +1463,12 @@ int radsrv(struct request *rq) {
 	    debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
 	goto exit;
     }
-    
+
     if (from->conf->rewriteusername && !rewriteusername(rq, attr)) {
 	debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
 	goto rmclrqexit;
     }
-    
+
     userascii = radattr2ascii(attr);
     if (!userascii)
 	goto rmclrqexit;
@@ -1491,7 +1491,7 @@ int radsrv(struct request *rq) {
 	}
 	goto exit;
     }
-    
+
     if (options.loopprevention && !strcmp(from->conf->name, to->conf->name)) {
 	debug(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s, discarding",
 	      from->conf->name, addr2string(from->addr), to->conf->name);
@@ -1504,7 +1504,7 @@ int radsrv(struct request *rq) {
 	debug(DBG_WARN, "radsrv: failed to generate random auth");
 	goto rmclrqexit;
     }
-    
+
 #ifdef DEBUG
     printfchars(NULL, "auth", "%02x ", auth, 16);
 #endif
@@ -1525,20 +1525,20 @@ int radsrv(struct request *rq) {
 
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
 	goto rmclrqexit;
-    
+
     if (ttlres == -1 && (options.addttl || to->conf->addttl))
 	addttlattr(msg, options.ttlattrtype, to->conf->addttl ? to->conf->addttl : options.addttl);
-    
+
     free(userascii);
     rq->to = to;
     sendrq(rq);
     pthread_mutex_unlock(&realm->mutex);
     freerealm(realm);
     return 1;
-    
- rmclrqexit:
+
+rmclrqexit:
     rmclientrq(rq, msg->id);
- exit:
+exit:
     freerq(rq);
     free(userascii);
     if (realm) {
@@ -1557,7 +1557,7 @@ void replyh(struct server *server, unsigned char *buf) {
     struct radmsg *msg = NULL;
     struct tlv *attr;
     struct list_node *node;
-    
+
     server->connectionok = 1;
     server->lostrqs = 0;
 
@@ -1569,7 +1569,7 @@ void replyh(struct server *server, unsigned char *buf) {
 	debug(DBG_INFO, "replyh: no outstanding request with this id, ignoring reply");
 	goto errunlock;
     }
-	
+
     msg = buf2radmsg(buf, (uint8_t *)server->conf->secret, rqout->rq->msg->auth);
     free(buf);
     buf = NULL;
@@ -1585,7 +1585,7 @@ void replyh(struct server *server, unsigned char *buf) {
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
 
     gettimeofday(&server->lastrcv, NULL);
-    
+
     if (rqout->rq->msg->code == RAD_Status_Server) {
 	freerqoutdata(rqout);
 	debug(DBG_DBG, "replyh: got status server response from %s", server->conf->name);
@@ -1594,18 +1594,18 @@ void replyh(struct server *server, unsigned char *buf) {
 
     gettimeofday(&server->lastreply, NULL);
     from = rqout->rq->from;
-	
+
     if (server->conf->rewritein && !dorewrite(msg, from->conf->rewritein)) {
 	debug(DBG_INFO, "replyh: rewritein failed");
 	goto errunlock;
     }
-    
+
     ttlres = checkttl(msg, options.ttlattrtype);
-    if (!ttlres) {    
+    if (!ttlres) {
 	debug(DBG_INFO, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->name);
 	goto errunlock;
     }
-    
+
     /* MS MPPE */
     for (node = list_first(msg->attrs); node; node = list_next(node)) {
 	attr = (struct tlv *)node->data;
@@ -1615,9 +1615,9 @@ void replyh(struct server *server, unsigned char *buf) {
 	    break;
 	if (attr->v[0] != 0 || attr->v[1] != 0 || attr->v[2] != 1 || attr->v[3] != 55)  /* 311 == MS */
 	    continue;
-	    
+
 	sublen = attr->l - 4;
-	subattrs = attr->v + 4;  
+	subattrs = attr->v + 4;
 	if (!attrvalidate(subattrs, sublen) ||
 	    !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, "MS MPPE Send Key",
 		    rqout->rq, server->conf->secret, from->conf->secret) ||
@@ -1660,7 +1660,7 @@ void replyh(struct server *server, unsigned char *buf) {
     msg->id = (char)rqout->rq->rqid;
     memcpy(msg->auth, rqout->rq->rqauth, 16);
 
-#ifdef DEBUG	
+#ifdef DEBUG
     printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
 
@@ -1676,12 +1676,12 @@ void replyh(struct server *server, unsigned char *buf) {
 	debug(DBG_WARN, "replyh: rewriteout failed");
 	goto errunlock;
     }
-    
+
     if (ttlres == -1 && (options.addttl || from->conf->addttl))
 	addttlattr(msg, options.ttlattrtype, from->conf->addttl ? from->conf->addttl : options.addttl);
 
     debug(msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response ? DBG_WARN : DBG_INFO,
-	"replyh: passing %s to client %s (%s)", radmsgtype2string(msg->code), from->conf->name, addr2string(from->addr));
+	  "replyh: passing %s to client %s (%s)", radmsgtype2string(msg->code), from->conf->name, addr2string(from->addr));
 
     radmsg_free(rqout->rq->msg);
     rqout->rq->msg = msg;
@@ -1690,7 +1690,7 @@ void replyh(struct server *server, unsigned char *buf) {
     pthread_mutex_unlock(rqout->lock);
     return;
 
- errunlock:
+errunlock:
     radmsg_free(msg);
     pthread_mutex_unlock(rqout->lock);
     return;
@@ -1715,7 +1715,7 @@ struct request *createstatsrvrq() {
     }
     return rq;
 
- exit:
+exit:
     freerq(rq);
     return NULL;
 }
@@ -1732,16 +1732,16 @@ void *clientwr(void *arg) {
     struct timespec timeout;
     struct request *statsrvrq;
     struct clsrvconf *conf;
-    
+
     conf = server->conf;
-    
+
     if (server->dynamiclookuparg && !dynamicconfig(server)) {
 	dynconffail = 1;
 	server->dynstartup = 0;
 	sleep(900);
 	goto errexit;
     }
-    
+
     if (!resolvehostports(conf->hostports, conf->pdef->socktype)) {
 	debug(DBG_WARN, "clientwr: resolve failed");
 	server->dynstartup = 0;
@@ -1750,7 +1750,7 @@ void *clientwr(void *arg) {
     }
 
     memset(&timeout, 0, sizeof(struct timespec));
-    
+
     if (conf->statusserver) {
 	gettimeofday(&server->lastrcv, NULL);
 	gettimeofday(&laststatsrv, NULL);
@@ -1772,7 +1772,7 @@ void *clientwr(void *arg) {
     } else
 	server->connectionok = 1;
     server->dynstartup = 0;
-    
+
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
 	if (!server->newrq) {
@@ -1793,7 +1793,7 @@ void *clientwr(void *arg) {
 #if 0
 	    if (timeout.tv_sec > now.tv_sec)
 		debug(DBG_DBG, "clientwr: waiting up to %ld secs for new request", timeout.tv_sec - now.tv_sec);
-#endif	    
+#endif
 	    pthread_cond_timedwait(&server->newrq_cond, &server->newrq_mutex, &timeout);
 	    timeout.tv_sec = 0;
 	}
@@ -1801,10 +1801,10 @@ void *clientwr(void *arg) {
 	    debug(DBG_DBG, "clientwr: got new request");
 	    server->newrq = 0;
 	}
-#if 0	
+#if 0
 	else
 	    debug(DBG_DBG, "clientwr: request timer expired, processing request queue");
-#endif	
+#endif
 	pthread_mutex_unlock(&server->newrq_mutex);
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
@@ -1822,7 +1822,7 @@ void *clientwr(void *arg) {
 		    pthread_mutex_unlock(rqout->lock);
 		}
 	    }
-		
+
 	    if (i == MAX_REQUESTS)
 		break;
 
@@ -1873,7 +1873,7 @@ void *clientwr(void *arg) {
 	    }
 	}
     }
- errexit:
+errexit:
     conf->servers = NULL;
     if (server->dynamiclookuparg) {
 	removeserversubrealms(realms, conf);
@@ -1892,10 +1892,10 @@ void createlistener(uint8_t type, char *arg) {
     struct addrinfo *res;
     int s = -1, on = 1, *sp = NULL;
     struct hostportres *hp = newhostport(arg, protodefs[type]->portdefault, 0);
-    
+
     if (!hp || !resolvehostport(hp, protodefs[type]->socktype, 1))
 	debugx(1, DBG_ERR, "createlistener: failed to resolve %s", arg);
-    
+
     for (res = hp->addrinfo; res; res = res->ai_next) {
         s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
         if (s < 0) {
@@ -1927,7 +1927,7 @@ void createlistener(uint8_t type, char *arg) {
     }
     if (!sp)
 	debugx(1, DBG_ERR, "createlistener: socket/bind failed");
-    
+
     debug(DBG_WARN, "createlistener: listening for %s on %s:%s", protodefs[type]->name, hp->host ? hp->host : "*", hp->port);
     freehostport(hp);
 }
@@ -1948,7 +1948,7 @@ void sslinit() {
     int i;
     time_t t;
     pid_t pid;
-    
+
     ssl_locks = calloc(CRYPTO_num_locks(), sizeof(pthread_mutex_t));
     ssl_lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
     for (i = 0; i < CRYPTO_num_locks(); i++) {
@@ -1974,10 +1974,10 @@ struct list *addsrvconfs(char *value, char **names) {
     int n;
     struct list_node *entry;
     struct clsrvconf *conf = NULL;
-    
+
     if (!names || !*names)
 	return NULL;
-    
+
     conflist = list_create();
     if (!conflist) {
 	debug(DBG_ERR, "malloc failed");
@@ -2030,7 +2030,7 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
-    
+
     if (*value == '/') {
 	/* regexp, remove optional trailing / if present */
 	if (value[strlen(value) - 1] == '/')
@@ -2069,7 +2069,7 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
 	goto exit;
     }
     memset(realm, 0, sizeof(struct realm));
-    
+
     if (pthread_mutex_init(&realm->mutex, NULL)) {
 	debug(DBG_ERR, "mutex init failed");
 	free(realm);
@@ -2088,18 +2088,18 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
     }
     realm->message = message;
     realm->accresp = accresp;
-    
+
     if (regcomp(&realm->regex, regex ? regex : value + 1, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
 	debug(DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
 	goto errexit;
     }
-    
+
     if (servers && *servers) {
 	realm->srvconfs = addsrvconfs(value, servers);
 	if (!realm->srvconfs)
 	    goto errexit;
     }
-    
+
     if (accservers && *accservers) {
 	realm->accsrvconfs = addsrvconfs(value, accservers);
 	if (!realm->accsrvconfs)
@@ -2111,16 +2111,16 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
 	pthread_mutex_destroy(&realm->mutex);
 	goto errexit;
     }
-    
+
     debug(DBG_DBG, "addrealm: added realm %s", value);
     goto exit;
 
- errexit:
+errexit:
     while (list_shift(realm->srvconfs));
     while (list_shift(realm->accsrvconfs));
     freerealm(realm);
     realm = NULL;
- exit:
+exit:
     free(regex);
     if (servers) {
 	if (realm)
@@ -2148,7 +2148,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
 	if (!subrealmservers)
 	    return NULL;
     }
-    
+
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
 	if (!conf->servers && conf->dynamiclookupcommand) {
@@ -2179,11 +2179,11 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
     }
     return subrealmservers;
 }
-    
+
 struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
     struct realm *newrealm = NULL;
     char *realmname, *s;
-    
+
     /* create dynamic for the realm (string after last @, exit if nothing after @ */
     realmname = strrchr(id, '@');
     if (!realmname)
@@ -2194,12 +2194,12 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
     for (s = realmname; *s; s++)
 	if (*s != '.' && *s != '-' && !isalnum((int)*s))
 	    return NULL;
-    
+
     if (!realm->subrealms)
 	realm->subrealms = list_create();
     if (!realm->subrealms)
 	return NULL;
-    
+
     newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, stringcopy(realm->message, 0), realm->accresp);
     if (!newrealm) {
 	list_destroy(realm->subrealms);
@@ -2219,7 +2219,7 @@ int dynamicconfig(struct server *server) {
     pid_t pid;
     struct clsrvconf *conf = server->conf;
     struct gconffile *cf = NULL;
-    
+
     /* for now we only learn hostname/address */
     debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
 
@@ -2250,14 +2250,14 @@ int dynamicconfig(struct server *server) {
     ok = getgenericconfig(&cf, NULL,
 			  "Server", CONF_CBK, confserver_cb, (void *)conf,
 			  NULL
-			  );
+	);
     freegconf(&cf);
-	
+
     if (waitpid(pid, &status, 0) < 0) {
 	debug(DBG_ERR, "dynamicconfig: wait error");
 	goto errexit;
     }
-    
+
     if (status) {
 	debug(DBG_INFO, "dynamicconfig: command exited with status %d", WEXITSTATUS(status));
 	goto errexit;
@@ -2266,7 +2266,7 @@ int dynamicconfig(struct server *server) {
     if (ok)
 	return 1;
 
- errexit:    
+errexit:
     debug(DBG_WARN, "dynamicconfig: failed to obtain dynamic server config");
     return 0;
 }
@@ -2274,7 +2274,7 @@ int dynamicconfig(struct server *server) {
 /* should accept both names and numeric values, only numeric right now */
 uint8_t attrname2val(char *attrname) {
     int val = 0;
-    
+
     val = atoi(attrname);
     return val > 0 && val < 256 ? val : 0;
 }
@@ -2282,7 +2282,7 @@ uint8_t attrname2val(char *attrname) {
 /* should accept both names and numeric values, only numeric right now */
 int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
     char *s;
-    
+
     *vendor = atoi(attrname);
     s = strchr(attrname, ':');
     if (!s) {
@@ -2298,7 +2298,7 @@ struct tlv *extractattr(char *nameval) {
     int len, name = 0;
     char *s;
     struct tlv *a;
-    
+
     s = strchr(nameval, ':');
     name = atoi(nameval);
     if (!s || name < 1 || name > 255)
@@ -2358,7 +2358,7 @@ struct modattr *extractmodattr(char *nameval) {
 	debug(DBG_ERR, "malloc failed");
 	return NULL;
     }
-	
+
     m->regex = malloc(sizeof(regex_t));
     if (!m->regex) {
 	free(m->replacement);
@@ -2366,7 +2366,7 @@ struct modattr *extractmodattr(char *nameval) {
 	debug(DBG_ERR, "malloc failed");
 	return NULL;
     }
-    
+
     if (regcomp(m->regex, s, REG_ICASE | REG_EXTENDED)) {
 	free(m->regex);
 	free(m->replacement);
@@ -2396,33 +2396,33 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
     struct list *adda = NULL, *moda = NULL;
     struct tlv *a;
     struct modattr *m;
-    
+
     if (rmattrs) {
 	for (n = 0; rmattrs[n]; n++);
 	rma = calloc(n + 1, sizeof(uint8_t));
 	if (!rma)
 	    debugx(1, DBG_ERR, "malloc failed");
-    
+
 	for (i = 0; i < n; i++)
 	    if (!(rma[i] = attrname2val(rmattrs[i])))
 		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", rmattrs[i]);
 	freegconfmstr(rmattrs);
 	rma[i] = 0;
     }
-    
+
     if (rmvattrs) {
 	for (n = 0; rmvattrs[n]; n++);
 	rmva = calloc(2 * n + 1, sizeof(uint32_t));
 	if (!rmva)
 	    debugx(1, DBG_ERR, "malloc failed");
-    
+
 	for (p = rmva, i = 0; i < n; i++, p += 2)
 	    if (!vattrname2val(rmvattrs[i], p, p + 1))
 		debugx(1, DBG_ERR, "addrewrite: invalid vendor attribute %s", rmvattrs[i]);
 	freegconfmstr(rmvattrs);
 	*p = 0;
     }
-    
+
     if (addattrs) {
 	adda = list_create();
 	if (!adda)
@@ -2450,7 +2450,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	}
 	freegconfmstr(modattrs);
     }
-	
+
     if (rma || rmva || adda || moda) {
 	rewrite = malloc(sizeof(struct rewrite));
 	if (!rewrite)
@@ -2460,7 +2460,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	rewrite->addattrs = adda;
 	rewrite->modattrs = moda;
     }
-    
+
     if (!hash_insert(rewriteconfs, value, strlen(value), rewrite))
 	debugx(1, DBG_ERR, "malloc failed");
     debug(DBG_DBG, "addrewrite: added rewrite block %s", value);
@@ -2468,7 +2468,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 
 int setttlattr(struct options *opts, char *defaultattr) {
     char *ttlattr = opts->ttlattr ? opts->ttlattr : defaultattr;
-     
+
     if (vattrname2val(ttlattr, opts->ttlattrtype, opts->ttlattrtype + 1) &&
 	(opts->ttlattrtype[1] != 256 || opts->ttlattrtype[0] < 256))
 	return 1;
@@ -2511,7 +2511,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
 
 int mergeconfstring(char **dst, char **src) {
     char *t;
-    
+
     if (*src) {
 	*dst = *src;
 	*src = NULL;
@@ -2531,7 +2531,7 @@ int mergeconfstring(char **dst, char **src) {
 char **mstringcopy(char **in) {
     char **out;
     int n;
-    
+
     if (!in)
 	return NULL;
 
@@ -2552,7 +2552,7 @@ char **mstringcopy(char **in) {
 
 int mergeconfmstring(char ***dst, char ***src) {
     char **t;
-    
+
     if (*src) {
 	*dst = *src;
 	*src = NULL;
@@ -2596,7 +2596,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     struct clsrvconf *conf;
     char *conftype = NULL, *rewriteinalias = NULL;
     long int dupinterval = LONG_MIN, addttl = LONG_MIN;
-    
+
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
     conf = malloc(sizeof(struct clsrvconf));
@@ -2604,16 +2604,16 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	debugx(1, DBG_ERR, "malloc failed");
     memset(conf, 0, sizeof(struct clsrvconf));
     conf->certnamecheck = 1;
-    
+
     if (!getgenericconfig(cf, block,
 			  "type", CONF_STR, &conftype,
 			  "host", CONF_MSTR, &conf->hostsrc,
 			  "secret", CONF_STR, &conf->secret,
-#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)    
+#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 			  "tls", CONF_STR, &conf->tls,
 			  "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
 			  "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
-#endif			  
+#endif
 			  "DuplicateInterval", CONF_LINT, &dupinterval,
 			  "addTTL", CONF_LINT, &addttl,
 			  "rewrite", CONF_STR, &rewriteinalias,
@@ -2621,9 +2621,9 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "rewriteOut", CONF_STR, &conf->confrewriteout,
 			  "rewriteattribute", CONF_STR, &conf->confrewriteusername,
 			  NULL
-			  ))
+	    ))
 	debugx(1, DBG_ERR, "configuration error");
-    
+
     conf->name = stringcopy(val, 0);
     if (conf->name && !conf->hostsrc) {
 	conf->hostsrc = malloc(2 * sizeof(char *));
@@ -2634,7 +2634,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
     if (!conf->name || !conf->hostsrc || !conf->hostsrc[0])
 	debugx(1, DBG_ERR, "malloc failed");
-	
+
     if (!conftype)
 	debugx(1, DBG_ERR, "error in block %s, option type missing", block);
     conf->type = protoname2int(conftype);
@@ -2643,7 +2643,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     free(conftype);
     conf->pdef = protodefs[conf->type];
 
-#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)    
+#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
 	conf->tlsconf = conf->tls ? tlsgettls(conf->tls, NULL) : tlsgettls("defaultclient", "default");
 	if (!conf->tlsconf)
@@ -2652,20 +2652,20 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
     }
 #endif
-    
+
     if (dupinterval != LONG_MIN) {
 	if (dupinterval < 0 || dupinterval > 255)
 	    debugx(1, DBG_ERR, "error in block %s, value of option DuplicateInterval is %d, must be 0-255", block, dupinterval);
 	conf->dupinterval = (uint8_t)dupinterval;
     } else
 	conf->dupinterval = conf->pdef->duplicateintervaldefault;
-    
+
     if (addttl != LONG_MIN) {
 	if (addttl < 1 || addttl > 255)
 	    debugx(1, DBG_ERR, "error in block %s, value of option addTTL is %d, must be 1-255", block, addttl);
 	conf->addttl = (uint8_t)addttl;
     }
-    
+
     if (!conf->confrewritein)
 	conf->confrewritein = rewriteinalias;
     else
@@ -2673,7 +2673,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultclient", "default");
     if (conf->confrewriteout)
 	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
-    
+
     if (conf->confrewriteusername) {
 	conf->rewriteusername = extractmodattr(conf->confrewriteusername);
 	if (!conf->rewriteusername)
@@ -2683,7 +2683,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (!addhostport(&conf->hostports, conf->hostsrc, conf->pdef->portdefault, 1) ||
 	!resolvehostports(conf->hostports, conf->pdef->socktype))
 	debugx(1, DBG_ERR, "resolve failed, exiting");
-    
+
     if (!conf->secret) {
 	if (!conf->pdef->secretdefault)
 	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
@@ -2703,7 +2703,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 }
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
-#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)    
+#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
     	conf->tlsconf = conf->tls ? tlsgettls(conf->tls, NULL) : tlsgettls("defaultserver", "default");
 	if (!conf->tlsconf) {
@@ -2716,7 +2716,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	}
     }
 #endif
-    
+
     if (!conf->portsrc) {
 	conf->portsrc = stringcopy(conf->pdef->portdefault, 0);
 	if (!conf->portsrc) {
@@ -2724,16 +2724,16 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	    return 0;
 	}
     }
-    
+
     if (conf->retryinterval == 255)
 	conf->retryinterval = conf->pdef->retryintervaldefault;
     if (conf->retrycount == 255)
 	conf->retrycount = conf->pdef->retrycountdefault;
-    
+
     conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultserver", "default");
     if (conf->confrewriteout)
 	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
-    
+
     if (!addhostport(&conf->hostports, conf->hostsrc, conf->portsrc, 0)) {
 	debug(DBG_ERR, "error in block %s, failed to parse %s", block, conf->hostsrc);
 	return 0;
@@ -2745,12 +2745,12 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     }
     return 1;
 }
-			
+
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *resconf;
     char *conftype = NULL, *rewriteinalias = NULL;
     long int retryinterval = LONG_MIN, retrycount = LONG_MIN, addttl = LONG_MIN;
-    
+
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
     conf = malloc(sizeof(struct clsrvconf));
@@ -2771,11 +2771,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "host", CONF_MSTR, &conf->hostsrc,
 			  "port", CONF_STR, &conf->portsrc,
 			  "secret", CONF_STR, &conf->secret,
-#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)    
+#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 			  "tls", CONF_STR, &conf->tls,
 			  "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
 			  "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
-#endif			  
+#endif
 			  "addTTL", CONF_LINT, &addttl,
 			  "rewrite", CONF_STR, &rewriteinalias,
 			  "rewriteIn", CONF_STR, &conf->confrewritein,
@@ -2785,11 +2785,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "RetryCount", CONF_LINT, &retrycount,
 			  "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
 			  NULL
-			  )) {
+	    )) {
 	debug(DBG_ERR, "configuration error");
 	goto errexit;
     }
-    
+
     conf->name = stringcopy(val, 0);
     if (conf->name && !conf->hostsrc) {
 	conf->hostsrc = malloc(2 * sizeof(char *));
@@ -2814,7 +2814,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
     free(conftype);
     conftype = NULL;
-	
+
     conf->pdef = protodefs[conf->type];
 
     if (!conf->confrewritein)
@@ -2831,7 +2831,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	conf->retryinterval = (uint8_t)retryinterval;
     } else
 	conf->retryinterval = 255;
-    
+
     if (retrycount != LONG_MIN) {
 	if (retrycount < 0 || retrycount > conf->pdef->retrycountmax) {
 	    debug(DBG_ERR, "error in block %s, value of option RetryCount is %d, must be 0-%d", block, retrycount, conf->pdef->retrycountmax);
@@ -2840,7 +2840,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	conf->retrycount = (uint8_t)retrycount;
     } else
 	conf->retrycount = 255;
-    
+
     if (addttl != LONG_MIN) {
 	if (addttl < 1 || addttl > 255) {
 	    debug(DBG_ERR, "error in block %s, value of option addTTL is %d, must be 1-255", block, addttl);
@@ -2848,7 +2848,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	}
 	conf->addttl = (uint8_t)addttl;
     }
-    
+
     if (resconf) {
 	if (!mergesrvconf(resconf, conf))
 	    goto errexit;
@@ -2864,7 +2864,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	if (!compileserverconfig(conf, block))
 	    goto errexit;
     }
-    
+
     if (!conf->secret) {
 	if (!conf->pdef->secretdefault) {
 	    debug(DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
@@ -2876,7 +2876,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    return 0;
 	}
     }
-    
+
     if (resconf)
 	return 1;
 
@@ -2886,7 +2886,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
     return 1;
 
- errexit:
+errexit:
     free(conftype);
     free(rewriteinalias);
     freeclsrvconf(conf);
@@ -2896,16 +2896,16 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char **servers = NULL, **accservers = NULL, *msg = NULL;
     uint8_t accresp = 0;
-    
+
     debug(DBG_DBG, "confrealm_cb called for %s", block);
-    
+
     if (!getgenericconfig(cf, block,
 			  "server", CONF_MSTR, &servers,
 			  "accountingServer", CONF_MSTR, &accservers,
 			  "ReplyMessage", CONF_STR, &msg,
 			  "AccountingResponse", CONF_BLN, &accresp,
 			  NULL
-			  ))
+	    ))
 	debugx(1, DBG_ERR, "configuration error");
 
     addrealm(realms, val, servers, accservers, msg, accresp);
@@ -2914,16 +2914,16 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
 
 int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char **rmattrs = NULL, **rmvattrs = NULL, **addattrs = NULL, **modattrs = NULL;
-    
+
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
-    
+
     if (!getgenericconfig(cf, block,
 			  "removeAttribute", CONF_MSTR, &rmattrs,
 			  "removeVendorAttribute", CONF_MSTR, &rmvattrs,
 			  "addAttribute", CONF_MSTR, &addattrs,
 			  "modifyAttribute", CONF_MSTR, &modattrs,
 			  NULL
-			  ))
+	    ))
 	debugx(1, DBG_ERR, "configuration error");
     addrewrite(val, rmattrs, rmvattrs, addattrs, modattrs);
     return 1;
@@ -2948,45 +2948,45 @@ void getmainconfig(const char *configfile) {
     char **listenargs[RAD_PROTOCOUNT];
     char *sourcearg[RAD_PROTOCOUNT];
     int i;
-    
+
     cfs = openconfigfile(configfile);
     memset(&options, 0, sizeof(options));
     memset(&listenargs, 0, sizeof(listenargs));
     memset(&sourcearg, 0, sizeof(sourcearg));
-    
+
     clconfs = list_create();
     if (!clconfs)
 	debugx(1, DBG_ERR, "malloc failed");
-    
+
     srvconfs = list_create();
     if (!srvconfs)
 	debugx(1, DBG_ERR, "malloc failed");
-    
+
     realms = list_create();
     if (!realms)
-	debugx(1, DBG_ERR, "malloc failed");    
- 
+	debugx(1, DBG_ERR, "malloc failed");
+
     rewriteconfs = hash_create();
     if (!rewriteconfs)
-	debugx(1, DBG_ERR, "malloc failed");    
- 
+	debugx(1, DBG_ERR, "malloc failed");
+
     if (!getgenericconfig(&cfs, NULL,
-#ifdef RADPROT_UDP			  
+#ifdef RADPROT_UDP
 			  "ListenUDP", CONF_MSTR, &listenargs[RAD_UDP],
 			  "SourceUDP", CONF_STR, &sourcearg[RAD_UDP],
-#endif			  
-#ifdef RADPROT_TCP			  
+#endif
+#ifdef RADPROT_TCP
 			  "ListenTCP", CONF_MSTR, &listenargs[RAD_TCP],
 			  "SourceTCP", CONF_STR, &sourcearg[RAD_TCP],
-#endif			  
+#endif
 #ifdef RADPROT_TLS
 			  "ListenTLS", CONF_MSTR, &listenargs[RAD_TLS],
 			  "SourceTLS", CONF_STR, &sourcearg[RAD_TLS],
-#endif			  
+#endif
 #ifdef RADPROT_DTLS
 			  "ListenDTLS", CONF_MSTR, &listenargs[RAD_DTLS],
 			  "SourceDTLS", CONF_STR, &sourcearg[RAD_DTLS],
-#endif			  
+#endif
 			  "TTLAttribute", CONF_STR, &options.ttlattr,
 			  "addTTL", CONF_LINT, &addttl,
 			  "LogLevel", CONF_LINT, &loglevel,
@@ -2995,14 +2995,14 @@ void getmainconfig(const char *configfile) {
 			  "Client", CONF_CBK, confclient_cb, NULL,
 			  "Server", CONF_CBK, confserver_cb, NULL,
 			  "Realm", CONF_CBK, confrealm_cb, NULL,
-#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)			  
+#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 			  "TLS", CONF_CBK, conftls_cb, NULL,
-#endif			  
+#endif
 			  "Rewrite", CONF_CBK, confrewrite_cb, NULL,
 			  NULL
-			  ))
+	    ))
 	debugx(1, DBG_ERR, "configuration error");
-    
+
     if (loglevel != LONG_MIN) {
 	if (loglevel < 1 || loglevel > 4)
 	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %d, must be 1, 2, 3 or 4", configfile, loglevel);
@@ -3044,21 +3044,21 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8
 	    *pretend = 1;
 	    break;
 	case 'v':
-		debug(DBG_ERR, "radsecproxy revision $Rev$");
-		debug(DBG_ERR, "This binary was built with support for the following transports:");
+	    debug(DBG_ERR, "radsecproxy revision $Rev$");
+	    debug(DBG_ERR, "This binary was built with support for the following transports:");
 #ifdef RADPROT_UDP
-		debug(DBG_ERR, "  UDP");
-#endif		
-#ifdef RADPROT_TCP
-		debug(DBG_ERR, "  TCP");
-#endif		
-#ifdef RADPROT_TLS
-		debug(DBG_ERR, "  TLS");
-#endif		
-#ifdef RADPROT_DTLS
-		debug(DBG_ERR, "  DTLS");
+	    debug(DBG_ERR, "  UDP");
 #endif
-		exit(0);
+#ifdef RADPROT_TCP
+	    debug(DBG_ERR, "  TCP");
+#endif
+#ifdef RADPROT_TLS
+	    debug(DBG_ERR, "  TLS");
+#endif
+#ifdef RADPROT_DTLS
+	    debug(DBG_ERR, "  DTLS");
+#endif
+	    exit(0);
 	default:
 	    goto usage;
 	}
@@ -3066,7 +3066,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8
     if (!(argc - optind))
 	return;
 
- usage:
+usage:
     debugx(1, DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ] [ -i pidfile ] [ -p ] [ -v ]", argv[0]);
 }
 
@@ -3129,7 +3129,7 @@ int main(int argc, char **argv) {
     char *configfile = NULL, *pidfile = NULL;
     struct clsrvconf *srvconf;
     int i;
-    
+
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
 
@@ -3138,7 +3138,7 @@ int main(int argc, char **argv) {
 
     /* needed even if no TLS/DTLS transport */
     sslinit();
-    
+
     getargs(argc, argv, &foreground, &pretend, &loglevel, &configfile, &pidfile);
     if (loglevel)
 	debug_set_level(loglevel);
@@ -3161,12 +3161,12 @@ int main(int argc, char **argv) {
 
     if (!foreground && (daemon(0, 0) < 0))
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
-    
+
     debug_timestamp_on();
     debug(DBG_INFO, "radsecproxy revision $Rev$ starting");
     if (pidfile && !createpidfile(pidfile))
 	debugx(1, DBG_ERR, "failed to create pidfile %s: %s", pidfile, strerror(errno));
-    
+
     sigemptyset(&sigset);
     /* exit on all but SIGHUP|SIGPIPE, ignore more? */
     sigaddset(&sigset, SIGHUP);
@@ -3193,7 +3193,7 @@ int main(int argc, char **argv) {
         if (find_clconf_type(i, NULL))
 	    createlisteners(i);
     }
-    
+
     /* just hang around doing nothing, anything to do here? */
     for (;;)
 	sleep(1000);

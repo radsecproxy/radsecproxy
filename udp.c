@@ -92,7 +92,7 @@ void udpsetsrcres() {
 void removeudpclientfromreplyq(struct client *c) {
     struct list_node *n;
     struct request *r;
-    
+
     /* lock the common queue and remove replies for this client */
     pthread_mutex_lock(&c->replyq->mutex);
     for (n = list_first(c->replyq->entries); n; n = list_next(n)) {
@@ -101,7 +101,7 @@ void removeudpclientfromreplyq(struct client *c) {
 	    r->from = NULL;
     }
     pthread_mutex_unlock(&c->replyq->mutex);
-}	
+}
 
 static int addr_equal(struct sockaddr *a, struct sockaddr *b) {
     switch (a->sa_family) {
@@ -142,7 +142,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     fd_set readfds;
     struct client *c = NULL;
     struct timeval now;
-    
+
     for (;;) {
 	if (rad) {
 	    free(rad);
@@ -157,7 +157,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    debug(DBG_WARN, "radudpget: recv failed");
 	    continue;
 	}
-	
+
 	p = client
 	    ? find_clconf(handle, (struct sockaddr *)&from, NULL)
 	    : find_srvconf(handle, (struct sockaddr *)&from, NULL);
@@ -166,21 +166,21 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    recv(s, buf, 4, 0);
 	    continue;
 	}
-	
+
 	len = RADLEN(buf);
 	if (len < 20) {
 	    debug(DBG_WARN, "radudpget: length too small");
 	    recv(s, buf, 4, 0);
 	    continue;
 	}
-	    
+
 	rad = malloc(len);
 	if (!rad) {
 	    debug(DBG_ERR, "radudpget: malloc failed");
 	    recv(s, buf, 4, 0);
 	    continue;
 	}
-	
+
 	cnt = recv(s, rad, len, MSG_TRUNC);
 	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from));
 
@@ -206,7 +206,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 		}
 		if (c->expiry >= now.tv_sec)
 		    continue;
-		
+
 		debug(DBG_DBG, "radudpget: removing expired client (%s)", addr2string(c->addr));
 		removeudpclientfromreplyq(c);
 		c->replyq = NULL; /* stop removeclient() from removing common udp replyq */
@@ -261,7 +261,7 @@ void *udpclientrd(void *arg) {
     struct server *server;
     unsigned char *buf;
     int *s = (int *)arg;
-    
+
     for (;;) {
 	server = NULL;
 	buf = radudpget(*s, NULL, &server, NULL);
@@ -272,7 +272,7 @@ void *udpclientrd(void *arg) {
 void *udpserverrd(void *arg) {
     struct request *rq;
     int *sp = (int *)arg;
-    
+
     for (;;) {
 	rq = newrequest();
 	if (!rq) {
@@ -291,7 +291,7 @@ void *udpserverwr(void *arg) {
     struct gqueue *replyq = (struct gqueue *)arg;
     struct request *reply;
     struct sockaddr_storage to;
-    
+
     for (;;) {
 	pthread_mutex_lock(&replyq->mutex);
 	while (!(reply = (struct request *)list_shift(replyq->entries))) {
@@ -347,7 +347,7 @@ void initextraudp() {
 	freeaddrinfo(srcres);
 	srcres = NULL;
     }
-    
+
     if (client4_sock >= 0)
 	if (pthread_create(&cl4th, NULL, udpclientrd, (void *)&client4_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");

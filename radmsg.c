@@ -33,7 +33,7 @@ void radmsg_free(struct radmsg *msg) {
 
 struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
     struct radmsg *msg;
-    
+
     msg = malloc(sizeof(struct radmsg));
     if (!msg)
         return NULL;
@@ -42,7 +42,7 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
     if (!msg->attrs) {
 	free(msg);
         return NULL;
-    }	
+    }
     msg->code = code;
     msg->id = id;
     if (auth)
@@ -50,7 +50,7 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
     else if (!RAND_bytes(msg->auth, 16)) {
 	free(msg);
 	return NULL;
-    }	
+    }
     return msg;
 }
 
@@ -83,7 +83,7 @@ int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret) {
     static HMAC_CTX hmacctx;
     unsigned int md_len;
     uint8_t auth[16], hash[EVP_MAX_MD_SIZE];
-    
+
     pthread_mutex_lock(&lock);
     if (first) {
 	HMAC_CTX_init(&hmacctx);
@@ -107,8 +107,8 @@ int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret) {
 	debug(DBG_WARN, "message authenticator, wrong value");
 	pthread_mutex_unlock(&lock);
 	return 0;
-    }	
-	
+    }
+
     pthread_mutex_unlock(&lock);
     return 1;
 }
@@ -120,7 +120,7 @@ int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
     unsigned char hash[EVP_MAX_MD_SIZE];
     unsigned int len;
     int result;
-    
+
     pthread_mutex_lock(&lock);
     if (first) {
 	EVP_MD_CTX_init(&mdctx);
@@ -128,7 +128,7 @@ int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
     }
 
     len = RADLEN(rad);
-    
+
     result = (EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) &&
 	      EVP_DigestUpdate(&mdctx, rad, 4) &&
 	      EVP_DigestUpdate(&mdctx, reqauth, 16) &&
@@ -149,7 +149,7 @@ int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *
 
     if (!authattrval)
 	return 1;
-    
+
     pthread_mutex_lock(&lock);
     if (first) {
 	HMAC_CTX_init(&hmacctx);
@@ -208,7 +208,7 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
     buf = malloc(size);
     if (!buf)
         return NULL;
-    
+
     p = buf;
     *p++ = msg->code;
     *p++ = msg->id;
@@ -246,7 +246,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
     uint8_t t, l, *v = NULL, *p, auth[16];
     uint16_t len;
     struct tlv *attr;
-    
+
     len = RADLEN(buf);
     if (len < 20)
 	return NULL;
@@ -263,7 +263,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
 	debug(DBG_WARN, "buf2radmsg: Invalid auth, ignoring reply");
 	return NULL;
     }
-	
+
     msg = radmsg_init(buf[0], buf[1], (uint8_t *)buf + 4);
     if (!msg)
         return NULL;
@@ -287,7 +287,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
             v = p;
             p += l;
         }
-	
+
 	if (t == RAD_Attr_Message_Authenticator && secret) {
 	    if (rqauth)
 		memcpy(buf + 4, rqauth, 16);

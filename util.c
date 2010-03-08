@@ -62,7 +62,7 @@ void port_set(struct sockaddr *sa, uint16_t port) {
 
 struct sockaddr *addr_copy(struct sockaddr *in) {
     struct sockaddr *out = NULL;
-    
+
     switch (in->sa_family) {
     case AF_INET:
 	out = malloc(sizeof(struct sockaddr_in));
@@ -115,7 +115,7 @@ char *addr2string(struct sockaddr *addr) {
 int connectport(int type, char *host, char *port) {
     struct addrinfo hints, *res0, *res;
     int s = -1;
-    
+
     memset(&hints, 0, sizeof(hints));
     hints.ai_socktype = type;
     hints.ai_family = AF_UNSPEC;
@@ -147,7 +147,7 @@ int connectport(int type, char *host, char *port) {
 */
 
 void disable_DF_bit(int socket, struct addrinfo *res) {
-        if ((res->ai_family == AF_INET) && (res->ai_socktype == SOCK_DGRAM)) {
+    if ((res->ai_family == AF_INET) && (res->ai_socktype == SOCK_DGRAM)) {
 #if defined(IP_MTU_DISCOVER) && defined(IP_PMTUDISC_DONT)
         /*
          * Turn off Path MTU discovery on IPv4/UDP sockets, Linux variant.
@@ -156,12 +156,12 @@ void disable_DF_bit(int socket, struct addrinfo *res) {
         debug(DBG_INFO, "disable_DF_bit: disabling DF bit (Linux variant)");
         action = IP_PMTUDISC_DONT;
         r = setsockopt(socket, IPPROTO_IP, IP_MTU_DISCOVER, &action, sizeof(action));
-        if (r == -1) 
-                  debug(DBG_WARN, "Failed to set IP_MTU_DISCOVER");
+        if (r == -1)
+	    debug(DBG_WARN, "Failed to set IP_MTU_DISCOVER");
 #else
 	debug(DBG_INFO, "Non-Linux platform, unable to unset DF bit for UDP. You should check with tcpdump whether radsecproxy will send its UDP packets with DF bit set!");
 #endif
-	}
+    }
 }
 
 int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
@@ -181,10 +181,10 @@ int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
 
 	if (reuse)
 	    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	#ifdef IPV6_V6ONLY
+#ifdef IPV6_V6ONLY
 	if (v6only)
 	    setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
-	#endif
+#endif
 	if (!bind(s, res->ai_addr, res->ai_addrlen))
 	    return s;
 	debug(DBG_WARN, "bindtoaddr: bind failed");
@@ -197,7 +197,7 @@ int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, st
     int origflags, error = 0, r = -1;
     fd_set writefds;
     socklen_t len;
-    
+
     origflags = fcntl(s, F_GETFL, 0);
     fcntl(s, F_SETFL, origflags | O_NONBLOCK);
     if (!connect(s, addr, addrlen)) {
@@ -216,7 +216,7 @@ int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, st
     if (!getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&error, &len) && !error)
 	r = 0;
 
- exit:    
+exit:
     fcntl(s, F_SETFL, origflags);
     return r;
 }
@@ -233,7 +233,7 @@ int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout
 	to.tv_sec = timeout;
 	to.tv_usec = 0;
     }
-    
+
     for (res = addrinfo; res; res = res->ai_next) {
 	s = bindtoaddr(src, res->ai_family, 1, 1);
 	if (s < 0) {

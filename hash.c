@@ -29,7 +29,7 @@ struct hash *hash_create() {
 /* frees all memory associated with the hash */
 void hash_destroy(struct hash *h) {
     struct list_node *ln;
-    
+
     if (!h)
 	return;
     for (ln = list_first(h->hashlist); ln; ln = list_next(ln)) {
@@ -73,15 +73,15 @@ int hash_insert(struct hash *h, void *key, uint32_t keylen, void *data) {
 void *hash_read(struct hash *h, void *key, uint32_t keylen) {
     struct list_node *ln;
     struct hash_entry *e;
-    
+
     if (!h)
 	return 0;
     pthread_mutex_lock(&h->mutex);
     for (ln = list_first(h->hashlist); ln; ln = list_next(ln)) {
 	e = (struct hash_entry *)ln->data;
 	if (e->keylen == keylen && !memcmp(e->key, key, keylen)) {
-	        pthread_mutex_unlock(&h->mutex);
-		return e->data;
+	    pthread_mutex_unlock(&h->mutex);
+	    return e->data;
 	}
     }
     pthread_mutex_unlock(&h->mutex);
@@ -92,7 +92,7 @@ void *hash_read(struct hash *h, void *key, uint32_t keylen) {
 void *hash_extract(struct hash *h, void *key, uint32_t keylen) {
     struct list_node *ln;
     struct hash_entry *e;
-    
+
     if (!h)
 	return 0;
     pthread_mutex_lock(&h->mutex);

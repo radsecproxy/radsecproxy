@@ -24,7 +24,7 @@ void list_destroy(struct list *list) {
 
     if (!list)
 	return;
-    
+
     for (node = list->first; node; node = next) {
 	free(node->data);
 	next = node->next;
@@ -40,7 +40,7 @@ int list_push(struct list *list, void *data) {
     node = malloc(sizeof(struct list_node));
     if (!node)
 	return 0;
-    
+
     node->next = NULL;
     node->data = data;
 
@@ -58,10 +58,10 @@ int list_push(struct list *list, void *data) {
 void *list_shift(struct list *list) {
     struct list_node *node;
     void *data;
-    
+
     if (!list || !list->first)
 	return NULL;
-    
+
     node = list->first;
     list->first = node->next;
     if (!list->first)
@@ -75,7 +75,7 @@ void *list_shift(struct list *list) {
 /* removes all entries with matching data pointer */
 void list_removedata(struct list *list, void *data) {
     struct list_node *node, *t;
-    
+
     if (!list || !list->first)
 	return;
 

@@ -68,24 +68,24 @@ static int parsehostport(struct hostportres *hp, char *hostport, char *default_p
 	}
     }
     if (*p == ':') {
-	    /* port number or service name is specified */;
-	    field = ++p;
-	    for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
-	    if (field == p) {
-		debug(DBG_ERR, "syntax error, : but no following port");
-		return 0;
-	    }
-	    hp->port = stringcopy(field, p - field);
+	/* port number or service name is specified */;
+	field = ++p;
+	for (; *p && *p != ' ' && *p != '\t' && *p != '\n'; p++);
+	if (field == p) {
+	    debug(DBG_ERR, "syntax error, : but no following port");
+	    return 0;
+	}
+	hp->port = stringcopy(field, p - field);
     } else
 	hp->port = default_port ? stringcopy(default_port, 0) : NULL;
     return 1;
 }
-    
+
 struct hostportres *newhostport(char *hostport, char *default_port, uint8_t prefixok) {
     struct hostportres *hp;
     char *slash, *s;
     int plen;
-    
+
     hp = malloc(sizeof(struct hostportres));
     if (!hp) {
 	debug(DBG_ERR, "resolve_newhostport: malloc failed");
@@ -127,7 +127,7 @@ struct hostportres *newhostport(char *hostport, char *default_port, uint8_t pref
 	hp->prefixlen = 255;
     return hp;
 
- errexit:
+errexit:
     freehostport(hp);
     return NULL;
 }
@@ -140,7 +140,7 @@ int resolvehostport(struct hostportres *hp, int socktype, uint8_t passive) {
     hints.ai_family = AF_UNSPEC;
     if (passive)
 	hints.ai_flags = AI_PASSIVE;
-    
+
     if (!hp->host && !hp->port) {
 	/* getaddrinfo() doesn't like host and port to be NULL */
 	if (getaddrinfo(hp->host, "1812" /* can be anything */, &hints, &hp->addrinfo)) {
@@ -174,11 +174,11 @@ int resolvehostport(struct hostportres *hp, int socktype, uint8_t passive) {
     }
     return 1;
 
- errexit:
+errexit:
     if (hp->addrinfo)
 	freeaddrinfo(hp->addrinfo);
     return 0;
-}	  
+}
 
 int addhostport(struct list **hostports, char **hostport, char *portdefault, uint8_t prefixok) {
     struct hostportres *hp;
@@ -191,7 +191,7 @@ int addhostport(struct list **hostports, char **hostport, char *portdefault, uin
 	    return 0;
 	}
     }
-    
+
     for (i = 0; hostport[i]; i++) {
 	hp = newhostport(hostport[i], portdefault, prefixok);
 	if (!hp)
@@ -216,7 +216,7 @@ void freehostports(struct list *hostports) {
 int resolvehostports(struct list *hostports, int socktype) {
     struct list_node *entry;
     struct hostportres *hp;
-    
+
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
 	hp = (struct hostportres *)entry->data;
 	if (!hp->addrinfo && !resolvehostport(hp, socktype, 0))
@@ -254,7 +254,7 @@ int addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t checkp
     struct addrinfo *res;
     struct list_node *entry;
     struct hostportres *hp = NULL;
-    
+
     if (addr->sa_family == AF_INET6) {
         sa6 = (struct sockaddr_in6 *)addr;
         if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) {

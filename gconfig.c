@@ -87,7 +87,7 @@ FILE *pushgconffile(struct gconffile **cf, FILE *file, const char *description) 
     desc = stringcopy(description, 0);
     if (!desc)
 	goto errmalloc;
-    
+
     if (!*cf) {
 	newcf = malloc(sizeof(struct gconffile) * 2);
 	if (!newcf)
@@ -105,8 +105,8 @@ FILE *pushgconffile(struct gconffile **cf, FILE *file, const char *description) 
     newcf[0].path = desc;
     *cf = newcf;
     return file;
-    
- errmalloc:
+
+errmalloc:
     free(desc);
     fclose(file);
     debug(DBG_ERR, "malloc failed");
@@ -125,7 +125,7 @@ FILE *pushgconfpaths(struct gconffile **cf, const char *cfgpath) {
     FILE *f = NULL;
     glob_t globbuf;
     char *path, *curfile = NULL, *dir;
-    
+
     /* if cfgpath is relative, make it relative to current config */
     if (*cfgpath == '/')
 	path = (char *)cfgpath;
@@ -156,10 +156,10 @@ FILE *pushgconfpaths(struct gconffile **cf, const char *cfgpath) {
 	f = pushgconfpath(cf, globbuf.gl_pathv[i]);
 	if (!f)
 	    break;
-    }    
+    }
     globfree(&globbuf);
 
- exit:    
+exit:
     if (curfile) {
 	free(curfile);
 	free(path);
@@ -204,7 +204,7 @@ void freegconf(struct gconffile **cf) {
 
     if (!*cf)
 	return;
-    
+
     for (i = 0; (*cf)[i].data || (*cf)[i].path; i++) {
 	if ((*cf)[i].file) {
 	    fclose((*cf)[i].file);
@@ -242,10 +242,10 @@ struct gconffile *openconfigfile(const char *file) {
 
 int getlinefromcf(struct gconffile *cf, char *line, const size_t size) {
     size_t i, pos;
-    
+
     if (!cf)
 	return 0;
-    
+
     if (cf->file)
 	return fgets(line, size, cf->file) ? 1 : 0;
     else if (cf->data) {
@@ -269,11 +269,11 @@ int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, in
     char line[1024];
     char *tokens[3], *s;
     int tcount;
-    
+
     *opt = NULL;
     *val = NULL;
     *conftype = 0;
-    
+
     if (!cf || !*cf || (!(*cf)->file && !(*cf)->data))
 	return 1;
 
@@ -304,7 +304,7 @@ int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, in
 	}
 	break;
     }
-    
+
     switch (tcount) {
     case 2:
 	*opt = stringcopy(tokens[0], 0);
@@ -347,13 +347,13 @@ int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, in
 
     if (**val)
 	return 1;
-    
+
     debug(DBG_ERR, "configuration error, option %s needs a non-empty value", *opt);
     goto errexit;
 
- errmalloc:
+errmalloc:
     debug(DBG_ERR, "malloc failed");
- errexit:    
+errexit:
     free(*opt);
     *opt = NULL;
     free(*val);
@@ -411,7 +411,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    free(val);
 	    continue;
 	}
-	    
+
 	va_start(ap, block);
 	while ((word = va_arg(ap, char *))) {
 	    type = va_arg(ap, int);
@@ -449,7 +449,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 		break;
 	}
 	va_end(ap);
-	
+
 	if (!word) {
 	    if (block)
 		debug(DBG_ERR, "configuration error in block %s, unknown option %s", block, opt);
@@ -532,15 +532,15 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 	}
 	if (block)
 	    debug(DBG_DBG, "getgenericconfig: block %s: %s = %s", block, opt, val);
-	else 
+	else
 	    debug(DBG_DBG, "getgenericconfig: %s = %s", opt, val);
 	if (type == CONF_BLN || type == CONF_LINT)
 	    free(val);
     }
 
- errparam:
+errparam:
     debug(DBG_ERR, "getgenericconfig: internal parameter error");
- errexit:
+errexit:
     free(opt);
     free(val);
     return 0;

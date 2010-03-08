@@ -95,7 +95,7 @@ struct sessioncacheentry {
 struct dtlsservernewparams {
     struct sessioncacheentry *sesscache;
     int sock;
-    struct sockaddr_storage addr;    
+    struct sockaddr_storage addr;
 };
 
 void dtlssetsrcres() {
@@ -109,7 +109,7 @@ int udp2bio(int s, struct gqueue *q, int cnt) {
 
     if (cnt < 1)
 	return 0;
-    
+
     buf = malloc(cnt);
     if (!buf) {
 	unsigned char err;
@@ -162,7 +162,7 @@ BIO *getrbio(SSL *ssl, struct gqueue *q, int timeout) {
 int dtlsread(SSL *ssl, struct gqueue *q, unsigned char *buf, int num, int timeout) {
     int len, cnt;
     BIO *rbio;
-    
+
     for (len = 0; len < num; len += cnt) {
 	cnt = SSL_read(ssl, buf + len, num - len);
 	if (cnt <= 0)
@@ -171,7 +171,7 @@ int dtlsread(SSL *ssl, struct gqueue *q, unsigned char *buf, int num, int timeou
 		rbio = getrbio(ssl, q, timeout);
 		if (!rbio)
 		    return 0;
-		BIO_free(ssl->rbio);		
+		BIO_free(ssl->rbio);
 		ssl->rbio = rbio;
 		cnt = 0;
 		continue;
@@ -199,7 +199,7 @@ SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct 
     ssl = SSL_new(ctx);
     if (!ssl)
 	return NULL;
-    
+
     mem0bio = BIO_new(BIO_s_mem());
     BIO_set_mem_eof_return(mem0bio, -1);
     wbio = BIO_new_dgram(s, BIO_NOCLOSE);
@@ -244,21 +244,21 @@ unsigned char *raddtlsget(SSL *ssl, struct gqueue *rbios, int timeout) {
 	    continue;
 	}
 	memcpy(rad, buf, 4);
-	
+
 	cnt = dtlsread(ssl, rbios, rad + 4, len - 4, timeout);
         if (cnt < 1) {
             debug(DBG_DBG, cnt ? "raddtlsget: connection lost" : "raddtlsget: timeout");
             free(rad);
             return NULL;
         }
-        
+
         if (len >= 20)
             break;
-	
+
         free(rad);
         debug(DBG_WARN, "raddtlsget: packet smaller than minimum radius size");
     }
-    
+
     debug(DBG_DBG, "raddtlsget: got %d bytes", len);
     return rad;
 }
@@ -269,13 +269,13 @@ void *dtlsserverwr(void *arg) {
     struct client *client = (struct client *)arg;
     struct gqueue *replyq;
     struct request *reply;
-    
+
     debug(DBG_DBG, "dtlsserverwr: starting for %s", addr2string(client->addr));
     replyq = client->replyq;
     for (;;) {
 	pthread_mutex_lock(&replyq->mutex);
 	while (!list_first(replyq->entries)) {
-	    if (client->ssl) {	    
+	    if (client->ssl) {
 		debug(DBG_DBG, "dtlsserverwr: waiting for signal");
 		pthread_cond_wait(&replyq->cond, &replyq->mutex);
 		debug(DBG_DBG, "dtlsserverwr: got signal");
@@ -305,7 +305,7 @@ void dtlsserverrd(struct client *client) {
     struct request *rq;
     uint8_t *buf;
     pthread_t dtlsserverwrth;
-    
+
     debug(DBG_DBG, "dtlsserverrd: starting for %s", addr2string(client->addr));
 
     if (pthread_create(&dtlsserverwrth, NULL, dtlsserverwr, (void *)client)) {
@@ -332,7 +332,7 @@ void dtlsserverrd(struct client *client) {
 	    break;
 	}
     }
-    
+
     /* stop writer by setting ssl to NULL and give signal in case waiting for data */
     client->ssl = NULL;
 
@@ -392,7 +392,7 @@ void *dtlsservernew(void *arg) {
     if (cert)
 	X509_free(cert);
 
- exit:
+exit:
     if (ssl) {
 	SSL_shutdown(ssl);
 	SSL_free(ssl);
@@ -413,7 +413,7 @@ void cacheexpire(struct hash *cache, struct timeval *last) {
     struct timeval now;
     struct hash_entry *he;
     struct sessioncacheentry *e;
-    
+
     gettimeofday(&now, NULL);
     if (now.tv_sec - last->tv_sec < 19)
 	return;
@@ -448,12 +448,12 @@ void *udpdtlsserverrd(void *arg) {
     pthread_t dtlsserverth;
     struct hash *sessioncache;
     struct sessioncacheentry *cacheentry;
-    
+
     sessioncache = hash_create();
     if (!sessioncache)
 	debugx(1, DBG_ERR, "udpdtlsserverrd: malloc failed");
     gettimeofday(&lastexpiry, NULL);
-    
+
     for (;;) {
 	FD_ZERO(&readfds);
         FD_SET(s, &readfds);
@@ -532,7 +532,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
     X509 *cert;
     SSL_CTX *ctx = NULL;
     struct hostportres *hp;
-    
+
     debug(DBG_DBG, "dtlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
     if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
@@ -579,11 +579,11 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 	if (!server->ssl)
 	    continue;
 	debug(DBG_DBG, "dtlsconnect: DTLS: ok");
-	
+
 	cert = verifytlscert(server->ssl);
 	if (!cert)
 	    continue;
-	
+
 	if (verifyconfcert(cert, server->conf))
 	    break;
 	X509_free(cert);
@@ -622,7 +622,7 @@ void *udpdtlsclientrd(void *arg) {
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *conf;
     fd_set readfds;
-    
+
     for (;;) {
 	FD_ZERO(&readfds);
         FD_SET(s, &readfds);
@@ -633,7 +633,7 @@ void *udpdtlsclientrd(void *arg) {
 	    debug(DBG_WARN, "udpdtlsclientrd: recv failed");
 	    continue;
 	}
-	
+
 	conf = find_srvconf(handle, (struct sockaddr *)&from, NULL);
 	if (!conf) {
 	    debug(DBG_WARN, "udpdtlsclientrd: got packet from wrong or unknown DTLS peer %s, ignoring", addr2string((struct sockaddr *)&from));
@@ -650,7 +650,7 @@ void *dtlsclientrd(void *arg) {
     unsigned char *buf;
     struct timeval lastconnecttry;
     int secs;
-    
+
     for (;;) {
 	/* yes, lastconnecttry is really necessary */
 	lastconnecttry = server->lastconnecttry;
@@ -696,7 +696,7 @@ void initextradtls() {
 	freeaddrinfo(srcres);
 	srcres = NULL;
     }
-    
+
     if (client4_sock >= 0)
 	if (pthread_create(&cl4th, NULL, udpdtlsclientrd, (void *)&client4_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
