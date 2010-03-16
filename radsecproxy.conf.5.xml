@@ -427,7 +427,7 @@ original value if a matching response is later sent back to the client. The
 value must be of the form User-Name:/regexpmatch/replacement/. Example usage:
       <blockquote>
         <para>
-rewriteAttribute User-Name:/^(.*)@local$/$1@example.com/
+rewriteAttribute User-Name:/^(.*)@local$/\1@example.com/
         </para>
       </blockquote>
     </para>
@@ -711,7 +711,7 @@ a numerical attribute type, regexpmatch is regexp matching rule and
 replacement specifies how to replace the matching regexp. Example usage:
       <blockquote>
         <para>
-modifyAttribute 1:/^(.*)@local$/$1@example.com/
+modifyAttribute 1:/^(.*)@local$/\1@example.com/
         </para>
       </blockquote>
     </para>
