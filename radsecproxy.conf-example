@@ -86,7 +86,7 @@ tls default {
 #	removeAttribute 5
 #	removeVendorAttribute 99:100
 #	addAttribute 4 attribute%20value
-#	modifyAttribute 1:/^(.*)@local$/$1@example.com/
+#	modifyAttribute 1:/^(.*)@local$/\1@example.com/
 # }
 
 client 2001:db8::1 {
