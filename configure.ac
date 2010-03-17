@@ -1,4 +1,5 @@
 AC_INIT(radsecproxy, 2.0-devel, venaas@uninett.no)
+AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
 AC_PROG_CC
 AM_PROG_CC_C_O
