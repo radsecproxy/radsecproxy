@@ -1,3 +1,5 @@
+AUTOMAKE_OPTIONS = foreign
+
 sbin_PROGRAMS = radsecproxy
 bin_PROGRAMS  = catgconf
 
