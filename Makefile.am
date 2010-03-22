@@ -44,5 +44,12 @@ radsecproxy_LDADD   = @SSL_LIBS@
 catgconf_CFLAGS     = -g @TARGET_CFLAGS@
 catgconf_LDFLAGS    = @TARGET_LDFLAGS@
 
-dist_sysconf_DATA   = $(srcdir)/radsecproxy.conf-example
-dist_man_MANS       = radsecproxy.1 radsecproxy.conf.5
+EXTRA_DIST = radsecproxy.conf-example \
+		radsecproxy.1 \
+		radsecproxy.conf.5.xml
+
+man: $(srcdir)/radsecproxy.conf.5.xml
+	docbook2x-man $<
+
+clean-local:
+	-rm radsecproxy.conf.5
