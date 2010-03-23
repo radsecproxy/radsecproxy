@@ -372,3 +372,7 @@ const struct protodefs *tcpinit(uint8_t h) {
     return NULL;
 }
 #endif
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

@@ -120,3 +120,7 @@ uint8_t *tlv2buf(uint8_t *p, struct tlv *tlv) {
     }
     return p;
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

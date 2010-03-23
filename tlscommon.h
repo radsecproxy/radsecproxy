@@ -33,3 +33,7 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf);
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 int addmatchcertattr(struct clsrvconf *conf);
 #endif
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

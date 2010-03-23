@@ -23,3 +23,7 @@ int popgconf(struct gconffile **cf);
 void freegconfmstr(char **mstr);
 void freegconf(struct gconffile **cf);
 struct gconffile *openconfigfile(const char *file);
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

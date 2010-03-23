@@ -250,3 +250,7 @@ int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout
     }
     return s;
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

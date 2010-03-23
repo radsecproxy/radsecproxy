@@ -473,3 +473,7 @@ const struct protodefs *tlsinit(uint8_t h) {
     return NULL;
 }
 #endif
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

@@ -117,3 +117,7 @@ struct list_node *list_next(struct list_node *node) {
 uint32_t list_count(struct list *list) {
     return list->count;
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

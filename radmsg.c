@@ -312,3 +312,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
     }
     return msg;
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

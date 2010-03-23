@@ -3198,3 +3198,7 @@ int main(int argc, char **argv) {
     for (;;)
 	sleep(1000);
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

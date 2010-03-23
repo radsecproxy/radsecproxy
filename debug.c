@@ -177,3 +177,7 @@ void debugx(int status, uint8_t level, char *format, ...) {
     }
     exit(status);
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

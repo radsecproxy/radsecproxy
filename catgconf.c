@@ -67,3 +67,7 @@ usage:
     debug(DBG_ERR, "Usage:\n%s [ -c ] configfile", argv[0]);
     exit(1);
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

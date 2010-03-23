@@ -545,3 +545,7 @@ errexit:
     free(val);
     return 0;
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

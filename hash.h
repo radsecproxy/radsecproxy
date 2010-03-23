@@ -42,3 +42,7 @@ struct hash_entry *hash_first(struct hash *hash);
 
 /* returns the next entry after the argument */
 struct hash_entry *hash_next(struct hash_entry *entry);
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

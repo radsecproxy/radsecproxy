@@ -19,3 +19,7 @@ void disable_DF_bit(int socket, struct addrinfo *res);
 int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only);
 int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout);
 
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

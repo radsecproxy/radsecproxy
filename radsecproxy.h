@@ -209,3 +209,7 @@ void freerq(struct request *rq);
 int radsrv(struct request *rq);
 void replyh(struct server *server, unsigned char *buf);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

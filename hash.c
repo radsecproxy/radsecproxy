@@ -130,3 +130,7 @@ struct hash_entry *hash_next(struct hash_entry *entry) {
     e->next = (struct list_node *)entry->next->next;
     return e;
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

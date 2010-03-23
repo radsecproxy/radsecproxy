@@ -305,3 +305,7 @@ int connecttcphostlist(struct list *hostports,  struct addrinfo *src) {
     debug(DBG_ERR, "connecttcphostlist: failed");
     return -1;
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

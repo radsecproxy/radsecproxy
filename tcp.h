@@ -7,3 +7,7 @@
  */
 
 const struct protodefs *tcpinit(uint8_t h);
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

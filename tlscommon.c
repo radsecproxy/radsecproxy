@@ -635,3 +635,7 @@ int addmatchcertattr(struct clsrvconf *conf) {
 static void tlsdummy() {
 }
 #endif
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

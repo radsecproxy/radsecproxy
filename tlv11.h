@@ -21,3 +21,7 @@ void freetlvlist(struct list *);
 void rmtlv(struct list *, uint8_t);
 uint8_t *tlv2str(struct tlv *tlv);
 uint8_t *tlv2buf(uint8_t *, struct tlv *tlv);
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */
