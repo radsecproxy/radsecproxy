@@ -37,11 +37,11 @@ catgconf_SOURCES    = debug.c \
                       gconfig.c \
                       catgconf.c
 
-radsecproxy_CFLAGS  = -g @SSL_CFLAGS@ @TARGET_CFLAGS@
+radsecproxy_CFLAGS  = -g -Wall @SSL_CFLAGS@ @TARGET_CFLAGS@
 radsecproxy_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
 radsecproxy_LDADD   = @SSL_LIBS@
 
-catgconf_CFLAGS     = -g @TARGET_CFLAGS@
+catgconf_CFLAGS     = -g -Wall @TARGET_CFLAGS@
 catgconf_LDFLAGS    = @TARGET_LDFLAGS@
 
 EXTRA_DIST = radsecproxy.conf-example \
