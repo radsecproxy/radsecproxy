@@ -3529,6 +3529,8 @@ case "${target_os}" in
     TARGET_CFLAGS="-DSYS_SOLARIS9 -D_POSIX_PTHREAD_SEMANTICS"
     if test "$GCC" != yes ; then
       TARGET_CFLAGS="$TARGET_CFLAGS -mt"
+    else
+      TARGET_CFLAGS="$TARGET_CFLAGS -pthread"
     fi
     TARGET_LDFLAGS="-lpthread -lsocket -lnsl"
     ;;
