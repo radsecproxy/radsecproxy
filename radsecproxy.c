@@ -1092,15 +1092,21 @@ int dorewritemod(struct radmsg *msg, struct list *modattrs) {
 }
 
 int dorewrite(struct radmsg *msg, struct rewrite *rewrite) {
-    if (!rewrite)
+    int rv = 1;			/* Success.  */
+
+    if (rewrite)
 	return 1;
+
     if (rewrite->removeattrs || rewrite->removevendorattrs)
 	dorewriterm(msg, rewrite->removeattrs, rewrite->removevendorattrs);
-    if (rewrite->addattrs && !dorewriteadd(msg, rewrite->addattrs))
-	return 0;
-    if (rewrite->modattrs && !dorewritemod(msg, rewrite->modattrs))
-	return 0;
-    return 1;
+    if (rewrite->modattrs)
+	if (!dorewritemod(msg, rewrite->modattrs))
+	    rv = 0;
+    if (rewrite->addattrs)
+	if (!dorewriteadd(msg, rewrite->addattrs))
+	    rv = 0;
+
+    return rv;
 }
 
 int rewriteusername(struct request *rq, struct tlv *attr) {
@@ -1116,23 +1122,37 @@ int rewriteusername(struct request *rq, struct tlv *attr) {
     return 1;
 }
 
-int addvendorattr(struct radmsg *msg, uint32_t vendor, struct tlv *attr) {
-    struct tlv *vattr;
+static struct tlv *
+makevendortlv(uint32_t vendor, const struct tlv *attr)
+{
+    struct tlv *newtlv = NULL;
     uint8_t l, *v;
 
     l = attr->l + 6;
     v = malloc(l);
     if (v) {
-	vendor = htonl(vendor);
+	vendor = htonl(vendor & 0x00ffffff); /* MSB=0 according to RFC 2865. */
 	memcpy(v, &vendor, 4);
 	tlv2buf(v + 4, attr);
 	v[5] += 2;
-	vattr = maketlv(RAD_Attr_Vendor_Specific, l, v);
-	if (vattr && radmsg_add(msg, vattr))
-	    return 1;
-	freetlv(vattr);
+	newtlv = maketlv(RAD_Attr_Vendor_Specific, l, v);
+	if (newtlv == NULL)
+	    free(v);
     }
-    return 0;
+    return newtlv;
+}
+
+int addvendorattr(struct radmsg *msg, uint32_t vendor, struct tlv *attr) {
+    struct tlv *vattr;
+
+    vattr = makevendortlv(vendor, attr);
+    if (!vattr)
+	return 0;
+    if (!radmsg_add(msg, vattr)) {
+	freetlv(vattr);
+	return 0;
+    }
+    return 1;
 }
 
 void addttlattr(struct radmsg *msg, uint32_t *attrtype, uint8_t addttl) {
@@ -2281,13 +2301,18 @@ uint8_t attrname2val(char *attrname) {
     return val > 0 && val < 256 ? val : 0;
 }
 
+/* ATTRNAME is on the form vendor[:type].
+   If only vendor is found, TYPE is set to 256 and 1 is returned.
+   If type is >= 256, 1 is returned.
+   Otherwise, 0 is returned.
+*/
 /* should accept both names and numeric values, only numeric right now */
 int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
     char *s;
 
     *vendor = atoi(attrname);
     s = strchr(attrname, ':');
-    if (!s) {
+    if (!s) {			/* Only vendor was found.  */
 	*type = 256;
 	return 1;
     }
@@ -2298,19 +2323,31 @@ int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
 /* should accept both names and numeric values, only numeric right now */
 struct tlv *extractattr(char *nameval) {
     int len, name = 0;
-    char *s;
+    int vendor = 0;	    /* Vendor 0 is reserved, see RFC 1700.  */
+    char *s, *s2;
     struct tlv *a;
 
     s = strchr(nameval, ':');
     name = atoi(nameval);
-    if (!s || name < 1 || name > 255)
+    if (!s)
 	return NULL;
     len = strlen(s + 1);
     if (len > 253)
 	return NULL;
+
+    s2 = strchr(s + 1, ':');
+    if (s2) {		 /* Two ':' means we have vendor:name:val.  */
+	vendor = name;
+	name = atoi(s2 + 1);
+	s = s2;
+    }
+
+    if (name < 1 || name > 255)
+	return NULL;
     a = malloc(sizeof(struct tlv));
     if (!a)
 	return NULL;
+
     a->v = (uint8_t *)stringcopy(s + 1, 0);
     if (!a->v) {
 	free(a);
@@ -2318,6 +2355,10 @@ struct tlv *extractattr(char *nameval) {
     }
     a->t = name;
     a->l = len;
+
+    if (vendor)
+ 	a = makevendortlv(vendor, a);
+
     return a;
 }
 
@@ -2390,7 +2431,8 @@ struct rewrite *getrewrite(char *alt1, char *alt2) {
     return NULL;
 }
 
-void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, char **modattrs) {
+void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, char **addvattrs, char **modattrs)
+{
     struct rewrite *rewrite = NULL;
     int i, n;
     uint8_t *rma = NULL;
@@ -2437,6 +2479,21 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 		debugx(1, DBG_ERR, "malloc failed");
 	}
 	freegconfmstr(addattrs);
+    }
+
+    if (addvattrs) {
+	if (!adda)
+	    adda = list_create();
+	if (!adda)
+	    debugx(1, DBG_ERR, "malloc failed");
+	for (i = 0; addvattrs[i]; i++) {
+	    a = extractattr(addvattrs[i]);
+	    if (!a)
+		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", addvattrs[i]);
+	    if (!list_push(adda, a))
+		debugx(1, DBG_ERR, "malloc failed");
+	}
+	freegconfmstr(addvattrs);
     }
 
     if (modattrs) {
@@ -2917,7 +2974,9 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
 }
 
 int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    char **rmattrs = NULL, **rmvattrs = NULL, **addattrs = NULL, **modattrs = NULL;
+    char **rmattrs = NULL, **rmvattrs = NULL;
+    char **addattrs = NULL, **addvattrs = NULL;
+    char **modattrs = NULL;
 
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
 
@@ -2925,11 +2984,12 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
 			  "removeAttribute", CONF_MSTR, &rmattrs,
 			  "removeVendorAttribute", CONF_MSTR, &rmvattrs,
 			  "addAttribute", CONF_MSTR, &addattrs,
+			  "addVendorAttribute", CONF_MSTR, &addvattrs,
 			  "modifyAttribute", CONF_MSTR, &modattrs,
 			  NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
-    addrewrite(val, rmattrs, rmvattrs, addattrs, modattrs);
+    addrewrite(val, rmattrs, rmvattrs, addattrs, addvattrs, modattrs);
     return 1;
 }
 
