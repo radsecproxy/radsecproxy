@@ -85,7 +85,8 @@ tls default {
 # rewrite example {
 #	removeAttribute 5
 #	removeVendorAttribute 99:100
-#	addAttribute 4 attribute%20value
+#	addAttribute 4:11
+#       addVendorAttribute 99:100:200
 #	modifyAttribute 1:/^(.*)@local$/\1@example.com/
 # }
 
