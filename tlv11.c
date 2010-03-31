@@ -109,7 +109,7 @@ uint8_t *tlv2str(struct tlv *tlv) {
     return s;
 }
 
-uint8_t *tlv2buf(uint8_t *p, struct tlv *tlv) {
+uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
     *p++ = tlv->t;
     *p++ = tlv->l;
     if (tlv->l) {
