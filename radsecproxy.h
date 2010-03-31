@@ -98,6 +98,7 @@ struct clsrvconf {
     uint8_t dupinterval;
     uint8_t certnamecheck;
     uint8_t addttl;
+    uint8_t loopprevention;
     struct rewrite *rewritein;
     struct rewrite *rewriteout;
     pthread_mutex_t *lock; /* only used for updating clients so far */

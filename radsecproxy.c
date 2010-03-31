@@ -1492,7 +1492,9 @@ int radsrv(struct request *rq) {
 	goto exit;
     }
 
-    if (options.loopprevention && !strcmp(from->conf->name, to->conf->name)) {
+    if ((to->conf->loopprevention == 1
+	 || (to->conf->loopprevention == UCHAR_MAX && options.loopprevention == 1))
+	&& !strcmp(from->conf->name, to->conf->name)) {
 	debug(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s, discarding",
 	      from->conf->name, addr2string(from->addr), to->conf->name);
 	goto exit;
@@ -2759,6 +2761,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	return 0;
     }
     memset(conf, 0, sizeof(struct clsrvconf));
+    conf->loopprevention = UCHAR_MAX; /* Uninitialized.  */
     resconf = (struct clsrvconf *)arg;
     if (resconf) {
 	conf->statusserver = resconf->statusserver;
@@ -2784,6 +2787,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "RetryInterval", CONF_LINT, &retryinterval,
 			  "RetryCount", CONF_LINT, &retrycount,
 			  "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
+			  "LoopPrevention", CONF_BLN, &conf->loopprevention,
 			  NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");
