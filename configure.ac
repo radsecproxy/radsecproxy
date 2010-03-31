@@ -55,7 +55,7 @@ case "${target_os}" in
     if test "$GCC" != yes ; then
       TARGET_CFLAGS="$TARGET_CFLAGS -mt"
     else
-      TARGET_CFLAGS="$TARGET_CFLAGS -pthread"
+      TARGET_CFLAGS="$TARGET_CFLAGS -pthreads"
     fi
     TARGET_LDFLAGS="-lpthread -lsocket -lnsl"
     ;;
