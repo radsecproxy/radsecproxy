@@ -1094,18 +1094,16 @@ int dorewritemod(struct radmsg *msg, struct list *modattrs) {
 int dorewrite(struct radmsg *msg, struct rewrite *rewrite) {
     int rv = 1;			/* Success.  */
 
-    if (rewrite)
-	return 1;
-
-    if (rewrite->removeattrs || rewrite->removevendorattrs)
-	dorewriterm(msg, rewrite->removeattrs, rewrite->removevendorattrs);
-    if (rewrite->modattrs)
-	if (!dorewritemod(msg, rewrite->modattrs))
-	    rv = 0;
-    if (rewrite->addattrs)
-	if (!dorewriteadd(msg, rewrite->addattrs))
-	    rv = 0;
-
+    if (rewrite) {
+	if (rewrite->removeattrs || rewrite->removevendorattrs)
+	    dorewriterm(msg, rewrite->removeattrs, rewrite->removevendorattrs);
+	if (rewrite->modattrs)
+	    if (!dorewritemod(msg, rewrite->modattrs))
+		rv = 0;
+	if (rewrite->addattrs)
+	    if (!dorewriteadd(msg, rewrite->addattrs))
+		rv = 0;
+    }
     return rv;
 }
 
