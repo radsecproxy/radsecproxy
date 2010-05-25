@@ -2345,7 +2345,7 @@ struct tlv *extractattr(char *nameval) {
     s2 = strchr(s + 1, ':');
     if (s2) {		 /* Two ':' means we have vendor:name:val.  */
 	vendor = name;
-	name = atoi(s2 + 1);
+	name = atoi(s + 1);
 	s = s2;
     }
 
