@@ -1120,32 +1120,43 @@ int rewriteusername(struct request *rq, struct tlv *attr) {
     return 1;
 }
 
+/** Create vendor specific tlv with ATTR.  ATTR is consumed (freed) if
+ * all is well with the new tlv, i.e. if the function returns
+ * !NULL.  */
 static struct tlv *
-makevendortlv(uint32_t vendor, const struct tlv *attr)
+makevendortlv(uint32_t vendor, struct tlv *attr)
 {
     struct tlv *newtlv = NULL;
     uint8_t l, *v;
 
+    if (!attr)
+	return NULL;
     l = attr->l + 6;
     v = malloc(l);
     if (v) {
 	vendor = htonl(vendor & 0x00ffffff); /* MSB=0 according to RFC 2865. */
 	memcpy(v, &vendor, 4);
 	tlv2buf(v + 4, attr);
-	v[5] += 2;
+	v[5] += 2; /* Vendor length increased for type and length fields. */
 	newtlv = maketlv(RAD_Attr_Vendor_Specific, l, v);
 	if (newtlv == NULL)
 	    free(v);
+	else
+	    freetlv(attr);
     }
     return newtlv;
 }
 
+/** Ad vendor attribute with VENDOR + ATTR and push it on MSG.  ATTR
+ * is consumed.  */
 int addvendorattr(struct radmsg *msg, uint32_t vendor, struct tlv *attr) {
     struct tlv *vattr;
 
     vattr = makevendortlv(vendor, attr);
-    if (!vattr)
+    if (!vattr) {
+	freetlv(attr);
 	return 0;
+    }
     if (!radmsg_add(msg, vattr)) {
 	freetlv(vattr);
 	return 0;
@@ -1166,10 +1177,8 @@ void addttlattr(struct radmsg *msg, uint32_t *attrtype, uint8_t addttl) {
 	    freetlv(attr);
     } else {
 	attr = maketlv(attrtype[1], 4, ttl);
-	if (attr) {
+	if (attr)
 	    addvendorattr(msg, attrtype[0], attr);
-	    freetlv(attr);
-	}
     }
 }
 
