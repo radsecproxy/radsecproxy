@@ -2335,19 +2335,20 @@ struct tlv *extractattr(char *nameval) {
     struct tlv *a;
 
     s = strchr(nameval, ':');
-    name = atoi(nameval);
     if (!s)
 	return NULL;
-    len = strlen(s + 1);
-    if (len > 253)
-	return NULL;
+    name = atoi(nameval);
 
+    /* Two ':' means that we have vendor:name:val.  */
     s2 = strchr(s + 1, ':');
-    if (s2) {		 /* Two ':' means we have vendor:name:val.  */
+    if (s2) {
 	vendor = name;
 	name = atoi(s + 1);
 	s = s2;
     }
+    len = strlen(s + 1);
+    if (len > 253)
+	return NULL;
 
     if (name < 1 || name > 255)
 	return NULL;
