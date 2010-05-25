@@ -2456,7 +2456,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 
 	for (i = 0; i < n; i++)
 	    if (!(rma[i] = attrname2val(rmattrs[i])))
-		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", rmattrs[i]);
+		debugx(1, DBG_ERR, "addrewrite: removing invalid attribute %s", rmattrs[i]);
 	freegconfmstr(rmattrs);
 	rma[i] = 0;
     }
@@ -2469,7 +2469,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 
 	for (p = rmva, i = 0; i < n; i++, p += 2)
 	    if (!vattrname2val(rmvattrs[i], p, p + 1))
-		debugx(1, DBG_ERR, "addrewrite: invalid vendor attribute %s", rmvattrs[i]);
+		debugx(1, DBG_ERR, "addrewrite: removing invalid vendor attribute %s", rmvattrs[i]);
 	freegconfmstr(rmvattrs);
 	*p = 0;
     }
@@ -2481,7 +2481,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	for (i = 0; addattrs[i]; i++) {
 	    a = extractattr(addattrs[i]);
 	    if (!a)
-		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", addattrs[i]);
+		debugx(1, DBG_ERR, "addrewrite: adding invalid attribute %s", addattrs[i]);
 	    if (!list_push(adda, a))
 		debugx(1, DBG_ERR, "malloc failed");
 	}
@@ -2496,7 +2496,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	for (i = 0; addvattrs[i]; i++) {
 	    a = extractattr(addvattrs[i]);
 	    if (!a)
-		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", addvattrs[i]);
+		debugx(1, DBG_ERR, "addrewrite: adding invalid vendor attribute %s", addvattrs[i]);
 	    if (!list_push(adda, a))
 		debugx(1, DBG_ERR, "malloc failed");
 	}
@@ -2510,7 +2510,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	for (i = 0; modattrs[i]; i++) {
 	    m = extractmodattr(modattrs[i]);
 	    if (!m)
-		debugx(1, DBG_ERR, "addrewrite: invalid attribute %s", modattrs[i]);
+		debugx(1, DBG_ERR, "addrewrite: modifying invalid attribute %s", modattrs[i]);
 	    if (!list_push(moda, m))
 		debugx(1, DBG_ERR, "malloc failed");
 	}
