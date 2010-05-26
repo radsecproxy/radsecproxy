@@ -559,7 +559,7 @@ void sendreply(struct request *rq) {
     pthread_mutex_unlock(&to->replyq->mutex);
 }
 
-int pwdencrypt(uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_t *auth) {
+int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_t *auth) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     static unsigned char first = 1;
     static EVP_MD_CTX mdctx;
@@ -585,43 +585,10 @@ int pwdencrypt(uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_
 	}
 	for (i = 0; i < 16; i++)
 	    out[offset + i] = hash[i] ^ in[offset + i];
-	input = out + offset - 16;
-	offset += 16;
-	if (offset == len)
-	    break;
-    }
-    memcpy(in, out, len);
-    pthread_mutex_unlock(&lock);
-    return 1;
-}
-
-int pwddecrypt(uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_t *auth) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static EVP_MD_CTX mdctx;
-    unsigned char hash[EVP_MAX_MD_SIZE], *input;
-    unsigned int md_len;
-    uint8_t i, offset = 0, out[128];
-
-    pthread_mutex_lock(&lock);
-    if (first) {
-	EVP_MD_CTX_init(&mdctx);
-	first = 0;
-    }
-
-    input = auth;
-    for (;;) {
-	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
-	    !EVP_DigestUpdate(&mdctx, (uint8_t *)shared, sharedlen) ||
-	    !EVP_DigestUpdate(&mdctx, input, 16) ||
-	    !EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
-	    md_len != 16) {
-	    pthread_mutex_unlock(&lock);
-	    return 0;
-	}
-	for (i = 0; i < 16; i++)
-	    out[offset + i] = hash[i] ^ in[offset + i];
-	input = in + offset;
+	if (encrypt_flag)
+	    input = out + offset;
+	else
+	    input = in + offset;
 	offset += 16;
 	if (offset == len)
 	    break;
@@ -883,14 +850,14 @@ int pwdrecrypt(uint8_t *pwd, uint8_t len, char *oldsecret, char *newsecret, uint
 	return 0;
     }
 
-    if (!pwddecrypt(pwd, len, oldsecret, strlen(oldsecret), oldauth)) {
+    if (!pwdcrypt(0, pwd, len, oldsecret, strlen(oldsecret), oldauth)) {
 	debug(DBG_WARN, "pwdrecrypt: cannot decrypt password");
 	return 0;
     }
 #ifdef DEBUG
     printfchars(NULL, "pwdrecrypt: password", "%02x ", pwd, len);
 #endif
-    if (!pwdencrypt(pwd, len, newsecret, strlen(newsecret), newauth)) {
+    if (!pwdcrypt(1, pwd, len, newsecret, strlen(newsecret), newauth)) {
 	debug(DBG_WARN, "pwdrecrypt: cannot encrypt password");
 	return 0;
     }
