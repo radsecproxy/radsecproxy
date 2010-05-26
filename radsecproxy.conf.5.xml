@@ -279,6 +279,8 @@ This can be set to <literal>on</literal> or <literal>off</literal> with
 will never be sent to a server named the same as the client it was received
 from. I.e., the names of the client block and the server block are compared.
 Note that this only gives limited protection against loops.
+It can be used as a basic option and inside server blocks where it overrides
+the basic setting.
 	  </para>
         </listitem>
       </varlistentry>
@@ -471,7 +473,8 @@ The allowed options in a server block are <literal>host</literal>,
 <literal>rewrite</literal>,
 <literal>rewriteIn</literal>, <literal>rewriteOut</literal>,
 <literal>statusServer</literal>, <literal>retryCount</literal>,
-<literal>retryInterval</literal> and <literal>dynamicLookupCommand</literal>.
+<literal>retryInterval</literal>, <literal>dynamicLookupCommand</literal>
+and <literal>loopPrevention</literal>.
     </para>
     <para>
 We already discussed the <literal>host</literal> option. The
@@ -505,6 +508,11 @@ retry. The defaults are 2 retries and an interval of 5s.
 The option <literal>dynamicLookupCommand</literal> can be used to specify a
 command that should be executed to dynamically configure and use a server.
 The use of this feature will be documented separately/later.
+    </para>
+    <para>
+Using the <literal>loopPrevention</literal> option here overrides any
+basic setting of this option.  See section <literal>BASIC
+OPTIONS</literal> for details on this option.
     </para>
   </refsect1>
   <refsect1>
@@ -682,15 +690,21 @@ rewrite on input. No rewriting is done on output unless explicitly specifed
 using the <literal>rewriteOut</literal> option.
     </para>
     <para>
-The available rewrite block options are <literal>addAttribute</literal>,
+The available rewrite block options
+are <literal>addAttribute</literal>, <literal>addVendorAttribute</literal>,
 <literal>removeAttribute</literal>, <literal>removeVendorAttribute</literal>
 and <literal>modifyAttribute</literal>. They can all be specified none, one
 or multiple times.
     </para>
     <para>
-<literal>addAttribute</literal> is used to add attributes to a message. The
-option value must be on the form <literal>attribute:value</literal> where
-attribute is a numerical value specifying the attribute.
+<literal>addAttribute</literal> is used to add attributes to a
+message. The option value must be on the
+form <literal>attribute:value</literal> where attribute is a numerical
+value specifying the attribute.  Simliarly,
+the <literal>addVendorAttribute</literal> is used to specify a vendor
+attribute to be added.  The option value must be on the
+form <literal>vendor:subattribute:value</literal>, where vendor and
+subattribute are numerical values.
     </para>
     <para>
 The <literal>removeAttribute</literal> option is used to specify an
