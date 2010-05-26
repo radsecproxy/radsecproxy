@@ -28,7 +28,9 @@
 #LogDestination         x-syslog:///
 #LogDestination         x-syslog:///log_local2
 
-# There is an option for doing some simple loop prevention
+# There is an option for doing some simple loop prevention.  Note that
+# the LoopPrevention directive can be used in server blocks too,
+# overriding what's set here in the basic settings.
 #LoopPrevention		on
 # Add TTL attribute with value 20 if not present (prevents endless loops)
 #addTTL 20
@@ -132,6 +134,8 @@ server 127.0.0.1 {
 #	rewriteIn example
 #	Can also do rewriting of outgoing messages
 #	rewriteOut example	
+#       Might override loop prevention here too:
+#       LoopPrevention off
 }
 realm	eduroam.cc {
 	server	127.0.0.1
