@@ -52,7 +52,7 @@ are not.
     </para>
     <para>
 There are two types of configuration structures than can be used. The first
-and simplest are lines of the format <emphasis>option value</emphasis>. That
+and simplest are lines on the format <emphasis>option value</emphasis>. That
 is, an option name, see below for a list of valid options, followed by
 whitespace (at least one space or tab character), followed by a value. Note
 that if the value contains whitespace, then it must be quoted using
@@ -166,7 +166,7 @@ Normally the proxy will listen to the standard RADIUS UDP port
 <literal>1812</literal> if configured to handle UDP clients. On most systems it
 will do this for all of the system's IP addresses (both IPv4 and IPv6). On some
 systems however, it may respond to only IPv4 or only IPv6. To specify an
-alternate port you may use a value of the form <literal>*:port</literal> where
+alternate port you may use a value on the form <literal>*:port</literal> where
 port is any valid port number. If you also want to specify a specific address
 you can do e.g. <literal>192.168.1.1:1812</literal> or
 <literal>[2001:db8::1]:1812</literal>. The port may be omitted if you want the
@@ -317,7 +317,7 @@ be significant.
 The client block is used to configure a client. That is, tell the proxy about a
 client, and what parameters should be used for that client. The name of the
 client block must (with one exception, see below) be either the IP address
-(IPv4 or IPv6) of the client, an IP prefix (IPv4 or IPv6) of the form
+(IPv4 or IPv6) of the client, an IP prefix (IPv4 or IPv6) on the form
 IpAddress/PrefixLength, or a domain name (FQDN). Note that literal IPv6
 addresses must be enclosed in brackets.
     </para>
@@ -424,7 +424,7 @@ The <literal>rewriteAttribute</literal> option currently makes it possible to
 specify that the User-Name attribute in a client request shall be rewritten in
 the request sent by the proxy. The User-Name attribute is written back to the
 original value if a matching response is later sent back to the client. The
-value must be of the form User-Name:/regexpmatch/replacement/. Example usage:
+value must be on the form User-Name:/regexpmatch/replacement/. Example usage:
       <blockquote>
         <para>
 rewriteAttribute User-Name:/^(.*)@local$/\1@example.com/
@@ -689,7 +689,7 @@ or multiple times.
     </para>
     <para>
 <literal>addAttribute</literal> is used to add attributes to a message. The
-option value must be of the form <literal>attribute:value</literal> where
+option value must be on the form <literal>attribute:value</literal> where
 attribute is a numerical value specifying the attribute.
     </para>
     <para>
@@ -698,14 +698,14 @@ attribute that  should be removed from received messages. The option value
 must be a numerical value specifying which attribute is to be removed.
 Similarly, <literal>removeVendorAttribute</literal> is used to specify a
 vendor attribute that is to be removed. The value can be a numerical value
-for removing all attributes from a given vendor, or of the form
+for removing all attributes from a given vendor, or on the form
 <literal>vendor:subattribute</literal>, where vendor and subattribute are
 numerical values, for removing a specific subattribute for a specific
 vendor.
     </para>
     <para>
 <literal>modifyAttribute</literal> is used to specify modification of
-attributes. The value must be of the form
+attributes. The value must be on the form
 <literal>attribute:/regexpmatch/replacement/</literal> where attribute is
 a numerical attribute type, regexpmatch is regexp matching rule and
 replacement specifies how to replace the matching regexp. Example usage:
