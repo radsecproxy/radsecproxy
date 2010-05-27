@@ -2294,8 +2294,14 @@ int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
     return *type < 256;
 }
 
-/* should accept both names and numeric values, only numeric right now */
-struct tlv *extractattr(char *nameval) {
+/** Extract attributes from string NAMEVAL, create a struct tlv and
+ * return the tlv.  If VENDOR_FLAG, NAMEVAL is on the form
+ * "<vendor>:<name>:<val>" and otherwise it's "<name>:<val>".  Return
+ * NULL if fields are missing or if conversion fails.
+ *
+ * FIXME: Should accept both names and numeric values, only numeric
+ * right now */
+struct tlv *extractattr(char *nameval, char vendor_flag) {
     int len, name = 0;
     int vendor = 0;	    /* Vendor 0 is reserved, see RFC 1700.  */
     char *s, *s2;
@@ -2306,9 +2312,10 @@ struct tlv *extractattr(char *nameval) {
 	return NULL;
     name = atoi(nameval);
 
-    /* Two ':' means that we have vendor:name:val.  */
-    s2 = strchr(s + 1, ':');
-    if (s2) {
+    if (vendor_flag) {
+	s2 = strchr(s + 1, ':');
+	if (!s2)
+	    return NULL;
 	vendor = name;
 	name = atoi(s + 1);
 	s = s2;
@@ -2331,7 +2338,7 @@ struct tlv *extractattr(char *nameval) {
     a->t = name;
     a->l = len;
 
-    if (vendor)
+    if (vendor_flag)
  	a = makevendortlv(vendor, a);
 
     return a;
@@ -2447,7 +2454,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	if (!adda)
 	    debugx(1, DBG_ERR, "malloc failed");
 	for (i = 0; addattrs[i]; i++) {
-	    a = extractattr(addattrs[i]);
+	    a = extractattr(addattrs[i], 0);
 	    if (!a)
 		debugx(1, DBG_ERR, "addrewrite: adding invalid attribute %s", addattrs[i]);
 	    if (!list_push(adda, a))
@@ -2462,7 +2469,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	if (!adda)
 	    debugx(1, DBG_ERR, "malloc failed");
 	for (i = 0; addvattrs[i]; i++) {
-	    a = extractattr(addvattrs[i]);
+	    a = extractattr(addvattrs[i], 1);
 	    if (!a)
 		debugx(1, DBG_ERR, "addrewrite: adding invalid vendor attribute %s", addvattrs[i]);
 	    if (!list_push(adda, a))
