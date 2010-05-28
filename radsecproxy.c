@@ -3161,7 +3161,7 @@ void *sighandler(void *arg) {
 }
 
 int createpidfile(const char *pidfile) {
-    int r;
+    int r = 0;
     FILE *f = fopen(pidfile, "w");
     if (f)
 	r = fprintf(f, "%ld\n", (long) getpid());
