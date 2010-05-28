@@ -62,8 +62,12 @@
 	Fixed header files for FreeBSD
 	Fix for multiple UDP servers on same IP address, solves accounting
 	problems.
-2010-03-31 1.4-devel
+2010-05-28 1.4-beta2
 	Fixed UDP fragmentation issue
 	Fixed build on Solaris when compiling with gcc.
 	LoopPrevention per server added.
 	AddVendorAttribute rewrite configuration added.
+	Fixed pwdencrypt bug with passwords of a leangth greater than 16 octets.
+	Diagnostics improved for errors resulting from failing syscalls.
+	Remove all compiler warnings with -Wall.
+
