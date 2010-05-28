@@ -62,6 +62,7 @@
 #include <regex.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <errno.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
@@ -370,24 +371,24 @@ int addserver(struct clsrvconf *conf) {
 	    goto errexit;
 	}
 	if (pthread_mutex_init(conf->servers->requests[i].lock, NULL)) {
-	    debug(DBG_ERR, "mutex init failed");
+	    debugerrno(errno, DBG_ERR, "mutex init failed");
 	    free(conf->servers->requests[i].lock);
 	    conf->servers->requests[i].lock = NULL;
 	    goto errexit;
 	}
     }
     if (pthread_mutex_init(&conf->servers->lock, NULL)) {
-	debug(DBG_ERR, "mutex init failed");
+	debugerrno(errno, DBG_ERR, "mutex init failed");
 	goto errexit;
     }
     conf->servers->newrq = 0;
     if (pthread_mutex_init(&conf->servers->newrq_mutex, NULL)) {
-	debug(DBG_ERR, "mutex init failed");
+	debugerrno(errno, DBG_ERR, "mutex init failed");
 	pthread_mutex_destroy(&conf->servers->lock);
 	goto errexit;
     }
     if (pthread_cond_init(&conf->servers->newrq_cond, NULL)) {
-	debug(DBG_ERR, "mutex init failed");
+	debugerrno(errno, DBG_ERR, "mutex init failed");
 	pthread_mutex_destroy(&conf->servers->newrq_mutex);
 	pthread_mutex_destroy(&conf->servers->lock);
 	goto errexit;
@@ -1762,7 +1763,7 @@ void *clientwr(void *arg) {
 	}
 	server->connectionok = 1;
 	if (pthread_create(&clientrdth, NULL, conf->pdef->clientconnreader, (void *)server)) {
-	    debug(DBG_ERR, "clientwr: pthread_create failed");
+	    debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
 	    goto errexit;
 	}
     } else
@@ -1895,7 +1896,7 @@ void createlistener(uint8_t type, char *arg) {
     for (res = hp->addrinfo; res; res = res->ai_next) {
         s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
         if (s < 0) {
-            debug(DBG_WARN, "createlistener: socket failed");
+            debugerrno(errno, DBG_WARN, "createlistener: socket failed");
             continue;
         }
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
@@ -1907,7 +1908,7 @@ void createlistener(uint8_t type, char *arg) {
 	    setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
 #endif
 	if (bind(s, res->ai_addr, res->ai_addrlen)) {
-	    debug(DBG_WARN, "createlistener: bind failed");
+	    debugerrno(errno, DBG_WARN, "createlistener: bind failed");
 	    close(s);
 	    s = -1;
 	    continue;
@@ -1918,7 +1919,7 @@ void createlistener(uint8_t type, char *arg) {
             debugx(1, DBG_ERR, "malloc failed");
 	*sp = s;
 	if (pthread_create(&th, NULL, protodefs[type]->listener, (void *)sp))
-            debugx(1, DBG_ERR, "pthread_create failed");
+            debugerrnox(errno, DBG_ERR, "pthread_create failed");
 	pthread_detach(th);
     }
     if (!sp)
@@ -2067,7 +2068,7 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
     memset(realm, 0, sizeof(struct realm));
 
     if (pthread_mutex_init(&realm->mutex, NULL)) {
-	debug(DBG_ERR, "mutex init failed");
+	debugerrno(errno, DBG_ERR, "mutex init failed");
 	free(realm);
 	realm = NULL;
 	goto exit;
@@ -2158,7 +2159,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
 		srvconf->servers->dynamiclookuparg = stringcopy(realm->name, 0);
 		srvconf->servers->dynstartup = 1;
 		if (pthread_create(&clientth, NULL, clientwr, (void *)(srvconf->servers))) {
-		    debug(DBG_ERR, "pthread_create failed");
+		    debugerrno(errno, DBG_ERR, "pthread_create failed");
 		    freeserver(srvconf->servers, 1);
 		    srvconf->servers = NULL;
 		} else
@@ -2220,12 +2221,12 @@ int dynamicconfig(struct server *server) {
     debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
 
     if (pipe(fd) > 0) {
-	debug(DBG_ERR, "dynamicconfig: pipe error");
+	debugerrno(errno, DBG_ERR, "dynamicconfig: pipe error");
 	goto errexit;
     }
     pid = fork();
     if (pid < 0) {
-	debug(DBG_ERR, "dynamicconfig: fork error");
+	debugerrno(errno, DBG_ERR, "dynamicconfig: fork error");
 	close(fd[0]);
 	close(fd[1]);
 	goto errexit;
@@ -2250,7 +2251,7 @@ int dynamicconfig(struct server *server) {
     freegconf(&cf);
 
     if (waitpid(pid, &status, 0) < 0) {
-	debug(DBG_ERR, "dynamicconfig: wait error");
+	debugerrno(errno, DBG_ERR, "dynamicconfig: wait error");
 	goto errexit;
     }
 

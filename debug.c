@@ -18,6 +18,7 @@
 #include <sys/time.h>
 #include <syslog.h>
 #include <errno.h>
+#include <assert.h>
 #include "debug.h"
 #include "util.h"
 
@@ -176,6 +177,33 @@ void debugx(int status, uint8_t level, char *format, ...) {
 	va_end(ap);
     }
     exit(status);
+}
+
+void debugerrno(int err, uint8_t level, char *format, ...) {
+    if (level >= debug_level) {
+	va_list ap;
+	size_t len = strlen(format);
+	char *tmp = malloc(len + 1024 + 2);
+	assert(tmp);
+	strcpy(tmp, format);
+	tmp[len++] = ':';
+	tmp[len++] = ' ';
+	if (strerror_r(err, tmp + len, 1024))
+	    tmp = format;
+	va_start(ap, format);
+	debug_logit(level, tmp, ap);
+	va_end(ap);
+    }
+}
+
+void debugerrnox(int err, uint8_t level, char *format, ...) {
+    if (level >= debug_level) {
+	va_list ap;
+	va_start(ap, format);
+	debugerrno(err, level, format, ap);
+	va_end(ap);
+    }
+    exit(err);
 }
 
 /* Local Variables: */
