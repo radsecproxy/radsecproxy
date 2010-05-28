@@ -3091,7 +3091,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8
 	    *pretend = 1;
 	    break;
 	case 'v':
-	    debug(DBG_ERR, "radsecproxy revision $Rev$");
+	    debug(DBG_ERR, "radsecproxy revision %s", PACKAGE_VERSION);
 	    debug(DBG_ERR, "This binary was built with support for the following transports:");
 #ifdef RADPROT_UDP
 	    debug(DBG_ERR, "  UDP");
@@ -3210,7 +3210,7 @@ int main(int argc, char **argv) {
 	debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
 
     debug_timestamp_on();
-    debug(DBG_INFO, "radsecproxy revision $Rev$ starting");
+    debug(DBG_INFO, "radsecproxy revision %s starting", PACKAGE_VERSION);
     if (pidfile && !createpidfile(pidfile))
 	debugx(1, DBG_ERR, "failed to create pidfile %s: %s", pidfile, strerror(errno));
 
