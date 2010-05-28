@@ -51,5 +51,10 @@ EXTRA_DIST = radsecproxy.conf-example \
 man: $(srcdir)/radsecproxy.conf.5.xml
 	docbook2x-man $<
 
+# Build HTML version of radsecproxy.conf.5.  NOTE: Only tested with
+# 'openjade' package installed on Ubuntu 9.10.
+html: $(srcdir)/radsecproxy.conf.5.xml
+	-openjade -E2000 -t sgml-raw -d /usr/share/sgml/docbook/stylesheet/dsssl/modular/html/docbook.dsl -o radsecproxy.conf.html $<
+
 clean-local:
 	-rm radsecproxy.conf.5
