@@ -3164,7 +3164,7 @@ int createpidfile(const char *pidfile) {
     int r;
     FILE *f = fopen(pidfile, "w");
     if (f)
-	r = fprintf(f, "%d\n", getpid());
+	r = fprintf(f, "%ld\n", (long) getpid());
     return f && !fclose(f) && r >= 0;
 }
 
