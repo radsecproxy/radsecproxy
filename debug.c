@@ -44,9 +44,12 @@ void debug_set_level(uint8_t level) {
 	debug_level = DBG_WARN;
 	return;
     case 3:
-	debug_level = DBG_INFO;
+	debug_level = DBG_NOTICE;
 	return;
     case 4:
+	debug_level = DBG_INFO;
+	return;
+    case 5:
 	debug_level = DBG_DBG;
 	return;
     }
@@ -136,6 +139,9 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
 	    break;
 	case DBG_INFO:
 	    priority = LOG_INFO;
+	    break;
+	case DBG_NOTICE:
+	    priority = LOG_NOTICE;
 	    break;
 	case DBG_WARN:
 	    priority = LOG_WARNING;

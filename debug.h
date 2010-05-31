@@ -12,8 +12,9 @@
 
 #define DBG_DBG 8
 #define DBG_INFO 16
-#define DBG_WARN 32
-#define DBG_ERR 64
+#define DBG_NOTICE 32
+#define DBG_WARN 64
+#define DBG_ERR 128
 
 void debug_init(char *ident);
 void debug_set_level(uint8_t level);
