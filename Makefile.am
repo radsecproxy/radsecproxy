@@ -45,7 +45,8 @@ catgconf_CFLAGS     = -g -Wall -fno-strict-aliasing @TARGET_CFLAGS@
 catgconf_LDFLAGS    = @TARGET_LDFLAGS@
 
 dist_man_MANS = radsecproxy.1 radsecproxy.conf.5
-EXTRA_DIST = radsecproxy.conf-example radsecproxy.conf.5.xml
+EXTRA_DIST = LICENSE radsecproxy.conf-example radsecproxy.conf.5.xml \
+	tools/naptr-eduroam.sh tools/radsec-dynsrv.sh tools/README
 
 radsecproxy.conf.5: $(srcdir)/radsecproxy.conf.5.xml
 	docbook2x-man $<
