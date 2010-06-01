@@ -70,3 +70,5 @@
 	Fixed pwdencrypt bug with passwords of a leangth greater than 16 octets.
 	Diagnostics improved for errors resulting from failing syscalls.
 	Removed all compiler warnings (compiling with -Wall).
+	New log level, DBG_NOTICE, added.
+
