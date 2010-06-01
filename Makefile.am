@@ -44,11 +44,10 @@ radsecproxy_LDADD   = @SSL_LIBS@
 catgconf_CFLAGS     = -g -Wall -fno-strict-aliasing @TARGET_CFLAGS@
 catgconf_LDFLAGS    = @TARGET_LDFLAGS@
 
-EXTRA_DIST = radsecproxy.conf-example \
-		radsecproxy.1 \
-		radsecproxy.conf.5.xml
+dist_man_MANS = radsecproxy.1 radsecproxy.conf.5
+EXTRA_DIST = radsecproxy.conf-example radsecproxy.conf.5.xml
 
-man: $(srcdir)/radsecproxy.conf.5.xml
+radsecproxy.conf.5: $(srcdir)/radsecproxy.conf.5.xml
 	docbook2x-man $<
 
 # Build HTML version of radsecproxy.conf.5.  NOTE: Only tested with
