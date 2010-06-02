@@ -22,8 +22,8 @@ http://software.uninett.no/radsecproxy/?page=documentation
 
 There are five options that may be specified on the command line.
 "-c configfile" to specify a non-default config file path;
-"-d loglevel" to set a loglevel of 1, 2, 3 or 4 where 4 is the most
-detailed; and "-f" to run the proxy in the foreground with logging
+"-d loglevel" to set a loglevel of 1, 2, 3, 4 and 5 where 5 is the
+most detailed; and "-f" to run the proxy in the foreground with logging
 to stderr. Without "-f" the default is to detach as a daemon and
 log to syslog. "-v" just prints version information and exits, while
 "-p" (pretend) makes the proxy go through the configuration files as

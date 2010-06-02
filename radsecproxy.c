@@ -3061,7 +3061,7 @@ void getmainconfig(const char *configfile) {
 	debugx(1, DBG_ERR, "configuration error");
 
     if (loglevel != LONG_MIN) {
-	if (loglevel < 1 || loglevel > 4)
+	if (loglevel < 1 || loglevel > 5)
 	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %d, must be 1, 2, 3, 4 or 5", configfile, loglevel);
 	options.loglevel = (uint8_t)loglevel;
     }
@@ -3087,7 +3087,7 @@ void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8
 	    *configfile = optarg;
 	    break;
 	case 'd':
-	    if (strlen(optarg) != 1 || *optarg < '1' || *optarg > '4')
+	    if (strlen(optarg) != 1 || *optarg < '1' || *optarg > '5')
 		debugx(1, DBG_ERR, "Debug level must be 1, 2, 3, 4 or 5, not %s", optarg);
 	    *loglevel = *optarg - '0';
 	    break;
