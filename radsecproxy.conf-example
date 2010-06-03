@@ -17,7 +17,7 @@
 #SourceTCP		*:33000
 #SourceTLS		*:33001
 #SourceDTLS		*:33001
-# Optional log level. 3 is default, 1 is less, 4 is more
+# Optional log level. 3 is default, 1 is less, 5 is more
 #LogLevel		3
 # Optional LogDestinatinon, else stderr used for logging
 # Logging to file
