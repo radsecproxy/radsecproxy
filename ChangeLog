@@ -62,13 +62,22 @@
 	Fixed header files for FreeBSD
 	Fix for multiple UDP servers on same IP address, solves accounting
 	problems.
-2010-06-01 1.4-beta3-devel
-	Fixed UDP fragmentation issue
-	Fixed build on Solaris when compiling with gcc.
-	LoopPrevention per server added.
-	AddVendorAttribute rewrite configuration added.
-	Fixed pwdencrypt bug with passwords of a leangth greater than 16 octets.
-	Diagnostics improved for errors resulting from failing syscalls.
-	Removed all compiler warnings (compiling with -Wall).
-	New log level, DBG_NOTICE, added.
+2010-06-09 1.4-beta3-devel
+	Incompatible changes:
+	- Log level 4 used to be DBG_DBG but is now DBG_NOTICE.  In order
+	to keep the same behaviour as in previous versions of radsecproxy,
+	those who have LogLevel set to 4 need to change this to 5.  Log
+	levels 1, 2 and 3 are unaffected.
 
+	New features and various improvements:
+	- LoopPrevention per server has been added.
+	- AddVendorAttribute rewrite configuration has been added.
+	- New log level, DBG_NOTICE, added.
+	- Diagnostics improved for errors resulting from failing syscalls.
+	- Removed all compiler warnings (compiling with -Wall).
+
+	Bug fixes:
+	- A UDP fragmentation issue.
+	- Build on Solaris when compiling with gcc.
+	- A bug in pwdencrypt() with passwords of a leangth greater than
+	16 octets.
