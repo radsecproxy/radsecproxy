@@ -135,7 +135,7 @@ reply by calling buf2radmsg(). If this fails or the message type
 is not one of Access Accept, Access Reject, Access Challenge or
 Accounting Response, the reply is ignored.
 
-If the request was a status-server message, it is simply removes
+If the request was a status-server message, it simply removes
 the request and returns.
 
 Next it will apply any rewritein rules and check TTL attribute if
@@ -152,15 +152,15 @@ sendreply() returns, we free the request from the server's
 request queue. This also means that the ID can be used for a new
 request.
 
-Now about sendreply(). All it does, is basically to assemble the
+Now about sendreply(). All it does is basically to assemble the
 reply message, take care of authenticators and set rq->replybuf
 to point to the result. After that it adds a pointer to rq to
-the clients reply queue, and signals the server writer who is
+the clients reply queue and signals the server writer who is
 responsible for sending replies to the client.
 
 The server writer is a separate thread created by the server reader,
 typically called something like xxxserverwr. All it does is to send
-whatever it finds in its replyq to the client and removes it. When
+whatever it finds in its replyq to the client and remove it. When
 the queue is empty it waits for a signal from a sendreply().
 
 The above shows the complete flow. It might be worth also looking a
