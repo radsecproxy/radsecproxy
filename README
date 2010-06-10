@@ -1,4 +1,4 @@
-This is a revision from the radsecproxy 2.0 devel branch.
+This is radsecproxy 1.4.1 from June 11 2010.
 
 radsecproxy is a generic RADIUS proxy that can support various
 RADIUS clients over UDP or TLS (RadSec).
