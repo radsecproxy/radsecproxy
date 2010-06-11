@@ -44,9 +44,13 @@ radsecproxy_LDADD   = @SSL_LIBS@
 catgconf_CFLAGS     = -g -Wall -fno-strict-aliasing @TARGET_CFLAGS@
 catgconf_LDFLAGS    = @TARGET_LDFLAGS@
 
-dist_man_MANS = radsecproxy.1 radsecproxy.conf.5
+dist_man_MANS = radsecproxy.1 $(GENMANPAGES)
 EXTRA_DIST = LICENSE radsecproxy.conf-example radsecproxy.conf.5.xml \
 	tools/naptr-eduroam.sh tools/radsec-dynsrv.sh tools/README
+
+if HAVE_DOCBOOK2X_MAN
+GENMANPAGES = radsecproxy.conf.5
+endif
 
 radsecproxy.conf.5: $(srcdir)/radsecproxy.conf.5.xml
 	docbook2x-man $<
