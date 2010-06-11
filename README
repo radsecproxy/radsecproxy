@@ -1,49 +1,29 @@
 This is radsecproxy 1.4.1 from June 11 2010.
 
-radsecproxy is a generic RADIUS proxy that can support various
-RADIUS clients over UDP or TLS (RadSec).
+radsecproxy is a generic RADIUS proxy that can support various RADIUS
+clients over UDP or TLS (RadSec).
 
 It should build on most Linux and BSD platforms by simply typing
-"make". You may also try to use autoconf. It is possible to
-specify which RADIUS transport the build should support. With
-just doing "make" one will support only UDP and TLS. See the
-Makefile for how to change this. With autoconf (configure) there
-will normally be support for all transport. You can use the
-configure options --enable-udp, --enable-tcp, --enable-tls and
---enable-dtls where each of them may be set to yes or no to
-enable or disable them.
+"./configure && make".  It is possible to specify which RADIUS
+transport the build should support.  Without any special options to
+configure, all transports supported by the system will be enabled.
+See the output from "configure --help" for how to change this.
 
-To use it you need to create a config file which normally is
-called "/etc/radsecproxy.conf". You can also specify the location
-with the "-c" command line option (see below). For further
+To use radsecproxy you need to create a config file which normally is
+called "/etc/radsecproxy.conf".  You can also specify the location
+with the "-c" command line option (see below).  For further
 instructions, please see the enclosed example file and the
 documentation at
 http://software.uninett.no/radsecproxy/?page=documentation
 
-There are five options that may be specified on the command line.
-"-c configfile" to specify a non-default config file path;
+There are five options that may be specified on the command line:
+"-c configfile" to specify a non-default config file path.
 "-d loglevel" to set a loglevel of 1, 2, 3, 4 and 5 where 5 is the
-most detailed; and "-f" to run the proxy in the foreground with logging
-to stderr. Without "-f" the default is to detach as a daemon and
-log to syslog. "-v" just prints version information and exits, while
+              most detailed.
+"-f" to run the proxy in the foreground with logging to stderr.
+     Without "-f" the default is to detach as a daemon and log to
+     syslog.
+"-v" just prints version information and exits.
 "-p" (pretend) makes the proxy go through the configuration files as
-normal, but stops before creating any sockets or doing any serious
-work. This is useful for validating config files.
-
-Thanks to Stefan Winter and Andreas Solberg for talking me into
-doing this, and the funding from GEANT2. Stefan as well as Kolbjørn
-Barmen, Ralf Paffrath and Maja Wolniewicz have helped with early
-testing of the code.
-
-Thanks for contributing code goes to Arne Schwabe, Maja Wolniewicz,
-Simon Leinen and Stefan Winter.
-
-All of the above plus Milan Sova have provided good feedback on
-several implementation choices. Finally thanks to Hans Zandbelt
-for providing the autoconf stuff. I may have forgotten someone,
-let me know if you feel left out.
-
-For more information, feedback etc. please see the information
-at http://software.uninett.no/radsecproxy/
-
-Stig Venaas <venaas@uninett.no> -- 2009.07.22
+     normal, but stops before creating any sockets or doing any
+     serious work.  This is useful for validating config files.
