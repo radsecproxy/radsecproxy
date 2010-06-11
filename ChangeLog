@@ -62,7 +62,7 @@
 	Fixed header files for FreeBSD
 	Fix for multiple UDP servers on same IP address, solves accounting
 	problems.
-2010-06-09 1.4-beta3-devel
+2010-06-12 1.4
 	Incompatible changes:
 	- Log level 4 used to be DBG_DBG but is now DBG_NOTICE.  In order
 	to keep the same behaviour as in previous versions of radsecproxy,
