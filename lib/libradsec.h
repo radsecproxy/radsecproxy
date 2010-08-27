@@ -130,7 +130,7 @@ struct rs_packet *rs_packet_receive(const struct rs_conn *conn);
    three different ways, from easiest to hairiest:
 
    i) Blocking i/o model: User passes NULL for the callbacks in
-   rc_conn_open() and the open, send and receive calls will block
+   rs_conn_open() and the open, send and receive calls will block
    until the wanted event occurs.  Other events occurring while
    waiting will be either silently discarded or signaled as an error
    (f.ex. broken connection while sending).
