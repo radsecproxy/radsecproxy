@@ -130,15 +130,16 @@ struct rs_packet *rs_packet_receive(const struct rs_conn *conn);
    three different ways, from easiest to hairiest:
 
    i) Blocking i/o model: User passes NULL for the callbacks in
-   rs_conn_open() and the open, send and receive calls will block
-   until the wanted event occurs.  Other events occurring while
-   waiting will be either silently discarded or signaled as an error
+   rs_conn_open().  The open, send and receive calls will block until
+   the desired event occurs.  Other events occurring while waiting
+   will be either silently discarded or signaled as an error
    (f.ex. broken connection while sending).
 
-   ii) Simple interface with a timeout: User calls
-   rs_event_loop(timeout) to process pending i/o.
+   ii) Simple event loop interface with a timeout: User calls
+   rs_event_loop(timeout) to process pending i/o.  Should be a good
+   choice for most applications.
 
-   iii) full libevent interface: TODO.
+   iii) Full libevent interface: TODO.
  */
 #error "need an rs_event_loop() and more"
 
