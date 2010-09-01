@@ -8,7 +8,7 @@
 /* Example usage.  */
 #if 0
 {
-  fd = rs_connect (address, psk);
+  fd = rs_connect (address, 0, NULL);
   if (!fd)
     /* check errno */ ;
   n = read (fd, buf, buflen);
@@ -49,8 +49,8 @@
 
     @return A file descriptor or -1 if an error occurred, in which
     case errno is set appropriately.  */
-int rs_connect(enum rs_conn_type type,
-	       const struct sockaddr_storage *addr,
+int rs_connect(const struct sockaddr_storage *addr,
+	       enum rs_conn_type type,
 	       const struct rs_credentials *cred);
 
 /** Disconnect.
