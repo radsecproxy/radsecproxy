@@ -76,7 +76,7 @@ int rs_packet_send(const struct rs_conn *conn,
 		   void *user_data);
 
 /** Return the next packet received on @a conn, blocking while waiting.
-  The packet returned must be freed using @a rs_packet_free.  */
+    The packet returned must be freed using @a rs_packet_free.  */
 struct rs_packet *rs_packet_receive(const struct rs_conn *conn);
 
 
