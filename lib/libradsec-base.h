@@ -1,43 +1,12 @@
-/** @file libradsec-minimal.h
+/** @file libradsec-base.h
     @brief Low level API for libradsec.  */
 
 /* FIXME: License blurb goes here.  */
 
-#include "libevent.h"
-
-/* Example usage.  */
-#if 0
-{
-  fd = rs_connect (address, 0, NULL);
-  if (!fd)
-    /* check errno */ ;
-  n = read (fd, buf, buflen);
-  struct rs_packet *p = rs_packet_new (buf, buflen, &count);
-  if (!p)
-    {
-      if (count < 0)
-	/* check errno */ ;
-      else
-	/* need another COUNT octets */ ;
-    }
-  else
-    /* next unused octet is at buf+count */
-
-  n = rs_packet_serialize (p, buf, buflen);
-  if (n < 0)
-    /* invalid packet */ ;
-  else if (n == 0)
-    /* out of buffer space */ ;
-  else
-    write (fd, buf, n);
-
-  if (p)
-    rs_packet_free(p);
-  if (fd)
-    rs_disconnect(fd);
-}
-#endif
-
+#include <unistd.h>
+#include <stdint.h>
+#include <sys/socket.h>
+#include "libradsec.h"
 
 /* Function prototypes.  */
 
@@ -49,9 +18,9 @@
 
     @return A file descriptor or -1 if an error occurred, in which
     case errno is set appropriately.  */
-int rs_connect(const struct sockaddr_storage *addr,
-	       enum rs_conn_type type,
-	       const struct rs_credentials *cred);
+int rs_connect(const struct rs_config *conf,
+	       const struct sockaddr *addr,
+	       socklen_t addrlen);
 
 /** Disconnect.
 
@@ -59,10 +28,13 @@ int rs_connect(const struct sockaddr_storage *addr,
 
     @return 0 on success or -1 if an error occurred, in which case
     errno is set appropriately.  */
-int rs_disconnect(int fd);
+int rs_disconnect(const struct rs_config *conf,
+		  int fd);
 
 /** Allocate and initialize a packet from a buffer containing a packet
     as seen on the wire.  Free the packet using @a rs_packet_free().
+
+FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME
 
     @param buf Buffer with on-the-wire data with packet.
     @param buflen Number of octets in @a buf.
@@ -71,19 +43,29 @@ int rs_disconnect(int fd);
     successful construction of a packet (return !NULL) or number of
     octets needed for a complete packet (return NULL).
 
+FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME
+
     @return Packet or NULL on error or not enough data in @a buf.  If
     return value is NULL and @a count is < 0, an error has occurred
     and errno is set appropriately.  If return value is NULL and @a
     count is > 0 it shows the number of bytes needed to complete the
     packet.  */
-struct rs_packet *rs_packet_new(const uint8_t *buf,
-				size_t buflen,
-				ssize_t *count);
+struct rs_packet *rs_packet_new(const struct rs_config *ctx,
+				const uint8_t buf[RS_HEADER_LEN],
+				size_t *count);
+
+struct rs_packet *rs_packet_parse(const struct rs_config *ctx,
+				  struct rs_packet *packet,
+				  const uint8_t *buf,
+				  size_t buflen);
 
 /** Free a packet that has been allocated by @a rs_packet_new().
 
-    @param packet Packet to free.  */
-void rs_packet_free(struct rs_packet *packet);
+    @param packet Packet to free.
+    FIXME
+*/
+void rs_packet_free(const struct rs_config *ctx,
+		    struct rs_packet *packet);
 
 /** Serialize a packet.
 

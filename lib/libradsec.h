@@ -4,14 +4,19 @@
 /* FIXME: License blurb goes here.  */
 
 #include <stdint.h>
-#include <sys/socket.h>
-#include "../list.h"
+#include "../list.h"		/* FIXME: ../ is not very nice */
+
+#define RS_HEADER_LEN 4
+
 
 /* Data types.  */
 
-struct rs_config {
-    /* FIXME: What's in here that's not in struct rs_conn or
-     * rs_credentials?  */;
+enum rs_conn_type {
+    RS_CONN_TYPE_NONE = 0,
+    RS_CONN_TYPE_UDP,
+    RS_CONN_TYPE_TCP,
+    RS_CONN_TYPE_TLS,
+    RS_CONN_TYPE_DTLS,
 };
 
 enum rs_cred_type {
@@ -22,21 +27,24 @@ enum rs_cred_type {
 struct rs_credentials {
     enum rs_cred_type type;
     char *identity;
-    char *secret;		/* Passphrase or PSK.  */
+    char *secret;
 };
 
-enum rs_conn_type {
-    RS_CONN_TYPE_NONE = 0,
-    RS_CONN_TYPE_UDP,
-    RS_CONN_TYPE_TCP,
-    RS_CONN_TYPE_TLS,
-    RS_CONN_TYPE_DTLS,
+typedef void * (*rs_calloc)(size_t nmemb, size_t size);
+typedef void * (*rs_malloc)(size_t size);
+typedef void (*rs_free)(void *ptr);
+typedef void * (*rs_realloc)(void *ptr, size_t size);
+struct rs_alloc_scheme {
+    rs_calloc calloc;
+    rs_malloc malloc;
+    rs_free free;
+    rs_realloc realloc;
 };
-struct rs_conn {
-    enum rs_conn_type type;
+
+struct rs_config {
+    enum rs_conn_type conn_type;
     struct rs_credentials transport_credentials;
-    struct sockaddr_storage addr;
-    char open_flag;
+    struct rs_alloc_scheme alloc_scheme;
 };
 
 struct rs_attribute {

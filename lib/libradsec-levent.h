@@ -1,9 +1,16 @@
-/** @file libradsec-libevent.h
+/** @file libradsec-levent.h
     @brief API for libradsec-libevent.  */
 
 /* FIXME: License blurb goes here.  */
 
+#include <sys/socket.h>
 #include "libradsec.h"
+
+struct rs_connection {
+    struct rs_config *conf;
+    struct sockaddr_storage addr;
+    char open_flag;
+};
 
 typedef void (*rs_conn_connected_cb)(void *user_data /* FIXME: peer? */);
 typedef void (*rs_conn_disconnected_cb)(void *user_data /* FIXME: reason? */);
