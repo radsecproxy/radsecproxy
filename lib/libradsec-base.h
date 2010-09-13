@@ -31,30 +31,36 @@ int rs_connect(const struct rs_config *conf,
 int rs_disconnect(const struct rs_config *conf,
 		  int fd);
 
-/** Allocate and initialize a packet from a buffer containing a packet
-    as seen on the wire.  Free the packet using @a rs_packet_free().
+/** Allocate and initialize a packet from a buffer containing a RADIUS
+    message header.  The packet should be freed using @a
+    rs_packet_free().
 
-FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME
+    @param ctx Context.
+    @param buf Buffer with on-the-wire data with RADIUS message
+    header.
+    @param count Optionally a pointer to a size_t where the number of
+    additional octets needed to complete the RADIUS message will be
+    written.  Or NULL.
 
-    @param buf Buffer with on-the-wire data with packet.
-    @param buflen Number of octets in @a buf.
-
-    @param count Number of octets used in buffer, in case of
-    successful construction of a packet (return !NULL) or number of
-    octets needed for a complete packet (return NULL).
-
-FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME
-
-    @return Packet or NULL on error or not enough data in @a buf.  If
-    return value is NULL and @a count is < 0, an error has occurred
-    and errno is set appropriately.  If return value is NULL and @a
-    count is > 0 it shows the number of bytes needed to complete the
-    packet.  */
+    @return A pointer to a newly allocated packet or NULL on error.
+*/
 struct rs_packet *rs_packet_new(const struct rs_config *ctx,
 				const uint8_t buf[RS_HEADER_LEN],
 				size_t *count);
 
-/* FIXME: if return NULL, @a packet is freed and the pointer is no longer valid!  */
+/** Parse a RADIUS packet and store it in @a packet.
+
+    @param ctx Context.
+    @param packet A pointer to the address of a struct rs_packet
+    allocated by @a rs_packet_new().  Will be freed if an error
+    occurs.
+    @param buf Buffer with on-the-wire data with RADIUS message, not
+    including the four octet RADIUS header.
+    @param buflen Number of octets in @a buf.
+
+    @return *packet or NULL on error.  If NULL, the packet has been
+    freed and *packet is no longer valid.
+*/
 struct rs_packet *rs_packet_parse(const struct rs_config *ctx,
 				  struct rs_packet **packet,
 				  const uint8_t *buf,
@@ -62,8 +68,8 @@ struct rs_packet *rs_packet_parse(const struct rs_config *ctx,
 
 /** Free a packet that has been allocated by @a rs_packet_new().
 
+    @param ctx Context.
     @param packet Packet to free.
-    FIXME
 */
 void rs_packet_free(const struct rs_config *ctx,
 		    struct rs_packet **packet);
@@ -76,7 +82,7 @@ void rs_packet_free(const struct rs_config *ctx,
 
     @return Number of bytes written to buf or 0 if the buffer wasn't
     large enough to hold the packet or < 0 in case the packet couldn't
-    be serialized for some other eason (FIXME: elaborate) */
+    be serialized for some other reason (FIXME: elaborate) */
 
 ssize_t rs_packet_serialize(const struct rs_packet *packet,
 			    uint8_t *buf,
