@@ -54,8 +54,9 @@ struct rs_packet *rs_packet_new(const struct rs_config *ctx,
 				const uint8_t buf[RS_HEADER_LEN],
 				size_t *count);
 
+/* FIXME: if return NULL, @a packet is freed and the pointer is no longer valid!  */
 struct rs_packet *rs_packet_parse(const struct rs_config *ctx,
-				  struct rs_packet *packet,
+				  struct rs_packet **packet,
 				  const uint8_t *buf,
 				  size_t buflen);
 
@@ -65,7 +66,7 @@ struct rs_packet *rs_packet_parse(const struct rs_config *ctx,
     FIXME
 */
 void rs_packet_free(const struct rs_config *ctx,
-		    struct rs_packet *packet);
+		    struct rs_packet **packet);
 
 /** Serialize a packet.
 

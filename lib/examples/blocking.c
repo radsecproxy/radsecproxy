@@ -21,19 +21,21 @@ next_packet (const struct rs_config *ctx, int fd)
     n += read (fd, hdr, RS_HEADER_LEN - n);
 
   p = rs_packet_new (ctx, hdr, &len);
-  fprintf (stderr, "DEBUG: len: %d\n", len);
+  fprintf (stderr, "DEBUG: got header, total packet len is %d\n",
+	   len + RS_HEADER_LEN);
   if (p)
     {
-      /* Read the rest of the packet.  */
       buf = malloc (len);
       if (buf)
 	{
 	  n = 0;
 	  while (n < len)
 	    n += read (fd, buf, len - n);
-	  p = rs_packet_parse (ctx, p, buf, len);
+	  p = rs_packet_parse (ctx, &p, buf, len);
 	  free (buf);
 	}
+      else
+	rs_packet_free (ctx, &p);
     }
 
   return p;
@@ -62,6 +64,6 @@ send_packet(const struct rs_config *ctx, int fd, struct rs_packet *p)
     }
 
   free (buf);
-  rs_packet_free (ctx, p);
+  rs_packet_free (ctx, &p);
   return 0;
 }

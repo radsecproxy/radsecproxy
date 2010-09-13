@@ -13,7 +13,9 @@ f (const struct sockaddr *addr,
 {
   int fd = -1;
   //struct rs_alloc_scheme as = { calloc, malloc, free, realloc };
-  struct rs_config ctx = { RS_CONN_TYPE_TCP, RS_CRED_NONE, NULL };
+  struct rs_config ctx = { RS_CONN_TYPE_TCP,
+			   { RS_CRED_NONE, NULL, NULL },
+			   { NULL, NULL, NULL, NULL } };
   struct rs_packet *p = NULL;
 
   fd = rs_connect (&ctx, addr, addrlen);
@@ -34,7 +36,7 @@ f (const struct sockaddr *addr,
 
   if (send_packet (&ctx, out_fd, p))
     {
-      rs_packet_free (&ctx, p);
+      rs_packet_free (&ctx, &p);
       perror ("send_packet");
       return -1;
     }

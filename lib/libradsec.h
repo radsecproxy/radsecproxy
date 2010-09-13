@@ -3,7 +3,7 @@
 
 /* FIXME: License blurb goes here.  */
 
-#include <stdint.h>
+#include <unistd.h>
 #include "../list.h"		/* FIXME: ../ is not very nice */
 
 #define RS_HEADER_LEN 4
@@ -30,15 +30,15 @@ struct rs_credentials {
     char *secret;
 };
 
-typedef void * (*rs_calloc)(size_t nmemb, size_t size);
-typedef void * (*rs_malloc)(size_t size);
-typedef void (*rs_free)(void *ptr);
-typedef void * (*rs_realloc)(void *ptr, size_t size);
+typedef void * (*rs_calloc_fp)(size_t nmemb, size_t size);
+typedef void * (*rs_malloc_fp)(size_t size);
+typedef void (*rs_free_fp)(void *ptr);
+typedef void * (*rs_realloc_fp)(void *ptr, size_t size);
 struct rs_alloc_scheme {
-    rs_calloc calloc;
-    rs_malloc malloc;
-    rs_free free;
-    rs_realloc realloc;
+    rs_calloc_fp calloc;
+    rs_malloc_fp malloc;
+    rs_free_fp free;
+    rs_realloc_fp realloc;
 };
 
 struct rs_config {
@@ -49,7 +49,7 @@ struct rs_config {
 
 struct rs_attribute {
     uint8_t type;
-    uint8_t lenght;
+    uint8_t length;
     uint8_t *value;
 };
 
@@ -59,6 +59,17 @@ struct rs_packet {
     uint8_t auth[16];
     struct list *attrs;
 };
+
+
+/* Convenience macros.  */
+#define rs_calloc(ctx, nmemb, size) \
+    (ctx->alloc_scheme.calloc ? ctx->alloc_scheme.calloc : calloc)(nmemb, size)
+#define rs_malloc(ctx, size) \
+    (ctx->alloc_scheme.malloc ? ctx->alloc_scheme.malloc : malloc)(size)
+#define rs_free(ctx, ptr) \
+    (ctx->alloc_scheme.free ? ctx->alloc_scheme.free : free)(ptr)
+#define rs_(ctx, realloc, ptr, size) \
+    (ctx->alloc_scheme.realloc ? ctx->alloc_scheme.realloc : realloc)(ptr, size)
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
