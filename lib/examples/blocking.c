@@ -23,6 +23,8 @@ next_packet (const struct rs_config *ctx, int fd)
   p = rs_packet_new (ctx, hdr, &len);
   fprintf (stderr, "DEBUG: got header, total packet len is %d\n",
 	   len + RS_HEADER_LEN);
+
+  /* Read the rest of the message.  */
   if (p)
     {
       buf = malloc (len);
