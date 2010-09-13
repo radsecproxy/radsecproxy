@@ -1,0 +1,6 @@
+.gitignore
+.~
+TAGS
+lib/doc
+*.o
+*.gch
