@@ -18,7 +18,7 @@
 
     @return A file descriptor or -1 if an error occurred, in which
     case errno is set appropriately.  */
-int rs_connect(const struct rs_config *conf,
+int rs_connect(const struct rs_handle *conf,
 	       const struct sockaddr *addr,
 	       socklen_t addrlen);
 
@@ -28,7 +28,7 @@ int rs_connect(const struct rs_config *conf,
 
     @return 0 on success or -1 if an error occurred, in which case
     errno is set appropriately.  */
-int rs_disconnect(const struct rs_config *conf,
+int rs_disconnect(const struct rs_handle *conf,
 		  int fd);
 
 /** Allocate and initialize a packet from a buffer containing a RADIUS
@@ -44,7 +44,7 @@ int rs_disconnect(const struct rs_config *conf,
 
     @return A pointer to a newly allocated packet or NULL on error.
 */
-struct rs_packet *rs_packet_new(const struct rs_config *ctx,
+struct rs_packet *rs_packet_new(const struct rs_handle *ctx,
 				const uint8_t buf[RS_HEADER_LEN],
 				size_t *count);
 
@@ -61,7 +61,7 @@ struct rs_packet *rs_packet_new(const struct rs_config *ctx,
     @return *packet or NULL on error.  If NULL, the packet has been
     freed and *packet is no longer valid.
 */
-struct rs_packet *rs_packet_parse(const struct rs_config *ctx,
+struct rs_packet *rs_packet_parse(const struct rs_handle *ctx,
 				  struct rs_packet **packet,
 				  const uint8_t *buf,
 				  size_t buflen);
@@ -71,7 +71,7 @@ struct rs_packet *rs_packet_parse(const struct rs_config *ctx,
     @param ctx Context.
     @param packet Packet to free.
 */
-void rs_packet_free(const struct rs_config *ctx,
+void rs_packet_free(const struct rs_handle *ctx,
 		    struct rs_packet **packet);
 
 /** Serialize a packet.

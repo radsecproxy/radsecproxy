@@ -24,7 +24,7 @@ _do_connect(int type,
 }
 
 static struct list *
-_list_new(const struct rs_config *ctx)
+_list_new(const struct rs_handle *ctx)
 {
     struct list *list = rs_malloc(ctx, sizeof(struct list));
     if (list)
@@ -33,7 +33,7 @@ _list_new(const struct rs_config *ctx)
 }
 
 static int
-_list_push(const struct rs_config *ctx, /* FIXME: code duplicate, list.c */
+_list_push(const struct rs_handle *ctx, /* FIXME: code duplicate, list.c */
 	   struct list *list,
 	   void *data)
 {
@@ -57,7 +57,7 @@ _list_push(const struct rs_config *ctx, /* FIXME: code duplicate, list.c */
 }
 
 static void
-_list_destroy(const struct rs_config *ctx, /* FIXME: code dup */
+_list_destroy(const struct rs_handle *ctx, /* FIXME: code dup */
 	      struct list *list)
 {
     struct list_node *node, *next;
@@ -74,7 +74,7 @@ _list_destroy(const struct rs_config *ctx, /* FIXME: code dup */
 
 /* ------------------------------------------------------- */
 int
-rs_connect(const struct rs_config *conf,
+rs_connect(const struct rs_handle *conf,
 	   const struct sockaddr *addr,
 	   socklen_t addrlen)
 {
@@ -96,7 +96,7 @@ rs_connect(const struct rs_config *conf,
 }
 
 int
-rs_disconnect( const struct rs_config *conf, int fd)
+rs_disconnect( const struct rs_handle *conf, int fd)
 {
     switch (conf->conn_type)
     {
@@ -116,7 +116,7 @@ rs_disconnect( const struct rs_config *conf, int fd)
 }
 
 struct rs_packet *
-rs_packet_new(const struct rs_config *ctx,
+rs_packet_new(const struct rs_handle *ctx,
 	      const uint8_t buf[RS_HEADER_LEN],
 	      size_t *count)
 {
@@ -136,7 +136,7 @@ rs_packet_new(const struct rs_config *ctx,
 }
 
 struct rs_packet *
-rs_packet_parse(const struct rs_config *ctx,
+rs_packet_parse(const struct rs_handle *ctx,
 		struct rs_packet **packet,
 		const uint8_t *buf,
 		size_t buflen)
@@ -191,7 +191,7 @@ rs_packet_parse(const struct rs_config *ctx,
 }
 
 void
-rs_packet_free(const struct rs_config *ctx,
+rs_packet_free(const struct rs_handle *ctx,
 	       struct rs_packet **packet)
 {
     _list_destroy(ctx, (*packet)->attrs);

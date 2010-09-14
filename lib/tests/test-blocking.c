@@ -13,7 +13,7 @@ f (const struct sockaddr *addr,
 {
   int fd = -1;
   //struct rs_alloc_scheme as = { calloc, malloc, free, realloc };
-  struct rs_config ctx = { RS_CONN_TYPE_TCP,
+  struct rs_handle ctx = { RS_CONN_TYPE_TCP,
 			   { RS_CRED_NONE, NULL, NULL },
 			   { NULL, NULL, NULL, NULL } };
   struct rs_packet *p = NULL;

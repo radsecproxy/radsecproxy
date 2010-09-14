@@ -7,7 +7,7 @@
 #include "blocking.h"
 
 struct rs_packet *
-next_packet (const struct rs_config *ctx, int fd)
+next_packet (const struct rs_handle *ctx, int fd)
 {
   uint8_t hdr[RS_HEADER_LEN];
   uint8_t *buf;
@@ -44,7 +44,7 @@ next_packet (const struct rs_config *ctx, int fd)
 }
 
 int
-send_packet(const struct rs_config *ctx, int fd, struct rs_packet *p)
+send_packet(const struct rs_handle *ctx, int fd, struct rs_packet *p)
 {
   uint8_t *buf = NULL;
   ssize_t n = -20;	      /* Arbitrary packet size -- a guess.  */

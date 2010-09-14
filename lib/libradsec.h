@@ -43,7 +43,7 @@ struct rs_alloc_scheme {
     rs_realloc_fp realloc;
 };
 
-struct rs_config {
+struct rs_handle {
     enum rs_conn_type conn_type;
     struct rs_credentials transport_credentials;
     struct rs_alloc_scheme alloc_scheme;

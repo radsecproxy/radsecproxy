@@ -7,7 +7,7 @@
 #include "libradsec.h"
 
 struct rs_connection {
-    struct rs_config *conf;
+    struct rs_handle *conf;
     struct sockaddr_storage addr;
     char open_flag;
 };
