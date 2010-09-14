@@ -18,11 +18,13 @@ enum rs_conn_type {
     RS_CONN_TYPE_TLS,
     RS_CONN_TYPE_DTLS,
 };
+typedef unsigned int rs_conn_type_t;
 
 enum rs_cred_type {
     RS_CRED_NONE = 0,
     RS_CRED_TLS_PSK_RSA,	/* RFC 4279.  */
 };
+typedef unsigned int rs_cred_type_t;
 
 struct rs_credentials {
     enum rs_cred_type type;
