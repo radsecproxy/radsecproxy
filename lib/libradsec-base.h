@@ -10,6 +10,8 @@
 
 /* Function prototypes.  */
 
+
+
 /** Establish a connection.
     @param type Connection type.
     @param addr Network address to connect to.
@@ -56,13 +58,13 @@ struct rs_packet *rs_packet_parse(const struct rs_handle *ctx,
 				  const uint8_t *buf,
 				  size_t buflen);
 
-/** Free a packet that has been allocated by @a rs_packet_new().
+/** Free @a packet, previously allocated by @a rs_packet_new().
     @param ctx Context.
     @param packet Packet to free.
 */
 void rs_packet_free(const struct rs_handle *ctx, struct rs_packet **packet);
 
-/** Serialize a packet.
+/** Serialize @a packet into @a buf.
     @param packet Packet to serialize.
     @param buf Buffer to store the serialized packet in.
     @param buflen Length of buffer.
@@ -72,3 +74,10 @@ void rs_packet_free(const struct rs_handle *ctx, struct rs_packet **packet);
 
 ssize_t rs_packet_serialize(const struct rs_packet *packet,
 			    uint8_t *buf, size_t buflen);
+
+
+/** Add an attribute to a packet.
+    @param packet The packet.
+    @param attribute Attribute to add to packet.  */
+int rs_packet_add_attr(struct rs_packet *packet,
+		       const struct rs_attribute *attribute);
