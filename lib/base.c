@@ -1,3 +1,5 @@
+/* See the file COPYING for licensing information.  */
+
 #include <sys/socket.h>
 #include <errno.h>
 #include <stdlib.h>

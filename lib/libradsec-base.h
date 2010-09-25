@@ -1,7 +1,7 @@
 /** @file libradsec-base.h
     @brief Low level API for libradsec.  */
 
-/* FIXME: License blurb goes here.  */
+/* See the file COPYING for licensing information.  */
 
 #include <unistd.h>
 #include <stdint.h>

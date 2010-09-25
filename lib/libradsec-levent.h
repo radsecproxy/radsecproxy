@@ -1,7 +1,7 @@
 /** @file libradsec-levent.h
     @brief API for libradsec-libevent.  */
 
-/* FIXME: License blurb goes here.  */
+/* See the file COPYING for licensing information.  */
 
 #include <sys/socket.h>
 #include "libradsec.h"
@@ -10,24 +10,6 @@ struct rs_connection {
     struct rs_handle *conf;
     struct sockaddr_storage addr;
     char open_flag;
-};
-
-typedef void (*rs_conn_connected_cb)(void *user_data /* FIXME: peer? */);
-typedef void (*rs_conn_disconnected_cb)(void *user_data /* FIXME: reason? */);
-typedef void (*rs_conn_packet_received_cb)(const struct rs_packet *packet,
-					   void *user_data);
-typedef void (*rs_conn_packet_sent_cb)(void *user_data);
-
-/** Connection callbacks.  */
-struct rs_conn_callbacks {
-    /** Callback invoked when the connection has been established.  */
-    rs_conn_connected_cb connected_cb;
-    /** Callback invoked when the connection has been torn down.  */
-    rs_conn_disconnected_cb disconnected_cb;
-    /** Callback invoked when a packet was received.  */
-    rs_conn_packet_received_cb received_cb;
-    /** Callback invoked when a packet was successfully sent.  */
-    rs_conn_packet_sent_cb sent_cb;
 };
 
 
