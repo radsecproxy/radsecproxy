@@ -3,19 +3,12 @@
 
 /* See the file COPYING for licensing information.  */
 
+#include <freeradius/libradius.h>
+
 /* Constants.  */
 #define RS_HEADER_LEN 4
 
 /* Data types.  */
-enum rs_conn_type {
-    RS_CONN_TYPE_NONE = 0,
-    RS_CONN_TYPE_UDP,
-    RS_CONN_TYPE_TCP,
-    RS_CONN_TYPE_TLS,
-    RS_CONN_TYPE_DTLS,
-};
-typedef unsigned int rs_conn_type_t;
-
 enum rs_cred_type {
     RS_CRED_NONE = 0,
     RS_CRED_TLS_PSK_RSA,	/* RFC 4279.  */
@@ -26,6 +19,12 @@ struct rs_credentials {
     enum rs_cred_type type;
     char *identity;
     char *secret;
+};
+
+struct rs_error {
+    int code;
+    char *msg;
+    char buf[1024];
 };
 
 typedef void * (*rs_calloc_fp)(size_t nmemb, size_t size);
@@ -59,7 +58,17 @@ struct rs_conn_callbacks {
 
 struct rs_handle {
     struct rs_alloc_scheme alloc_scheme;
+    struct rs_error *err;
+    fr_randctx fr_randctx;
+
     /* TODO: dictionary? */
+};
+
+struct rs_peer {
+    struct addrinfo addr;
+    char *secret;
+    int timeout;		/* client only */
+    int tries;			/* client only */
 };
 
 struct rs_connection {
@@ -67,20 +76,20 @@ struct rs_connection {
     enum rs_conn_type conn_type;
     struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;
-};
-
-struct rs_attribute {
-    uint8_t type;
-    uint8_t length;
-    uint8_t *value;
+    struct rs_error *err;
+    struct rs_peer *peer;
 };
 
 struct rs_packet {
-    uint8_t code;
-    uint8_t id;
-    uint8_t auth[16];
-    struct list *attrs;
+    struct rs_connection *conn;
+    RADIUS_PACKET *rpkt;
 };
+
+struct rs_attr {
+    struct rs_packet *pkt;
+    VALUE_PAIR *vp;
+};
+
 
 /* Convenience macros.  */
 #define rs_calloc(ctx, nmemb, size) \
