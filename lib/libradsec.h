@@ -50,7 +50,7 @@ int rs_conn_destroy(struct rs_connection  *conn);
 int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb);
 int rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *cb);
 int rs_conn_select_server(struct rs_connection *conn, const char *name);
-int rs_conn_get_current_server(const struct rs_connection *conn, const char *name, size_t buflen);
+int rs_conn_get_current_server(struct rs_connection *conn, const char *name, size_t buflen);
 
 void rs_server_set_timeout(struct rs_peer *server, int timeout);
 void rs_server_set_tries(struct rs_peer *server, int tries);
@@ -71,10 +71,11 @@ int rs_packet_send(struct rs_connection *conn, const struct rs_packet *pkt, void
 int rs_packet_recv(struct rs_connection *conn, struct rs_packet **pkt);
 
 
-int rs_ctx_err_push (struct rs_handle *ctx, int code, const char *fmt, ...);
-int rs_conn_err_push (struct rs_connection *conn, int code, const char *fmt, ...);
-int rs_conn_err_push_fl(struct rs_connection *conn, int code, const char *file, int line, const char *fmt, ...);
+int rs_ctx_err_push(struct rs_handle *ctx, int code, const char *fmt, ...);
+int rs_ctx_err_push_fl(struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, ...);
 struct rs_error *rs_ctx_err_pop (struct rs_handle *ctx);
+int rs_conn_err_push(struct rs_connection *conn, int code, const char *fmt, ...);
+int rs_conn_err_push_fl(struct rs_connection *conn, int code, const char *file, int line, const char *fmt, ...);
 struct rs_error *rs_conn_err_pop (struct rs_connection *conn);
 void rs_err_free (struct rs_error *err);
 char *rs_err_msg (struct rs_error *err, int dofree_flag);

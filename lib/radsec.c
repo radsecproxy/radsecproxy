@@ -65,12 +65,14 @@ void rs_context_destroy(struct rs_handle *ctx)
 
 int rs_context_set_alloc_scheme(struct rs_handle *ctx, struct rs_alloc_scheme *scheme)
 {
-  return RSE_NOSYS;
+  return rs_ctx_err_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
+			     "%s: NYI", __func__);
 }
 
 int rs_context_config_read(struct rs_handle *ctx, const char *config_file)
 {
-  return RSE_NOSYS;
+  return rs_ctx_err_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
+			     "%s: NYI", __func__);
 }
 
 int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn)
@@ -141,32 +143,38 @@ int rs_server_set_secret(struct rs_peer *server, const char *secret)
 
 int rs_conn_add_listener(struct rs_connection *conn, rs_conn_type_t type, const char *host, int port)
 {
-  return RSE_NOSYS;
+  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+			      "%s: NYI", __func__);
 }
 
 int rs_conn_destroy(struct rs_connection  *conn)
 {
-  return RSE_NOSYS;
+  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+			      "%s: NYI", __func__);
 }
 
 int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb)
 {
-  return RSE_NOSYS;
+  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+			      "%s: NYI", __func__);
 }
 
 int rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *cb)
 {
-  return RSE_NOSYS;
+  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+			      "%s: NYI", __func__);
 }
 
 int rs_conn_set_server(struct rs_connection *conn, const char *name)
 {
-  return RSE_NOSYS;
+  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+			      "%s: NYI", __func__);
 }
 
-int rs_conn_get_server(const struct rs_connection *conn, const char *name, size_t buflen)
+int rs_conn_get_current_server(struct rs_connection *conn, const char *name, size_t buflen)
 {
-  return RSE_NOSYS;
+  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+			      "%s: NYI", __func__);
 }
 
 int rs_conn_open(struct rs_connection *conn)

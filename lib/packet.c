@@ -76,12 +76,14 @@ rs_packet_send (struct rs_connection *conn, const struct rs_packet *pkt,
   rs_dump_packet (pkt);
 #endif
 
-  return RSE_NOSYS;
+  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+			      "%s: NYI", __func__);
 }
 
 int rs_packet_receive(struct rs_connection *conn, struct rs_packet **pkt)
 {
-  return RSE_NOSYS;
+  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+			      "%s: NYI", __func__);
 }
 
 void

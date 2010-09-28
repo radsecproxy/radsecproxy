@@ -72,6 +72,16 @@ rs_ctx_err_push (struct rs_handle *ctx, int code, const char *fmt, ...)
   return code;
 }
 
+int
+rs_ctx_err_push_fl (struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, ...)
+{
+  va_list args;
+  va_start (args, fmt);
+  _ctx_err_vpush_fl (ctx, code, file, line, fmt, args);
+  va_end (args);
+  return code;
+}
+
 static int
 _conn_err_vpush_fl (struct rs_connection *conn, int code, const char *file, int line, const char *fmt, va_list args)
 {
