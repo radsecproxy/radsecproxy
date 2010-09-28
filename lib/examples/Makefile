@@ -1,12 +1,12 @@
 CFLAGS = -Wall -g
 
-all: blocking.o
+all: client
 
 blocking.o: blocking.c blocking.h ../libradsec-base.h ../libradsec.h
 	$(CC) $(CFLAGS) -c -I .. $^
 
 client: client.c ../libradsec.a ../libradsec.h ../libradsec-impl.h
-	$(CC) $(CFLAGS) -o $@ -L /usr/lib/freeradius -lfreeradius-radius $^
+	$(CC) $(CFLAGS) -o $@ $< -L /usr/lib/freeradius -lfreeradius-radius -L .. -lradsec
 
 clean:
 	-rm *.o

@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <assert.h>
 #include "libradsec.h"
 #include "libradsec-impl.h"
@@ -8,8 +9,8 @@ const char *_errtxt[] = {
   "NYI -- not yet implemented",	/* 2 RSE_NOSYS */
   "invalid handle"		/* 3 RSE_INVALID_CTX */
   "invalid connection"		/* 4 RSE_INVALID_CONN */
-  "ERR 5"			/*  RSE_ */
-  "ERR 6"			/*  RSE_ */
+  "connection type mismatch"	/* 5 RSE_CONN_TYPE_MISMATCH */
+  "FreeRadius error"		/* 6 RSE_FR */
   "ERR 7"			/*  RSE_ */
   "ERR 8"			/*  RSE_ */
   "ERR 9"			/*  RSE_ */
@@ -28,27 +29,33 @@ const char *_errtxt[] = {
 };
 
 static struct rs_error *
-_err_new (unsigned int code, const char *msg)
+_err_new (unsigned int code, const char *file, int line, const char *fmt, va_list args)
 {
   struct rs_error *err;
 
-  err = malloc (sizeof (struct rs_error));
+  err = malloc (sizeof(struct rs_error));
   if (err)
     {
-      memset (err, 0, sizeof (struct rs_error));
+      int n;
+      memset (err, 0, sizeof(struct rs_error));
       err->code = code;
-      snprintf (err->buf, sizeof (err->buf), "%s: %s",
-		code < sizeof (_errtxt) / sizeof (*_errtxt) ?
-		_errtxt[code] : "invalid error index",
-		msg);
+      n = vsnprintf (err->buf, sizeof(err->buf), fmt, args);
+      if (n > 0)
+	{
+	  char *sep = strrchr (file, '/');
+	  if (sep)
+	    file = sep + 1;
+	  snprintf (err->buf + n, sizeof(err->buf) - n, " (%s: %d)", file,
+		    line);
+	}
     }
   return err;
 }
 
-int
-rs_ctx_err_push (struct rs_handle *ctx, int code, const char *msg)
+static int
+_ctx_err_vpush_fl (struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, va_list args)
 {
-  struct rs_error *err = _err_new (code, msg);
+  struct rs_error *err = _err_new (code, file, line, fmt, args);
 
   if (err)
     ctx->err = err;
@@ -56,12 +63,42 @@ rs_ctx_err_push (struct rs_handle *ctx, int code, const char *msg)
 }
 
 int
-rs_conn_err_push (struct rs_connection *conn, int code, const char *msg)
+rs_ctx_err_push (struct rs_handle *ctx, int code, const char *fmt, ...)
 {
-  struct rs_error *err = _err_new (code, msg);
+  va_list args;
+  va_start (args, fmt);
+  _ctx_err_vpush_fl (ctx, code, NULL, 0, fmt, args);
+  va_end (args);
+  return code;
+}
+
+static int
+_conn_err_vpush_fl (struct rs_connection *conn, int code, const char *file, int line, const char *fmt, va_list args)
+{
+  struct rs_error *err = _err_new (code, file, line, fmt, args);
 
   if (err)
     conn->err = err;
+  return code;
+}
+
+int
+rs_conn_err_push (struct rs_connection *conn, int code, const char *fmt, ...)
+{
+  va_list args;
+  va_start (args, fmt);
+  _conn_err_vpush_fl (conn, code, NULL, 0, fmt, args);
+  va_end (args);
+  return code;
+}
+
+int
+rs_conn_err_push_fl (struct rs_connection *conn, int code, const char *file, int line, const char *fmt, ...)
+{
+  va_list args;
+  va_start (args, fmt);
+  _conn_err_vpush_fl (conn, code, file, line, fmt, args);
+  va_end (args);
   return code;
 }
 
@@ -99,23 +136,32 @@ rs_err_free (struct rs_error *err)
 }
 
 char *
-rs_err_msg (struct rs_error *err)
+rs_err_msg (struct rs_error *err, int dofree_flag)
 {
   char *msg;
 
+  if (!err)
+    return NULL;
   if (err->msg)
     msg = err->msg;
   else
     msg = strdup (err->buf);
 
-  rs_err_free (err);
+  if (dofree_flag)
+    rs_err_free (err);
   return msg;
 }
 
 int
-rs_err_code (struct rs_error *err)
+rs_err_code (struct rs_error *err, int dofree_flag)
 {
-  int code = err->code;
-  rs_err_free(err);
+  int code;
+
+  if (!err)
+    return -1;
+  code = err->code;
+
+  if (dofree_flag)
+    rs_err_free(err);
   return code;
 }

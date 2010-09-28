@@ -1,4 +1,6 @@
+#include <stdio.h>
 #include <freeradius/libradius.h>
+#include "libradsec.h"
 #include "libradsec-impl.h"
 #include "debug.h"
 
@@ -68,4 +70,10 @@ void
 rs_dump_packet (const struct rs_packet *pkt)
 {
   print_hex (pkt->rpkt);
+}
+
+void
+rs_dump_attr (const struct rs_attr *attr)
+{
+  vp_printlist (stderr, attr->vp);
 }

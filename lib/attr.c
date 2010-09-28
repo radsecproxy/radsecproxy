@@ -2,27 +2,35 @@
 #include "libradsec.h"
 #include "libradsec-impl.h"
 
-fixme
-attr_create(fixme)
+int
+rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *type, const char *val)
 {
+  VALUE_PAIR *vp;
+  struct rs_attr *a;
 
-  printf ("creating value pairs\n");
-  /* User-Name.  */
-  vp = pairmake ("User-Name", USER_NAME, 0);
-  if (!vp) {
-    fr_perror ("pairmake");
-    return -1;
-  }
+  *attr = NULL;
+  a = (struct rs_attr *) malloc (sizeof(struct rs_attr));
+  if (!a)
+    return rs_conn_err_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
+  memset (a, 0, sizeof(struct rs_attr));
 
-  /* User-Password.  */
-  {
-    size_t pwlen =  sizeof(USER_PW);
-    strncpy (user_pw, USER_PW, sizeof(user_pw));
-    rad_pwencode(user_pw, &pwlen, SECRET, reqauth);
-  }
-  pairadd (&vp, pairmake ("User-Password", user_pw, 0));
-  pkt->vps = vp;
+  vp = pairmake (type, val, T_OP_EQ);
+  if (!vp)
+    {
+      rs_attr_destroy (a);
+      return rs_conn_err_push_fl (conn, RSE_FR, __FILE__, __LINE__,
+				  "pairmake: %s", fr_strerror());
+    }
 
-  printf ("attributes:\n");
-  vp_printlist (stdout, vp);
+  a->vp = vp;
+  *attr = a;
+  return RSE_OK;
+}
+
+void
+rs_attr_destroy (struct rs_attr *attr)
+{
+  if (attr->vp)
+    pairfree (&attr->vp);
+  free (attr);
 }

@@ -15,6 +15,8 @@ enum rs_cred_type {
 };
 typedef unsigned int rs_cred_type_t;
 
+struct rs_packet;
+
 struct rs_credentials {
     enum rs_cred_type type;
     char *identity;
@@ -65,19 +67,22 @@ struct rs_handle {
 };
 
 struct rs_peer {
-    struct addrinfo addr;
+    struct rs_connection *conn;
+    struct addrinfo *addr;
     char *secret;
     int timeout;		/* client only */
     int tries;			/* client only */
+    struct rs_peer *next;
 };
 
 struct rs_connection {
     struct rs_handle *ctx;
-    enum rs_conn_type conn_type;
+    enum rs_conn_type type;
     struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;
+    struct rs_peer peers;
+    struct rs_peer *active_peer;
     struct rs_error *err;
-    struct rs_peer *peer;
 };
 
 struct rs_packet {
@@ -90,16 +95,18 @@ struct rs_attr {
     VALUE_PAIR *vp;
 };
 
+/* Internal functions.  */
+int rs_conn_open(struct rs_connection *conn);
 
 /* Convenience macros.  */
-#define rs_calloc(ctx, nmemb, size) \
-    (ctx->alloc_scheme.calloc ? ctx->alloc_scheme.calloc : calloc)(nmemb, size)
-#define rs_malloc(ctx, size) \
-    (ctx->alloc_scheme.malloc ? ctx->alloc_scheme.malloc : malloc)(size)
-#define rs_free(ctx, ptr) \
-    (ctx->alloc_scheme.free ? ctx->alloc_scheme.free : free)(ptr)
-#define rs_(ctx, realloc, ptr, size) \
-    (ctx->alloc_scheme.realloc ? ctx->alloc_scheme.realloc : realloc)(ptr, size)
+#define rs_calloc(h, nmemb, size) \
+    (h->alloc_scheme.calloc ? h->alloc_scheme.calloc : calloc)(nmemb, size)
+#define rs_malloc(h, size) \
+    (h->alloc_scheme.malloc ? h->alloc_scheme.malloc : malloc)(size)
+#define rs_free(h, ptr) \
+    (h->alloc_scheme.free ? h->alloc_scheme.free : free)(ptr)
+#define rs_realloc(h, realloc, ptr, size) \
+    (h->alloc_scheme.realloc ? h->alloc_scheme.realloc : realloc)(ptr, size)
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
