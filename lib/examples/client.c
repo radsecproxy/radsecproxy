@@ -25,7 +25,7 @@ rsx_client (const char *srvname, int srvport)
 
   if (rs_conn_create (h, &conn))
     return rs_conn_err_pop (conn);
-  if (rs_conn_add_server (conn, &server, RS_CONN_TYPE_TCP, srvname, srvport))
+  if (rs_conn_add_server (conn, &server, RS_CONN_TYPE_UDP, srvname, srvport))
     return rs_conn_err_pop (conn);
   rs_server_set_timeout (server, 10);
   rs_server_set_tries (server, 3);
