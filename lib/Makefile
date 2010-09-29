@@ -15,4 +15,5 @@ doc:
 	doxygen
 
 clean:
-	-rm *.o *.a
+	-rm *.o *.a *.gch
+
