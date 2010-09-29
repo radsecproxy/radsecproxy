@@ -4,6 +4,7 @@
 /* See the file COPYING for licensing information.  */
 
 #include <freeradius/libradius.h>
+#include <event2/util.h>
 
 /* Constants.  */
 #define RS_HEADER_LEN 4
@@ -68,7 +69,8 @@ struct rs_handle {
 
 struct rs_peer {
     struct rs_connection *conn;
-    struct addrinfo *addr;
+    struct evutil_addrinfo *addr;
+    int s;			/* Socket.  */
     char *secret;
     int timeout;		/* client only */
     int tries;			/* client only */
@@ -80,7 +82,7 @@ struct rs_connection {
     enum rs_conn_type type;
     struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;
-    struct rs_peer peers;
+    struct rs_peer *peers;
     struct rs_peer *active_peer;
     struct rs_error *err;
 };

@@ -55,8 +55,12 @@ int
 main (int argc, char *argv[])
 {
   struct rs_error *err;
+  char *host;
+  int port;
 
-  err = rsx_client (strsep (argv + 1, ":"), atoi (argv[1]));
+  host = strsep (argv + 1, ":");
+  port = atoi (argv[1]);
+  err = rsx_client (host, port);
   if (!err)
     return -1;
   fprintf (stderr, "%s\n", rs_err_msg (err, 0));

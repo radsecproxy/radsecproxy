@@ -23,10 +23,11 @@ _packet_create (struct rs_connection *conn, struct rs_packet **pkt_out,
   rpkt->code = code;
 
   p = (struct rs_packet *) malloc (sizeof (struct rs_packet));
-  if (!p) {
-    rad_free (&rpkt);
-    return rs_conn_err_push (conn, RSE_NOMEM, __func__);
-  }
+  if (!p)
+    {
+      rad_free (&rpkt);
+      return rs_conn_err_push (conn, RSE_NOMEM, __func__);
+    }
   memset (p, 0, sizeof (struct rs_packet));
   p->rpkt = rpkt;
 
@@ -50,7 +51,7 @@ rs_packet_create_acc_request (struct rs_connection *conn,
     return -1;
   rs_packet_add_attr (pkt, attr);
 
-  if (rs_attr_create (conn, &attr, "User-Password", user_name))
+  if (rs_attr_create (conn, &attr, "User-Password", user_pw))
     return -1;
   /* FIXME: need this too? rad_pwencode(user_pw, &pwlen, SECRET, reqauth) */
   rs_packet_add_attr (pkt, attr);
@@ -72,7 +73,7 @@ rs_packet_send (struct rs_connection *conn, const struct rs_packet *pkt,
       }
   rad_encode (pkt->rpkt, NULL, conn->active_peer->secret);
 #if defined (DEBUG)
-  fprintf (stderr, "%s: about to send this to %s", __func__, "fixme");
+  fprintf (stderr, "%s: about to send this to %s:\n", __func__, "<fixme>");
   rs_dump_packet (pkt);
 #endif
 

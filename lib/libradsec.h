@@ -12,6 +12,8 @@ enum rs_err_code {
     RSE_INVALID_CONN = 4,
     RSE_CONN_TYPE_MISMATCH = 5,
     RSE_FR = 6,
+    RSE_BADADDR = 7,
+    RSE_NOPEER = 8,
     RSE_SOME_ERROR = 21,
 };
 
@@ -44,9 +46,9 @@ int rs_context_set_alloc_scheme(struct rs_handle *ctx, struct rs_alloc_scheme *s
 int rs_context_config_read(struct rs_handle *ctx, const char *config_file);
 
 int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn);
-int rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server, rs_conn_type_t type, const char *host, int port);
-int rs_conn_add_listener(struct rs_connection  *conn, rs_conn_type_t type, const char *host, int port);
-int rs_conn_destroy(struct rs_connection  *conn);
+int rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server, rs_conn_type_t type, const char *hostname, int port);
+int rs_conn_add_listener(struct rs_connection  *conn, rs_conn_type_t type, const char *hostname, int port);
+void rs_conn_destroy(struct rs_connection  *conn);
 int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb);
 int rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *cb);
 int rs_conn_select_server(struct rs_connection *conn, const char *name);
@@ -70,22 +72,15 @@ void rs_attr_destroy(struct rs_attr *attr);
 int rs_packet_send(struct rs_connection *conn, const struct rs_packet *pkt, void *user_data);
 int rs_packet_recv(struct rs_connection *conn, struct rs_packet **pkt);
 
-
 int rs_ctx_err_push(struct rs_handle *ctx, int code, const char *fmt, ...);
 int rs_ctx_err_push_fl(struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, ...);
 struct rs_error *rs_ctx_err_pop (struct rs_handle *ctx);
 int rs_conn_err_push(struct rs_connection *conn, int code, const char *fmt, ...);
 int rs_conn_err_push_fl(struct rs_connection *conn, int code, const char *file, int line, const char *fmt, ...);
 struct rs_error *rs_conn_err_pop (struct rs_connection *conn);
-void rs_err_free (struct rs_error *err);
-char *rs_err_msg (struct rs_error *err, int dofree_flag);
-int rs_err_code (struct rs_error *err, int dofree_flag);
-
-/* Local Variables: */
-/* c-file-style: "stroustrup" */
-/* End: */
-
-
+void rs_err_free(struct rs_error *err);
+char *rs_err_msg(struct rs_error *err, int dofree_flag);
+int rs_err_code(struct rs_error *err, int dofree_flag);
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

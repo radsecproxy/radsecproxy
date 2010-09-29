@@ -5,6 +5,7 @@
 #include <libgen.h>
 
 #include <freeradius/libradius.h>
+#include <event2/util.h>
 #include "libradsec.h"
 #include "libradsec-impl.h"
 
@@ -84,7 +85,6 @@ int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn)
     {
       memset (c, 0, sizeof(struct rs_connection));
       c->ctx = ctx;
-      c->peers.next = &c->peers;
     }
   if (conn)
     *conn = c;
@@ -92,30 +92,70 @@ int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn)
 }
 
 struct addrinfo *
-_resolv (const char *host, int port)
+_resolv (struct rs_connection *conn, const char *hostname, int port)
 {
-  return NULL;
+  int err;
+  char portstr[6];
+  struct evutil_addrinfo hints, *res = NULL;
+
+  snprintf (portstr, sizeof(portstr), "%d", port);
+  memset (&hints, 0, sizeof(struct evutil_addrinfo));
+  //hints.ai_family = AF_UNSPEC;	/* v4 or v6.  */
+  hints.ai_family = AF_INET;	/* FIXME: v4 only, while debuging */
+  hints.ai_flags = AI_ADDRCONFIG;
+  switch (conn->type)
+    {
+    case RS_CONN_TYPE_NONE:
+      rs_conn_err_push_fl (conn, RSE_INVALID_CONN, __FILE__, __LINE__, NULL);
+      return NULL;
+    case RS_CONN_TYPE_TCP:
+    case RS_CONN_TYPE_TLS:
+      hints.ai_socktype = SOCK_STREAM;
+      hints.ai_protocol = IPPROTO_TCP;
+      break;
+    case RS_CONN_TYPE_UDP:
+    case RS_CONN_TYPE_DTLS:
+      hints.ai_socktype = SOCK_DGRAM;
+      hints.ai_protocol = IPPROTO_UDP;
+      break;
+    }
+  err = evutil_getaddrinfo (hostname, portstr, &hints, &res);
+  if (err)
+    rs_conn_err_push_fl (conn, RSE_BADADDR, __FILE__, __LINE__,
+			 " %s:%d: bad host name or port (%s)",
+			 hostname, port, evutil_gai_strerror(err));
+  return res;			/* Simply use first result.  */
 }
 
-int rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server, rs_conn_type_t type, const char *host, int port)
+int
+rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server,
+		   rs_conn_type_t type, const char *hostname, int port)
 {
   struct rs_peer *srv;
+  struct evutil_addrinfo *addr;
 
   if (conn->type == RS_CONN_TYPE_NONE)
     conn->type = type;
   else if (conn->type != type)
     return rs_conn_err_push (conn, RSE_CONN_TYPE_MISMATCH, NULL);
 
+  addr = _resolv (conn, hostname, port);
+  if (!addr)
+    return -1;
+
   srv = (struct rs_peer *) malloc (sizeof(struct rs_peer));
   if (srv)
     {
       memset (srv, 0, sizeof(struct rs_peer));
       srv->conn = conn;
-      srv->addr = _resolv (host, port);
+      srv->addr = addr;
       srv->timeout = 10;
       srv->tries = 3;
-      srv->next = conn->peers.next;
-      conn->peers.next = srv;
+      srv->next = conn->peers;
+      if (conn->peers)
+	conn->peers->next = srv;
+      else
+	conn->peers = srv;
     }
   if (*server)
     *server = srv;
@@ -141,16 +181,27 @@ int rs_server_set_secret(struct rs_peer *server, const char *secret)
   return RSE_OK;
 }
 
-int rs_conn_add_listener(struct rs_connection *conn, rs_conn_type_t type, const char *host, int port)
+int rs_conn_add_listener(struct rs_connection *conn, rs_conn_type_t type, const char *hostname, int port)
 {
   return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
 
-int rs_conn_destroy(struct rs_connection  *conn)
+
+void
+rs_conn_destroy(struct rs_connection *conn)
 {
-  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
-			      "%s: NYI", __func__);
+  struct rs_peer *p;
+
+#warning "TODO: Disconnect active_peer."
+
+  for (p = conn->peers; p; p = p->next)
+    {
+      if (p->addr)
+	evutil_freeaddrinfo (p->addr);
+      if (p->secret)
+	rs_free (conn->ctx, p->secret);
+    }
 }
 
 int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb)
@@ -177,8 +228,31 @@ int rs_conn_get_current_server(struct rs_connection *conn, const char *name, siz
 			      "%s: NYI", __func__);
 }
 
-int rs_conn_open(struct rs_connection *conn)
+/* Non-public.  */
+int
+rs_conn_open(struct rs_connection *conn)
 {
-  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
-			      "%s: NYI", __func__);
+  int s;
+  struct rs_peer *p;
+
+  if (conn->active_peer)
+    return RSE_OK;
+  p = conn->peers;
+  if (!p)
+    return rs_conn_err_push_fl (conn, RSE_NOPEER, __FILE__, __LINE__, NULL);
+
+  s = socket (p->addr->ai_family, p->addr->ai_socktype, p->addr->ai_protocol);
+  if (s < 0)
+    return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
+				strerror (errno));
+  if (connect (s, p->addr->ai_addr, p->addr->ai_addrlen))
+    {
+      /* TODO: handle nonblocking sockets (EINTR, EAGAIN).  */
+      EVUTIL_CLOSESOCKET (s);
+      return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
+				  strerror (errno));
+    }
+  p->s = s;
+  conn->active_peer = p;
+  return RSE_OK;
 }

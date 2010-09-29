@@ -11,8 +11,8 @@ const char *_errtxt[] = {
   "invalid connection"		/* 4 RSE_INVALID_CONN */
   "connection type mismatch"	/* 5 RSE_CONN_TYPE_MISMATCH */
   "FreeRadius error"		/* 6 RSE_FR */
-  "ERR 7"			/*  RSE_ */
-  "ERR 8"			/*  RSE_ */
+  "bad hostname or port"	/* 7 RSE_BADADDR */
+  "no peer configured"		/* 8 RSE_NOPEER */
   "ERR 9"			/*  RSE_ */
   "ERR 10"			/*  RSE_ */
   "ERR 11"			/*  RSE_ */
