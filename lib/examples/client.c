@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <event2/event.h>
 #include "../libradsec.h"
 #include "../debug.h"
 
@@ -18,14 +19,13 @@ rsx_client (const char *srvname, int srvport)
   struct rs_connection *conn;
   struct rs_peer *server;
   struct rs_packet *req;
-  //struct rs_packet  *resp;
 
   if (rs_context_create (&h, "/usr/share/freeradius/dictionary"))
     return NULL;
 
   if (rs_conn_create (h, &conn))
     return rs_conn_err_pop (conn);
-  if (rs_conn_add_server (conn, &server, RS_CONN_TYPE_UDP, srvname, srvport))
+  if (rs_conn_add_server (conn, &server, RS_CONN_TYPE_TCP, srvname, srvport))
     return rs_conn_err_pop (conn);
   rs_server_set_timeout (server, 10);
   rs_server_set_tries (server, 3);
@@ -37,14 +37,6 @@ rsx_client (const char *srvname, int srvport)
   if (rs_packet_send (conn, req, NULL))
     return rs_conn_err_pop (conn);
   req = NULL;
-
-#if 0
-  printf ("waiting for response\n");
-  if (rs_packet_recv (conn, &resp))
-    return rs_conn_err_pop (conn);
-  printf ("got response\n");
-  rs_dump_packet (resp);
-#endif
 
   rs_conn_destroy (conn);
   rs_context_destroy (h);

@@ -79,6 +79,7 @@ struct rs_peer {
 
 struct rs_connection {
     struct rs_handle *ctx;
+    struct event_base *evb;
     enum rs_conn_type type;
     struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;

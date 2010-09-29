@@ -5,6 +5,7 @@
 #include <libgen.h>
 
 #include <freeradius/libradius.h>
+#include <event2/event.h>
 #include <event2/util.h>
 #include "libradsec.h"
 #include "libradsec-impl.h"
@@ -202,6 +203,9 @@ rs_conn_destroy(struct rs_connection *conn)
       if (p->secret)
 	rs_free (conn->ctx, p->secret);
     }
+
+  if (conn->evb)
+    event_base_free (conn->evb);
 }
 
 int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb)
@@ -245,6 +249,7 @@ rs_conn_open(struct rs_connection *conn)
   if (s < 0)
     return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
 				strerror (errno));
+#if 0		       /* let librevent do this in rs_packet_send() */
   if (connect (s, p->addr->ai_addr, p->addr->ai_addrlen))
     {
       /* TODO: handle nonblocking sockets (EINTR, EAGAIN).  */
@@ -252,6 +257,23 @@ rs_conn_open(struct rs_connection *conn)
       return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
 				  strerror (errno));
     }
+#endif
+
+  if (!conn->evb)
+    {
+#if defined (DEBUG)
+      event_enable_debug_mode ();
+#endif
+      conn->evb = event_base_new ();
+    }
+
+  if (!conn->evb)
+    {
+      EVUTIL_CLOSESOCKET (s);
+      return rs_conn_err_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+				  "event_base_new");
+    }
+
   p->s = s;
   conn->active_peer = p;
   return RSE_OK;

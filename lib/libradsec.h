@@ -14,6 +14,8 @@ enum rs_err_code {
     RSE_FR = 6,
     RSE_BADADDR = 7,
     RSE_NOPEER = 8,
+    RSE_EVENT = 9,
+    RSE_CONNERR = 10,
     RSE_SOME_ERROR = 21,
 };
 
@@ -48,7 +50,7 @@ int rs_context_config_read(struct rs_handle *ctx, const char *config_file);
 int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn);
 int rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server, rs_conn_type_t type, const char *hostname, int port);
 int rs_conn_add_listener(struct rs_connection  *conn, rs_conn_type_t type, const char *hostname, int port);
-void rs_conn_destroy(struct rs_connection  *conn);
+void rs_conn_destroy(struct rs_connection *conn);
 int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb);
 int rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *cb);
 int rs_conn_select_server(struct rs_connection *conn, const char *name);
@@ -69,7 +71,7 @@ void rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr);
 int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *type, const char *val);
 void rs_attr_destroy(struct rs_attr *attr);
 
-int rs_packet_send(struct rs_connection *conn, const struct rs_packet *pkt, void *user_data);
+int rs_packet_send(struct rs_connection *conn, struct rs_packet *pkt, void *data);
 int rs_packet_recv(struct rs_connection *conn, struct rs_packet **pkt);
 
 int rs_ctx_err_push(struct rs_handle *ctx, int code, const char *fmt, ...);

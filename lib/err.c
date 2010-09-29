@@ -13,8 +13,8 @@ const char *_errtxt[] = {
   "FreeRadius error"		/* 6 RSE_FR */
   "bad hostname or port"	/* 7 RSE_BADADDR */
   "no peer configured"		/* 8 RSE_NOPEER */
-  "ERR 9"			/*  RSE_ */
-  "ERR 10"			/*  RSE_ */
+  "libevent error"		/* 9 RSE_EVENT */
+  "connection error"		/* 10 RSE_CONNERR */
   "ERR 11"			/*  RSE_ */
   "ERR 12"			/*  RSE_ */
   "ERR 13"			/*  RSE_ */
