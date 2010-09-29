@@ -128,35 +128,53 @@ _resolv (struct rs_connection *conn, const char *hostname, int port)
   return res;			/* Simply use first result.  */
 }
 
+static struct rs_peer *
+_peer_new (struct rs_connection *conn, const char *hostname, int port)
+{
+  struct rs_peer *p;
+  struct evutil_addrinfo *addr;
+
+  addr = _resolv (conn, hostname, port);
+  if (!addr)
+    return NULL;
+
+  p = (struct rs_peer *) malloc (sizeof(*p));
+  if (p)
+    {
+      memset (p, 0, sizeof(struct rs_peer));
+      p->conn = conn;
+      p->s = -1;
+      p->addr = addr;
+      p->next = conn->peers;
+      if (conn->peers)
+	conn->peers->next = p;
+      else
+	conn->peers = p;
+    }
+  else
+    {
+      evutil_freeaddrinfo (addr);
+      rs_conn_err_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
+    }
+  return p;
+}
+
 int
 rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server,
 		   rs_conn_type_t type, const char *hostname, int port)
 {
   struct rs_peer *srv;
-  struct evutil_addrinfo *addr;
 
   if (conn->type == RS_CONN_TYPE_NONE)
     conn->type = type;
   else if (conn->type != type)
     return rs_conn_err_push (conn, RSE_CONN_TYPE_MISMATCH, NULL);
 
-  addr = _resolv (conn, hostname, port);
-  if (!addr)
-    return -1;
-
-  srv = (struct rs_peer *) malloc (sizeof(struct rs_peer));
+  srv = _peer_new (conn, hostname, port);
   if (srv)
     {
-      memset (srv, 0, sizeof(struct rs_peer));
-      srv->conn = conn;
-      srv->addr = addr;
       srv->timeout = 10;
       srv->tries = 3;
-      srv->next = conn->peers;
-      if (conn->peers)
-	conn->peers->next = srv;
-      else
-	conn->peers = srv;
     }
   if (*server)
     *server = srv;
@@ -187,7 +205,6 @@ int rs_conn_add_listener(struct rs_connection *conn, rs_conn_type_t type, const 
   return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
-
 
 void
 rs_conn_destroy(struct rs_connection *conn)
@@ -232,49 +249,3 @@ int rs_conn_get_current_server(struct rs_connection *conn, const char *name, siz
 			      "%s: NYI", __func__);
 }
 
-/* Non-public.  */
-int
-rs_conn_open(struct rs_connection *conn)
-{
-  int s;
-  struct rs_peer *p;
-
-  if (conn->active_peer)
-    return RSE_OK;
-  p = conn->peers;
-  if (!p)
-    return rs_conn_err_push_fl (conn, RSE_NOPEER, __FILE__, __LINE__, NULL);
-
-  s = socket (p->addr->ai_family, p->addr->ai_socktype, p->addr->ai_protocol);
-  if (s < 0)
-    return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
-				strerror (errno));
-#if 0		       /* let librevent do this in rs_packet_send() */
-  if (connect (s, p->addr->ai_addr, p->addr->ai_addrlen))
-    {
-      /* TODO: handle nonblocking sockets (EINTR, EAGAIN).  */
-      EVUTIL_CLOSESOCKET (s);
-      return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
-				  strerror (errno));
-    }
-#endif
-
-  if (!conn->evb)
-    {
-#if defined (DEBUG)
-      event_enable_debug_mode ();
-#endif
-      conn->evb = event_base_new ();
-    }
-
-  if (!conn->evb)
-    {
-      EVUTIL_CLOSESOCKET (s);
-      return rs_conn_err_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
-				  "event_base_new");
-    }
-
-  p->s = s;
-  conn->active_peer = p;
-  return RSE_OK;
-}

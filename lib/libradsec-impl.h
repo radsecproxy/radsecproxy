@@ -71,6 +71,8 @@ struct rs_peer {
     struct rs_connection *conn;
     struct evutil_addrinfo *addr;
     int s;			/* Socket.  */
+    char is_connecting;
+    char is_connected;
     char *secret;
     int timeout;		/* client only */
     int tries;			/* client only */
@@ -80,6 +82,7 @@ struct rs_peer {
 struct rs_connection {
     struct rs_handle *ctx;
     struct event_base *evb;
+    struct bufferevent *bev;
     enum rs_conn_type type;
     struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;
@@ -97,9 +100,6 @@ struct rs_attr {
     struct rs_packet *pkt;
     VALUE_PAIR *vp;
 };
-
-/* Internal functions.  */
-int rs_conn_open(struct rs_connection *conn);
 
 /* Convenience macros.  */
 #define rs_calloc(h, nmemb, size) \

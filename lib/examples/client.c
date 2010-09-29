@@ -38,9 +38,17 @@ rsx_client (const char *srvname, int srvport)
     return rs_conn_err_pop (conn);
   req = NULL;
 
+#if 0
+  if (rs_packet_recv (conn, &resp))
+    return rs_conn_err_pop (conn);
+#if defined (DEBUG)
+  rs_dump_packet (resp);
+#endif
+#endif
+
   rs_conn_destroy (conn);
   rs_context_destroy (h);
-  return 0;
+  return NULL;
 }
 
 int
@@ -53,8 +61,10 @@ main (int argc, char *argv[])
   host = strsep (argv + 1, ":");
   port = atoi (argv[1]);
   err = rsx_client (host, port);
-  if (!err)
-    return -1;
-  fprintf (stderr, "%s\n", rs_err_msg (err, 0));
-  return rs_err_code (err, 1);
+  if (err)
+    {
+      fprintf (stderr, "%s\n", rs_err_msg (err, 0));
+      return rs_err_code (err, 1);
+    }
+  return 0;
 }

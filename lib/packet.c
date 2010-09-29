@@ -66,11 +66,19 @@ static void
 _event_cb (struct bufferevent *bev, short events, void *ctx)
 {
   struct rs_packet *pkt = (struct rs_packet *) ctx;
+  struct rs_connection *conn;
+  struct rs_peer *p;
 
   assert (pkt);
   assert (pkt->conn);
+  assert (pkt->conn->active_peer);
+  conn = pkt->conn;
+  p = conn->active_peer;
+
+  p->is_connecting = 0;
   if (events & BEV_EVENT_CONNECTED)
     {
+      p->is_connected = 1;
 #if defined (DEBUG)
       fprintf (stderr, "%s: connected\n", __func__);
 #endif
@@ -110,32 +118,107 @@ _write_cb (struct bufferevent *bev, void *ctx)
   rs_packet_destroy (pkt);
 }
 
+static int
+_init_evb (struct rs_connection *conn)
+{
+  if (!conn->evb)
+    {
+#if defined (DEBUG)
+      event_enable_debug_mode ();
+#endif
+      conn->evb = event_base_new ();
+      if (!conn->evb)
+	return rs_conn_err_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+				    "event_base_new");
+    }
+  return RSE_OK;
+}
+
+static int
+_init_socket (struct rs_connection *conn, struct rs_peer *p)
+{
+  if (p->s < 0)
+    {
+      assert (p->addr);
+      p->s = socket (p->addr->ai_family, p->addr->ai_socktype,
+		     p->addr->ai_protocol);
+      if (p->s < 0)
+	return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
+				    strerror (errno));
+    }
+  return RSE_OK;
+}
+
+static struct rs_peer *
+_pick_peer (struct rs_connection *conn)
+{
+  if (!conn->active_peer)
+    conn->active_peer = conn->peers;
+  return conn->active_peer;
+}
+
+static int
+_init_bev (struct rs_connection *conn, struct rs_peer *peer,
+	   struct rs_packet *pkt)
+{
+  if (!conn->bev)
+    {
+      conn->bev = bufferevent_socket_new (conn->evb, peer->s, 0);
+      if (!conn->bev)
+	return rs_conn_err_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+				    "bufferevent_socket_new");
+      bufferevent_setcb (conn->bev, NULL, _write_cb, _event_cb, pkt);
+    }
+  return RSE_OK;
+}
+
+static void
+_do_connect (struct rs_peer *p)
+{
+  if (bufferevent_socket_connect (p->conn->bev, p->addr->ai_addr,
+				  p->addr->ai_addrlen) < 0)
+    rs_conn_err_push_fl (p->conn, RSE_EVENT, __FILE__, __LINE__,
+			   "bufferevent_socket_connect");
+  else
+    p->is_connecting = 1;
+}
+
+static int
+_conn_open(struct rs_connection *conn, struct rs_packet *pkt)
+{
+  struct rs_peer *p;
+
+  if (_init_evb (conn))
+    return -1;
+
+  p = _pick_peer (conn);
+  if (!p)
+    return rs_conn_err_push_fl (conn, RSE_NOPEER, __FILE__, __LINE__, NULL);
+
+  if (_init_socket (conn, p))
+    return -1;
+
+  if (_init_bev (conn, p, pkt))
+    return -1;
+
+  if (!p->is_connected)
+    if (!p->is_connecting)
+      _do_connect (p);
+
+  return RSE_OK;
+}
+
 int
 rs_packet_send (struct rs_connection *conn, struct rs_packet *pkt, void *data)
 {
-  struct bufferevent *bev;
-  struct rs_peer *p;
-
+  assert (conn);
   assert (pkt->rpkt);
-
-  if (rs_conn_open (conn))
+  if (_conn_open (conn, pkt))
     return -1;
-  p = conn->active_peer;
-  assert (p);
-
+  assert (conn->evb);
+  assert (conn->bev);
+  assert (conn->active_peer);
   assert (conn->active_peer->s >= 0);
-  bev = bufferevent_socket_new (conn->evb, conn->active_peer->s, 0);
-  if (!bev)
-    return rs_conn_err_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
-				"bufferevent_socket_new");
-  if (bufferevent_socket_connect (bev, p->addr->ai_addr, p->addr->ai_addrlen) < 0)
-    {
-      bufferevent_free (bev);
-      return rs_conn_err_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
-				  "bufferevent_socket_connect");
-    }
-
-  bufferevent_setcb (bev, NULL, _write_cb, _event_cb, pkt);
   event_base_dispatch (conn->evb);
 #if defined (DEBUG)
   fprintf (stderr, "%s: event loop done\n", __func__);
@@ -147,9 +230,13 @@ rs_packet_send (struct rs_connection *conn, struct rs_packet *pkt, void *data)
 
 int rs_packet_receive(struct rs_connection *conn, struct rs_packet **pkt)
 {
-  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
-			      "%s: NYI", __func__);
+  //struct bufferevent *bev;
+
+  //skalleper;
+  //bufferevent_enable(bev, EV_READ);
+  return 0;			/* FIXME */
 }
+
 
 void
 rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr)
@@ -157,3 +244,4 @@ rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr)
   pairadd (&pkt->rpkt->vps, attr->vp);
   attr->pkt = pkt;
 }
+

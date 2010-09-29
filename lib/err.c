@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <assert.h>
 #include "libradsec.h"
 #include "libradsec-impl.h"
@@ -27,6 +28,7 @@ const char *_errtxt[] = {
   "ERR "			/*  RSE_ */
   "some error"			/* 21 RSE_SOME_ERROR */
 };
+#define ERRTXT_SIZE (sizeof(_errtxt) / sizeof(*_errtxt))
 
 static struct rs_error *
 _err_new (unsigned int code, const char *file, int line, const char *fmt, va_list args)
@@ -39,8 +41,16 @@ _err_new (unsigned int code, const char *file, int line, const char *fmt, va_lis
       int n;
       memset (err, 0, sizeof(struct rs_error));
       err->code = code;
-      n = vsnprintf (err->buf, sizeof(err->buf), fmt, args);
-      if (n > 0)
+      if (fmt)
+	n = vsnprintf (err->buf, sizeof(err->buf), fmt, args);
+      else
+	{
+	  strncpy (err->buf,
+		   err->code < ERRTXT_SIZE ? _errtxt[err->code] : "",
+		   sizeof(err->buf));
+	  n = strlen (err->buf);
+	}
+      if (n >= 0)
 	{
 	  char *sep = strrchr (file, '/');
 	  if (sep)
