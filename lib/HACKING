@@ -1,0 +1,8 @@
+HACKING file for libradsec (in Emacs -*- org -*- mode).
+* Design of the libraray
+* Features
+** Not implemented
+** Not tested
+- short read
+- short write
+** Tested and verified

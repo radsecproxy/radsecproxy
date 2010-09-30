@@ -9,9 +9,8 @@
 #include "debug.h"
 #endif
 
-int
-_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out,
-		int code)
+static int
+_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
 {
   struct rs_packet *p;
   RADIUS_PACKET *rpkt;
@@ -22,7 +21,6 @@ _packet_create (struct rs_connection *conn, struct rs_packet **pkt_out,
   if (!rpkt)
     return rs_conn_err_push (conn, RSE_NOMEM, __func__);
   rpkt->id = -1;
-  rpkt->code = code;
 
   p = (struct rs_packet *) malloc (sizeof (struct rs_packet));
   if (!p)
@@ -46,9 +44,10 @@ rs_packet_create_acc_request (struct rs_connection *conn,
   struct rs_packet *pkt;
   struct rs_attr *attr;
 
-  if (_packet_create (conn, pkt_out, PW_AUTHENTICATION_REQUEST))
+  if (_packet_create (conn, pkt_out))
     return -1;
   pkt = *pkt_out;
+  pkt->rpkt->code = PW_AUTHENTICATION_REQUEST;
 
   if (rs_attr_create (conn, &attr, "User-Name", user_name))
     return -1;
@@ -83,6 +82,7 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
       fprintf (stderr, "%s: connected\n", __func__);
 #endif
       rad_encode (pkt->rpkt, NULL, pkt->conn->active_peer->secret);
+      assert (pkt->rpkt);
 #if defined (DEBUG)
       fprintf (stderr, "%s: about to send this to %s:\n", __func__, "<fixme>");
       rs_dump_packet (pkt);
@@ -116,6 +116,62 @@ _write_cb (struct bufferevent *bev, void *ctx)
   if (event_base_loopbreak (pkt->conn->evb) < 0)
     abort ();			/* FIXME */
   rs_packet_destroy (pkt);
+}
+
+static void
+_read_cb (struct bufferevent *bev, void *ctx)
+{
+  struct rs_packet *pkt = (struct rs_packet *) ctx;
+  size_t n;
+
+  assert (pkt);
+  assert (pkt->conn);
+  if (!pkt->hdr_read_flag)
+    {
+      n = bufferevent_read (pkt->conn->bev, pkt->hdr, 4);
+      if (n == 4)
+	{
+	  uint16_t len = (pkt->hdr[2] << 8) + pkt->hdr[3];
+	  uint8_t *buf = rs_malloc (pkt->conn->ctx, len);
+
+	  pkt->hdr_read_flag = 1;
+	  if (!buf)
+	    {
+	      rs_conn_err_push_fl (pkt->conn, RSE_NOMEM, __FILE__,
+				   __LINE__, NULL);
+	      abort ();	/* FIXME: recovering takes reading of packet */
+	    }
+	  pkt->rpkt->data = buf;
+	  pkt->rpkt->data_len = len;
+	  bufferevent_setwatermark (pkt->conn->bev, EV_READ, len - 4, 0);
+#if defined (DEBUG)
+	  fprintf (stderr, "%s: packet header read, pkt len=%d\n", __func__,
+		   len);
+#endif
+	}
+      else if (n < 0)
+	return;	/* Buffer frozen, i suppose.  Let's hope it thaws.  */
+      else
+	{
+	  assert (n < 4);
+	  return;		/* Need more to complete header.  */
+	  }
+    }
+
+  printf ("%s: trying to read %d octets of packet data\n", __func__, pkt->rpkt->data_len - 4);
+  n = bufferevent_read (pkt->conn->bev, pkt->rpkt->data, pkt->rpkt->data_len - 4);
+  printf ("%s: read %d octets of packet data\n", __func__, n);
+  if (n == pkt->rpkt->data_len - 4)
+    {
+      bufferevent_disable (pkt->conn->bev, EV_READ);
+      pkt->hdr_read_flag = 0;
+      memset (pkt->hdr, 0, sizeof(*pkt->hdr));
+#if defined (DEBUG)
+      fprintf (stderr, "%s: complete packet read\n", __func__);
+#endif
+      if (event_base_loopbreak (pkt->conn->evb) < 0)
+	abort ();		/* FIXME */
+    }
 }
 
 static int
@@ -158,8 +214,7 @@ _pick_peer (struct rs_connection *conn)
 }
 
 static int
-_init_bev (struct rs_connection *conn, struct rs_peer *peer,
-	   struct rs_packet *pkt)
+_init_bev (struct rs_connection *conn, struct rs_peer *peer)
 {
   if (!conn->bev)
     {
@@ -167,7 +222,6 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer,
       if (!conn->bev)
 	return rs_conn_err_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_socket_new");
-      bufferevent_setcb (conn->bev, NULL, _write_cb, _event_cb, pkt);
     }
   return RSE_OK;
 }
@@ -198,8 +252,9 @@ _conn_open(struct rs_connection *conn, struct rs_packet *pkt)
   if (_init_socket (conn, p))
     return -1;
 
-  if (_init_bev (conn, p, pkt))
+  if (_init_bev (conn, p))
     return -1;
+  bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
 
   if (!p->is_connected)
     if (!p->is_connecting)
@@ -213,13 +268,16 @@ rs_packet_send (struct rs_connection *conn, struct rs_packet *pkt, void *data)
 {
   assert (conn);
   assert (pkt->rpkt);
+
   if (_conn_open (conn, pkt))
     return -1;
   assert (conn->evb);
   assert (conn->bev);
   assert (conn->active_peer);
   assert (conn->active_peer->s >= 0);
+
   event_base_dispatch (conn->evb);
+
 #if defined (DEBUG)
   fprintf (stderr, "%s: event loop done\n", __func__);
   assert (event_base_got_break(conn->evb));
@@ -228,15 +286,40 @@ rs_packet_send (struct rs_connection *conn, struct rs_packet *pkt, void *data)
   return RSE_OK;
 }
 
-int rs_packet_receive(struct rs_connection *conn, struct rs_packet **pkt)
+int
+rs_packet_receive(struct rs_connection *conn, struct rs_packet **pkt_out)
 {
-  //struct bufferevent *bev;
+  struct rs_packet *pkt;
 
-  //skalleper;
-  //bufferevent_enable(bev, EV_READ);
-  return 0;			/* FIXME */
+  assert (conn);
+
+  if (_packet_create (conn, pkt_out))
+    return -1;
+  pkt = *pkt_out;
+  pkt->conn = conn;
+
+  if (_conn_open (conn, pkt))
+    return -1;
+  assert (conn->evb);
+  assert (conn->bev);
+  assert (conn->active_peer);
+  assert (conn->active_peer->s >= 0);
+
+  bufferevent_setwatermark (conn->bev, EV_READ, 4, 0);
+  bufferevent_enable (conn->bev, EV_READ);
+  event_base_dispatch (conn->evb);
+#if defined (DEBUG)
+  fprintf (stderr, "%s: event loop done\n", __func__);
+  assert (event_base_got_break(conn->evb));
+#endif
+
+#if defined (DEBUG)
+  fprintf (stderr, "%s: got this:\n", __func__);
+  rs_dump_packet (pkt);
+#endif
+
+  return RSE_OK;
 }
-
 
 void
 rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr)
@@ -244,4 +327,3 @@ rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr)
   pairadd (&pkt->rpkt->vps, attr->vp);
   attr->pkt = pkt;
 }
-

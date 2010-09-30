@@ -30,40 +30,10 @@ struct rs_error {
     char buf[1024];
 };
 
-typedef void * (*rs_calloc_fp)(size_t nmemb, size_t size);
-typedef void * (*rs_malloc_fp)(size_t size);
-typedef void (*rs_free_fp)(void *ptr);
-typedef void * (*rs_realloc_fp)(void *ptr, size_t size);
-struct rs_alloc_scheme {
-    rs_calloc_fp calloc;
-    rs_malloc_fp malloc;
-    rs_free_fp free;
-    rs_realloc_fp realloc;
-};
-
-typedef void (*rs_conn_connected_cb)(void *user_data /* FIXME: peer? */);
-typedef void (*rs_conn_disconnected_cb)(void *user_data /* FIXME: reason? */);
-typedef void (*rs_conn_packet_received_cb)(const struct rs_packet *packet,
-					   void *user_data);
-typedef void (*rs_conn_packet_sent_cb)(void *user_data);
-
-/** Connection callbacks.  */
-struct rs_conn_callbacks {
-    /** Callback invoked when the connection has been established.  */
-    rs_conn_connected_cb connected_cb;
-    /** Callback invoked when the connection has been torn down.  */
-    rs_conn_disconnected_cb disconnected_cb;
-    /** Callback invoked when a packet was received.  */
-    rs_conn_packet_received_cb received_cb;
-    /** Callback invoked when a packet was successfully sent.  */
-    rs_conn_packet_sent_cb sent_cb;
-};
-
 struct rs_handle {
     struct rs_alloc_scheme alloc_scheme;
     struct rs_error *err;
     fr_randctx fr_randctx;
-
     /* TODO: dictionary? */
 };
 
@@ -93,6 +63,8 @@ struct rs_connection {
 
 struct rs_packet {
     struct rs_connection *conn;
+    char hdr_read_flag;
+    uint8_t hdr[4];
     RADIUS_PACKET *rpkt;
 };
 

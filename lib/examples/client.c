@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <event2/event.h>
 #include "../libradsec.h"
-#include "../debug.h"
 
 #define SECRET "sikrit"
 #define USER_NAME "bob"
@@ -18,7 +17,7 @@ rsx_client (const char *srvname, int srvport)
   struct rs_handle *h;
   struct rs_connection *conn;
   struct rs_peer *server;
-  struct rs_packet *req;
+  struct rs_packet *req, *resp;
 
   if (rs_context_create (&h, "/usr/share/freeradius/dictionary"))
     return NULL;
@@ -39,12 +38,18 @@ rsx_client (const char *srvname, int srvport)
   req = NULL;
 
 #if 0
-  if (rs_packet_recv (conn, &resp))
+  if (rs_packet_create_acc_request (conn, &req, USER_NAME, USER_PW))
     return rs_conn_err_pop (conn);
-#if defined (DEBUG)
-  rs_dump_packet (resp);
+
+  if (rs_packet_send (conn, req, NULL))
+    return rs_conn_err_pop (conn);
+  req = NULL;
 #endif
-#endif
+
+  if (rs_packet_receive (conn, &resp))
+    return rs_conn_err_pop (conn);
+  /* TODO: do something interesting with the response */
+  rs_packet_destroy (resp);
 
   rs_conn_destroy (conn);
   rs_context_destroy (h);
