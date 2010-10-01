@@ -2,6 +2,13 @@ HACKING file for libradsec (in Emacs -*- org -*- mode).
 * Design of the libraray
 * Features
 ** Not implemented
+- reading config file
+- server fail over
+- resending packets
+- matching responses
+- TLS, DTLS
+- TLS PSK
+- autoconf/automake/libtool
 ** Not tested
 - short read
 - short write

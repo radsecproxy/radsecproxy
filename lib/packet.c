@@ -1,3 +1,5 @@
+/* See the file COPYING for licensing information.  */
+
 #include <string.h>
 #include <assert.h>
 #include <freeradius/libradius.h>
@@ -128,8 +130,8 @@ _read_cb (struct bufferevent *bev, void *ctx)
   assert (pkt->conn);
   if (!pkt->hdr_read_flag)
     {
-      n = bufferevent_read (pkt->conn->bev, pkt->hdr, 4);
-      if (n == 4)
+      n = bufferevent_read (pkt->conn->bev, pkt->hdr, RS_HEADER_LEN;
+      if (n == RS_HEADER_LEN)
 	{
 	  uint16_t len = (pkt->hdr[2] << 8) + pkt->hdr[3];
 	  uint8_t *buf = rs_malloc (pkt->conn->ctx, len);
@@ -143,7 +145,8 @@ _read_cb (struct bufferevent *bev, void *ctx)
 	    }
 	  pkt->rpkt->data = buf;
 	  pkt->rpkt->data_len = len;
-	  bufferevent_setwatermark (pkt->conn->bev, EV_READ, len - 4, 0);
+	  bufferevent_setwatermark (pkt->conn->bev, EV_READ,
+				    len - RS_HEADER_LEN, 0);
 #if defined (DEBUG)
 	  fprintf (stderr, "%s: packet header read, pkt len=%d\n", __func__,
 		   len);
@@ -153,15 +156,16 @@ _read_cb (struct bufferevent *bev, void *ctx)
 	return;	/* Buffer frozen, i suppose.  Let's hope it thaws.  */
       else
 	{
-	  assert (n < 4);
+	  assert (n < RS_HEADER_LEN);
 	  return;		/* Need more to complete header.  */
 	  }
     }
 
-  printf ("%s: trying to read %d octets of packet data\n", __func__, pkt->rpkt->data_len - 4);
-  n = bufferevent_read (pkt->conn->bev, pkt->rpkt->data, pkt->rpkt->data_len - 4);
+  printf ("%s: trying to read %d octets of packet data\n", __func__, pkt->rpkt->data_len - RS_HEADER_LEN;
+  n = bufferevent_read (pkt->conn->bev, pkt->rpkt->data,
+			pkt->rpkt->data_len - RS_HEADER_LEN);
   printf ("%s: read %d octets of packet data\n", __func__, n);
-  if (n == pkt->rpkt->data_len - 4)
+  if (n == pkt->rpkt->data_len - RS_HEADER_LEN)
     {
       bufferevent_disable (pkt->conn->bev, EV_READ);
       pkt->hdr_read_flag = 0;
@@ -305,7 +309,7 @@ rs_packet_receive(struct rs_connection *conn, struct rs_packet **pkt_out)
   assert (conn->active_peer);
   assert (conn->active_peer->s >= 0);
 
-  bufferevent_setwatermark (conn->bev, EV_READ, 4, 0);
+  bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
   bufferevent_enable (conn->bev, EV_READ);
   event_base_dispatch (conn->evb);
 #if defined (DEBUG)

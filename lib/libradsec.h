@@ -66,12 +66,15 @@ struct rs_conn_callbacks {
     rs_conn_packet_sent_cb sent_cb;
 };
 
+
 /* Function prototypes.  */
+/* Context.  */
 int rs_context_create(struct rs_handle **ctx, const char *dict);
 void rs_context_destroy(struct rs_handle *ctx);
 int rs_context_set_alloc_scheme(struct rs_handle *ctx, struct rs_alloc_scheme *scheme);
 int rs_context_config_read(struct rs_handle *ctx, const char *config_file);
 
+/* Connection.  */
 int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn);
 int rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server, rs_conn_type_t type, const char *hostname, int port);
 int rs_conn_add_listener(struct rs_connection  *conn, rs_conn_type_t type, const char *hostname, int port);
@@ -81,24 +84,26 @@ int rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *
 int rs_conn_select_server(struct rs_connection *conn, const char *name);
 int rs_conn_get_current_server(struct rs_connection *conn, const char *name, size_t buflen);
 
+/* Server and client configuration.  */
 void rs_server_set_timeout(struct rs_peer *server, int timeout);
 void rs_server_set_tries(struct rs_peer *server, int tries);
 int rs_server_set_secret(struct rs_peer *server, const char *secret);
 
+/* Packet.  */
 int rs_packet_create_acc_request(struct rs_connection *conn, struct rs_packet **pkt, const char *user_name, const char *user_pw);
 //int rs_packet_create_acc_accept(cstruct rs_connection *conn, struct rs_packet **pkt);
 //int rs_packet_create_acc_reject(struct rs_connection *conn, struct rs_packet **pkt);
 //int rs_packet_create_acc_challenge(struct rs_connection *conn, struct rs_packet **pkt);
 void rs_packet_destroy(struct rs_packet *pkt);
 void rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr);
-//int rs_packet_add_new_attr(struct rs_packet *pkt, const char *attr_name, const char *attr_val);
-
-int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *type, const char *val);
-void rs_attr_destroy(struct rs_attr *attr);
-
 int rs_packet_send(struct rs_connection *conn, struct rs_packet *pkt, void *data);
 int rs_packet_receive(struct rs_connection *conn, struct rs_packet **pkt_out);
 
+/* Attribute.  */
+int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *type, const char *val);
+void rs_attr_destroy(struct rs_attr *attr);
+
+/* Error.  */
 int rs_ctx_err_push(struct rs_handle *ctx, int code, const char *fmt, ...);
 int rs_ctx_err_push_fl(struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, ...);
 struct rs_error *rs_ctx_err_pop (struct rs_handle *ctx);

@@ -1,3 +1,5 @@
+/* See the file COPYING for licensing information.  */
+
 #define hd(p, l) { int i;		\
     for (i = 1; i <= l; i++) {		\
       printf ("%02x ", p[i-1]);		\

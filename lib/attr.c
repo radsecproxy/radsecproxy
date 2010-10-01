@@ -1,3 +1,5 @@
+/* See the file COPYING for licensing information.  */
+
 #include <freeradius/libradius.h>
 #include "libradsec.h"
 #include "libradsec-impl.h"

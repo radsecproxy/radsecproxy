@@ -11,6 +11,8 @@ all: libradsec.a
 libradsec.a: $(OFILES)
 	ar rc $@ $^
 
+$(OFILES): libradsec.h libradsec-impl.h
+
 doc:
 	doxygen
 

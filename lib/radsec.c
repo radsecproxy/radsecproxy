@@ -1,3 +1,5 @@
+/* See the file COPYING for licensing information.  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
