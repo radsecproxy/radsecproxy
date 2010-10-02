@@ -1,6 +1,6 @@
 CFLAGS = -Wall -g -I ../include
 
-HFILES = ../include/radsec/libradsec.h ../include/radsec/libradsec-impl.h
+HFILES = ../include/radsec/radsec.h ../include/radsec/radsec-impl.h
 
 all: client-blocking
 

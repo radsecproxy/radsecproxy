@@ -9,8 +9,8 @@
 #include <freeradius/libradius.h>
 #include <event2/event.h>
 #include <event2/util.h>
-#include <radsec/libradsec.h>
-#include <radsec/libradsec-impl.h>
+#include <radsec/radsec.h>
+#include <radsec/radsec-impl.h>
 
 int
 rs_context_create(struct rs_handle **ctx, const char *dict)
@@ -103,8 +103,7 @@ _resolv (struct rs_connection *conn, const char *hostname, int port)
 
   snprintf (portstr, sizeof(portstr), "%d", port);
   memset (&hints, 0, sizeof(struct evutil_addrinfo));
-  //hints.ai_family = AF_UNSPEC;	/* v4 or v6.  */
-  hints.ai_family = AF_INET;	/* FIXME: v4 only, while debuging */
+  hints.ai_family = AF_UNSPEC;	/* v4 or v6.  */
   hints.ai_flags = AI_ADDRCONFIG;
   switch (conn->type)
     {
@@ -112,11 +111,13 @@ _resolv (struct rs_connection *conn, const char *hostname, int port)
       rs_conn_err_push_fl (conn, RSE_INVALID_CONN, __FILE__, __LINE__, NULL);
       return NULL;
     case RS_CONN_TYPE_TCP:
+      /* Fall through.  */
     case RS_CONN_TYPE_TLS:
       hints.ai_socktype = SOCK_STREAM;
       hints.ai_protocol = IPPROTO_TCP;
       break;
     case RS_CONN_TYPE_UDP:
+      /* Fall through.  */
     case RS_CONN_TYPE_DTLS:
       hints.ai_socktype = SOCK_DGRAM;
       hints.ai_protocol = IPPROTO_UDP;
@@ -125,7 +126,7 @@ _resolv (struct rs_connection *conn, const char *hostname, int port)
   err = evutil_getaddrinfo (hostname, portstr, &hints, &res);
   if (err)
     rs_conn_err_push_fl (conn, RSE_BADADDR, __FILE__, __LINE__,
-			 " %s:%d: bad host name or port (%s)",
+			 "%s:%d: bad host name or port (%s)",
 			 hostname, port, evutil_gai_strerror(err));
   return res;			/* Simply use first result.  */
 }
@@ -180,7 +181,7 @@ rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server,
     }
   if (*server)
     *server = srv;
-  return srv ? RSE_OK : rs_conn_err_push (conn, RSE_NOMEM, NULL);
+  return srv ? RSE_OK : -1;
 }
 
 void rs_server_set_timeout(struct rs_peer *server, int timeout)

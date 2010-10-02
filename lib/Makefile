@@ -11,7 +11,7 @@ all: libradsec.a
 libradsec.a: $(OFILES)
 	ar rc $@ $^
 
-$(OFILES): include/radsec/libradsec.h include/radsec/libradsec-impl.h
+$(OFILES): include/radsec/radsec.h include/radsec/radsec-impl.h
 
 doc:
 	doxygen

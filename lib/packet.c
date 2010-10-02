@@ -5,8 +5,8 @@
 #include <freeradius/libradius.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>
-#include <radsec/libradsec.h>
-#include <radsec/libradsec-impl.h>
+#include <radsec/radsec.h>
+#include <radsec/radsec-impl.h>
 #if defined DEBUG
 #include "debug.h"
 #endif

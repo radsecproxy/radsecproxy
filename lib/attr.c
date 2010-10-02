@@ -1,8 +1,8 @@
 /* See the file COPYING for licensing information.  */
 
 #include <freeradius/libradius.h>
-#include <radsec/libradsec.h>
-#include <radsec/libradsec-impl.h>
+#include <radsec/radsec.h>
+#include <radsec/radsec-impl.h>
 
 int
 rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *type, const char *val)

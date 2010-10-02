@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <radsec/libradsec.h>
-#include <radsec/libradsec-impl.h>
+#include <radsec/radsec.h>
+#include <radsec/radsec-impl.h>
 
 const char *_errtxt[] = {
   "SUCCESS",			/* 0 RSE_OK */
@@ -52,7 +52,7 @@ _err_new (unsigned int code, const char *file, int line, const char *fmt, va_lis
 		   sizeof(err->buf));
 	  n = strlen (err->buf);
 	}
-      if (n >= 0)
+      if (n >= 0 && file)
 	{
 	  char *sep = strrchr (file, '/');
 	  if (sep)

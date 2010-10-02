@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <event2/event.h>
 #include <freeradius/libradius.h>
-#include <radsec/libradsec.h>
+#include <radsec/radsec.h>
 
 #define SECRET "sikrit"
 #define USER_NAME "bob"
