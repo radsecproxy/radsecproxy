@@ -5,8 +5,8 @@
 #include <freeradius/libradius.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>
-#include "libradsec.h"
-#include "libradsec-impl.h"
+#include <radsec/libradsec.h>
+#include <radsec/libradsec-impl.h>
 #if defined DEBUG
 #include "debug.h"
 #endif
@@ -130,40 +130,36 @@ _read_cb (struct bufferevent *bev, void *ctx)
   assert (pkt->conn);
   if (!pkt->hdr_read_flag)
     {
-      n = bufferevent_read (pkt->conn->bev, pkt->hdr, RS_HEADER_LEN;
+      n = bufferevent_read (pkt->conn->bev, pkt->hdr, RS_HEADER_LEN);
       if (n == RS_HEADER_LEN)
 	{
-	  uint16_t len = (pkt->hdr[2] << 8) + pkt->hdr[3];
-	  uint8_t *buf = rs_malloc (pkt->conn->ctx, len);
-
 	  pkt->hdr_read_flag = 1;
-	  if (!buf)
+	  pkt->rpkt->data_len = (pkt->hdr[2] << 8) + pkt->hdr[3];
+	  if (pkt->rpkt->data_len < 20 /* || len > 4096 */)
+	    abort ();  /* TODO: Read and discard.  */
+	  pkt->rpkt->data = rs_malloc (pkt->conn->ctx, pkt->rpkt->data_len);
+	  if (!pkt->rpkt->data)
 	    {
-	      rs_conn_err_push_fl (pkt->conn, RSE_NOMEM, __FILE__,
-				   __LINE__, NULL);
+	      rs_conn_err_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
+				   NULL);
 	      abort ();	/* FIXME: recovering takes reading of packet */
 	    }
-	  pkt->rpkt->data = buf;
-	  pkt->rpkt->data_len = len;
+	  memcpy (pkt->rpkt->data, pkt->hdr, RS_HEADER_LEN);
 	  bufferevent_setwatermark (pkt->conn->bev, EV_READ,
-				    len - RS_HEADER_LEN, 0);
+				    pkt->rpkt->data_len - RS_HEADER_LEN, 0);
 #if defined (DEBUG)
-	  fprintf (stderr, "%s: packet header read, pkt len=%d\n", __func__,
-		   len);
+	  fprintf (stderr, "%s: packet header read, total pkt len=%d\n",
+		   __func__, pkt->rpkt->data_len);
 #endif
 	}
       else if (n < 0)
-	return;	/* Buffer frozen, i suppose.  Let's hope it thaws.  */
+	return;			/* Buffer frozen.  */
       else
-	{
-	  assert (n < RS_HEADER_LEN);
-	  return;		/* Need more to complete header.  */
-	  }
+	assert (!"short header");
     }
 
-  printf ("%s: trying to read %d octets of packet data\n", __func__, pkt->rpkt->data_len - RS_HEADER_LEN;
-  n = bufferevent_read (pkt->conn->bev, pkt->rpkt->data,
-			pkt->rpkt->data_len - RS_HEADER_LEN);
+  printf ("%s: trying to read %d octets of packet data\n", __func__, pkt->rpkt->data_len - RS_HEADER_LEN);
+  n = bufferevent_read (pkt->conn->bev, pkt->rpkt->data + RS_HEADER_LEN, pkt->rpkt->data_len - RS_HEADER_LEN);
   printf ("%s: read %d octets of packet data\n", __func__, n);
   if (n == pkt->rpkt->data_len - RS_HEADER_LEN)
     {
@@ -173,9 +169,14 @@ _read_cb (struct bufferevent *bev, void *ctx)
 #if defined (DEBUG)
       fprintf (stderr, "%s: complete packet read\n", __func__);
 #endif
+      rad_decode (pkt->rpkt, NULL, pkt->conn->active_peer->secret);
       if (event_base_loopbreak (pkt->conn->evb) < 0)
 	abort ();		/* FIXME */
     }
+  else if (n < 0)
+    return;			/* Buffer frozen.  */
+  else
+    assert (!"short packet");
 }
 
 static int
@@ -268,10 +269,13 @@ _conn_open(struct rs_connection *conn, struct rs_packet *pkt)
 }
 
 int
-rs_packet_send (struct rs_connection *conn, struct rs_packet *pkt, void *data)
+rs_packet_send (struct rs_packet *pkt, void *data)
 {
-  assert (conn);
+  struct rs_connection *conn;
+  assert (pkt);
+  assert (pkt->conn);
   assert (pkt->rpkt);
+  conn = pkt->conn;
 
   if (_conn_open (conn, pkt))
     return -1;
@@ -291,7 +295,7 @@ rs_packet_send (struct rs_connection *conn, struct rs_packet *pkt, void *data)
 }
 
 int
-rs_packet_receive(struct rs_connection *conn, struct rs_packet **pkt_out)
+rs_conn_receive_packet (struct rs_connection *conn, struct rs_packet **pkt_out)
 {
   struct rs_packet *pkt;
 
@@ -313,13 +317,14 @@ rs_packet_receive(struct rs_connection *conn, struct rs_packet **pkt_out)
   bufferevent_enable (conn->bev, EV_READ);
   event_base_dispatch (conn->evb);
 #if defined (DEBUG)
-  fprintf (stderr, "%s: event loop done\n", __func__);
-  assert (event_base_got_break(conn->evb));
-#endif
-
-#if defined (DEBUG)
-  fprintf (stderr, "%s: got this:\n", __func__);
-  rs_dump_packet (pkt);
+  fprintf (stderr, "%s: event loop done", __func__);
+  if (event_base_got_break(conn->evb))
+    {
+      fprintf (stderr, ", got this:\n");
+      rs_dump_packet (pkt);
+    }
+  else
+    fprintf (stderr, ", no reply\n");
 #endif
 
   return RSE_OK;
@@ -330,4 +335,11 @@ rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr)
 {
   pairadd (&pkt->rpkt->vps, attr->vp);
   attr->pkt = pkt;
+}
+
+struct radius_packet *
+rs_packet_frpkt(struct rs_packet *pkt)
+{
+  assert (pkt);
+  return pkt->rpkt;
 }

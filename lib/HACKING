@@ -1,6 +1,6 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
 * Design of the libraray
-* Features
+* Functionality
 ** Not implemented
 - reading config file
 - server fail over

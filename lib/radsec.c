@@ -9,8 +9,8 @@
 #include <freeradius/libradius.h>
 #include <event2/event.h>
 #include <event2/util.h>
-#include "libradsec.h"
-#include "libradsec-impl.h"
+#include <radsec/libradsec.h>
+#include <radsec/libradsec-impl.h>
 
 int
 rs_context_create(struct rs_handle **ctx, const char *dict)

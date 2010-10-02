@@ -37,7 +37,8 @@ struct rs_conn;			/* radsec-impl.h */
 struct rs_attr;			/* radsec-impl.h */
 struct rs_error;		/* radsec-impl.h */
 struct rs_peer;			/* radsec-impl.h */
-struct event_base;		/* <event.h> */
+struct radius_packet;		/* <freeradius/libradius.h> */
+struct event_base;		/* <event2/event-internal.h> */
 
 typedef void * (*rs_calloc_fp)(size_t nmemb, size_t size);
 typedef void * (*rs_malloc_fp)(size_t size);
@@ -74,6 +75,11 @@ void rs_context_destroy(struct rs_handle *ctx);
 int rs_context_set_alloc_scheme(struct rs_handle *ctx, struct rs_alloc_scheme *scheme);
 int rs_context_config_read(struct rs_handle *ctx, const char *config_file);
 
+/* Server and client configuration.  */
+void rs_server_set_timeout(struct rs_peer *server, int timeout);
+void rs_server_set_tries(struct rs_peer *server, int tries);
+int rs_server_set_secret(struct rs_peer *server, const char *secret);
+
 /* Connection.  */
 int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn);
 int rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server, rs_conn_type_t type, const char *hostname, int port);
@@ -83,11 +89,7 @@ int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb);
 int rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *cb);
 int rs_conn_select_server(struct rs_connection *conn, const char *name);
 int rs_conn_get_current_server(struct rs_connection *conn, const char *name, size_t buflen);
-
-/* Server and client configuration.  */
-void rs_server_set_timeout(struct rs_peer *server, int timeout);
-void rs_server_set_tries(struct rs_peer *server, int tries);
-int rs_server_set_secret(struct rs_peer *server, const char *secret);
+int rs_conn_receive_packet(struct rs_connection *conn, struct rs_packet **pkt_out);
 
 /* Packet.  */
 int rs_packet_create_acc_request(struct rs_connection *conn, struct rs_packet **pkt, const char *user_name, const char *user_pw);
@@ -96,8 +98,8 @@ int rs_packet_create_acc_request(struct rs_connection *conn, struct rs_packet **
 //int rs_packet_create_acc_challenge(struct rs_connection *conn, struct rs_packet **pkt);
 void rs_packet_destroy(struct rs_packet *pkt);
 void rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr);
-int rs_packet_send(struct rs_connection *conn, struct rs_packet *pkt, void *data);
-int rs_packet_receive(struct rs_connection *conn, struct rs_packet **pkt_out);
+int rs_packet_send(struct rs_packet *pkt, void *data);
+struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
 
 /* Attribute.  */
 int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *type, const char *val);

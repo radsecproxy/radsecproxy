@@ -1,12 +1,11 @@
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g -I ../include
 
-all: client
+HFILES = ../include/radsec/libradsec.h ../include/radsec/libradsec-impl.h
 
-blocking.o: blocking.c blocking.h ../libradsec-base.h ../libradsec.h
-	$(CC) $(CFLAGS) -c -I .. $^
+all: client-blocking
 
-client: client.c ../libradsec.a ../libradsec.h ../libradsec-impl.h
+client-blocking: client-blocking.c ../libradsec.a $(HFILES)
 	$(CC) $(CFLAGS) -o $@ $< -L /usr/lib/freeradius -lfreeradius-radius -L .. -lradsec -L /usr/local/lib -levent_core
 
 clean:
-	-rm *.o client
+	-rm *.o client-blocking *.gch

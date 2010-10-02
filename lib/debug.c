@@ -2,8 +2,8 @@
 
 #include <stdio.h>
 #include <freeradius/libradius.h>
-#include "libradsec.h"
-#include "libradsec-impl.h"
+#include <radsec/libradsec.h>
+#include <radsec/libradsec-impl.h>
 #include "debug.h"
 
 /* From freeradius-server/src/lib/radius.c */

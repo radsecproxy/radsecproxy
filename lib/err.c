@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include "libradsec.h"
-#include "libradsec-impl.h"
+#include <radsec/libradsec.h>
+#include <radsec/libradsec-impl.h>
 
 const char *_errtxt[] = {
   "SUCCESS",			/* 0 RSE_OK */
