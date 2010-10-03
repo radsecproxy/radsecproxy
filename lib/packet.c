@@ -219,14 +219,20 @@ _init_evb (struct rs_connection *conn)
 static int
 _init_socket (struct rs_connection *conn, struct rs_peer *p)
 {
-  if (p->s < 0)
+  if (p->fd != -1)
+    return RSE_OK;
+
+  assert (p->addr);
+  p->fd = socket (p->addr->ai_family, p->addr->ai_socktype,
+		  p->addr->ai_protocol);
+  if (p->fd < 0)
+    return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
+				strerror (errno));
+  if (evutil_make_socket_nonblocking (p->fd) < 0)
     {
-      assert (p->addr);
-      p->s = socket (p->addr->ai_family, p->addr->ai_socktype,
-		     p->addr->ai_protocol);
-      if (p->s < 0)
-	return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
-				    strerror (errno));
+      evutil_closesocket (p->fd);
+      return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
+				  strerror (errno));
     }
   return RSE_OK;
 }
@@ -244,7 +250,7 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
 {
   if (!conn->bev)
     {
-      conn->bev = bufferevent_socket_new (conn->evb, peer->s, 0);
+      conn->bev = bufferevent_socket_new (conn->evb, peer->fd, 0);
       if (!conn->bev)
 	return rs_conn_err_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_socket_new");
@@ -340,7 +346,7 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
   assert (conn->evb);
   assert (conn->bev);
   assert (conn->active_peer);
-  assert (conn->active_peer->s >= 0);
+  assert (conn->active_peer->fd >= 0);
 
   if (conn->callbacks.connected_cb || conn->callbacks.disconnected_cb
       || conn->callbacks.received_cb || conn->callbacks.sent_cb)
@@ -376,7 +382,7 @@ rs_conn_receive_packet (struct rs_connection *conn, struct rs_packet **pkt_out)
   assert (conn->evb);
   assert (conn->bev);
   assert (conn->active_peer);
-  assert (conn->active_peer->s >= 0);
+  assert (conn->active_peer->fd >= 0);
 
   bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
   bufferevent_enable (conn->bev, EV_READ);

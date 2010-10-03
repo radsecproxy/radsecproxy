@@ -4,6 +4,7 @@ OFILES = attr.o \
 	debug.o \
 	err.o \
 	packet.o \
+	request.o \
 	radsec.o
 
 all: libradsec.a

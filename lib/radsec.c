@@ -146,7 +146,7 @@ _peer_new (struct rs_connection *conn, const char *hostname, int port)
     {
       memset (p, 0, sizeof(struct rs_peer));
       p->conn = conn;
-      p->s = -1;
+      p->fd = -1;
       p->addr = addr;
       p->next = conn->peers;
       if (conn->peers)

@@ -40,7 +40,7 @@ struct rs_handle {
 struct rs_peer {
     struct rs_connection *conn;
     struct evutil_addrinfo *addr;
-    int s;			/* Socket.  */
+    int fd;		/* Socket.  */
     char is_connecting;	/* FIXME: replace with a single state member */
     char is_connected;	/* FIXME: replace */
     char *secret;
