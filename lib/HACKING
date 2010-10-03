@@ -3,12 +3,15 @@ HACKING file for libradsec (in Emacs -*- org -*- mode).
 * Functionality
 ** Not implemented
 - reading config file
-- server fail over
 - resending packets
+- custom allocation scheme used in all places
+- callbacks invoked properly
+- server fail over
 - matching responses
-- TLS, DTLS
+- TLS
 - TLS PSK
 - autoconf/automake/libtool
+- DTLS
 ** Not tested
 - short read
 - short write

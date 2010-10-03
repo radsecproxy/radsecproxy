@@ -418,6 +418,9 @@ rs_packet_frpkt(struct rs_packet *pkt)
 void
 rs_packet_destroy(struct rs_packet *pkt)
 {
-  rad_free (&pkt->rpkt);
-  rs_free (pkt->conn->ctx, pkt);
+  if (pkt)
+    {
+      rad_free (&pkt->rpkt);
+      rs_free (pkt->conn->ctx, pkt);
+    }
 }
