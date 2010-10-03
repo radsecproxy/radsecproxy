@@ -3,9 +3,9 @@ This is a non-working RADIUS library doing UDP, TCP, TLS and DTLS.
 It depends on libradius from FreeRADIUS freeradius-server and
 libevent2.
 
-The parts of it thathas been tested has been so on Linux (Ubuntu
-10.04) with libfreeradius2 (2.1.8+dfsg-1ubuntu1) and
-libevent-2.0.7-rc-dev.
+Those parts of the library which has been tested has been so on Linux
+(Ubuntu 10.04) with libfreeradius2 (2.1.8+dfsg-1ubuntu1) and
+libevent-2.0.7-rc-dev (http://monkey.org/~provos/).
 
 The file HACKING contains more detailed info on the state of the
 various parts of the library.

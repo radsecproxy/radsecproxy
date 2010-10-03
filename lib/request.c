@@ -12,7 +12,7 @@ rs_req_create (struct rs_connection *conn, struct rs_request **req_out)
 {
   struct rs_request *req = rs_malloc (conn->ctx, sizeof(*req));
   if (!req)
-    return rs_conn_err_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
+    return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
   memset (req, 0, sizeof(*req));
   req->conn = conn;
   *req_out = req;

@@ -23,14 +23,14 @@ _packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
 
   rpkt = rad_alloc (1);
   if (!rpkt)
-    return rs_conn_err_push (conn, RSE_NOMEM, __func__);
+    return rs_err_conn_push (conn, RSE_NOMEM, __func__);
   rpkt->id = -1;
 
   p = (struct rs_packet *) malloc (sizeof (struct rs_packet));
   if (!p)
     {
       rad_free (&rpkt);
-      return rs_conn_err_push (conn, RSE_NOMEM, __func__);
+      return rs_err_conn_push (conn, RSE_NOMEM, __func__);
     }
   memset (p, 0, sizeof (struct rs_packet));
   p->conn = conn;
@@ -63,7 +63,7 @@ _do_send (struct rs_packet *pkt)
   err = bufferevent_write (pkt->conn->bev, pkt->rpkt->data,
 			   pkt->rpkt->data_len);
   if (err < 0)
-    rs_conn_err_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+    rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
 			 "bufferevent_write: %s", evutil_gai_strerror(err));
 }
 
@@ -91,7 +91,7 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
       /* Packet will be freed in write callback.  */
     }
   else if (events & BEV_EVENT_ERROR)
-    rs_conn_err_push_fl (pkt->conn, RSE_CONNERR, __FILE__, __LINE__, NULL);
+    rs_err_conn_push_fl (pkt->conn, RSE_CONNERR, __FILE__, __LINE__, NULL);
 }
 
 static void
@@ -129,7 +129,7 @@ _read_cb (struct bufferevent *bev, void *ctx)
 	  pkt->rpkt->data = rs_malloc (pkt->conn->ctx, pkt->rpkt->data_len);
 	  if (!pkt->rpkt->data)
 	    {
-	      rs_conn_err_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
+	      rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
 				   NULL);
 	      abort ();		/* FIXME: Read and discard packet.  */
 	    }
@@ -210,7 +210,7 @@ _init_evb (struct rs_connection *conn)
 #endif
       conn->evb = event_base_new ();
       if (!conn->evb)
-	return rs_conn_err_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "event_base_new");
     }
   return RSE_OK;
@@ -226,12 +226,12 @@ _init_socket (struct rs_connection *conn, struct rs_peer *p)
   p->fd = socket (p->addr->ai_family, p->addr->ai_socktype,
 		  p->addr->ai_protocol);
   if (p->fd < 0)
-    return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
+    return rs_err_conn_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
 				strerror (errno));
   if (evutil_make_socket_nonblocking (p->fd) < 0)
     {
       evutil_closesocket (p->fd);
-      return rs_conn_err_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
+      return rs_err_conn_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
 				  strerror (errno));
     }
   return RSE_OK;
@@ -252,7 +252,7 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
     {
       conn->bev = bufferevent_socket_new (conn->evb, peer->fd, 0);
       if (!conn->bev)
-	return rs_conn_err_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_socket_new");
     }
   return RSE_OK;
@@ -266,7 +266,7 @@ _do_connect (struct rs_peer *p)
   err = bufferevent_socket_connect (p->conn->bev, p->addr->ai_addr,
 				    p->addr->ai_addrlen);
   if (err < 0)
-    rs_conn_err_push_fl (p->conn, RSE_EVENT, __FILE__, __LINE__,
+    rs_err_conn_push_fl (p->conn, RSE_EVENT, __FILE__, __LINE__,
 			 "bufferevent_socket_connect: %s",
 			 evutil_gai_strerror(err));
   else
@@ -283,7 +283,7 @@ _conn_open(struct rs_connection *conn, struct rs_packet *pkt)
 
   p = _pick_peer (conn);
   if (!p)
-    return rs_conn_err_push_fl (conn, RSE_NOPEER, __FILE__, __LINE__, NULL);
+    return rs_err_conn_push_fl (conn, RSE_NOPEER, __FILE__, __LINE__, NULL);
 
   if (_init_socket (conn, p))
     return -1;

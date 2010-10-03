@@ -69,13 +69,13 @@ void rs_context_destroy(struct rs_handle *ctx)
 
 int rs_context_set_alloc_scheme(struct rs_handle *ctx, struct rs_alloc_scheme *scheme)
 {
-  return rs_ctx_err_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
+  return rs_err_ctx_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
 			     "%s: NYI", __func__);
 }
 
 int rs_context_config_read(struct rs_handle *ctx, const char *config_file)
 {
-  return rs_ctx_err_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
+  return rs_err_ctx_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
 			     "%s: NYI", __func__);
 }
 
@@ -91,7 +91,7 @@ int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn)
     }
   if (conn)
     *conn = c;
-  return c ? RSE_OK : rs_ctx_err_push (ctx, RSE_NOMEM, NULL);
+  return c ? RSE_OK : rs_err_ctx_push (ctx, RSE_NOMEM, NULL);
 }
 
 struct addrinfo *
@@ -108,7 +108,7 @@ _resolv (struct rs_connection *conn, const char *hostname, int port)
   switch (conn->type)
     {
     case RS_CONN_TYPE_NONE:
-      rs_conn_err_push_fl (conn, RSE_INVALID_CONN, __FILE__, __LINE__, NULL);
+      rs_err_conn_push_fl (conn, RSE_INVALID_CONN, __FILE__, __LINE__, NULL);
       return NULL;
     case RS_CONN_TYPE_TCP:
       /* Fall through.  */
@@ -125,7 +125,7 @@ _resolv (struct rs_connection *conn, const char *hostname, int port)
     }
   err = evutil_getaddrinfo (hostname, portstr, &hints, &res);
   if (err)
-    rs_conn_err_push_fl (conn, RSE_BADADDR, __FILE__, __LINE__,
+    rs_err_conn_push_fl (conn, RSE_BADADDR, __FILE__, __LINE__,
 			 "%s:%d: bad host name or port (%s)",
 			 hostname, port, evutil_gai_strerror(err));
   return res;			/* Simply use first result.  */
@@ -157,7 +157,7 @@ _peer_new (struct rs_connection *conn, const char *hostname, int port)
   else
     {
       evutil_freeaddrinfo (addr);
-      rs_conn_err_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
+      rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
     }
   return p;
 }
@@ -171,7 +171,7 @@ rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server,
   if (conn->type == RS_CONN_TYPE_NONE)
     conn->type = type;
   else if (conn->type != type)
-    return rs_conn_err_push (conn, RSE_CONN_TYPE_MISMATCH, NULL);
+    return rs_err_conn_push (conn, RSE_CONN_TYPE_MISMATCH, NULL);
 
   srv = _peer_new (conn, hostname, port);
   if (srv)
@@ -198,14 +198,14 @@ int rs_server_set_secret(struct rs_peer *server, const char *secret)
     free (server->secret);
   server->secret = (char *) malloc (strlen(secret) + 1);
   if (!server->secret)
-    return rs_conn_err_push (server->conn, RSE_NOMEM, NULL);
+    return rs_err_conn_push (server->conn, RSE_NOMEM, NULL);
   strcpy (server->secret, secret);
   return RSE_OK;
 }
 
 int rs_conn_add_listener(struct rs_connection *conn, rs_conn_type_t type, const char *hostname, int port)
 {
-  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
 
@@ -230,25 +230,25 @@ rs_conn_destroy(struct rs_connection *conn)
 
 int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb)
 {
-  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
 
 int rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *cb)
 {
-  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
 
 int rs_conn_set_server(struct rs_connection *conn, const char *name)
 {
-  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
 
 int rs_conn_get_current_server(struct rs_connection *conn, const char *name, size_t buflen)
 {
-  return rs_conn_err_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
 

@@ -107,12 +107,12 @@ int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char
 void rs_attr_destroy(struct rs_attr *attr);
 
 /* Error.  */
-int rs_ctx_err_push(struct rs_handle *ctx, int code, const char *fmt, ...);
-int rs_ctx_err_push_fl(struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, ...);
-struct rs_error *rs_ctx_err_pop (struct rs_handle *ctx);
-int rs_conn_err_push(struct rs_connection *conn, int code, const char *fmt, ...);
-int rs_conn_err_push_fl(struct rs_connection *conn, int code, const char *file, int line, const char *fmt, ...);
-struct rs_error *rs_conn_err_pop (struct rs_connection *conn);
+int rs_err_ctx_push(struct rs_handle *ctx, int code, const char *fmt, ...);
+int rs_err_ctx_push_fl(struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, ...);
+struct rs_error *rs_err_ctx_pop (struct rs_handle *ctx);
+int rs_err_conn_push(struct rs_connection *conn, int code, const char *fmt, ...);
+int rs_err_conn_push_fl(struct rs_connection *conn, int code, const char *file, int line, const char *fmt, ...);
+struct rs_error *rs_err_conn_pop (struct rs_connection *conn);
 void rs_err_free(struct rs_error *err);
 char *rs_err_msg(struct rs_error *err, int dofree_flag);
 int rs_err_code(struct rs_error *err, int dofree_flag);

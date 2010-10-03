@@ -13,14 +13,14 @@ rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *ty
   *attr = NULL;
   a = (struct rs_attr *) malloc (sizeof(struct rs_attr));
   if (!a)
-    return rs_conn_err_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
+    return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
   memset (a, 0, sizeof(struct rs_attr));
 
   vp = pairmake (type, val, T_OP_EQ);
   if (!vp)
     {
       rs_attr_destroy (a);
-      return rs_conn_err_push_fl (conn, RSE_FR, __FILE__, __LINE__,
+      return rs_err_conn_push_fl (conn, RSE_FR, __FILE__, __LINE__,
 				  "pairmake: %s", fr_strerror());
     }
 
