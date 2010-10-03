@@ -79,7 +79,9 @@ int rs_context_config_read(struct rs_handle *ctx, const char *config_file)
 			     "%s: NYI", __func__);
 }
 
-int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn)
+int
+rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn,
+	       rs_conn_type_t type)
 {
   struct rs_connection *c;
 
@@ -88,6 +90,7 @@ int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn)
     {
       memset (c, 0, sizeof(struct rs_connection));
       c->ctx = ctx;
+      c->type = type;
     }
   if (conn)
     *conn = c;
@@ -132,14 +135,9 @@ _resolv (struct rs_connection *conn, const char *hostname, int port)
 }
 
 static struct rs_peer *
-_peer_new (struct rs_connection *conn, const char *hostname, int port)
+_peer_new (struct rs_connection *conn)
 {
   struct rs_peer *p;
-  struct evutil_addrinfo *addr;
-
-  addr = _resolv (conn, hostname, port);
-  if (!addr)
-    return NULL;
 
   p = (struct rs_peer *) malloc (sizeof(*p));
   if (p)
@@ -147,7 +145,6 @@ _peer_new (struct rs_connection *conn, const char *hostname, int port)
       memset (p, 0, sizeof(struct rs_peer));
       p->conn = conn;
       p->fd = -1;
-      p->addr = addr;
       p->next = conn->peers;
       if (conn->peers)
 	conn->peers->next = p;
@@ -155,44 +152,46 @@ _peer_new (struct rs_connection *conn, const char *hostname, int port)
 	conn->peers = p;
     }
   else
-    {
-      evutil_freeaddrinfo (addr);
-      rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
-    }
+    rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
   return p;
 }
 
 int
-rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server,
-		   rs_conn_type_t type, const char *hostname, int port)
+rs_server_create (struct rs_connection *conn, struct rs_peer **server,
+		  const char *config)
 {
   struct rs_peer *srv;
 
-  if (conn->type == RS_CONN_TYPE_NONE)
-    conn->type = type;
-  else if (conn->type != type)
-    return rs_err_conn_push (conn, RSE_CONN_TYPE_MISMATCH, NULL);
-
-  srv = _peer_new (conn, hostname, port);
+  srv = _peer_new (conn);
   if (srv)
     {
-      srv->timeout = 10;
+      srv->timeout = 1;
       srv->tries = 3;
     }
-  if (*server)
-    *server = srv;
+  *server = srv;
   return srv ? RSE_OK : -1;
 }
 
-void rs_server_set_timeout(struct rs_peer *server, int timeout)
+int
+rs_server_set_address (struct rs_peer *server, const char *hostname, int port)
+{
+  server->addr = _resolv (server->conn, hostname, port);
+  return server->addr ? RSE_OK : -1;
+}
+
+void
+rs_server_set_timeout (struct rs_peer *server, int timeout)
 {
   server->timeout = timeout;
 }
-void rs_server_set_tries(struct rs_peer *server, int tries)
+void
+rs_server_set_tries (struct rs_peer *server, int tries)
 {
   server->tries = tries;
 }
-int rs_server_set_secret(struct rs_peer *server, const char *secret)
+
+int
+rs_server_set_secret (struct rs_peer *server, const char *secret)
 {
   if (server->secret)
     free (server->secret);
@@ -203,14 +202,16 @@ int rs_server_set_secret(struct rs_peer *server, const char *secret)
   return RSE_OK;
 }
 
-int rs_conn_add_listener(struct rs_connection *conn, rs_conn_type_t type, const char *hostname, int port)
+int
+rs_conn_add_listener (struct rs_connection *conn, rs_conn_type_t type,
+		      const char *hostname, int port)
 {
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
 
 void
-rs_conn_destroy(struct rs_connection *conn)
+rs_conn_destroy (struct rs_connection *conn)
 {
   struct rs_peer *p;
 
@@ -235,12 +236,6 @@ int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb)
 }
 
 int rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *cb)
-{
-  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
-			      "%s: NYI", __func__);
-}
-
-int rs_conn_set_server(struct rs_connection *conn, const char *name)
 {
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);

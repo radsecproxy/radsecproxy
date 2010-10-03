@@ -30,23 +30,28 @@ struct rs_error {
     char buf[1024];
 };
 
-struct rs_handle {
-    struct rs_alloc_scheme alloc_scheme;
-    struct rs_error *err;
-    fr_randctx fr_randctx;
-    /* TODO: dictionary? */
-};
-
 struct rs_peer {
     struct rs_connection *conn;
     struct evutil_addrinfo *addr;
     int fd;		/* Socket.  */
     char is_connecting;	/* FIXME: replace with a single state member */
-    char is_connected;	/* FIXME: replace */
+    char is_connected;	/* FIXME: replace with a single state member */
     char *secret;
     int timeout;		/* client only */
     int tries;			/* client only */
     struct rs_peer *next;
+};
+
+struct rs_realm {
+    char *name;
+    struct rs_peer *peers;
+};
+
+struct rs_handle {
+    struct rs_realm *realms;
+    struct rs_alloc_scheme alloc_scheme;
+    struct rs_error *err;
+    fr_randctx fr_randctx;
 };
 
 struct rs_connection {

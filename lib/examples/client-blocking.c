@@ -16,7 +16,7 @@
 #define USER_PW "hemligt"
 
 struct rs_error *
-blocking_client (const char *srvname, int srvport)
+blocking_client (const char *av1, const char *av2)
 {
   struct rs_handle *h;
   struct rs_connection *conn;
@@ -28,13 +28,23 @@ blocking_client (const char *srvname, int srvport)
   if (rs_context_create (&h, "/usr/share/freeradius/dictionary"))
     return NULL;
 
-  if (rs_conn_create (h, &conn))
+  if (rs_conn_create (h, &conn, RS_CONN_TYPE_UDP))
     return rs_err_conn_pop (conn);
-  if (rs_conn_add_server (conn, &server, RS_CONN_TYPE_UDP, srvname, srvport))
+#if !defined (USE_CONFIG_FILE)
+  if (rs_server_create (conn, &server, NULL))
+    return rs_err_conn_pop (conn);
+  if (rs_server_set_address (server, av1, atoi (av2)))
     return rs_err_conn_pop (conn);
   rs_server_set_timeout (server, 1);
   rs_server_set_tries (server, 3);
-  rs_server_set_secret (server, SECRET);
+  if (rs_server_set_secret (server, SECRET))
+    return rs_err_conn_pop (conn);
+#else
+  if (rs_context_config_read (h, av1))
+    return rs_err_ctx_pop (h);
+  if (rs_server_create (conn, &server, av2))
+    return rs_err_conn_pop (conn);
+#endif	/* USE_CONFIG_FILE */
 
   if (rs_packet_create_acc_request (conn, &req, USER_NAME, USER_PW))
     return rs_err_conn_pop (conn);
@@ -71,12 +81,8 @@ int
 main (int argc, char *argv[])
 {
   struct rs_error *err;
-  char *host;
-  int port;
 
-  host = strsep (argv + 1, ":");
-  port = atoi (argv[1]);
-  err = blocking_client (host, port);
+  err = blocking_client (argv[1], argv[2]);
   if (err)
     {
       fprintf (stderr, "%s\n", rs_err_msg (err, 0));

@@ -73,16 +73,17 @@ struct rs_conn_callbacks {
 int rs_context_create(struct rs_handle **ctx, const char *dict);
 void rs_context_destroy(struct rs_handle *ctx);
 int rs_context_set_alloc_scheme(struct rs_handle *ctx, struct rs_alloc_scheme *scheme);
-int rs_context_config_read(struct rs_handle *ctx, const char *config_file);
+int rs_context_read_config(struct rs_handle *ctx, const char *config_file);
 
 /* Server and client configuration.  */
+int rs_server_create(struct rs_connection *conn, struct rs_peer **server, const char *config);
+int rs_server_set_address(struct rs_peer *server, const char *hostname, int port);
+int rs_server_set_secret(struct rs_peer *server, const char *secret);
 void rs_server_set_timeout(struct rs_peer *server, int timeout);
 void rs_server_set_tries(struct rs_peer *server, int tries);
-int rs_server_set_secret(struct rs_peer *server, const char *secret);
 
 /* Connection.  */
-int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn);
-int rs_conn_add_server(struct rs_connection *conn, struct rs_peer **server, rs_conn_type_t type, const char *hostname, int port);
+int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn, rs_conn_type_t type);
 int rs_conn_add_listener(struct rs_connection  *conn, rs_conn_type_t type, const char *hostname, int port);
 void rs_conn_destroy(struct rs_connection *conn);
 int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb);
