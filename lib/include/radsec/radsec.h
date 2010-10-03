@@ -75,15 +75,9 @@ void rs_context_destroy(struct rs_handle *ctx);
 int rs_context_set_alloc_scheme(struct rs_handle *ctx, struct rs_alloc_scheme *scheme);
 int rs_context_read_config(struct rs_handle *ctx, const char *config_file);
 
-/* Server and client configuration.  */
-int rs_server_create(struct rs_connection *conn, struct rs_peer **server, const char *config);
-int rs_server_set_address(struct rs_peer *server, const char *hostname, int port);
-int rs_server_set_secret(struct rs_peer *server, const char *secret);
-void rs_server_set_timeout(struct rs_peer *server, int timeout);
-void rs_server_set_tries(struct rs_peer *server, int tries);
-
 /* Connection.  */
-int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn, rs_conn_type_t type);
+int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn, const char *config);
+void rs_conn_set_type(struct rs_connection *conn, rs_conn_type_t type);
 int rs_conn_add_listener(struct rs_connection  *conn, rs_conn_type_t type, const char *hostname, int port);
 void rs_conn_destroy(struct rs_connection *conn);
 int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb);
@@ -92,6 +86,13 @@ struct rs_conn_callbacks *rs_conn_get_callbacks(struct rs_connection *conn);
 int rs_conn_select_server(struct rs_connection *conn, const char *name);
 int rs_conn_get_current_server(struct rs_connection *conn, const char *name, size_t buflen);
 int rs_conn_receive_packet(struct rs_connection *conn, struct rs_packet **pkt_out);
+
+/* Server and client.  */
+int rs_server_create(struct rs_connection *conn, struct rs_peer **server);
+int rs_server_set_address(struct rs_peer *server, const char *hostname, int port);
+int rs_server_set_secret(struct rs_peer *server, const char *secret);
+void rs_server_set_timeout(struct rs_peer *server, int timeout);
+void rs_server_set_tries(struct rs_peer *server, int tries);
 
 /* Packet.  */
 int rs_packet_create_acc_request(struct rs_connection *conn, struct rs_packet **pkt, const char *user_name, const char *user_pw);
@@ -106,6 +107,9 @@ struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
 /* Attribute.  */
 int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *type, const char *val);
 void rs_attr_destroy(struct rs_attr *attr);
+
+/* Config.  */
+struct rs_realm *rs_conf_find_realm(struct rs_handle *ctx, const char *name);
 
 /* Error.  */
 int rs_err_ctx_push(struct rs_handle *ctx, int code, const char *fmt, ...);

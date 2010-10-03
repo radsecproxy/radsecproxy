@@ -81,7 +81,7 @@ int rs_context_config_read(struct rs_handle *ctx, const char *config_file)
 
 int
 rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn,
-	       rs_conn_type_t type)
+	       const char *config)
 {
   struct rs_connection *c;
 
@@ -90,11 +90,25 @@ rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn,
     {
       memset (c, 0, sizeof(struct rs_connection));
       c->ctx = ctx;
-      c->type = type;
+      if (config)
+	{
+	  struct rs_realm *r = rs_conf_find_realm (ctx, config);
+	  if (r)
+	    {
+	      c->type = r->type;
+	      c->peers = r->peers; /* FIXME: Copy?  */
+	    }
+	}
     }
   if (conn)
     *conn = c;
   return c ? RSE_OK : rs_err_ctx_push (ctx, RSE_NOMEM, NULL);
+}
+
+void
+rs_conn_set_type(struct rs_connection *conn, rs_conn_type_t type)
+{
+  conn->type = type;
 }
 
 struct addrinfo *
@@ -157,8 +171,7 @@ _peer_new (struct rs_connection *conn)
 }
 
 int
-rs_server_create (struct rs_connection *conn, struct rs_peer **server,
-		  const char *config)
+rs_server_create (struct rs_connection *conn, struct rs_peer **server)
 {
   struct rs_peer *srv;
 
@@ -168,7 +181,8 @@ rs_server_create (struct rs_connection *conn, struct rs_peer **server,
       srv->timeout = 1;
       srv->tries = 3;
     }
-  *server = srv;
+  if (*server)
+    *server = srv;
   return srv ? RSE_OK : -1;
 }
 

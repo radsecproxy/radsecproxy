@@ -44,6 +44,7 @@ struct rs_peer {
 
 struct rs_realm {
     char *name;
+    enum rs_conn_type type;
     struct rs_peer *peers;
 };
 

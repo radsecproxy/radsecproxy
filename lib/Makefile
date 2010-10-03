@@ -1,6 +1,7 @@
 CFLAGS = -Wall -g -I include -DDEBUG
 
 OFILES = attr.o \
+	conf.o \
 	debug.o \
 	err.o \
 	packet.o \
