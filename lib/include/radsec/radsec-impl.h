@@ -41,8 +41,8 @@ struct rs_peer {
     struct rs_connection *conn;
     struct evutil_addrinfo *addr;
     int s;			/* Socket.  */
-    char is_connecting;
-    char is_connected;
+    char is_connecting;	/* FIXME: replace with a single state member */
+    char is_connected;	/* FIXME: replace */
     char *secret;
     int timeout;		/* client only */
     int tries;			/* client only */

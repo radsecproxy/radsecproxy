@@ -40,15 +40,6 @@ rsx_client (const char *srvname, int srvport)
     return rs_conn_err_pop (conn);
   req = NULL;
 
-#if 0
-  if (rs_packet_create_acc_request (conn, &req, USER_NAME, USER_PW))
-    return rs_conn_err_pop (conn);
-
-  if (rs_packet_send (conn, req, NULL))
-    return rs_conn_err_pop (conn);
-  req = NULL;
-#endif
-
   if (rs_conn_receive_packet (conn, &resp))
     return rs_conn_err_pop (conn);
   fr_pkt = rs_packet_frpkt (resp);
