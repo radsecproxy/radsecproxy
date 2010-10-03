@@ -46,6 +46,7 @@ struct rs_realm {
     char *name;
     enum rs_conn_type type;
     struct rs_peer *peers;
+    struct rs_realm *next;
 };
 
 struct rs_handle {
@@ -78,6 +79,13 @@ struct rs_attr {
     struct rs_packet *pkt;
     VALUE_PAIR *vp;
 };
+
+/* Nonpublic functions.  */
+struct rs_error *_rs_resolv (struct evutil_addrinfo **addr, rs_conn_type_t type, const char *hostname, const char *service);
+struct rs_peer *_rs_peer_create (struct rs_handle *ctx, struct rs_peer **rootp);
+struct rs_error *_rs_err_create (unsigned int code, const char *file, int line, const char *fmt, ...);
+int _rs_err_conn_push_err (struct rs_connection *conn, struct rs_error *err);
+
 
 /* Convenience macros.  */
 #define rs_calloc(h, nmemb, size) \

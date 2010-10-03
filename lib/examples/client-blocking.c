@@ -20,7 +20,6 @@ blocking_client (const char *av1, const char *av2)
 {
   struct rs_handle *h;
   struct rs_connection *conn;
-  struct rs_peer *server;
   struct rs_packet *req, *resp;
   RADIUS_PACKET *fr_pkt;
   VALUE_PAIR *fr_vp;
@@ -29,19 +28,23 @@ blocking_client (const char *av1, const char *av2)
     return NULL;
 
 #if !defined (USE_CONFIG_FILE)
-  if (rs_conn_create (h, &conn, NULL))
-    return rs_err_conn_pop (conn);
-  rs_conn_set_type (conn, RS_CONN_TYPE_UDP);
-  if (rs_server_create (conn, &server))
-    return rs_err_conn_pop (conn);
-  if (rs_server_set_address (server, av1, atoi (av2)))
-    return rs_err_conn_pop (conn);
-  rs_server_set_timeout (server, 1);
-  rs_server_set_tries (server, 3);
-  if (rs_server_set_secret (server, SECRET))
-    return rs_err_conn_pop (conn);
+  {
+    struct rs_peer *server;
+
+    if (rs_conn_create (h, &conn, NULL))
+      return rs_err_conn_pop (conn);
+    rs_conn_set_type (conn, RS_CONN_TYPE_UDP);
+    if (rs_server_create (conn, &server))
+      return rs_err_conn_pop (conn);
+    if (rs_server_set_address (server, av1, av2))
+      return rs_err_conn_pop (conn);
+    rs_server_set_timeout (server, 1);
+    rs_server_set_tries (server, 3);
+    if (rs_server_set_secret (server, SECRET))
+      return rs_err_conn_pop (conn);
+  }
 #else
-  if (rs_context_config_read (h, av1))
+  if (rs_context_read_config (h, av1))
     return rs_err_ctx_pop (h);
   if (rs_conn_create (h, &conn, av2))
     return rs_err_conn_pop (conn);

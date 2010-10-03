@@ -73,12 +73,6 @@ int rs_context_set_alloc_scheme(struct rs_handle *ctx, struct rs_alloc_scheme *s
 			     "%s: NYI", __func__);
 }
 
-int rs_context_config_read(struct rs_handle *ctx, const char *config_file)
-{
-  return rs_err_ctx_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
-			     "%s: NYI", __func__);
-}
-
 int
 rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn,
 	       const char *config)
@@ -95,8 +89,12 @@ rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn,
 	  struct rs_realm *r = rs_conf_find_realm (ctx, config);
 	  if (r)
 	    {
+	      struct rs_peer *p;
+
 	      c->type = r->type;
-	      c->peers = r->peers; /* FIXME: Copy?  */
+	      c->peers = r->peers; /* FIXME: Copy instead?  */
+	      for (p = c->peers; p; p = p->next)
+		p->conn = c;
 	    }
 	}
     }
@@ -111,22 +109,21 @@ rs_conn_set_type(struct rs_connection *conn, rs_conn_type_t type)
   conn->type = type;
 }
 
-struct addrinfo *
-_resolv (struct rs_connection *conn, const char *hostname, int port)
+
+struct rs_error *
+_rs_resolv (struct evutil_addrinfo **addr, rs_conn_type_t type,
+	    const char *hostname, const char *service)
 {
   int err;
-  char portstr[6];
   struct evutil_addrinfo hints, *res = NULL;
 
-  snprintf (portstr, sizeof(portstr), "%d", port);
   memset (&hints, 0, sizeof(struct evutil_addrinfo));
   hints.ai_family = AF_UNSPEC;	/* v4 or v6.  */
   hints.ai_flags = AI_ADDRCONFIG;
-  switch (conn->type)
+  switch (type)
     {
     case RS_CONN_TYPE_NONE:
-      rs_err_conn_push_fl (conn, RSE_INVALID_CONN, __FILE__, __LINE__, NULL);
-      return NULL;
+      return _rs_err_create (RSE_INVALID_CONN, __FILE__, __LINE__, NULL, NULL);
     case RS_CONN_TYPE_TCP:
       /* Fall through.  */
     case RS_CONN_TYPE_TLS:
@@ -140,33 +137,30 @@ _resolv (struct rs_connection *conn, const char *hostname, int port)
       hints.ai_protocol = IPPROTO_UDP;
       break;
     }
-  err = evutil_getaddrinfo (hostname, portstr, &hints, &res);
+  err = evutil_getaddrinfo (hostname, service, &hints, &res);
   if (err)
-    rs_err_conn_push_fl (conn, RSE_BADADDR, __FILE__, __LINE__,
-			 "%s:%d: bad host name or port (%s)",
-			 hostname, port, evutil_gai_strerror(err));
-  return res;			/* Simply use first result.  */
+    return _rs_err_create (RSE_BADADDR, __FILE__, __LINE__,
+			   "%s:%s: bad host name or service name (%s)",
+			   hostname, service, evutil_gai_strerror(err));
+  *addr = res;			/* Simply use first result.  */
+  return NULL;
 }
 
-static struct rs_peer *
-_peer_new (struct rs_connection *conn)
+struct rs_peer *
+_rs_peer_create (struct rs_handle *ctx, struct rs_peer **rootp)
 {
   struct rs_peer *p;
 
-  p = (struct rs_peer *) malloc (sizeof(*p));
+  p = (struct rs_peer *) rs_malloc (ctx, sizeof(*p));
   if (p)
     {
       memset (p, 0, sizeof(struct rs_peer));
-      p->conn = conn;
       p->fd = -1;
-      p->next = conn->peers;
-      if (conn->peers)
-	conn->peers->next = p;
+      if (*rootp)
+	(*rootp)->next = p;
       else
-	conn->peers = p;
+	*rootp = p;
     }
-  else
-    rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
   return p;
 }
 
@@ -175,22 +169,30 @@ rs_server_create (struct rs_connection *conn, struct rs_peer **server)
 {
   struct rs_peer *srv;
 
-  srv = _peer_new (conn);
+  srv = _rs_peer_create (conn->ctx, &conn->peers);
   if (srv)
     {
+      srv->conn = conn;
       srv->timeout = 1;
       srv->tries = 3;
     }
+  else
+    return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
   if (*server)
     *server = srv;
-  return srv ? RSE_OK : -1;
+  return RSE_OK;
 }
 
 int
-rs_server_set_address (struct rs_peer *server, const char *hostname, int port)
+rs_server_set_address (struct rs_peer *server, const char *hostname,
+		       const char *service)
 {
-  server->addr = _resolv (server->conn, hostname, port);
-  return server->addr ? RSE_OK : -1;
+  struct rs_error *err;
+
+  err = _rs_resolv (&server->addr, server->conn->type, hostname, service);
+  if (err)
+    return _rs_err_conn_push_err (server->conn, err);
+  return RSE_OK;
 }
 
 void

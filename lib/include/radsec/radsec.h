@@ -16,6 +16,7 @@ enum rs_err_code {
     RSE_NOPEER = 8,
     RSE_EVENT = 9,
     RSE_CONNERR = 10,
+    RSE_CONFIG = 11,
     RSE_SOME_ERROR = 21,
 };
 
@@ -89,7 +90,7 @@ int rs_conn_receive_packet(struct rs_connection *conn, struct rs_packet **pkt_ou
 
 /* Server and client.  */
 int rs_server_create(struct rs_connection *conn, struct rs_peer **server);
-int rs_server_set_address(struct rs_peer *server, const char *hostname, int port);
+int rs_server_set_address(struct rs_peer *server, const char *hostname, const char *service);
 int rs_server_set_secret(struct rs_peer *server, const char *secret);
 void rs_server_set_timeout(struct rs_peer *server, int timeout);
 void rs_server_set_tries(struct rs_peer *server, int tries);

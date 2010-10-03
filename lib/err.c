@@ -18,22 +18,23 @@ const char *_errtxt[] = {
   "no peer configured"		/* 8 RSE_NOPEER */
   "libevent error"		/* 9 RSE_EVENT */
   "connection error"		/* 10 RSE_CONNERR */
-  "ERR 11"			/*  RSE_ */
+  "invalid configuration file"	/* 11 RSE_CONFIG */
   "ERR 12"			/*  RSE_ */
   "ERR 13"			/*  RSE_ */
-  "ERR "			/*  RSE_ */
-  "ERR "			/*  RSE_ */
-  "ERR "			/*  RSE_ */
-  "ERR "			/*  RSE_ */
-  "ERR "			/*  RSE_ */
-  "ERR "			/*  RSE_ */
-  "ERR "			/*  RSE_ */
+  "ERR 14"			/*  RSE_ */
+  "ERR 15"			/*  RSE_ */
+  "ERR 16"			/*  RSE_ */
+  "ERR 17"			/*  RSE_ */
+  "ERR 18"			/*  RSE_ */
+  "ERR 19"			/*  RSE_ */
+  "ERR 20"			/*  RSE_ */
   "some error"			/* 21 RSE_SOME_ERROR */
 };
 #define ERRTXT_SIZE (sizeof(_errtxt) / sizeof(*_errtxt))
 
 static struct rs_error *
-_err_new (unsigned int code, const char *file, int line, const char *fmt, va_list args)
+_err_vcreate (unsigned int code, const char *file, int line, const char *fmt,
+	      va_list args)
 {
   struct rs_error *err;
 
@@ -64,10 +65,23 @@ _err_new (unsigned int code, const char *file, int line, const char *fmt, va_lis
   return err;
 }
 
+struct rs_error *
+_rs_err_create (unsigned int code, const char *file, int line, const char *fmt,
+		...)
+{
+  struct rs_error *err;
+
+  va_list args;
+  va_start (args, fmt);
+  err = _err_vcreate (code, file, line, fmt, args);
+  va_end (args);
+  return err;
+}
+
 static int
 _ctx_err_vpush_fl (struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, va_list args)
 {
-  struct rs_error *err = _err_new (code, file, line, fmt, args);
+  struct rs_error *err = _err_vcreate (code, file, line, fmt, args);
 
   if (err)
     ctx->err = err;
@@ -94,13 +108,20 @@ rs_err_ctx_push_fl (struct rs_handle *ctx, int code, const char *file, int line,
   return code;
 }
 
+int
+_rs_err_conn_push_err (struct rs_connection *conn, struct rs_error *err)
+{
+  conn->err = err;		/* FIXME: use a stack */
+  return err->code;
+}
+
 static int
 _conn_err_vpush_fl (struct rs_connection *conn, int code, const char *file, int line, const char *fmt, va_list args)
 {
-  struct rs_error *err = _err_new (code, file, line, fmt, args);
+  struct rs_error *err = _err_vcreate (code, file, line, fmt, args);
 
   if (err)
-    conn->err = err;
+    _rs_err_conn_push_err (conn, err);
   return code;
 }
 
