@@ -4,8 +4,9 @@
 #include <radsec/radsec-impl.h>
 
 #if 0
-  realm NAME {
-      type = STRING
+  # example of client config
+  config NAME {
+      type = "UDP|TCP|TLS|DTLS"
       server {
           hostname = STRING
 	  service = STRING
@@ -29,7 +30,7 @@ rs_context_read_config(struct rs_handle *ctx, const char *config_file)
       CFG_INT ("tries", 1, CFGF_NONE),
       CFG_END ()
     };
-  cfg_opt_t realm_opts[] =
+  cfg_opt_t config_opts[] =
     {
       CFG_STR ("type", "UDP", CFGF_NONE),
       CFG_SEC ("server", server_opts, CFGF_MULTI),
@@ -37,17 +38,17 @@ rs_context_read_config(struct rs_handle *ctx, const char *config_file)
     };
   cfg_opt_t opts[] =
     {
-      CFG_SEC ("realm", realm_opts, CFGF_TITLE | CFGF_MULTI),
+      CFG_SEC ("config", config_opts, CFGF_TITLE | CFGF_MULTI),
       CFG_END ()
     };
-  cfg_t *cfg, *cfg_realm, *cfg_server;
+  cfg_t *cfg, *cfg_config, *cfg_server;
   int i, j;
 
   cfg = cfg_init (opts, CFGF_NONE);
   if (cfg_parse (cfg, config_file) == CFG_PARSE_ERROR)
     return rs_err_ctx_push (ctx, RSE_CONFIG, "%s: invalid configuration file",
 			    config_file);
-  for (i = 0; i < cfg_size (cfg, "realm"); i++)
+  for (i = 0; i < cfg_size (cfg, "config"); i++)
     {
       struct rs_realm *r = rs_malloc (ctx, sizeof(*r));
       const char *typestr;
@@ -60,9 +61,9 @@ rs_context_read_config(struct rs_handle *ctx, const char *config_file)
 	ctx->realms->next = r;
       else
 	ctx->realms = r;
-      cfg_realm = cfg_getnsec (cfg, "realm", i);
-      r->name = strdup (cfg_title (cfg_realm));
-      typestr = cfg_getstr (cfg_realm, "type");
+      cfg_config = cfg_getnsec (cfg, "config", i);
+      r->name = strdup (cfg_title (cfg_config));
+      typestr = cfg_getstr (cfg_config, "type");
       if (!strcmp (typestr, "UDP"))
 	type = RS_CONN_TYPE_UDP;
       else if (!strcmp (typestr, "TCP"))
@@ -74,14 +75,14 @@ rs_context_read_config(struct rs_handle *ctx, const char *config_file)
       else
 	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
 				   "%s: invalid connection type", typestr);
-      for (j = 0; j < cfg_size (cfg_realm, "server"); j++)
+      for (j = 0; j < cfg_size (cfg_config, "server"); j++)
 	{
 	  struct rs_peer *p = _rs_peer_create (ctx, &r->peers);
 	  if (!p)
 	    return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__,
 				       NULL);
 
-	  cfg_server = cfg_getnsec (cfg_realm, "server", j);
+	  cfg_server = cfg_getnsec (cfg_config, "server", j);
 	  _rs_resolv (&p->addr, type, cfg_getstr (cfg_server, "hostname"),
 		      cfg_getstr (cfg_server, "service"));
 	  p->secret = strdup (cfg_getstr (cfg_server, "secret"));
