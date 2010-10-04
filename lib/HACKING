@@ -1,18 +1,22 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
 * Design of the libraray
+- three usage models
+  - using send and receive calls in blocking mode
+  - running the libevent loop, getting callbacks
+  - running own event loop, using fd's for select and doing the i/o
+    using libradsec send/receive
 * Functionality
 ** Not implemented
-- reading config file
-- resending packets
+- autoconf/automake/libtool
+- client: matching responses, resending packets
 - custom allocation scheme used in all places
 - callbacks invoked properly
 - server fail over
-- matching responses
 - TLS
 - TLS PSK
-- autoconf/automake/libtool
 - DTLS
 ** Not tested
+- reading config file
 - short read
 - short write
 ** Tested and verified
