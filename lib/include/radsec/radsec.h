@@ -41,10 +41,10 @@ struct rs_peer;			/* radsec-impl.h */
 struct radius_packet;		/* <freeradius/libradius.h> */
 struct event_base;		/* <event2/event-internal.h> */
 
-typedef void * (*rs_calloc_fp)(size_t nmemb, size_t size);
-typedef void * (*rs_malloc_fp)(size_t size);
-typedef void (*rs_free_fp)(void *ptr);
-typedef void * (*rs_realloc_fp)(void *ptr, size_t size);
+typedef void *(*rs_calloc_fp) (size_t nmemb, size_t size);
+typedef void *(*rs_malloc_fp) (size_t size);
+typedef void (*rs_free_fp) (void *ptr);
+typedef void *(*rs_realloc_fp) (void *ptr, size_t size);
 struct rs_alloc_scheme {
     rs_calloc_fp calloc;
     rs_malloc_fp malloc;
@@ -52,11 +52,12 @@ struct rs_alloc_scheme {
     rs_realloc_fp realloc;
 };
 
-typedef void (*rs_conn_connected_cb)(void *user_data /* FIXME: peer? */);
-typedef void (*rs_conn_disconnected_cb)(void *user_data /* FIXME: reason? */);
-typedef void (*rs_conn_packet_received_cb)(const struct rs_packet *packet,
-					   void *user_data);
-typedef void (*rs_conn_packet_sent_cb)(void *user_data);
+typedef void (*rs_conn_connected_cb) (void *user_data /* FIXME: peer? */ );
+typedef void (*rs_conn_disconnected_cb) (void *user_data
+					 /* FIXME: reason? */ );
+typedef void (*rs_conn_packet_received_cb) (const struct rs_packet *
+					    packet, void *user_data);
+typedef void (*rs_conn_packet_sent_cb) (void *user_data);
 struct rs_conn_callbacks {
     /** Callback invoked when the connection has been established.  */
     rs_conn_connected_cb connected_cb;
@@ -73,30 +74,42 @@ struct rs_conn_callbacks {
 /* Context.  */
 int rs_context_create(struct rs_handle **ctx, const char *dict);
 void rs_context_destroy(struct rs_handle *ctx);
-int rs_context_set_alloc_scheme(struct rs_handle *ctx, struct rs_alloc_scheme *scheme);
+int rs_context_set_alloc_scheme(struct rs_handle *ctx,
+				struct rs_alloc_scheme *scheme);
 int rs_context_read_config(struct rs_handle *ctx, const char *config_file);
 
 /* Connection.  */
-int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn, const char *config);
+int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn,
+		   const char *config);
 void rs_conn_set_type(struct rs_connection *conn, rs_conn_type_t type);
-int rs_conn_add_listener(struct rs_connection  *conn, rs_conn_type_t type, const char *hostname, int port);
+int rs_conn_add_listener(struct rs_connection *conn, rs_conn_type_t type,
+			 const char *hostname, int port);
 void rs_conn_destroy(struct rs_connection *conn);
-int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb);
-int rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *cb);
-struct rs_conn_callbacks *rs_conn_get_callbacks(struct rs_connection *conn);
+int rs_conn_set_eventbase(struct rs_connection *conn,
+			  struct event_base *eb);
+int rs_conn_set_callbacks(struct rs_connection *conn,
+			  struct rs_conn_callbacks *cb);
+struct rs_conn_callbacks *rs_conn_get_callbacks(struct rs_connection
+						*conn);
 int rs_conn_select_server(struct rs_connection *conn, const char *name);
-int rs_conn_get_current_server(struct rs_connection *conn, const char *name, size_t buflen);
-int rs_conn_receive_packet(struct rs_connection *conn, struct rs_packet **pkt_out);
+int rs_conn_get_current_server(struct rs_connection *conn,
+			       const char *name, size_t buflen);
+int rs_conn_receive_packet(struct rs_connection *conn,
+			   struct rs_packet **pkt_out);
 
 /* Server and client.  */
 int rs_server_create(struct rs_connection *conn, struct rs_peer **server);
-int rs_server_set_address(struct rs_peer *server, const char *hostname, const char *service);
+int rs_server_set_address(struct rs_peer *server, const char *hostname,
+			  const char *service);
 int rs_server_set_secret(struct rs_peer *server, const char *secret);
 void rs_server_set_timeout(struct rs_peer *server, int timeout);
 void rs_server_set_tries(struct rs_peer *server, int tries);
 
 /* Packet.  */
-int rs_packet_create_acc_request(struct rs_connection *conn, struct rs_packet **pkt, const char *user_name, const char *user_pw);
+int rs_packet_create_acc_request(struct rs_connection *conn,
+				 struct rs_packet **pkt,
+				 const char *user_name,
+				 const char *user_pw);
 //int rs_packet_create_acc_accept(cstruct rs_connection *conn, struct rs_packet **pkt);
 //int rs_packet_create_acc_reject(struct rs_connection *conn, struct rs_packet **pkt);
 //int rs_packet_create_acc_challenge(struct rs_connection *conn, struct rs_packet **pkt);
@@ -106,19 +119,24 @@ int rs_packet_send(struct rs_packet *pkt, void *data);
 struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
 
 /* Attribute.  */
-int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *type, const char *val);
+int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr,
+		   const char *type, const char *val);
 void rs_attr_destroy(struct rs_attr *attr);
 
 /* Config.  */
-struct rs_realm *rs_conf_find_realm(struct rs_handle *ctx, const char *name);
+struct rs_realm *rs_conf_find_realm(struct rs_handle *ctx,
+				    const char *name);
 
 /* Error.  */
 int rs_err_ctx_push(struct rs_handle *ctx, int code, const char *fmt, ...);
-int rs_err_ctx_push_fl(struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, ...);
-struct rs_error *rs_err_ctx_pop (struct rs_handle *ctx);
-int rs_err_conn_push(struct rs_connection *conn, int code, const char *fmt, ...);
-int rs_err_conn_push_fl(struct rs_connection *conn, int code, const char *file, int line, const char *fmt, ...);
-struct rs_error *rs_err_conn_pop (struct rs_connection *conn);
+int rs_err_ctx_push_fl(struct rs_handle *ctx, int code, const char *file,
+		       int line, const char *fmt, ...);
+struct rs_error *rs_err_ctx_pop(struct rs_handle *ctx);
+int rs_err_conn_push(struct rs_connection *conn, int code, const char *fmt,
+		     ...);
+int rs_err_conn_push_fl(struct rs_connection *conn, int code,
+			const char *file, int line, const char *fmt, ...);
+struct rs_error *rs_err_conn_pop(struct rs_connection *conn);
 void rs_err_free(struct rs_error *err);
 char *rs_err_msg(struct rs_error *err, int dofree_flag);
 int rs_err_code(struct rs_error *err, int dofree_flag);
