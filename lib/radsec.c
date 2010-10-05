@@ -267,3 +267,10 @@ rs_conn_get_current_server(struct rs_connection *conn, const char *name,
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
+
+int rs_conn_fd(struct rs_connection *conn)
+{
+  assert (conn);
+  assert (conn->active_peer);
+  return conn->active_peer->fd;
+}
