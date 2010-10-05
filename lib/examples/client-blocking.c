@@ -18,7 +18,7 @@
 struct rs_error *
 blocking_client (const char *av1, const char *av2)
 {
-  struct rs_handle *h;
+  struct rs_context *h;
   struct rs_connection *conn;
   struct rs_packet *req, *resp;
   RADIUS_PACKET *fr_pkt;

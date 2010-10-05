@@ -33,9 +33,9 @@ struct rs_error {
 struct rs_peer {
     struct rs_connection *conn;
     struct evutil_addrinfo *addr;
-    int fd;		/* Socket.  */
-    char is_connecting;	/* FIXME: replace with a single state member */
-    char is_connected;	/* FIXME: replace with a single state member */
+    int fd;			/* Socket.  */
+    char is_connecting;		/* FIXME: replace with a single state member */
+    char is_connected;		/* FIXME: replace with a single state member */
     char *secret;
     int timeout;		/* client only */
     int tries;			/* client only */
@@ -49,7 +49,7 @@ struct rs_realm {
     struct rs_realm *next;
 };
 
-struct rs_handle {
+struct rs_context {
     struct rs_realm *realms;
     struct rs_alloc_scheme alloc_scheme;
     struct rs_error *err;
@@ -57,7 +57,7 @@ struct rs_handle {
 };
 
 struct rs_connection {
-    struct rs_handle *ctx;
+    struct rs_context *ctx;
     struct event_base *evb;
     struct bufferevent *bev;
     enum rs_conn_type type;
@@ -81,10 +81,15 @@ struct rs_attr {
 };
 
 /* Nonpublic functions.  */
-struct rs_error *_rs_resolv (struct evutil_addrinfo **addr, rs_conn_type_t type, const char *hostname, const char *service);
-struct rs_peer *_rs_peer_create (struct rs_handle *ctx, struct rs_peer **rootp);
-struct rs_error *_rs_err_create (unsigned int code, const char *file, int line, const char *fmt, ...);
-int _rs_err_conn_push_err (struct rs_connection *conn, struct rs_error *err);
+struct rs_error *_rs_resolv(struct evutil_addrinfo **addr,
+			    rs_conn_type_t type, const char *hostname,
+			    const char *service);
+struct rs_peer *_rs_peer_create(struct rs_context *ctx,
+				struct rs_peer **rootp);
+struct rs_error *_rs_err_create(unsigned int code, const char *file,
+				int line, const char *fmt, ...);
+int _rs_err_conn_push_err(struct rs_connection *conn,
+			  struct rs_error *err);
 
 
 /* Convenience macros.  */

@@ -31,7 +31,7 @@ typedef unsigned int rs_conn_type_t;
 
 
 /* Data types.  */
-struct rs_handle;		/* radsec-impl.h */
+struct rs_context;		/* radsec-impl.h */
 struct rs_connection;		/* radsec-impl.h */
 struct rs_packet;		/* radsec-impl.h */
 struct rs_conn;			/* radsec-impl.h */
@@ -72,14 +72,15 @@ struct rs_conn_callbacks {
 
 /* Function prototypes.  */
 /* Context.  */
-int rs_context_create(struct rs_handle **ctx, const char *dict);
-void rs_context_destroy(struct rs_handle *ctx);
-int rs_context_set_alloc_scheme(struct rs_handle *ctx,
+int rs_context_create(struct rs_context **ctx, const char *dict);
+void rs_context_destroy(struct rs_context *ctx);
+int rs_context_set_alloc_scheme(struct rs_context *ctx,
 				struct rs_alloc_scheme *scheme);
-int rs_context_read_config(struct rs_handle *ctx, const char *config_file);
+int rs_context_read_config(struct rs_context *ctx,
+			   const char *config_file);
 
 /* Connection.  */
-int rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn,
+int rs_conn_create(struct rs_context *ctx, struct rs_connection **conn,
 		   const char *config);
 void rs_conn_set_type(struct rs_connection *conn, rs_conn_type_t type);
 int rs_conn_add_listener(struct rs_connection *conn, rs_conn_type_t type,
@@ -121,14 +122,15 @@ int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr,
 void rs_attr_destroy(struct rs_attr *attr);
 
 /* Config.  */
-struct rs_realm *rs_conf_find_realm(struct rs_handle *ctx,
+struct rs_realm *rs_conf_find_realm(struct rs_context *ctx,
 				    const char *name);
 
 /* Error.  */
-int rs_err_ctx_push(struct rs_handle *ctx, int code, const char *fmt, ...);
-int rs_err_ctx_push_fl(struct rs_handle *ctx, int code, const char *file,
+int rs_err_ctx_push(struct rs_context *ctx, int code, const char *fmt,
+		    ...);
+int rs_err_ctx_push_fl(struct rs_context *ctx, int code, const char *file,
 		       int line, const char *fmt, ...);
-struct rs_error *rs_err_ctx_pop(struct rs_handle *ctx);
+struct rs_error *rs_err_ctx_pop(struct rs_context *ctx);
 int rs_err_conn_push(struct rs_connection *conn, int code, const char *fmt,
 		     ...);
 int rs_err_conn_push_fl(struct rs_connection *conn, int code,

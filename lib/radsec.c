@@ -13,13 +13,13 @@
 #include <radsec/radsec-impl.h>
 
 int
-rs_context_create(struct rs_handle **ctx, const char *dict)
+rs_context_create(struct rs_context **ctx, const char *dict)
 {
-  struct rs_handle *h;
+  struct rs_context *h;
 
   if (ctx)
     *ctx = NULL;
-  h = (struct rs_handle *) malloc (sizeof(struct rs_handle));
+  h = (struct rs_context *) malloc (sizeof(struct rs_context));
   if (h)
     {
       char *buf1 = NULL, *buf2 = NULL;
@@ -52,7 +52,7 @@ rs_context_create(struct rs_handle **ctx, const char *dict)
       fr_debug_flag = 1;
 #endif
 
-      memset (h, 0, sizeof(struct rs_handle));
+      memset (h, 0, sizeof(struct rs_context));
       fr_randinit (&h->fr_randctx, 0);
       fr_rand_seed (NULL, 0);
 
@@ -62,19 +62,20 @@ rs_context_create(struct rs_handle **ctx, const char *dict)
   return h ? RSE_OK : RSE_NOMEM;
 }
 
-void rs_context_destroy(struct rs_handle *ctx)
+void rs_context_destroy(struct rs_context *ctx)
 {
   free (ctx);
 }
 
-int rs_context_set_alloc_scheme(struct rs_handle *ctx, struct rs_alloc_scheme *scheme)
+int rs_context_set_alloc_scheme(struct rs_context *ctx,
+				struct rs_alloc_scheme *scheme)
 {
   return rs_err_ctx_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
 			     "%s: NYI", __func__);
 }
 
 int
-rs_conn_create(struct rs_handle *ctx, struct rs_connection **conn,
+rs_conn_create(struct rs_context *ctx, struct rs_connection **conn,
 	       const char *config)
 {
   struct rs_connection *c;
@@ -147,7 +148,7 @@ _rs_resolv (struct evutil_addrinfo **addr, rs_conn_type_t type,
 }
 
 struct rs_peer *
-_rs_peer_create (struct rs_handle *ctx, struct rs_peer **rootp)
+_rs_peer_create (struct rs_context *ctx, struct rs_peer **rootp)
 {
   struct rs_peer *p;
 
@@ -245,21 +246,24 @@ rs_conn_destroy (struct rs_connection *conn)
     event_base_free (conn->evb);
 }
 
-int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb)
+int
+rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb)
 {
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
 
-int rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *cb)
+int
+rs_conn_set_callbacks(struct rs_connection *conn, struct rs_conn_callbacks *cb)
 {
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
 
-int rs_conn_get_current_server(struct rs_connection *conn, const char *name, size_t buflen)
+int
+rs_conn_get_current_server(struct rs_connection *conn, const char *name,
+			   size_t buflen)
 {
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
-

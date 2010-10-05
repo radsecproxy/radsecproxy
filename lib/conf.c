@@ -18,7 +18,7 @@
 #endif
 
 int
-rs_context_read_config(struct rs_handle *ctx, const char *config_file)
+rs_context_read_config(struct rs_context *ctx, const char *config_file)
 {
 #warning "Missing some error handling in rs_context_config_read()"
   cfg_opt_t server_opts[] =
@@ -94,7 +94,7 @@ rs_context_read_config(struct rs_handle *ctx, const char *config_file)
 }
 
 struct rs_realm
-*rs_conf_find_realm(struct rs_handle *ctx, const char *name)
+*rs_conf_find_realm(struct rs_context *ctx, const char *name)
 {
   struct rs_realm *r;
 

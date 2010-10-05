@@ -79,7 +79,8 @@ _rs_err_create (unsigned int code, const char *file, int line, const char *fmt,
 }
 
 static int
-_ctx_err_vpush_fl (struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, va_list args)
+_ctx_err_vpush_fl (struct rs_context *ctx, int code, const char *file,
+		   int line, const char *fmt, va_list args)
 {
   struct rs_error *err = _err_vcreate (code, file, line, fmt, args);
 
@@ -89,7 +90,7 @@ _ctx_err_vpush_fl (struct rs_handle *ctx, int code, const char *file, int line, 
 }
 
 int
-rs_err_ctx_push (struct rs_handle *ctx, int code, const char *fmt, ...)
+rs_err_ctx_push (struct rs_context *ctx, int code, const char *fmt, ...)
 {
   va_list args;
   va_start (args, fmt);
@@ -99,7 +100,8 @@ rs_err_ctx_push (struct rs_handle *ctx, int code, const char *fmt, ...)
 }
 
 int
-rs_err_ctx_push_fl (struct rs_handle *ctx, int code, const char *file, int line, const char *fmt, ...)
+rs_err_ctx_push_fl (struct rs_context *ctx, int code, const char *file,
+		    int line, const char *fmt, ...)
 {
   va_list args;
   va_start (args, fmt);
@@ -116,7 +118,8 @@ _rs_err_conn_push_err (struct rs_connection *conn, struct rs_error *err)
 }
 
 static int
-_conn_err_vpush_fl (struct rs_connection *conn, int code, const char *file, int line, const char *fmt, va_list args)
+_conn_err_vpush_fl (struct rs_connection *conn, int code, const char *file,
+		    int line, const char *fmt, va_list args)
 {
   struct rs_error *err = _err_vcreate (code, file, line, fmt, args);
 
@@ -136,7 +139,8 @@ rs_err_conn_push (struct rs_connection *conn, int code, const char *fmt, ...)
 }
 
 int
-rs_err_conn_push_fl (struct rs_connection *conn, int code, const char *file, int line, const char *fmt, ...)
+rs_err_conn_push_fl (struct rs_connection *conn, int code, const char *file,
+		     int line, const char *fmt, ...)
 {
   va_list args;
   va_start (args, fmt);
@@ -146,7 +150,7 @@ rs_err_conn_push_fl (struct rs_connection *conn, int code, const char *file, int
 }
 
 struct rs_error *
-rs_err_ctx_pop (struct rs_handle *ctx)
+rs_err_ctx_pop (struct rs_context *ctx)
 {
   struct rs_error *err;
 
