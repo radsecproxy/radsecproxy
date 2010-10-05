@@ -172,7 +172,6 @@ _read_cb (struct bufferevent *bev, void *ctx)
     assert (!"short packet");
 }
 
-#if defined (DEBUG)
 static void
 _evlog_cb (int severity, const char *msg)
 {
@@ -200,7 +199,6 @@ _evlog_cb (int severity, const char *msg)
     }
   fprintf (stderr, "libevent: [%s] %s\n", sevstr, msg);
 }
-#endif	/* DEBUG */
 
 static int
 _init_evb (struct rs_connection *conn)
@@ -209,8 +207,8 @@ _init_evb (struct rs_connection *conn)
     {
 #if defined (DEBUG)
       event_enable_debug_mode ();
-      event_set_log_callback (_evlog_cb);
 #endif
+      event_set_log_callback (_evlog_cb);
       conn->evb = event_base_new ();
       if (!conn->evb)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
