@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <libgen.h>
+#include <assert.h>
 
 #include <freeradius/libradius.h>
 #include <event2/event.h>
