@@ -1,22 +1,44 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
-* Design of the libraray
-- three usage models
-  - using send and receive calls in blocking mode
-  - running the libevent loop, getting callbacks
-  - running own event loop, using fd's for select and doing the i/o
-    using libradsec send/receive
-* Functionality
-** Not implemented
-- autoconf/automake/libtool
-- client: matching responses, resending packets
-- custom allocation scheme used in all places
-- callbacks invoked properly
-- server fail over
-- TLS
-- TLS PSK
-- DTLS
-** Not tested
+
+Status as of libradsec-0.0.1 (2010-10-05).
+
+* Build instructions
+cd libradsec/lib
+ln -s /usr/share/libtool/config/ltmain.sh ..	# bug
+sh autogen.sh
+./configure 	# bug -- won't complain when missing libraries
+make
+examples/client examples/client.conf blocking ; echo $?
+
+* Design of the API
+- There are three usage models.
+  - You use the send and receive calls in blocking mode.
+  - You run the libevent loop and get callbacks instead of doing
+    blocking reads.
+  - You run your own event loop, using fd's for select and do the i/o
+    using the libradsec send/receive calls.
+- Fully reentrant (FIXME: any issues with libfreeradius-radius?)
+
+* Dependencies
+- libfreeradius-radius -- no i/o used
+- libconfuse
+- libevent 2.0.x -- not packaged yet!
+
+* Functionality and quality
+** Tested and verified
+** Not well tested
 - reading config file
 - short read
 - short write
-** Tested and verified
+- autoconf/automake/libtool
+** Known issues
+- leaking memory
+- udp issues with libevent
+** Not implemented
+- client: matching responses, resending packets
+- custom allocation scheme used in all places
+- callbacks invoked properly
+- server failover
+- TLS support
+- TLS preshared key support
+- DTLS support

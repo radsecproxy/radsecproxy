@@ -1,5 +1,8 @@
-libradsec is a non-working RADIUS library doing UDP, TCP, TLS and
-DTLS.
+libradsec-0.0.1-dev is a non-working RADIUS library doing UDP, TCP,
+TLS and DTLS.
+
+Canonical pickup point:
+http://git.nordu.net/?p=radsecproxy.git;a=shortlog;h=refs/heads/libradsec
 
 libradsec depends on 
 - libradius from the FreeRADIUS freeradius-server
@@ -13,7 +16,7 @@ To compile the library and the examples, do something like
  sh autogen.sh && ./configure && make
 
 If any of the libraries are not found, try setting environment
-variable LDFLAGS at configure time
+variable LDFLAGS at configure time.
 
  LDFLAGS="-L/usr/lib/freeradius -L/usr/local/lib" ./configure
 
