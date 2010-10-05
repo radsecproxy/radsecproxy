@@ -180,6 +180,9 @@ _evlog_cb (int severity, const char *msg)
   switch (severity)
     {
     case _EVENT_LOG_DEBUG:
+#if !defined (DEBUG_LEVENT)
+      return;
+#endif
       sevstr = "debug";
       break;
     case _EVENT_LOG_MSG:

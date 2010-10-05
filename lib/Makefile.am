@@ -15,4 +15,4 @@ libradsec_la_SOURCES = \
 	request.c \
 	radsec.c
 libradsec_la_LDFLAGS = -version-info 0:0:0
-libradsec_la_CFLAGS = $(CFLAGS) -DDEBUG -DDEBUG_LEVENT
+libradsec_la_CFLAGS = $(CFLAGS) -DDEBUG #-DDEBUG_LEVENT
