@@ -12,9 +12,12 @@ AC_PROG_LIBTOOL
 AC_PROG_CC
 
 # Checks for libraries.
-AC_CHECK_LIB([confuse], [cfg_init])
-AC_CHECK_LIB([event_core], [event_get_version])
-AC_CHECK_LIB([freeradius-radius], [rad_alloc])
+AC_CHECK_LIB([confuse], [cfg_init],,
+    AC_MSG_ERROR([required library libconfuse not found]))
+AC_CHECK_LIB([event_core], [event_get_version],,
+    AC_MSG_ERROR([required library libevent_core not found]))
+AC_CHECK_LIB([freeradius-radius], [rad_alloc],,
+    AC_MSG_ERROR([required library libfreeradius-radius not found]))
 
 # Checks for header files.
 AC_CHECK_HEADERS([netdb.h netinet/in.h stdint.h stdlib.h string.h sys/socket.h unistd.h])
