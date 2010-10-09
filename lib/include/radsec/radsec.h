@@ -97,6 +97,7 @@ int rs_conn_select_server(struct rs_connection *conn, const char *name);
 int rs_conn_get_current_server(struct rs_connection *conn,
 			       const char *name, size_t buflen);
 int rs_conn_receive_packet(struct rs_connection *conn,
+			   struct rs_packet *request,
 			   struct rs_packet **pkt_out);
 int rs_conn_fd(struct rs_connection *conn);
 

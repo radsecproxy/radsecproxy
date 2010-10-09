@@ -55,10 +55,16 @@ blocking_client (const char *av1, const char *av2)
 
 #if !defined(USE_REQUEST_OBJECT)
   if (rs_packet_send (req, NULL))
-    return rs_err_conn_pop (conn);
-  req = NULL;
-  if (rs_conn_receive_packet (conn, &resp))
-    return rs_err_conn_pop (conn);
+    {
+      rs_packet_destroy (req);
+      return rs_err_conn_pop (conn);
+    }
+  if (rs_conn_receive_packet (conn, req, &resp))
+    {
+      rs_packet_destroy (req);
+      return rs_err_conn_pop (conn);
+    }
+  rs_packet_destroy (req);
 #else
   {
     struct rs_request *request;

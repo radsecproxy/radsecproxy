@@ -76,6 +76,7 @@ struct rs_packet {
     char hdr_read_flag;
     uint8_t hdr[4];
     RADIUS_PACKET *rpkt;
+    struct rs_packet *original;
 };
 
 struct rs_attr {

@@ -44,6 +44,16 @@ static int
 _do_send (struct rs_packet *pkt)
 {
   int err;
+  VALUE_PAIR *vp;
+
+  assert (pkt->rpkt);
+  assert (!pkt->original);
+
+  vp = paircreate (PW_MESSAGE_AUTHENTICATOR, PW_TYPE_OCTETS);
+  if (!vp)
+    return rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
+				"rad_encode: %s", fr_strerror ());
+  pairadd (&pkt->rpkt->vps, vp);
 
   if (rad_encode (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
     return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
@@ -51,7 +61,6 @@ _do_send (struct rs_packet *pkt)
   if (rad_sign (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
     return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 				"rad_sign: %s", fr_strerror ());
-  assert (pkt->rpkt);
 #if defined (DEBUG)
   {
     char host[80], serv[80];
@@ -183,11 +192,28 @@ _read_cb (struct bufferevent *bev, void *ctx)
 #endif
       if (!rad_packet_ok (pkt->rpkt, 0) != 0)
 	return;
-      if (rad_decode (pkt->rpkt, NULL, pkt->conn->active_peer->secret) != 0)
-        return;
+      assert (pkt->original);
+
+      /* Verify header and message authenticator.  */
+      if (rad_verify (pkt->rpkt, pkt->original->rpkt,
+		      pkt->conn->active_peer->secret))
+	{
+	  rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+			       "rad_verify: %s", fr_strerror ());
+	  return;
+	}
+
+      /* decode and decrypt */
+      if (rad_decode (pkt->rpkt, pkt->original->rpkt,
+		      pkt->conn->active_peer->secret))
+	{
+	  rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+			       "rad_decode: %s", fr_strerror ());
+	  return;
+	}
 
       if (pkt->conn->callbacks.received_cb)
-	pkt->conn->callbacks.received_cb(pkt, pkt->conn->user_data);
+	pkt->conn->callbacks.received_cb (pkt, pkt->conn->user_data);
 
       if (event_base_loopbreak (pkt->conn->evb) < 0)
 	abort ();		/* FIXME */
@@ -396,7 +422,9 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
 }
 
 int
-rs_conn_receive_packet (struct rs_connection *conn, struct rs_packet **pkt_out)
+rs_conn_receive_packet (struct rs_connection *conn,
+		        struct rs_packet *request,
+		        struct rs_packet **pkt_out)
 {
   struct rs_packet *pkt;
 
@@ -406,6 +434,7 @@ rs_conn_receive_packet (struct rs_connection *conn, struct rs_packet **pkt_out)
     return -1;
   pkt = *pkt_out;
   pkt->conn = conn;
+  pkt->original = request;
 
   if (_conn_open (conn, pkt))
     return -1;
@@ -432,6 +461,8 @@ rs_conn_receive_packet (struct rs_connection *conn, struct rs_packet **pkt_out)
 	fprintf (stderr, ", no reply\n");
 #endif
     }
+
+  pkt->original = NULL;
 
   return RSE_OK;
 }
