@@ -63,9 +63,11 @@ struct rs_connection {
     enum rs_conn_type type;
     struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;
+    void *user_data;
     struct rs_peer *peers;
     struct rs_peer *active_peer;
     struct rs_error *err;
+    int nextid;
 };
 
 struct rs_packet {

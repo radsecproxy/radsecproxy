@@ -24,7 +24,7 @@ _packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
   rpkt = rad_alloc (1);
   if (!rpkt)
     return rs_err_conn_push (conn, RSE_NOMEM, __func__);
-  rpkt->id = -1;
+  rpkt->id = conn->nextid++;
 
   p = (struct rs_packet *) malloc (sizeof (struct rs_packet));
   if (!p)
@@ -40,12 +40,17 @@ _packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
   return RSE_OK;
 }
 
-static void
+static int
 _do_send (struct rs_packet *pkt)
 {
   int err;
 
-  rad_encode (pkt->rpkt, NULL, pkt->conn->active_peer->secret);
+  if (rad_encode (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
+    return rs_err_conn_push_fl (pkg->conn, RSE_FR, __FILE__, __LINE__,
+				"rad_encode: %s", fr_strerror ());
+  if (rad_sign (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
+    return rs_err_conn_push_fl (pkg->conn, RSE_FR, __FILE__, __LINE__,
+				"rad_sign: %s", fr_strerror ());
   assert (pkt->rpkt);
 #if defined (DEBUG)
   {
@@ -63,16 +68,19 @@ _do_send (struct rs_packet *pkt)
   err = bufferevent_write (pkt->conn->bev, pkt->rpkt->data,
 			   pkt->rpkt->data_len);
   if (err < 0)
-    rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
-			 "bufferevent_write: %s", evutil_gai_strerror(err));
+    return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				"bufferevent_write: %s",
+				evutil_gai_strerror(err));
+  return RSE_OK;
 }
 
 static void
 _event_cb (struct bufferevent *bev, short events, void *ctx)
 {
-  struct rs_packet *pkt = (struct rs_packet *) ctx;
+  struct rs_packet *pkt = (struct rs_packet *)ctx;
   struct rs_connection *conn;
   struct rs_peer *p;
+  int err;
 
   assert (pkt);
   assert (pkt->conn);
@@ -84,10 +92,17 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
   if (events & BEV_EVENT_CONNECTED)
     {
       p->is_connected = 1;
+      if (conn->callbacks.connected_cb)
+	conn->callbacks.connected_cb (conn->user_data);
+
 #if defined (DEBUG)
       fprintf (stderr, "%s: connected\n", __func__);
 #endif
-      _do_send (pkt);
+      err = _do_send (pkt);
+      if (err)
+	return err;
+      if (conn->callbacks.sent_cb)
+	conn->callbacks.sent_cb (conn->user_data);
       /* Packet will be freed in write callback.  */
     }
   else if (events & BEV_EVENT_ERROR)
@@ -162,7 +177,14 @@ _read_cb (struct bufferevent *bev, void *ctx)
 #if defined (DEBUG)
       fprintf (stderr, "%s: complete packet read\n", __func__);
 #endif
-      rad_decode (pkt->rpkt, NULL, pkt->conn->active_peer->secret);
+      if (!rad_packet_ok (pkt->rpkt, 0) != 0)
+	return;
+      if (rad_decode (pkt->rpkt, NULL, pkt->conn->active_peer->secret) != 0)
+        return;
+
+      if (pkt->conn->callbacks.received_cb)
+	pkt->conn->callbacks.received_cb(pkt, pkt->conn->user_data);
+
       if (event_base_loopbreak (pkt->conn->evb) < 0)
 	abort ();		/* FIXME */
     }
@@ -335,6 +357,7 @@ int
 rs_packet_send (struct rs_packet *pkt, void *user_data)
 {
   struct rs_connection *conn;
+
   assert (pkt);
   conn = pkt->conn;
 
