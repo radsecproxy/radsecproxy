@@ -21,7 +21,7 @@ rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *ty
     {
       rs_attr_destroy (a);
       return rs_err_conn_push_fl (conn, RSE_FR, __FILE__, __LINE__,
-				  "pairmake: %s", fr_strerror());
+				  "pairmake: %s", fr_strerror ());
     }
 
   a->vp = vp;
