@@ -46,10 +46,10 @@ _do_send (struct rs_packet *pkt)
   int err;
 
   if (rad_encode (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
-    return rs_err_conn_push_fl (pkg->conn, RSE_FR, __FILE__, __LINE__,
+    return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 				"rad_encode: %s", fr_strerror ());
   if (rad_sign (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
-    return rs_err_conn_push_fl (pkg->conn, RSE_FR, __FILE__, __LINE__,
+    return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 				"rad_sign: %s", fr_strerror ());
   assert (pkt->rpkt);
 #if defined (DEBUG)
@@ -98,9 +98,8 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
 #if defined (DEBUG)
       fprintf (stderr, "%s: connected\n", __func__);
 #endif
-      err = _do_send (pkt);
-      if (err)
-	return err;
+      if (_do_send (pkt))
+	return;
       if (conn->callbacks.sent_cb)
 	conn->callbacks.sent_cb (conn->user_data);
       /* Packet will be freed in write callback.  */
