@@ -110,8 +110,8 @@ void rs_server_set_tries(struct rs_peer *server, int tries);
 /* Packet.  */
 int rs_packet_create_acc_request(struct rs_connection *conn,
 				 struct rs_packet **pkt,
-				 const char *user_name,
-				 const char *user_pw);
+				 const char *user_name, /* FIXME: remove? */
+				 const char *user_pw);	/* FIXME: remove? */
 void rs_packet_destroy(struct rs_packet *pkt);
 void rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr);
 int rs_packet_send(struct rs_packet *pkt, void *data);

@@ -319,14 +319,20 @@ rs_packet_create_acc_request (struct rs_connection *conn,
   pkt = *pkt_out;
   pkt->rpkt->code = PW_AUTHENTICATION_REQUEST;
 
-  if (rs_attr_create (conn, &attr, "User-Name", user_name))
-    return -1;
-  rs_packet_add_attr (pkt, attr);
+  if (user_name)
+    {
+      if (rs_attr_create (conn, &attr, "User-Name", user_name))
+	return -1;
+      rs_packet_add_attr (pkt, attr);
+    }
 
-  if (rs_attr_create (conn, &attr, "User-Password", user_pw))
-    return -1;
-  /* FIXME: need this too? rad_pwencode(user_pw, &pwlen, SECRET, reqauth) */
-  rs_packet_add_attr (pkt, attr);
+  if (user_pw)
+    {
+      if (rs_attr_create (conn, &attr, "User-Password", user_pw))
+	return -1;
+      /* FIXME: need this too? rad_pwencode(user_pw, &pwlen, SECRET, reqauth) */
+      rs_packet_add_attr (pkt, attr);
+    }
 
   return RSE_OK;
 }
@@ -421,6 +427,7 @@ rs_packet_destroy(struct rs_packet *pkt)
 {
   if (pkt)
     {
+      // TODO: free all attributes
       rad_free (&pkt->rpkt);
       rs_free (pkt->conn->ctx, pkt);
     }
