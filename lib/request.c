@@ -1,14 +1,18 @@
 /* See the file COPYING for licensing information.  */
 
 #include <time.h>
+#include <assert.h>
 #include <event2/event.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include <radsec/request.h>
 #include <radsec/request-impl.h>
 
+static int
+_rs_decrypt_mppe(struct rs_request *request, VALUE_PAIR *vp);
+
 int
-rs_req_create (struct rs_connection *conn, struct rs_request **req_out)
+rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
 {
   struct rs_request *req = rs_malloc (conn->ctx, sizeof(*req));
   if (!req)
@@ -20,7 +24,7 @@ rs_req_create (struct rs_connection *conn, struct rs_request **req_out)
 }
 
 void
-rs_req_destroy(struct rs_request *request)
+rs_request_destroy (struct rs_request *request)
 {
   rs_packet_destroy (request->req);
   rs_packet_destroy (request->resp);

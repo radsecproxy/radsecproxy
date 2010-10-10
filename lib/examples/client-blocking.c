@@ -63,9 +63,9 @@ blocking_client (const char *av1, const char *av2)
   {
     struct rs_request *request;
 
-    if (rs_request_new (conn, &request))
+    if (rs_request_create (conn, &request))
       return rs_err_conn_pop (conn);
-    if (rs_req_send (request, req, &resp))
+    if (rs_request_send (request, req, &resp))
       return rs_err_conn_pop (conn);
     rs_request_destroy (request);
   }
