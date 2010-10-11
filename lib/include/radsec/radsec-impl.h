@@ -68,6 +68,7 @@ struct rs_connection {
     struct rs_peer *active_peer;
     struct rs_error *err;
     int nextid;
+    int user_dispatch_flag : 1;	/* User does the dispatching.  */
 };
 
 struct rs_packet {

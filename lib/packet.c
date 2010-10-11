@@ -120,17 +120,22 @@ _write_cb (struct bufferevent *bev, void *ctx)
 #endif
   if (event_base_loopbreak (pkt->conn->evb) < 0)
     abort ();			/* FIXME */
-  rs_packet_destroy (pkt);
+  if (!pkt->conn->callbacks.sent_cb) /* Callback owns the packet now.  */
+    rs_packet_destroy (pkt);
 }
 
 static void
 _read_cb (struct bufferevent *bev, void *ctx)
 {
-  struct rs_packet *pkt = (struct rs_packet *) ctx;
+  struct rs_packet *pkt = (struct rs_packet *)ctx;
   size_t n;
 
   assert (pkt);
   assert (pkt->conn);
+
+  pkt->rpkt->sockfd = pkt->conn->active_peer->fd; /* FIXME: Why?  */
+  pkt->rpkt->vps = NULL;			  /* FIXME: Why?  */
+
   if (!pkt->hdr_read_flag)
     {
       n = bufferevent_read (pkt->conn->bev, pkt->hdr, RS_HEADER_LEN);
@@ -340,14 +345,20 @@ rs_packet_create_acc_request (struct rs_connection *conn,
   pkt = *pkt_out;
   pkt->rpkt->code = PW_AUTHENTICATION_REQUEST;
 
-  if (rs_attr_create (conn, &attr, "User-Name", user_name))
-    return -1;
-  rs_packet_add_attr (pkt, attr);
+  if (user_name)
+    {
+      if (rs_attr_create (conn, &attr, "User-Name", user_name))
+	return -1;
+      rs_packet_add_attr (pkt, attr);
 
-  if (rs_attr_create (conn, &attr, "User-Password", user_pw))
-    return -1;
-  /* FIXME: need this too? rad_pwencode(user_pw, &pwlen, SECRET, reqauth) */
-  rs_packet_add_attr (pkt, attr);
+      if (user_pw)
+	{
+	  if (rs_attr_create (conn, &attr, "User-Password", user_pw))
+	    return -1;
+	  /* FIXME: need this too? rad_pwencode(user_pw, &pwlen, SECRET, reqauth) */
+	  rs_packet_add_attr (pkt, attr);
+	}
+    }
 
   return RSE_OK;
 }
@@ -371,14 +382,10 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
   assert (conn->active_peer);
   assert (conn->active_peer->fd >= 0);
 
-  if (conn->callbacks.connected_cb || conn->callbacks.disconnected_cb
-      || conn->callbacks.received_cb || conn->callbacks.sent_cb)
-    ;		/* FIXME: install event callbacks, other than below */
-  else
-    {
-      bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
-      event_base_dispatch (conn->evb);
-    }
+  conn->user_data = user_data;
+  bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
+  if (!conn->user_dispatch_flag)
+    event_base_dispatch (conn->evb);
 
 #if defined (DEBUG)
   fprintf (stderr, "%s: event loop done\n", __func__);
@@ -409,17 +416,22 @@ rs_conn_receive_packet (struct rs_connection *conn, struct rs_packet **pkt_out)
 
   bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
   bufferevent_enable (conn->bev, EV_READ);
-  event_base_dispatch (conn->evb);
-#if defined (DEBUG)
-  fprintf (stderr, "%s: event loop done", __func__);
-  if (event_base_got_break(conn->evb))
+  bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
+
+  if (!conn->user_dispatch_flag)
     {
-      fprintf (stderr, ", got this:\n");
-      rs_dump_packet (pkt);
-    }
-  else
-    fprintf (stderr, ", no reply\n");
+      event_base_dispatch (conn->evb);
+#if defined (DEBUG)
+      fprintf (stderr, "%s: event loop done", __func__);
+      if (event_base_got_break(conn->evb))
+	{
+	  fprintf (stderr, ", got this:\n");
+	  rs_dump_packet (pkt);
+	}
+      else
+	fprintf (stderr, ", no reply\n");
 #endif
+    }
 
   return RSE_OK;
 }
