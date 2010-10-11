@@ -63,9 +63,12 @@ struct rs_connection {
     enum rs_conn_type type;
     struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;
+    void *user_data;
     struct rs_peer *peers;
     struct rs_peer *active_peer;
     struct rs_error *err;
+    int nextid;
+    int user_dispatch_flag : 1;	/* User does the dispatching.  */
 };
 
 struct rs_packet {
@@ -73,6 +76,7 @@ struct rs_packet {
     char hdr_read_flag;
     uint8_t hdr[4];
     RADIUS_PACKET *rpkt;
+    struct rs_packet *original;
 };
 
 struct rs_attr {

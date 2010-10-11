@@ -19,7 +19,7 @@ const char *_errtxt[] = {
   "libevent error"		/* 9 RSE_EVENT */
   "connection error"		/* 10 RSE_CONNERR */
   "invalid configuration file"	/* 11 RSE_CONFIG */
-  "ERR 12"			/*  RSE_ */
+  "authentication failed"	/*  RSE_BADAUTH */
   "ERR 13"			/*  RSE_ */
   "ERR 14"			/*  RSE_ */
   "ERR 15"			/*  RSE_ */

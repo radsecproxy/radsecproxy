@@ -17,6 +17,7 @@ enum rs_err_code {
     RSE_EVENT = 9,
     RSE_CONNERR = 10,
     RSE_CONFIG = 11,
+    RSE_BADAUTH = 12,
     RSE_SOME_ERROR = 21,
 };
 
@@ -96,6 +97,7 @@ int rs_conn_select_server(struct rs_connection *conn, const char *name);
 int rs_conn_get_current_server(struct rs_connection *conn,
 			       const char *name, size_t buflen);
 int rs_conn_receive_packet(struct rs_connection *conn,
+			   struct rs_packet *request,
 			   struct rs_packet **pkt_out);
 int rs_conn_fd(struct rs_connection *conn);
 
@@ -118,6 +120,7 @@ int rs_packet_send(struct rs_packet *pkt, void *data);
 struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
 
 /* Attribute.  */
+/* FIXME: Replace (or complement) with a wrapper for paircreate().  */
 int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr,
 		   const char *type, const char *val);
 void rs_attr_destroy(struct rs_attr *attr);

@@ -24,7 +24,7 @@ _packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
   rpkt = rad_alloc (1);
   if (!rpkt)
     return rs_err_conn_push (conn, RSE_NOMEM, __func__);
-  rpkt->id = -1;
+  rpkt->id = conn->nextid++;
 
   p = (struct rs_packet *) malloc (sizeof (struct rs_packet));
   if (!p)
@@ -40,13 +40,27 @@ _packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
   return RSE_OK;
 }
 
-static void
+static int
 _do_send (struct rs_packet *pkt)
 {
   int err;
+  VALUE_PAIR *vp;
 
-  rad_encode (pkt->rpkt, NULL, pkt->conn->active_peer->secret);
   assert (pkt->rpkt);
+  assert (!pkt->original);
+
+  vp = paircreate (PW_MESSAGE_AUTHENTICATOR, PW_TYPE_OCTETS);
+  if (!vp)
+    return rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
+				"rad_encode: %s", fr_strerror ());
+  pairadd (&pkt->rpkt->vps, vp);
+
+  if (rad_encode (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
+    return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+				"rad_encode: %s", fr_strerror ());
+  if (rad_sign (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
+    return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+				"rad_sign: %s", fr_strerror ());
 #if defined (DEBUG)
   {
     char host[80], serv[80];
@@ -63,16 +77,19 @@ _do_send (struct rs_packet *pkt)
   err = bufferevent_write (pkt->conn->bev, pkt->rpkt->data,
 			   pkt->rpkt->data_len);
   if (err < 0)
-    rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
-			 "bufferevent_write: %s", evutil_gai_strerror(err));
+    return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				"bufferevent_write: %s",
+				evutil_gai_strerror(err));
+  return RSE_OK;
 }
 
 static void
 _event_cb (struct bufferevent *bev, short events, void *ctx)
 {
-  struct rs_packet *pkt = (struct rs_packet *) ctx;
+  struct rs_packet *pkt = (struct rs_packet *)ctx;
   struct rs_connection *conn;
   struct rs_peer *p;
+  int err;
 
   assert (pkt);
   assert (pkt->conn);
@@ -84,10 +101,16 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
   if (events & BEV_EVENT_CONNECTED)
     {
       p->is_connected = 1;
+      if (conn->callbacks.connected_cb)
+	conn->callbacks.connected_cb (conn->user_data);
+
 #if defined (DEBUG)
       fprintf (stderr, "%s: connected\n", __func__);
 #endif
-      _do_send (pkt);
+      if (_do_send (pkt))
+	return;
+      if (conn->callbacks.sent_cb)
+	conn->callbacks.sent_cb (conn->user_data);
       /* Packet will be freed in write callback.  */
     }
   else if (events & BEV_EVENT_ERROR)
@@ -106,17 +129,22 @@ _write_cb (struct bufferevent *bev, void *ctx)
 #endif
   if (event_base_loopbreak (pkt->conn->evb) < 0)
     abort ();			/* FIXME */
-  rs_packet_destroy (pkt);
+  if (!pkt->conn->callbacks.sent_cb) /* Callback owns the packet now.  */
+    rs_packet_destroy (pkt);
 }
 
 static void
 _read_cb (struct bufferevent *bev, void *ctx)
 {
-  struct rs_packet *pkt = (struct rs_packet *) ctx;
+  struct rs_packet *pkt = (struct rs_packet *)ctx;
   size_t n;
 
   assert (pkt);
   assert (pkt->conn);
+
+  pkt->rpkt->sockfd = pkt->conn->active_peer->fd; /* FIXME: Why?  */
+  pkt->rpkt->vps = NULL;			  /* FIXME: Why?  */
+
   if (!pkt->hdr_read_flag)
     {
       n = bufferevent_read (pkt->conn->bev, pkt->hdr, RS_HEADER_LEN);
@@ -162,7 +190,31 @@ _read_cb (struct bufferevent *bev, void *ctx)
 #if defined (DEBUG)
       fprintf (stderr, "%s: complete packet read\n", __func__);
 #endif
-      rad_decode (pkt->rpkt, NULL, pkt->conn->active_peer->secret);
+      if (!rad_packet_ok (pkt->rpkt, 0) != 0)
+	return;
+      assert (pkt->original);
+
+      /* Verify header and message authenticator.  */
+      if (rad_verify (pkt->rpkt, pkt->original->rpkt,
+		      pkt->conn->active_peer->secret))
+	{
+	  rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+			       "rad_verify: %s", fr_strerror ());
+	  return;
+	}
+
+      /* Decode and decrypt.  */
+      if (rad_decode (pkt->rpkt, pkt->original->rpkt,
+		      pkt->conn->active_peer->secret))
+	{
+	  rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+			       "rad_decode: %s", fr_strerror ());
+	  return;
+	}
+
+      if (pkt->conn->callbacks.received_cb)
+	pkt->conn->callbacks.received_cb (pkt, pkt->conn->user_data);
+
       if (event_base_loopbreak (pkt->conn->evb) < 0)
 	abort ();		/* FIXME */
     }
@@ -324,14 +376,14 @@ rs_packet_create_acc_request (struct rs_connection *conn,
       if (rs_attr_create (conn, &attr, "User-Name", user_name))
 	return -1;
       rs_packet_add_attr (pkt, attr);
-    }
 
-  if (user_pw)
-    {
-      if (rs_attr_create (conn, &attr, "User-Password", user_pw))
-	return -1;
-      /* FIXME: need this too? rad_pwencode(user_pw, &pwlen, SECRET, reqauth) */
-      rs_packet_add_attr (pkt, attr);
+      if (user_pw)
+	{
+	  if (rs_attr_create (conn, &attr, "User-Password", user_pw))
+	    return -1;
+	  /* FIXME: need this too? rad_pwencode(user_pw, &pwlen, SECRET, reqauth) */
+	  rs_packet_add_attr (pkt, attr);
+	}
     }
 
   return RSE_OK;
@@ -341,6 +393,7 @@ int
 rs_packet_send (struct rs_packet *pkt, void *user_data)
 {
   struct rs_connection *conn;
+
   assert (pkt);
   conn = pkt->conn;
 
@@ -355,14 +408,10 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
   assert (conn->active_peer);
   assert (conn->active_peer->fd >= 0);
 
-  if (conn->callbacks.connected_cb || conn->callbacks.disconnected_cb
-      || conn->callbacks.received_cb || conn->callbacks.sent_cb)
-    ;		/* FIXME: install event callbacks, other than below */
-  else
-    {
-      bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
-      event_base_dispatch (conn->evb);
-    }
+  conn->user_data = user_data;
+  bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
+  if (!conn->user_dispatch_flag)
+    event_base_dispatch (conn->evb);
 
 #if defined (DEBUG)
   fprintf (stderr, "%s: event loop done\n", __func__);
@@ -373,7 +422,9 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
 }
 
 int
-rs_conn_receive_packet (struct rs_connection *conn, struct rs_packet **pkt_out)
+rs_conn_receive_packet (struct rs_connection *conn,
+		        struct rs_packet *request,
+		        struct rs_packet **pkt_out)
 {
   struct rs_packet *pkt;
 
@@ -383,6 +434,7 @@ rs_conn_receive_packet (struct rs_connection *conn, struct rs_packet **pkt_out)
     return -1;
   pkt = *pkt_out;
   pkt->conn = conn;
+  pkt->original = request;
 
   if (_conn_open (conn, pkt))
     return -1;
@@ -393,17 +445,24 @@ rs_conn_receive_packet (struct rs_connection *conn, struct rs_packet **pkt_out)
 
   bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
   bufferevent_enable (conn->bev, EV_READ);
-  event_base_dispatch (conn->evb);
-#if defined (DEBUG)
-  fprintf (stderr, "%s: event loop done", __func__);
-  if (event_base_got_break(conn->evb))
+  bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
+
+  if (!conn->user_dispatch_flag)
     {
-      fprintf (stderr, ", got this:\n");
-      rs_dump_packet (pkt);
-    }
-  else
-    fprintf (stderr, ", no reply\n");
+      event_base_dispatch (conn->evb);
+#if defined (DEBUG)
+      fprintf (stderr, "%s: event loop done", __func__);
+      if (event_base_got_break(conn->evb))
+	{
+	  fprintf (stderr, ", got this:\n");
+	  rs_dump_packet (pkt);
+	}
+      else
+	fprintf (stderr, ", no reply\n");
 #endif
+    }
+
+  pkt->original = NULL;
 
   return RSE_OK;
 }
