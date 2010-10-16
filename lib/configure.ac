@@ -1,6 +1,6 @@
 # -*- Autoconf -*- script for libradsec.
 
-AC_PREREQ([2.68])		dnl Fwiw, 2.65 is ok on Ubuntu.
+AC_PREREQ([2.65])
 AC_INIT([libradsec], [0.0.1-dev], [linus+libradsec@nordu.net])
 AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE
