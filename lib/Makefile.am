@@ -9,6 +9,7 @@ lib_LTLIBRARIES = libradsec.la
 libradsec_la_SOURCES = \
 	attr.c \
 	conf.c \
+	conn.c \
 	debug.c \
 	err.c \
 	packet.c \
