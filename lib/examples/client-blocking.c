@@ -21,8 +21,6 @@ blocking_client (const char *av1, const char *av2)
   struct rs_context *h;
   struct rs_connection *conn;
   struct rs_packet *req, *resp;
-  RADIUS_PACKET *fr_pkt;
-  VALUE_PAIR *fr_vp;
 
   if (rs_context_create (&h, "/usr/share/freeradius/dictionary"))
     return NULL;
@@ -77,10 +75,16 @@ blocking_client (const char *av1, const char *av2)
   }
 #endif /* !defined(USE_REQUEST_OBJECT) */
 
-  fr_pkt = rs_packet_frpkt (resp);
-  fr_vp = fr_pkt->vps;		/* FIXME: Is there an accessor?  */
-  vp_printlist(stdout, fr_vp);
-  rs_packet_destroy (resp);
+  if (resp)
+    {
+      RADIUS_PACKET *fr_pkt;
+      VALUE_PAIR *fr_vp;
+
+      fr_pkt = rs_packet_frpkt (resp);
+      fr_vp = fr_pkt->vps;		/* FIXME: Is there an accessor?  */
+      vp_printlist(stdout, fr_vp);
+      rs_packet_destroy (resp);
+    }
 
   rs_conn_destroy (conn);
   rs_context_destroy (h);
