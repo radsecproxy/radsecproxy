@@ -52,7 +52,6 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
     {
       struct rs_realm *r = rs_malloc (ctx, sizeof(*r));
       const char *typestr;
-      enum rs_conn_type type;
 
       if (!r)
 	return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
@@ -65,16 +64,18 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       r->name = strdup (cfg_title (cfg_config));
       typestr = cfg_getstr (cfg_config, "type");
       if (!strcmp (typestr, "UDP"))
-	type = RS_CONN_TYPE_UDP;
+	r->type = RS_CONN_TYPE_UDP;
       else if (!strcmp (typestr, "TCP"))
-	type = RS_CONN_TYPE_TCP;
+	r->type = RS_CONN_TYPE_TCP;
       else if (!strcmp (typestr, "TLS"))
-	type = RS_CONN_TYPE_TLS;
+	r->type = RS_CONN_TYPE_TLS;
       else if (!strcmp (typestr, "DTLS"))
-	type = RS_CONN_TYPE_DTLS;
+	r->type = RS_CONN_TYPE_DTLS;
       else
 	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
 				   "%s: invalid connection type", typestr);
+
+      /* Add peers, one per server stanza.  */
       for (j = 0; j < cfg_size (cfg_config, "server"); j++)
 	{
 	  struct rs_peer *p = _rs_peer_create (ctx, &r->peers);
@@ -83,7 +84,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 				       NULL);
 
 	  cfg_server = cfg_getnsec (cfg_config, "server", j);
-	  _rs_resolv (&p->addr, type, cfg_getstr (cfg_server, "hostname"),
+	  _rs_resolv (&p->addr, r->type, cfg_getstr (cfg_server, "hostname"),
 		      cfg_getstr (cfg_server, "service"));
 	  p->secret = strdup (cfg_getstr (cfg_server, "secret"));
 	  p->timeout = cfg_getint (cfg_server, "timeout");
