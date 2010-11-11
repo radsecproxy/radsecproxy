@@ -22,8 +22,8 @@
 #include <errno.h>
 #include <sys/select.h>
 #include <stdarg.h>
-#include "debug.h"
-#include "util.h"
+#include "rsp_debug.h"
+#include "rsp_util.h"
 
 char *stringcopy(const char *s, int len) {
     char *r;

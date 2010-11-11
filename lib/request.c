@@ -1,5 +1,9 @@
 /* See the file COPYING for licensing information.  */
 
+#if defined HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <time.h>
 #include <assert.h>
 #include <event2/event.h>
@@ -39,25 +43,25 @@ _timer_cb(evutil_socket_t fd, short what, void *arg)
 static void
 _rs_req_connected(void *user_data)
 {
-  struct rs_request *request = (struct rs_request *)user_data;
+  //struct rs_request *request = (struct rs_request *)user_data;
 }
 
 static void
 _rs_req_disconnected(void *user_data)
 {
-  struct rs_request *request = (struct rs_request *)user_data;
+  //struct rs_request *request = (struct rs_request *)user_data;
 }
 
 static void
 _rs_req_packet_received(const struct rs_packet *pkt, void *user_data)
 {
-  struct rs_request *request = (struct rs_request *)user_data;
+  //struct rs_request *request = (struct rs_request *)user_data;
 }
 
 static void
 _rs_req_packet_sent(void *user_data)
 {
-  struct rs_request *request = (struct rs_request *)user_data;
+  //struct rs_request *request = (struct rs_request *)user_data;
 }
 
 int

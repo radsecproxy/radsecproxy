@@ -6,12 +6,7 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
-struct hostportres {
-    char *host;
-    char *port;
-    uint8_t prefixlen;
-    struct addrinfo *addrinfo;
-};
+#include "hostport_types.h"
 
 struct hostportres *newhostport(char *hostport, char *default_port, uint8_t prefixok);
 int addhostport(struct list **hostports, char **hostport, char *portdefault, uint8_t prefixok);

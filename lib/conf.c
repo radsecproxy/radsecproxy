@@ -1,3 +1,9 @@
+/* See the file COPYING for licensing information.  */
+
+#if defined HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <confuse.h>
 #include <string.h>
 #include <radsec/radsec.h>
@@ -6,7 +12,11 @@
 #if 0
   # example of client config
   config NAME {
-      type = "UDP|TCP|TLS|DTLS"
+      type = "UDP"|"TCP"|"TLS"|"DTLS"
+      cacertfile = STRING
+      #cacertpath = STRING
+      certfile = STRING
+      certkeyfile = STRING
       server {
           hostname = STRING
 	  service = STRING
@@ -33,6 +43,10 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
   cfg_opt_t config_opts[] =
     {
       CFG_STR ("type", "UDP", CFGF_NONE),
+      CFG_STR ("cacertfile", NULL, CFGF_NONE),
+      /*CFG_STR ("cacertpath", NULL, CFGF_NONE),*/
+      CFG_STR ("certfile", NULL, CFGF_NONE),
+      CFG_STR ("certkeyfile", NULL, CFGF_NONE),
       CFG_SEC ("server", server_opts, CFGF_MULTI),
       CFG_END ()
     };
@@ -62,6 +76,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	ctx->realms = r;
       cfg_config = cfg_getnsec (cfg, "config", i);
       r->name = strdup (cfg_title (cfg_config));
+
       typestr = cfg_getstr (cfg_config, "type");
       if (!strcmp (typestr, "UDP"))
 	r->type = RS_CONN_TYPE_UDP;
@@ -75,6 +90,11 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
 				   "%s: invalid connection type", typestr);
 
+      r->cacertfile = cfg_getstr (cfg_config, "cacertfile");
+      /*r->cacertpath = cfg_getstr (cfg_config, "cacertpath");*/
+      r->certfile = cfg_getstr (cfg_config, "certfile");
+      r->certkeyfile = cfg_getstr (cfg_config, "certkeyfile");
+
       /* Add peers, one per server stanza.  */
       for (j = 0; j < cfg_size (cfg_config, "server"); j++)
 	{
@@ -82,6 +102,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	  if (!p)
 	    return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__,
 				       NULL);
+	  p->realm = r;
 
 	  cfg_server = cfg_getnsec (cfg_config, "server", j);
 	  _rs_resolv (&p->addr, r->type, cfg_getstr (cfg_server, "hostname"),

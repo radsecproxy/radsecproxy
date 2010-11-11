@@ -1,12 +1,22 @@
 /* See the file COPYING for licensing information.  */
 
+#if defined HAVE_CONFIG_H
+#include <config.h>
+#endif
+
+#include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 #include <freeradius/libradius.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>
+#if defined RS_ENABLE_TLS
+#include <event2/bufferevent_ssl.h>
+#include <openssl/err.h>
+#endif
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "tls.h"
 #if defined DEBUG
 #include <netdb.h>
 #include <sys/socket.h>
@@ -89,7 +99,7 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
   struct rs_packet *pkt = (struct rs_packet *)ctx;
   struct rs_connection *conn;
   struct rs_peer *p;
-  int err;
+  unsigned long err;
 
   assert (pkt);
   assert (pkt->conn);
@@ -103,7 +113,6 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
       p->is_connected = 1;
       if (conn->callbacks.connected_cb)
 	conn->callbacks.connected_cb (conn->user_data);
-
 #if defined (DEBUG)
       fprintf (stderr, "%s: connected\n", __func__);
 #endif
@@ -114,7 +123,24 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
       /* Packet will be freed in write callback.  */
     }
   else if (events & BEV_EVENT_ERROR)
-    rs_err_conn_push_fl (pkt->conn, RSE_CONNERR, __FILE__, __LINE__, NULL);
+    {
+#if defined RS_ENABLE_TLS
+      if (conn->tls_ssl)	/* FIXME: correct check?  */
+	{
+	  for (err = bufferevent_get_openssl_error (conn->bev);
+	       err;
+	       err = bufferevent_get_openssl_error (conn->bev))
+	    {
+	      fprintf (stderr, "%s: openssl error: %s\n", __func__,
+		       ERR_error_string (err, NULL)); /* DEBUG, until verified that pushed errors will actually be handled  */
+	      rs_err_conn_push_fl (pkt->conn, RSE_SSLERR, __FILE__, __LINE__,
+				   "%d", err);
+	    }
+	}
+#endif
+      rs_err_conn_push_fl (pkt->conn, RSE_CONNERR, __FILE__, __LINE__, NULL);
+      fprintf (stderr, "%s: BEV_EVENT_ERROR\n", __func__); /* DEBUG, until verified that pushed errors will actually be handled  */
+    }
 }
 
 static void
@@ -301,13 +327,41 @@ _pick_peer (struct rs_connection *conn)
 static int
 _init_bev (struct rs_connection *conn, struct rs_peer *peer)
 {
-  if (!conn->bev)
+  if (conn->bev)
+    return RSE_OK;
+
+  switch (conn->type)
     {
+    case RS_CONN_TYPE_UDP:
+    case RS_CONN_TYPE_TCP:
       conn->bev = bufferevent_socket_new (conn->evb, peer->fd, 0);
       if (!conn->bev)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_socket_new");
+      break;
+    case RS_CONN_TYPE_TLS:
+      if (rs_tls_init (conn))
+	return -1;
+      /* Would be convenient to pass BEV_OPT_CLOSE_ON_FREE but things
+	 seem to break when be_openssl_ctrl() (in libevent) calls
+	 SSL_set_bio() after BIO_new_socket() with flag=1.  */
+      conn->bev =
+	bufferevent_openssl_socket_new (conn->evb, peer->fd, conn->tls_ssl,
+					BUFFEREVENT_SSL_CONNECTING, 0);
+      if (!conn->bev)
+	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+				    "bufferevent_openssl_socket_new");
+
+      break;
+    case RS_CONN_TYPE_DTLS:
+      return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
+				  "%s: NYI", __func__);
+    default:
+      return rs_err_conn_push_fl (conn, RSE_INTERNAL, __FILE__, __LINE__,
+				  "%s: invalid connection type: %d", __func__,
+				  conn->type);
     }
+
   return RSE_OK;
 }
 

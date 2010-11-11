@@ -1,6 +1,11 @@
 /* See the file COPYING for licensing information.  */
 
+#if defined HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <assert.h>
+#include <event2/event.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 
@@ -49,7 +54,7 @@ _rs_resolv (struct evutil_addrinfo **addr, rs_conn_type_t type,
   struct evutil_addrinfo hints, *res = NULL;
 
   memset (&hints, 0, sizeof(struct evutil_addrinfo));
-  hints.ai_family = AF_UNSPEC;	/* v4 or v6.  */
+  hints.ai_family = AF_INET;   /* IPv4 only.  TODO: Set AF_UNSPEC.  */
   hints.ai_flags = AI_ADDRCONFIG;
   switch (type)
     {

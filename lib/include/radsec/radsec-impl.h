@@ -5,6 +5,9 @@
 
 #include <freeradius/libradius.h>
 #include <event2/util.h>
+#if defined(RS_ENABLE_TLS)
+#include <openssl/ssl.h>
+#endif
 
 /* Constants.  */
 #define RS_HEADER_LEN 4
@@ -32,6 +35,7 @@ struct rs_error {
 
 struct rs_peer {
     struct rs_connection *conn;
+    struct rs_realm *realm;
     struct evutil_addrinfo *addr;
     int fd;			/* Socket.  */
     char is_connecting;		/* FIXME: replace with a single state member */
@@ -45,6 +49,10 @@ struct rs_peer {
 struct rs_realm {
     char *name;
     enum rs_conn_type type;
+    char *cacertfile;
+    char *cacertpath;
+    char *certfile;
+    char *certkeyfile;
     struct rs_peer *peers;
     struct rs_realm *next;
 };
@@ -69,6 +77,10 @@ struct rs_connection {
     struct rs_error *err;
     int nextid;
     int user_dispatch_flag : 1;	/* User does the dispatching.  */
+#if defined(RS_ENABLE_TLS)
+    SSL_CTX *tls_ctx;
+    SSL *tls_ssl;
+#endif
 };
 
 struct rs_packet {

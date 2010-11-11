@@ -13,7 +13,16 @@ libradsec_la_SOURCES = \
 	debug.c \
 	err.c \
 	packet.c \
+	radsec.c \
 	request.c \
-	radsec.c
+	tls.c
+
+libradsec_la_SOURCES += \
+	rsp_debug.c \
+	rsp_hash.c \
+	rsp_list.c \
+	rsp_tlscommon.c \
+	rsp_util.c
+
 libradsec_la_LDFLAGS = -version-info 0:0:0
-libradsec_la_CFLAGS = $(CFLAGS) #-DDEBUG -DDEBUG_LEVENT
+libradsec_la_CFLAGS = $(CFLAGS) -DDEBUG -DDEBUG_LEVENT

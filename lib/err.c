@@ -1,5 +1,9 @@
 /* See the file COPYING for licensing information.  */
 
+#if defined HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -8,8 +12,8 @@
 
 const char *_errtxt[] = {
   "SUCCESS",			/* 0 RSE_OK */
-  "NOMEM",			/* 1 RSE_NOMEM */
-  "NYI -- not yet implemented",	/* 2 RSE_NOSYS */
+  "out of memory",		/* 1 RSE_NOMEM */
+  "not yet implemented",	/* 2 RSE_NOSYS */
   "invalid handle"		/* 3 RSE_INVALID_CTX */
   "invalid connection"		/* 4 RSE_INVALID_CONN */
   "connection type mismatch"	/* 5 RSE_CONN_TYPE_MISMATCH */
@@ -19,9 +23,9 @@ const char *_errtxt[] = {
   "libevent error"		/* 9 RSE_EVENT */
   "connection error"		/* 10 RSE_CONNERR */
   "invalid configuration file"	/* 11 RSE_CONFIG */
-  "authentication failed"	/*  RSE_BADAUTH */
-  "ERR 13"			/*  RSE_ */
-  "ERR 14"			/*  RSE_ */
+  "authentication failed"	/* 12 RSE_BADAUTH */
+  "internal error"		/* 13 RSE_INTERNAL */
+  "SSL error"			/* 14 RSE_SSLERR */
   "ERR 15"			/*  RSE_ */
   "ERR 16"			/*  RSE_ */
   "ERR 17"			/*  RSE_ */

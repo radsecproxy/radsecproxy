@@ -6,9 +6,13 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#if defined HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdlib.h>
 #include <string.h>
-#include "list.h"
+#include "rsp_list.h"
 
 /* allocates and initialises list structure; returns NULL if malloc fails */
 struct list *list_create() {

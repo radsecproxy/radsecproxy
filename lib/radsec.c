@@ -1,5 +1,9 @@
 /* See the file COPYING for licensing information.  */
 
+#if defined HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -12,6 +16,12 @@
 #include <event2/util.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#if defined RS_ENABLE_TLS
+#include <regex.h>
+#include "rsp_list.h"
+#include "../radsecproxy.h"
+#endif
+#include "rsp_debug.h"
 
 int
 rs_context_create(struct rs_context **ctx, const char *dict)
@@ -48,10 +58,14 @@ rs_context_create(struct rs_context **ctx, const char *dict)
 	}
       free (buf1);
       free (buf2);
+#if defined RS_ENABLE_TLS
+      ssl_init ();
+#endif
 #if defined (DEBUG)
       fr_log_fp = stderr;
       fr_debug_flag = 1;
 #endif
+      debug_init ("libradsec");	/* radsecproxy compat, FIXME: remove */
 
       memset (h, 0, sizeof(struct rs_context));
       fr_randinit (&h->fr_randctx, 0);

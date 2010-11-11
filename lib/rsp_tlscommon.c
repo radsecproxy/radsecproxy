@@ -6,6 +6,10 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#if defined HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 #include <signal.h>
 #include <sys/socket.h>
@@ -31,14 +35,29 @@
 #include <openssl/err.h>
 #include <openssl/md5.h>
 #include <openssl/x509v3.h>
-#include "debug.h"
-#include "list.h"
-#include "hash.h"
-#include "util.h"
-#include "hostport.h"
-#include "radsecproxy.h"
+#include "rsp_debug.h"
+#include "rsp_list.h"
+#include "rsp_hash.h"
+#include "rsp_util.h"
+#include "../hostport_types.h"
+#include "../radsecproxy.h"
 
 static struct hash *tlsconfs = NULL;
+
+void ssl_init(void) {
+    time_t t;
+    pid_t pid;
+
+    SSL_load_error_strings();
+    SSL_library_init();
+
+    while (!RAND_status()) {
+	t = time(NULL);
+	pid = getpid();
+	RAND_seed((unsigned char *)&t, sizeof(time_t));
+	RAND_seed((unsigned char *)&pid, sizeof(pid));
+    }
+}
 
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
     int pwdlen = strlen(userdata);
@@ -165,7 +184,8 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
 	return 0;
     }
 
-    calist = conf->cacertfile ? SSL_load_client_CA_file(conf->cacertfile) : NULL;
+	calist = conf->cacertfile ? SSL_load_client_CA_file(conf->cacertfile) : NULL;
+
     if (!conf->cacertfile || calist) {
 	if (conf->cacertpath) {
 	    if (!calist)
@@ -208,38 +228,39 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #ifdef RADPROT_TLS
     case RAD_TLS:
 	ctx = SSL_CTX_new(TLSv1_method());
-#ifdef DEBUG
-	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
-#endif
 	break;
 #endif
 #ifdef RADPROT_DTLS
     case RAD_DTLS:
 	ctx = SSL_CTX_new(DTLSv1_method());
-#ifdef DEBUG
-	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
-#endif
 	SSL_CTX_set_read_ahead(ctx, 1);
 	break;
 #endif
     }
     if (!ctx) {
 	debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
+	while ((error = ERR_get_error()))
+	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
 	return NULL;
     }
+#ifdef DEBUG
+	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
+#endif
 
     if (conf->certkeypwd) {
 	SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
 	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
     }
-    if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
-	!SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
-	!SSL_CTX_check_private_key(ctx)) {
-	while ((error = ERR_get_error()))
-	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-	debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
-	SSL_CTX_free(ctx);
-	return NULL;
+    if (conf->certfile || conf->certkeyfile) {
+	if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
+	    !SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+	    !SSL_CTX_check_private_key(ctx)) {
+	    while ((error = ERR_get_error()))
+		debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+	    debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS (certfile issues) in TLS context %s", conf->name);
+	    SSL_CTX_free(ctx);
+	    return NULL;
+	}
     }
 
     if (conf->policyoids) {
@@ -526,6 +547,7 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     return 1;
 }
 
+#if 0
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct tls *conf;
     long int expiry = LONG_MIN;
@@ -596,6 +618,7 @@ errexit:
     free(conf);
     return 0;
 }
+#endif
 
 int addmatchcertattr(struct clsrvconf *conf) {
     char *v;

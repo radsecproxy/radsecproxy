@@ -107,7 +107,7 @@ struct clsrvconf {
     struct server *servers;
 };
 
-#include "tlscommon.h"
+#include "rsp_tlscommon.h"
 
 struct client {
     struct clsrvconf *conf;

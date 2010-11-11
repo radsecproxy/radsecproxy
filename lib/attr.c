@@ -1,5 +1,9 @@
 /* See the file COPYING for licensing information.  */
 
+#if defined HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <freeradius/libradius.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
