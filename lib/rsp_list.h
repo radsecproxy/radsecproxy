@@ -12,6 +12,10 @@
 #include <stdint.h>
 #endif
 
+#if defined (__cplusplus)
+extern "C" {
+#endif
+
 struct list_node {
     struct list_node *next;
     void *data;
@@ -45,6 +49,10 @@ struct list_node *list_next(struct list_node *node);
 
 /* returns number of nodes */
 uint32_t list_count(struct list *list);
+
+#if defined (__cplusplus)
+}
+#endif
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

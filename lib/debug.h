@@ -7,5 +7,13 @@
       if (i % 16 == 0) printf ("\n"); }	\
     printf ("\n"); }
 
+#if defined (__cplusplus)
+extern "C" {
+#endif
+
 void rs_dump_packet (const struct rs_packet *pkt);
 void rs_dump_attr (const struct rs_attr *attr);
+
+#if defined (__cplusplus)
+}
+#endif

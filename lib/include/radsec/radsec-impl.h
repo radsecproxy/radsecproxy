@@ -19,6 +19,10 @@ enum rs_cred_type {
 };
 typedef unsigned int rs_cred_type_t;
 
+#if defined (__cplusplus)
+extern "C" {
+#endif
+
 struct rs_packet;
 
 struct rs_credentials {
@@ -107,6 +111,10 @@ struct rs_error *_rs_err_create(unsigned int code, const char *file,
 int _rs_err_conn_push_err(struct rs_connection *conn,
 			  struct rs_error *err);
 
+
+#if defined (__cplusplus)
+}
+#endif
 
 /* Convenience macros.  */
 #define rs_calloc(h, nmemb, size) \

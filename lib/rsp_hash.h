@@ -10,6 +10,10 @@
 #include <stdint.h>
 #endif
 
+#if defined (__cplusplus)
+extern "C" {
+#endif
+
 struct hash {
     struct list *hashlist;
     pthread_mutex_t mutex;
@@ -42,6 +46,10 @@ struct hash_entry *hash_first(struct hash *hash);
 
 /* returns the next entry after the argument */
 struct hash_entry *hash_next(struct hash_entry *entry);
+
+#if defined (__cplusplus)
+}
+#endif
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

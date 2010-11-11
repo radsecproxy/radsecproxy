@@ -16,6 +16,10 @@
 #define DBG_WARN 64
 #define DBG_ERR 128
 
+#if defined (__cplusplus)
+extern "C" {
+#endif
+
 void debug_init(char *ident);
 void debug_set_level(uint8_t level);
 void debug_timestamp_on();
@@ -26,6 +30,10 @@ void debugerrno(int err, uint8_t level, char *format, ...);
 void debugerrnox(int err, uint8_t level, char *format, ...);
 int debug_set_destination(char *dest);
 void debug_reopen_log();
+
+#if defined (__cplusplus)
+}
+#endif
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

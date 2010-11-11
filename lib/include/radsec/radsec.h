@@ -33,6 +33,10 @@ enum rs_conn_type {
 typedef unsigned int rs_conn_type_t;
 
 
+#if defined (__cplusplus)
+extern "C" {
+#endif
+
 /* Data types.  */
 struct rs_context;		/* radsec-impl.h */
 struct rs_connection;		/* radsec-impl.h */
@@ -145,6 +149,10 @@ struct rs_error *rs_err_conn_pop(struct rs_connection *conn);
 void rs_err_free(struct rs_error *err);
 char *rs_err_msg(struct rs_error *err, int dofree_flag);
 int rs_err_code(struct rs_error *err, int dofree_flag);
+
+#if defined (__cplusplus)
+}
+#endif
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

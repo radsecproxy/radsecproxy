@@ -8,6 +8,10 @@
 
 #include <openssl/ssl.h>
 
+#if defined (__cplusplus)
+extern "C" {
+#endif
+
 struct tls {
     char *name;
     char *cacertfile;
@@ -33,6 +37,10 @@ X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 int addmatchcertattr(struct clsrvconf *conf);
+#endif
+
+#if defined (__cplusplus)
+}
 #endif
 
 /* Local Variables: */
