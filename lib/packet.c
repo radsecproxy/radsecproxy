@@ -99,7 +99,9 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
   struct rs_packet *pkt = (struct rs_packet *)ctx;
   struct rs_connection *conn;
   struct rs_peer *p;
+#if defined RS_ENABLE_TLS
   unsigned long err;
+#endif
 
   assert (pkt);
   assert (pkt->conn);
@@ -137,7 +139,7 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
 				   "%d", err);
 	    }
 	}
-#endif
+#endif	/* RS_ENABLE_TLS */
       rs_err_conn_push_fl (pkt->conn, RSE_CONNERR, __FILE__, __LINE__, NULL);
       fprintf (stderr, "%s: BEV_EVENT_ERROR\n", __func__); /* DEBUG, until verified that pushed errors will actually be handled  */
     }
@@ -339,6 +341,7 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_socket_new");
       break;
+#if defined RS_ENABLE_TLS
     case RS_CONN_TYPE_TLS:
       if (rs_tls_init (conn))
 	return -1;
@@ -356,6 +359,7 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
     case RS_CONN_TYPE_DTLS:
       return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 				  "%s: NYI", __func__);
+#endif	/* RS_ENABLE_TLS */
     default:
       return rs_err_conn_push_fl (conn, RSE_INTERNAL, __FILE__, __LINE__,
 				  "%s: invalid connection type: %d", __func__,

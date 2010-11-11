@@ -11,13 +11,6 @@ AC_PROG_LIBTOOL
 # Checks for programs.
 AC_PROG_CC
 
-# Enable-knobs.
-AH_TEMPLATE([RS_ENABLE_TLS], [TLS (RadSec) enabled])
-AH_TEMPLATE([RADPROT_TLS], [])
-AC_ARG_ENABLE([tls], AS_HELP_STRING([--enable-tls], [enable TLS (RadSec)]),
-    [AC_DEFINE([RS_ENABLE_TLS])
-     AC_DEFINE([RADPROT_TLS])])
-
 # Checks for libraries.
 AC_CHECK_LIB([confuse], [cfg_init],,
     AC_MSG_ERROR([required library libconfuse not found]))
@@ -25,11 +18,16 @@ AC_CHECK_LIB([event_core], [event_get_version],,
     AC_MSG_ERROR([required library libevent_core not found]))
 AC_CHECK_LIB([freeradius-radius], [rad_alloc],,
     AC_MSG_ERROR([required library libfreeradius-radius not found]))
-dnl TODO: Only do this if --enable-tls or --enable-dtls.
-#AC_CHECK_LIB([ssl], [SSL_new],,
-#    AC_MSG_ERROR([required library libssl not found]))
-AC_CHECK_LIB([event_openssl], [bufferevent_openssl_socket_new],,
-    AC_MSG_ERROR([required library event_openssl not found]))
+
+# Enable-knobs.
+AH_TEMPLATE([RS_ENABLE_TLS], [TLS (RadSec) enabled])
+AH_TEMPLATE([RADPROT_TLS], [])
+AC_ARG_ENABLE([tls], AS_HELP_STRING([--enable-tls], [enable TLS (RadSec)]),
+    [AC_CHECK_LIB([event_openssl], [bufferevent_openssl_socket_new],,
+         AC_MSG_ERROR([required library event_openssl not found]))
+     AC_DEFINE([RS_ENABLE_TLS])
+     AC_DEFINE([RADPROT_TLS])])
+AM_CONDITIONAL([RS_ENABLE_TLS], [test "${enable_tls+set}" = set])
 
 # Checks for header files.
 AC_CHECK_HEADERS(

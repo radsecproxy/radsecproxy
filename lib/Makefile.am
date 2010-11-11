@@ -14,15 +14,19 @@ libradsec_la_SOURCES = \
 	err.c \
 	packet.c \
 	radsec.c \
-	request.c \
-	tls.c
+	request.c
 
 libradsec_la_SOURCES += \
 	rsp_debug.c \
 	rsp_hash.c \
 	rsp_list.c \
-	rsp_tlscommon.c \
 	rsp_util.c
+
+if RS_ENABLE_TLS
+libradsec_la_SOURCES += \
+	tls.c \
+	rsp_tlscommon.c
+endif
 
 libradsec_la_LDFLAGS = -version-info 0:0:0
 libradsec_la_CFLAGS = $(CFLAGS) -DDEBUG -DDEBUG_LEVENT
