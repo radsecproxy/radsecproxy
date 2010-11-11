@@ -439,7 +439,6 @@ rs_packet_create_acc_request (struct rs_connection *conn,
 	{
 	  if (rs_attr_create (conn, &attr, "User-Password", user_pw))
 	    return -1;
-	  /* FIXME: need this too? rad_pwencode(user_pw, &pwlen, SECRET, reqauth) */
 	  rs_packet_add_attr (pkt, attr);
 	}
     }
