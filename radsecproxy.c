@@ -2417,10 +2417,12 @@ struct modattr *extractmodattr(char *nameval) {
 struct rewrite *getrewrite(char *alt1, char *alt2) {
     struct rewrite *r;
 
-    if ((r = hash_read(rewriteconfs,  alt1, strlen(alt1))))
-	return r;
-    if ((r = hash_read(rewriteconfs,  alt2, strlen(alt2))))
-	return r;
+    if (alt1)
+	if ((r = hash_read(rewriteconfs,  alt1, strlen(alt1))))
+	    return r;
+    if (alt2)
+	if ((r = hash_read(rewriteconfs,  alt2, strlen(alt2))))
+	    return r;
     return NULL;
 }
 
