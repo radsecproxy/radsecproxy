@@ -1,4 +1,4 @@
-AC_INIT(radsecproxy, 1.4, radsecproxy@uninett.no)
+AC_INIT(radsecproxy, 1.4.1, radsecproxy@uninett.no)
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
 AC_PROG_CC

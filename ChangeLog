@@ -81,3 +81,9 @@
 	- Build on Solaris when compiling with gcc.
 	- A bug in pwdencrypt() with passwords of a length greater than
 	16 octets.
+2010-11-17 1.4.1
+	Bug fixes:
+	- OpenSSL session caching is disabled when built against OpenSSL
+	  older than 1.0.0b to mitigate possible effects of
+	  http://openssl.org/news/secadv_20101116.txt (RADSECPROXY-14).
+	- Crash bug when reading improper config file fixed.
