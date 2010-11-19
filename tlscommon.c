@@ -203,6 +203,7 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
 static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     SSL_CTX *ctx = NULL;
     unsigned long error;
+    long sslversion = SSLeay();
 
     switch (type) {
 #ifdef RADPROT_TLS
@@ -227,15 +228,15 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 	debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
 	return NULL;
     }
-#if OPENSSL_VERSION_NUMBER < 0x0090810f \
-    || (OPENSSL_VERSION_NUMBER >= 0x1000000f \
-	&& OPENSSL_VERSION_NUMBER < 0x1000002f)
-    debug(DBG_WARN, "%s: OpenSSL seems to be of a version with a  "
-	  "certain security critical bug (fixed in OpenSSL 0.9.8p and "
-	  "1.0.0b).  Disabling OpenSSL session caching for context %p.",
-	  __func__, ctx);
-    SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
-#endif
+
+    if (sslversion < 0x00908100L ||
+        (sslversion >= 0x10000000L && sslversion < 0x10000020L)) {
+        debug(DBG_WARN, "%s: %s seems to be of a version with a  "
+	      "certain security critical bug (fixed in OpenSSL 0.9.8p and "
+	      "1.0.0b).  Disabling OpenSSL session caching for context %p.",
+	      __func__, SSLeay_version(SSLEAY_VERSION), ctx);
+        SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
+    }
 
     if (conf->certkeypwd) {
 	SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
