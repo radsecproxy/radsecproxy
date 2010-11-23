@@ -87,7 +87,8 @@
 	  older than 1.0.0b to mitigate possible effects of
 	  http://openssl.org/news/secadv_20101116.txt (RADSECPROXY-14).
 	- Crash bug when reading improper config file fixed.
-2010-11-18 1.4-dev
+2010-11-23 1.4.2
 	Bug fixes:
 	- Don't disable OpenSSL session caching for 0.9.8p and newer in
 	  the 0.9.x track.
+	- Detect OpenSSL version at runtime rather than at compile time.
