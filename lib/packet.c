@@ -62,7 +62,7 @@ _do_send (struct rs_packet *pkt)
   vp = paircreate (PW_MESSAGE_AUTHENTICATOR, PW_TYPE_OCTETS);
   if (!vp)
     return rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
-				"rad_encode: %s", fr_strerror ());
+				"paircreate: %s", fr_strerror ());
   pairadd (&pkt->rpkt->vps, vp);
 
   if (rad_encode (pkt->rpkt, NULL, pkt->conn->active_peer->secret))

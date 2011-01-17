@@ -6,6 +6,7 @@ SUBDIRS = . examples include
 INCLUDES = -I$(srcdir)/include
 
 lib_LTLIBRARIES = libradsec.la
+
 libradsec_la_SOURCES = \
 	attr.c \
 	conf.c \
