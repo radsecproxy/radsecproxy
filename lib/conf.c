@@ -30,7 +30,7 @@
 int
 rs_context_read_config(struct rs_context *ctx, const char *config_file)
 {
-#warning "Missing some error handling in rs_context_config_read()"
+#warning "Missing some error handling in rs_context_read_config()"
   cfg_opt_t server_opts[] =
     {
       CFG_STR ("hostname", NULL, CFGF_NONE),
@@ -88,7 +88,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	r->type = RS_CONN_TYPE_DTLS;
       else
 	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
-				   "%s: invalid connection type", typestr);
+				   "invalid connection type: %s", typestr);
 
       r->cacertfile = cfg_getstr (cfg_config, "cacertfile");
       /*r->cacertpath = cfg_getstr (cfg_config, "cacertpath");*/
