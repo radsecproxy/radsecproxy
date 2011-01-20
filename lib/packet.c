@@ -362,7 +362,7 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
 #endif	/* RS_ENABLE_TLS */
     default:
       return rs_err_conn_push_fl (conn, RSE_INTERNAL, __FILE__, __LINE__,
-				  "%s: invalid connection type: %d", __func__,
+				  "%s: unknown connection type: %d", __func__,
 				  conn->type);
     }
 
