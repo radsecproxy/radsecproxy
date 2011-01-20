@@ -41,7 +41,7 @@ _resolve (const char *str)
 }
 
 ssize_t
-poll (struct polldata *data)
+udp_poll (struct polldata *data)
 {
   int r;
   long timeout;
@@ -68,7 +68,7 @@ poll (struct polldata *data)
 }
 
 struct polldata *
-server (const char *bindto, struct timeval *timeout, data_cb cb)
+udp_server (const char *bindto, struct timeval *timeout, data_cb cb)
 {
   struct addrinfo *res;
   int s = -1;

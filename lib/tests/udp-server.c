@@ -29,9 +29,9 @@ main (int argc, char *argv[])
 
   tv.tv_sec = TIMEOUT;
   tv.tv_usec = 0;
-  data = server (argv[1], &tv, handle_data);
+  data = udp_server (argv[1], &tv, handle_data);
 
-  for (i = 0, n = poll (data); n == 0 && i < 3; n = poll (data), i++)
+  for (i = 0, n = udp_poll (data); n == 0 && i < 3; n = udp_poll (data), i++)
     {
       fprintf (stderr, "waiting another %ld second%s\n",
 	       tv.tv_sec, tv.tv_sec > 1 ? "s" : "");
