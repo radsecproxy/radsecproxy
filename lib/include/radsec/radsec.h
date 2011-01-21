@@ -116,14 +116,15 @@ void rs_server_set_timeout(struct rs_peer *server, int timeout);
 void rs_server_set_tries(struct rs_peer *server, int tries);
 
 /* Packet.  */
-int rs_packet_create_acc_request(struct rs_connection *conn,
-				 struct rs_packet **pkt,
-				 const char *user_name, /* FIXME: remove? */
-				 const char *user_pw);	/* FIXME: remove? */
-void rs_packet_destroy(struct rs_packet *pkt);
+int rs_packet_create(struct rs_connection *conn, struct rs_packet **pkt_out);
+int rs_packet_create_auth_request(struct rs_connection *conn,
+				  struct rs_packet **pkt,
+				  const char *user_name, /* FIXME: remove? */
+				  const char *user_pw);	/* FIXME: remove? */
 void rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr);
 int rs_packet_send(struct rs_packet *pkt, void *data);
 struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
+void rs_packet_destroy(struct rs_packet *pkt);
 
 /* Attribute.  */
 /* FIXME: Replace (or complement) with a wrapper for paircreate().  */

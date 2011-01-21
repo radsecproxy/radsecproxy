@@ -24,33 +24,6 @@
 #endif
 
 static int
-_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
-{
-  struct rs_packet *p;
-  RADIUS_PACKET *rpkt;
-
-  *pkt_out = NULL;
-
-  rpkt = rad_alloc (1);
-  if (!rpkt)
-    return rs_err_conn_push (conn, RSE_NOMEM, __func__);
-  rpkt->id = conn->nextid++;
-
-  p = (struct rs_packet *) malloc (sizeof (struct rs_packet));
-  if (!p)
-    {
-      rad_free (&rpkt);
-      return rs_err_conn_push (conn, RSE_NOMEM, __func__);
-    }
-  memset (p, 0, sizeof (struct rs_packet));
-  p->conn = conn;
-  p->rpkt = rpkt;
-
-  *pkt_out = p;
-  return RSE_OK;
-}
-
-static int
 _do_send (struct rs_packet *pkt)
 {
   int err;
@@ -417,14 +390,41 @@ _conn_is_open_p (struct rs_connection *conn)
 
 /* Public functions.  */
 int
-rs_packet_create_acc_request (struct rs_connection *conn,
-			      struct rs_packet **pkt_out,
-			      const char *user_name, const char *user_pw)
+rs_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
+{
+  struct rs_packet *p;
+  RADIUS_PACKET *rpkt;
+
+  *pkt_out = NULL;
+
+  rpkt = rad_alloc (1);
+  if (!rpkt)
+    return rs_err_conn_push (conn, RSE_NOMEM, __func__);
+  rpkt->id = conn->nextid++;
+
+  p = (struct rs_packet *) malloc (sizeof (struct rs_packet));
+  if (!p)
+    {
+      rad_free (&rpkt);
+      return rs_err_conn_push (conn, RSE_NOMEM, __func__);
+    }
+  memset (p, 0, sizeof (struct rs_packet));
+  p->conn = conn;
+  p->rpkt = rpkt;
+
+  *pkt_out = p;
+  return RSE_OK;
+}
+
+int
+rs_packet_create_auth_request (struct rs_connection *conn,
+			       struct rs_packet **pkt_out,
+			       const char *user_name, const char *user_pw)
 {
   struct rs_packet *pkt;
   struct rs_attr *attr;
 
-  if (_packet_create (conn, pkt_out))
+  if (rs_packet_create (conn, pkt_out))
     return -1;
   pkt = *pkt_out;
   pkt->rpkt->code = PW_AUTHENTICATION_REQUEST;
@@ -487,7 +487,7 @@ rs_conn_receive_packet (struct rs_connection *conn,
 
   assert (conn);
 
-  if (_packet_create (conn, pkt_out))
+  if (rs_packet_create (conn, pkt_out))
     return -1;
   pkt = *pkt_out;
   pkt->conn = conn;
@@ -543,7 +543,7 @@ rs_packet_destroy(struct rs_packet *pkt)
 {
   if (pkt)
     {
-      // TODO: free all attributes
+      // FIXME: memory leak! TODO: free all attributes
       rad_free (&pkt->rpkt);
       rs_free (pkt->conn->ctx, pkt);
     }
