@@ -43,5 +43,6 @@ AC_CHECK_FUNCS([memset socket strdup strerror strrchr])
 
 AC_CONFIG_FILES([Makefile
 		 include/Makefile
-                 examples/Makefile])
+                 examples/Makefile
+                 tests/Makefile])
 AC_OUTPUT
