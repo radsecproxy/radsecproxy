@@ -40,6 +40,19 @@ _resolve (const char *str)
   return rp;
 }
 
+void
+udp_free_polldata (struct polldata *data)
+{
+  if (data)
+    {
+      if (data->timeout)
+	free (data->timeout);
+      free (data);
+    }
+}
+
+/* @return if select() returns error or timeout, return select()
+   else return value from invoked callback function */
 ssize_t
 udp_poll (struct polldata *data)
 {
@@ -105,4 +118,20 @@ udp_server (const char *bindto, struct timeval *timeout, data_cb cb)
     }
 
   return NULL;
+}
+
+ssize_t
+hd (const uint8_t *buf, ssize_t len)
+{
+  int i;
+
+  printf ("# len: %ld\n", len);
+  for (i = 0; i < len; i++)
+    {
+      printf ("%02x%s", buf[i], (i+1) % 8 ? " " : "   ");
+      if ((i + 1) % 16 == 0)
+	printf ("\n");
+    }
+  printf ("\n");
+  return len;
 }

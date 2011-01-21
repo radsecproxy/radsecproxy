@@ -5,17 +5,7 @@
 ssize_t
 handle_data (const uint8_t *buf, ssize_t len)
 {
-  int i;
-
-  printf ("# len: %ld\n", len);
-  for (i = 0; i < len; i++)
-    {
-      printf ("%02x%s", buf[i], (i+1) % 8 ? " " : "   ");
-      if ((i + 1) % 16 == 0)
-	printf ("\n");
-    }
-  printf ("\n");
-  return len;
+  return hd (buf, len);
 }
 
 int
@@ -37,11 +27,6 @@ main (int argc, char *argv[])
 	       tv.tv_sec, tv.tv_sec > 1 ? "s" : "");
     }
 
-  if (data)
-    {
-      if (data->timeout)
-	free (data->timeout);
-      free (data);
-    }
+  udp_free_polldata (data);
   return (n <= 0);
 }
