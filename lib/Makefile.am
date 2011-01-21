@@ -4,6 +4,7 @@ ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = . examples include 
 
 INCLUDES = -I$(srcdir)/include
+AM_CFLAGS = -Wall -g
 
 lib_LTLIBRARIES = libradsec.la
 
