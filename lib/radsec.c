@@ -26,55 +26,73 @@
 int
 rs_context_create(struct rs_context **ctx, const char *dict)
 {
+  int err = RSE_OK;
   struct rs_context *h;
+  char *buf1 = NULL, *buf2 = NULL;
+  char *dir, *fn;
+
+  assert (dict);
 
   if (ctx)
     *ctx = NULL;
   h = (struct rs_context *) malloc (sizeof(struct rs_context));
-  if (h)
-    {
-      char *buf1 = NULL, *buf2 = NULL;
-      char *dir, *fn;
+  if (!h)
+    return RSE_NOMEM;
 
-      buf1 = malloc (strlen (dict) + 1);
-      buf2 = malloc (strlen (dict) + 1);
-      if (!buf1 || !buf2)
-	{
-	  free (h);
-	  if (buf1)
-	    free (buf1);
-	  if (buf2)
-	    free (buf2);
-	  return RSE_NOMEM;
-	}
-      strcpy (buf1, dict);
-      dir = dirname (buf1);
-      strcpy (buf2, dict);
-      fn = basename (buf2);
-      if (dict_init (dir, fn) < 0)
-	{
-	  free (h);
-	  return RSE_SOME_ERROR;
-	}
-      free (buf1);
-      free (buf2);
+  /* Initialize freeradius dictionary.  */
+  buf1 = malloc (strlen (dict) + 1);
+  buf2 = malloc (strlen (dict) + 1);
+  if (!buf1 || !buf2)
+    {
+      err = RSE_NOMEM;
+      goto err_out;
+    }
+  strcpy (buf1, dict);
+  dir = dirname (buf1);
+  strcpy (buf2, dict);
+  fn = basename (buf2);
+  if (dict_init (dir, fn) < 0)
+    {
+      err = RSE_SOME_ERROR;
+      goto err_out;
+    }
+  free (buf1);
+  free (buf2);
+
 #if defined RS_ENABLE_TLS
-      ssl_init ();
+  ssl_init ();
 #endif
 #if defined (DEBUG)
-      fr_log_fp = stderr;
-      fr_debug_flag = 1;
+  fr_log_fp = stderr;
+  fr_debug_flag = 1;
 #endif
-      debug_init ("libradsec");	/* radsecproxy compat, FIXME: remove */
+  debug_init ("libradsec");	/* radsecproxy compat, FIXME: remove */
 
-      memset (h, 0, sizeof(struct rs_context));
-      fr_randinit (&h->fr_randctx, 0);
-      fr_rand_seed (NULL, 0);
-
-      if (ctx)
-	*ctx = h;
+  memset (h, 0, sizeof(struct rs_context));
+  h->realms = malloc (sizeof (struct rs_realm));
+  if (!h->realms)
+    {
+      err = RSE_NOMEM;
+      goto err_out;
     }
-  return h ? RSE_OK : RSE_NOMEM;
+  memset (h->realms, 0, sizeof (struct rs_realm));
+  h->realms->next = h->realms;
+  fr_randinit (&h->fr_randctx, 0);
+  fr_rand_seed (NULL, 0);
+
+  if (ctx)
+    *ctx = h;
+
+  return RSE_OK;
+
+ err_out:
+  if (buf1)
+    free (buf1);
+  if (buf2)
+    free (buf2);
+  if (h)
+    free (h);
+  return err;
 }
 
 void rs_context_destroy(struct rs_context *ctx)

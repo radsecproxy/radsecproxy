@@ -70,10 +70,8 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       if (!r)
 	return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
       memset (r, 0, sizeof(*r));
-      if (ctx->realms)
-	ctx->realms->next = r;
-      else
-	ctx->realms = r;
+      r->next = ctx->realms->next;
+      ctx->realms->next = r;
       cfg_config = cfg_getnsec (cfg, "config", i);
       r->name = strdup (cfg_title (cfg_config));
 
@@ -115,12 +113,12 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
   return RSE_OK;
 }
 
-struct rs_realm
-*rs_conf_find_realm(struct rs_context *ctx, const char *name)
+struct rs_realm *
+rs_conf_find_realm(struct rs_context *ctx, const char *name)
 {
   struct rs_realm *r;
 
-  for (r = ctx->realms; r; r = r->next)
+  for (r = ctx->realms->next; r != ctx->realms; r = r->next)
     if (!strcmp (r->name, name))
 	return r;
   return NULL;
