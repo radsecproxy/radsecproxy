@@ -12,8 +12,8 @@
 #endif
 
 #define SECRET "sikrit"
-#define USER_NAME "bob"
-#define USER_PW "hemligt"
+#define USER_NAME "molgan"
+#define USER_PW "password"
 
 struct rs_error *
 blocking_client (const char *av1, const char *av2)
@@ -48,7 +48,7 @@ blocking_client (const char *av1, const char *av2)
     return rs_err_conn_pop (conn);
 #endif	/* USE_CONFIG_FILE */
 
-  if (rs_packet_create_acc_request (conn, &req, USER_NAME, USER_PW))
+  if (rs_packet_create_auth_request (conn, &req, USER_NAME, USER_PW))
     return rs_err_conn_pop (conn);
 
 #if !defined(USE_REQUEST_OBJECT)
