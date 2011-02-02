@@ -7,16 +7,14 @@
 #include <event2/event.h>
 #include <freeradius/libradius.h>
 #include <radsec/radsec.h>
-#if defined(USE_REQUEST_OBJECT)
 #include <radsec/request.h>
-#endif
 
 #define SECRET "sikrit"
 #define USER_NAME "molgan"
 #define USER_PW "password"
 
 struct rs_error *
-blocking_client (const char *av1, const char *av2)
+blocking_client (const char *av1, const char *av2, int use_request_object_flag)
 {
   struct rs_context *h;
   struct rs_connection *conn;
@@ -51,29 +49,30 @@ blocking_client (const char *av1, const char *av2)
   if (rs_packet_create_auth_request (conn, &req, USER_NAME, USER_PW))
     return rs_err_conn_pop (conn);
 
-#if !defined(USE_REQUEST_OBJECT)
-  if (rs_packet_send (req, NULL))
+  if (use_request_object_flag)
     {
-      rs_packet_destroy (req);
-      return rs_err_conn_pop (conn);
-    }
-  if (rs_conn_receive_packet (conn, req, &resp))
-    {
-      rs_packet_destroy (req);
-      return rs_err_conn_pop (conn);
-    }
-  rs_packet_destroy (req);
-#else
-  {
-    struct rs_request *request;
+      struct rs_request *request;
 
-    if (rs_request_create (conn, &request))
-      return rs_err_conn_pop (conn);
-    if (rs_request_send (request, req, &resp))
-      return rs_err_conn_pop (conn);
-    rs_request_destroy (request);
-  }
-#endif /* !defined(USE_REQUEST_OBJECT) */
+      if (rs_request_create (conn, &request))
+	return rs_err_conn_pop (conn);
+      if (rs_request_send (request, req, &resp))
+	return rs_err_conn_pop (conn);
+      rs_request_destroy (request);
+    }
+  else
+    {
+      if (rs_packet_send (req, NULL))
+	{
+	  rs_packet_destroy (req);
+	  return rs_err_conn_pop (conn);
+	}
+      if (rs_conn_receive_packet (conn, req, &resp))
+	{
+	  rs_packet_destroy (req);
+	  return rs_err_conn_pop (conn);
+	}
+      rs_packet_destroy (req);
+    }
 
   if (resp)
     {
@@ -94,9 +93,16 @@ blocking_client (const char *av1, const char *av2)
 int
 main (int argc, char *argv[])
 {
+  int use_request_object_flag = 0;
   struct rs_error *err;
 
-  err = blocking_client (argv[1], argv[2]);
+  if (argc > 1 && argv[1] && argv[1][0] == '-' && argv[1][1] == 'r')
+    {
+      use_request_object_flag = 1;
+      argc--;
+      argv++;
+    }
+  err = blocking_client (argv[1], argv[2], use_request_object_flag);
   if (err)
     {
       fprintf (stderr, "%s\n", rs_err_msg (err, 0));
