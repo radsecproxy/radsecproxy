@@ -93,7 +93,7 @@ test_buffering_cb (const uint8_t *buf, ssize_t len)
 {
   /* "Exactly one RADIUS packet is encapsulated in the UDP Data field"
      [RFC 2865]*/
-#if 1
+#if 0
   hd (buf, len);
 #endif
   assert_true (len >= 20);
