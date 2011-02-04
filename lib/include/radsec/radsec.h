@@ -11,16 +11,16 @@ enum rs_err_code {
     RSE_INVALID_CTX = 3,
     RSE_INVALID_CONN = 4,
     RSE_CONN_TYPE_MISMATCH = 5,
-    RSE_FR = 6,
+    RSE_FR = 6,			/* FreeRADIUS error.  */
     RSE_BADADDR = 7,
     RSE_NOPEER = 8,
-    RSE_EVENT = 9,
+    RSE_EVENT = 9,		/* libevent error.  */
     RSE_CONNERR = 10,
     RSE_CONFIG = 11,
     RSE_BADAUTH = 12,
     RSE_INTERNAL = 13,
-    RSE_SSLERR = 14,
-    RSE_SOME_ERROR = 21,
+    RSE_SSLERR = 14,	  /* OpenSSL error.  */
+    RSE_SOME_ERROR = 21,  /* Unspecified error.  Shouldn't happen.  */
 };
 
 enum rs_conn_type {
