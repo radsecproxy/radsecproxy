@@ -14,6 +14,12 @@ extern "C" {
 void rs_dump_packet (const struct rs_packet *pkt);
 void rs_dump_attr (const struct rs_attr *attr);
 
+#if defined DEBUG
+int rs_debug (const char *fmt, ...);
+#else
+#define rs_debug (void)
+#endif
+
 #if defined (__cplusplus)
 }
 #endif

@@ -52,11 +52,11 @@ _do_send (struct rs_packet *pkt)
 		 pkt->conn->active_peer->addr->ai_addrlen,
 		 host, sizeof(host), serv, sizeof(serv),
 		 0 /* NI_NUMERICHOST|NI_NUMERICSERV*/);
-    fprintf (stderr, "%s: about to send this to %s:%s:\n", __func__, host,
-	     serv);
+    rs_debug ("%s: about to send this to %s:%s:\n", __func__, host, serv);
     rs_dump_packet (pkt);
   }
 #endif
+
   err = bufferevent_write (pkt->conn->bev, pkt->rpkt->data,
 			   pkt->rpkt->data_len);
   if (err < 0)
@@ -88,9 +88,7 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
       p->is_connected = 1;
       if (conn->callbacks.connected_cb)
 	conn->callbacks.connected_cb (conn->user_data);
-#if defined (DEBUG)
-      fprintf (stderr, "%s: connected\n", __func__);
-#endif
+      rs_debug ("%s: connected\n", __func__);
       if (_do_send (pkt))
 	return;
       if (conn->callbacks.sent_cb)
@@ -106,15 +104,16 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
 	       err;
 	       err = bufferevent_get_openssl_error (conn->bev))
 	    {
-	      fprintf (stderr, "%s: openssl error: %s\n", __func__,
-		       ERR_error_string (err, NULL)); /* DEBUG, until verified that pushed errors will actually be handled  */
+	      fprintf (stderr, "%s: DEBUG: openssl error: %s\n", __func__,
+		       ERR_error_string (err, NULL)); /* FIXME: DEBUG, until verified that pushed errors will actually be handled  */
 	      rs_err_conn_push_fl (pkt->conn, RSE_SSLERR, __FILE__, __LINE__,
 				   "%d", err);
 	    }
 	}
 #endif	/* RS_ENABLE_TLS */
+
       rs_err_conn_push_fl (pkt->conn, RSE_CONNERR, __FILE__, __LINE__, NULL);
-      fprintf (stderr, "%s: BEV_EVENT_ERROR\n", __func__); /* DEBUG, until verified that pushed errors will actually be handled  */
+      fprintf (stderr, "%s: DEBUG: BEV_EVENT_ERROR\n", __func__); /* FIXME: DEBUG, until verified that pushed errors will actually be handled  */
     }
 }
 
@@ -248,7 +247,7 @@ _evlog_cb (int severity, const char *msg)
       sevstr = "???";
       break;
     }
-  fprintf (stderr, "libevent: [%s] %s\n", sevstr, msg);
+  fprintf (stderr, "libevent: [%s] %s\n", sevstr, msg); /* FIXME: stderr?  */
 }
 
 static int

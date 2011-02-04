@@ -21,6 +21,7 @@ rs_dump_packet (const struct rs_packet *pkt)
 	   p->code,
 	   p->id,
 	   p->data_len);
+  fflush (stderr);
 }
 
 void
@@ -28,3 +29,19 @@ rs_dump_attr (const struct rs_attr *attr)
 {
   vp_printlist (stderr, attr->vp);
 }
+
+#if defined DEBUG
+int
+rs_debug (const char *fmt, ...)
+{
+  int n;
+  va_list args;
+
+  va_start (args, fmt);
+  n = vfprintf (stderr, fmt, args);
+  va_end (args);
+  fflush (stderr);
+
+  return n;
+}
+#endif
