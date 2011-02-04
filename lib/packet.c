@@ -130,8 +130,6 @@ _write_cb (struct bufferevent *bev, void *ctx)
 #endif
   if (event_base_loopbreak (pkt->conn->evb) < 0)
     abort ();			/* FIXME */
-  if (!pkt->conn->callbacks.sent_cb) /* Callback owns the packet now.  */
-    rs_packet_destroy (pkt);
 }
 
 static void
