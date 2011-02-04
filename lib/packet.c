@@ -121,24 +121,29 @@ static void
 _write_cb (struct bufferevent *bev, void *ctx)
 {
   struct rs_packet *pkt = (struct rs_packet *) ctx;
+  int err;
 
   assert (pkt);
   assert (pkt->conn);
-#if defined (DEBUG)
-  fprintf (stderr, "%s: packet written, breaking event loop\n", __func__);
-#endif
-  if (event_base_loopbreak (pkt->conn->evb) < 0)
-    abort ();			/* FIXME */
+
+  rs_debug ("%s: packet written, breaking event loop\n", __func__);
+  err = event_base_loopbreak (pkt->conn->evb);
+  if (err < 0)
+    rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+			 "event_base_loopbreak: %s",
+			 evutil_gai_strerror(err));
 }
 
 static void
 _read_cb (struct bufferevent *bev, void *ctx)
 {
   struct rs_packet *pkt = (struct rs_packet *)ctx;
+  int err;
   size_t n;
 
   assert (pkt);
   assert (pkt->conn);
+  assert (pkt->rpkt);
 
   pkt->rpkt->sockfd = pkt->conn->active_peer->fd; /* FIXME: Why?  */
   pkt->rpkt->vps = NULL;			  /* FIXME: Why?  */
@@ -151,46 +156,49 @@ _read_cb (struct bufferevent *bev, void *ctx)
 	  pkt->hdr_read_flag = 1;
 	  pkt->rpkt->data_len = (pkt->hdr[2] << 8) + pkt->hdr[3];
 	  if (pkt->rpkt->data_len < 20 /* || len > 4096 */)
-	    abort ();		/* FIXME: Read and discard packet.  */
+	    abort ();	/* FIXME: Read and discard invalid packet.  */
 	  pkt->rpkt->data = rs_malloc (pkt->conn->ctx, pkt->rpkt->data_len);
 	  if (!pkt->rpkt->data)
 	    {
 	      rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
 				   NULL);
-	      abort ();		/* FIXME: Read and discard packet.  */
+	      abort ();		/* FIXME: handle ENOMEM.  */
 	    }
 	  memcpy (pkt->rpkt->data, pkt->hdr, RS_HEADER_LEN);
 	  bufferevent_setwatermark (pkt->conn->bev, EV_READ,
 				    pkt->rpkt->data_len - RS_HEADER_LEN, 0);
-#if defined (DEBUG)
-	  fprintf (stderr, "%s: packet header read, total pkt len=%d\n",
-		   __func__, pkt->rpkt->data_len);
-#endif
+	  rs_debug ("%s: packet header read, total pkt len=%d\n",
+		    __func__, pkt->rpkt->data_len);
 	}
       else if (n < 0)
-	return;			/* Buffer frozen.  */
+	return;	 /* Buffer frozen.  FIXME: Properly handled above?  */
       else
-	assert (!"short header");
+	{
+	  assert (!"short header");
+	  abort ();		/* FIXME: handle short header */
+	}
     }
 
-#if defined (DEBUG)
-  printf ("%s: trying to read %d octets of packet data\n", __func__, pkt->rpkt->data_len - RS_HEADER_LEN);
-#endif
-  n = bufferevent_read (pkt->conn->bev, pkt->rpkt->data + RS_HEADER_LEN, pkt->rpkt->data_len - RS_HEADER_LEN);
-#if defined (DEBUG)
-  printf ("%s: read %d octets of packet data\n", __func__, n);
-#endif
+  rs_debug ("%s: trying to read %d octets of packet data\n", __func__,
+	    pkt->rpkt->data_len - RS_HEADER_LEN);
+  n = bufferevent_read (pkt->conn->bev,
+			pkt->rpkt->data + RS_HEADER_LEN,
+			pkt->rpkt->data_len - RS_HEADER_LEN);
+  rs_debug ("%s: read %ld octets of packet data\n", __func__, n);
+
   if (n == pkt->rpkt->data_len - RS_HEADER_LEN)
     {
       bufferevent_disable (pkt->conn->bev, EV_READ);
+      rs_debug ("%s: complete packet read\n", __func__);
       pkt->hdr_read_flag = 0;
       memset (pkt->hdr, 0, sizeof(*pkt->hdr));
-#if defined (DEBUG)
-      fprintf (stderr, "%s: complete packet read\n", __func__);
-#endif
       if (!rad_packet_ok (pkt->rpkt, 0) != 0)
-	return;
-      assert (pkt->original);
+	{
+	  rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+			       "rad_packet_ok: %s", fr_strerror ());
+	  return;
+	}
+      assert (pkt->original); /* FIXME: where's the bug if this fires?  */
 
       /* Verify header and message authenticator.  */
       if (rad_verify (pkt->rpkt, pkt->original->rpkt,
@@ -213,13 +221,22 @@ _read_cb (struct bufferevent *bev, void *ctx)
       if (pkt->conn->callbacks.received_cb)
 	pkt->conn->callbacks.received_cb (pkt, pkt->conn->user_data);
 
-      if (event_base_loopbreak (pkt->conn->evb) < 0)
-	abort ();		/* FIXME */
+      err = event_base_loopbreak (pkt->conn->evb);
+      if (err < 0)
+	{
+	  rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+			       "event_base_loopbreak: %s",
+			       evutil_gai_strerror(err));
+	  return;
+	}
     }
   else if (n < 0)
-    return;			/* Buffer frozen.  */
+    return;	       /* Buffer frozen.  FIXME: Properly handled?  */
   else
-    assert (!"short packet");
+    {
+      assert (!"short packet");
+      abort ();			/* FIXME: handle short packet */
+    }
 }
 
 static void
@@ -447,6 +464,7 @@ int
 rs_packet_send (struct rs_packet *pkt, void *user_data)
 {
   struct rs_connection *conn;
+  int err;
 
   assert (pkt);
   conn = pkt->conn;
@@ -455,7 +473,7 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
     _do_send (pkt);
   else
     if (_conn_open (conn, pkt))
-      return -1;
+      return RSE_SOME_ERROR;	/* FIXME */
 
   assert (conn->evb);
   assert (conn->bev);
@@ -465,12 +483,21 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
   conn->user_data = user_data;
   bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
   if (!conn->user_dispatch_flag)
-    event_base_dispatch (conn->evb);
+    {
+      err = event_base_dispatch (conn->evb);
+      if (err < 0)
+	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				    "event_base_dispatch: %s",
+				    evutil_gai_strerror(err));
 
-#if defined (DEBUG)
-  fprintf (stderr, "%s: event loop done\n", __func__);
-  assert (event_base_got_break(conn->evb));
-#endif
+      rs_debug ("%s: event loop done\n", __func__);
+      if (!event_base_got_break(conn->evb))
+	{
+	  /* Something went wrong -- we never reached loopbreak in
+	     _write_cb().  FIXME: Pull error/errors?  */
+	  return RSE_SOME_ERROR; /* FIXME */
+	}
+    }
 
   return RSE_OK;
 }
@@ -501,19 +528,25 @@ rs_conn_receive_packet (struct rs_connection *conn,
   bufferevent_enable (conn->bev, EV_READ);
   bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
 
+  /* Do dispatch, unless the user wants to do it herself.  */
   if (!conn->user_dispatch_flag)
     {
       event_base_dispatch (conn->evb);
-#if defined (DEBUG)
-      fprintf (stderr, "%s: event loop done", __func__);
-      if (event_base_got_break(conn->evb))
+      rs_debug ("%s: event loop done", __func__);
+      if (event_base_got_break (conn->evb))
 	{
-	  fprintf (stderr, ", got this:\n");
+	  rs_debug (", got this:\n");
+#if defined DEBUG
 	  rs_dump_packet (pkt);
+#endif
 	}
       else
-	fprintf (stderr, ", no reply\n");
-#endif
+	{
+	  rs_debug (", no reply\n");
+	  /* Something went wrong -- we never reached loopbreak in
+	     _read_cb().  FIXME: Pull error/errors?  */
+	  return RSE_SOME_ERROR; /* FIXME */
+	}
     }
 
   pkt->original = NULL;
