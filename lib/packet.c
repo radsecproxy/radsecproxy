@@ -473,7 +473,7 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
     _do_send (pkt);
   else
     if (_conn_open (conn, pkt))
-      return RSE_SOME_ERROR;	/* FIXME */
+      return RSE_SOME_ERROR; /* FIXME: inconsistent with all the return -1 */
 
   assert (conn->evb);
   assert (conn->bev);
@@ -482,6 +482,8 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
 
   conn->user_data = user_data;
   bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
+
+  /* Do dispatch, unless the user wants to do it herself.  */
   if (!conn->user_dispatch_flag)
     {
       err = event_base_dispatch (conn->evb);
