@@ -3,10 +3,11 @@
 AC_PREREQ([2.65])
 AC_INIT([libradsec], [0.0.1-dev], [linus+libradsec@nordu.net])
 AC_CONFIG_MACRO_DIR([m4])
-AM_INIT_AUTOMAKE
 AC_CONFIG_SRCDIR([radsec.c])
+AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_HEADERS([config.h])
-AC_PROG_LIBTOOL
+AM_INIT_AUTOMAKE
+LT_INIT
 
 # Checks for programs.
 AC_PROG_CC
