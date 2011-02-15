@@ -17,10 +17,10 @@
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include "tls.h"
+#include "debug.h"
 #if defined DEBUG
 #include <netdb.h>
 #include <sys/socket.h>
-#include "debug.h"
 #endif
 
 static int
