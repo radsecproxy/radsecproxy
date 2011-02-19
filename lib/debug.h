@@ -11,13 +11,16 @@
 extern "C" {
 #endif
 
+struct rs_packet;
+struct rs_attr;
 void rs_dump_packet (const struct rs_packet *pkt);
 void rs_dump_attr (const struct rs_attr *attr);
+int _rs_debug (const char *fmt, ...);
 
-#if defined DEBUG
-int rs_debug (const char *fmt, ...);
+#if defined (DEBUG)
+#define rs_debug(x) _rs_debug x
 #else
-#define rs_debug (void)
+#define rs_debug(x) do {;} while (0)
 #endif
 
 #if defined (__cplusplus)

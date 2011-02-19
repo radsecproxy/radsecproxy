@@ -10,17 +10,18 @@
 #include <freeradius/libradius.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>
-#if defined RS_ENABLE_TLS
-#include <event2/bufferevent_ssl.h>
-#include <openssl/err.h>
-#endif
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include "tls.h"
 #include "debug.h"
-#if defined DEBUG
+#if defined (RS_ENABLE_TLS)
+#include <event2/bufferevent_ssl.h>
+#include <openssl/err.h>
+#endif
+#if defined (DEBUG)
 #include <netdb.h>
 #include <sys/socket.h>
+#include <event2/buffer.h>
 #endif
 
 static int
@@ -52,7 +53,7 @@ _do_send (struct rs_packet *pkt)
 		 pkt->conn->active_peer->addr->ai_addrlen,
 		 host, sizeof(host), serv, sizeof(serv),
 		 0 /* NI_NUMERICHOST|NI_NUMERICSERV*/);
-    rs_debug ("%s: about to send this to %s:%s:\n", __func__, host, serv);
+    rs_debug (("%s: about to send this to %s:%s:\n", __func__, host, serv));
     rs_dump_packet (pkt);
   }
 #endif
@@ -67,13 +68,32 @@ _do_send (struct rs_packet *pkt)
 }
 
 static void
+_on_connect (struct rs_connection *conn)
+{
+  conn->active_peer->is_connected = 1;
+  rs_debug (("%s: %p connected\n", __func__, conn->active_peer));
+  if (conn->callbacks.connected_cb)
+    conn->callbacks.connected_cb (conn->user_data);
+}
+
+static void
+_on_disconnect (struct rs_connection *conn)
+{
+  conn->active_peer->is_connected = 0;
+  rs_debug (("%s: %p disconnected\n", __func__, conn->active_peer));
+  if (conn->callbacks.disconnected_cb)
+    conn->callbacks.disconnected_cb (conn->user_data);
+}
+
+static void
 _event_cb (struct bufferevent *bev, short events, void *ctx)
 {
   struct rs_packet *pkt = (struct rs_packet *)ctx;
   struct rs_connection *conn;
   struct rs_peer *p;
-#if defined RS_ENABLE_TLS
-  unsigned long err;
+  int sockerr;
+#if defined (RS_ENABLE_TLS)
+  unsigned long tlserr;
 #endif
 
   assert (pkt);
@@ -85,35 +105,46 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
   p->is_connecting = 0;
   if (events & BEV_EVENT_CONNECTED)
     {
-      p->is_connected = 1;
-      if (conn->callbacks.connected_cb)
-	conn->callbacks.connected_cb (conn->user_data);
-      rs_debug ("%s: connected\n", __func__);
+      _on_connect (conn);
       if (_do_send (pkt))
-	return;
-      if (conn->callbacks.sent_cb)
-	conn->callbacks.sent_cb (conn->user_data);
-      /* Packet will be freed in write callback.  */
+	rs_debug (("%s: error sending\n", __func__));
+    }
+  else if (events & BEV_EVENT_EOF)
+    {
+      _on_disconnect (conn);
     }
   else if (events & BEV_EVENT_ERROR)
     {
-#if defined RS_ENABLE_TLS
+      sockerr = evutil_socket_geterror (conn->active_peer->fd);
+      if (sockerr == 0)	/* FIXME: True that errno == 0 means closed? */
+	{
+	  _on_disconnect (conn);
+	}
+      else
+	{
+	  rs_err_conn_push_fl (pkt->conn, RSE_SOCKERR, __FILE__, __LINE__,
+			       "%d: socket error %d (%s)",
+			       conn->active_peer->fd,
+			       sockerr,
+			       evutil_socket_error_to_string (sockerr));
+	  rs_debug (("%s: socket error on fd %d: %d\n", __func__,
+		     conn->active_peer->fd,
+		     sockerr));
+	}
+#if defined (RS_ENABLE_TLS)
       if (conn->tls_ssl)	/* FIXME: correct check?  */
 	{
-	  for (err = bufferevent_get_openssl_error (conn->bev);
-	       err;
-	       err = bufferevent_get_openssl_error (conn->bev))
+	  for (tlserr = bufferevent_get_openssl_error (conn->bev);
+	       tlserr;
+	       tlserr = bufferevent_get_openssl_error (conn->bev))
 	    {
-	      fprintf (stderr, "%s: DEBUG: openssl error: %s\n", __func__,
-		       ERR_error_string (err, NULL)); /* FIXME: DEBUG, until verified that pushed errors will actually be handled  */
+	      rs_debug (("%s: openssl error: %s\n", __func__,
+			 ERR_error_string (tlserr, NULL)));
 	      rs_err_conn_push_fl (pkt->conn, RSE_SSLERR, __FILE__, __LINE__,
-				   "%d", err);
+				   "%d", tlserr);
 	    }
 	}
 #endif	/* RS_ENABLE_TLS */
-
-      rs_err_conn_push_fl (pkt->conn, RSE_CONNERR, __FILE__, __LINE__, NULL);
-      fprintf (stderr, "%s: DEBUG: BEV_EVENT_ERROR\n", __func__); /* FIXME: DEBUG, until verified that pushed errors will actually be handled  */
     }
 }
 
@@ -121,122 +152,169 @@ static void
 _write_cb (struct bufferevent *bev, void *ctx)
 {
   struct rs_packet *pkt = (struct rs_packet *) ctx;
-  int err;
 
   assert (pkt);
   assert (pkt->conn);
 
-  rs_debug ("%s: packet written, breaking event loop\n", __func__);
-  err = event_base_loopbreak (pkt->conn->evb);
-  if (err < 0)
-    rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
-			 "event_base_loopbreak: %s",
-			 evutil_gai_strerror(err));
+  if (pkt->conn->callbacks.sent_cb)
+    pkt->conn->callbacks.sent_cb (pkt->conn->user_data);
 }
 
+/* Read one RADIUS packet header.  Return !0 on error.  A return value
+   of 0 means that we need more data.  */
+static int
+_read_header (struct rs_packet *pkt)
+{
+  size_t n = 0;
+
+  n = bufferevent_read (pkt->conn->bev, pkt->hdr, RS_HEADER_LEN);
+  if (n == RS_HEADER_LEN)
+    {
+      pkt->hdr_read_flag = 1;
+      pkt->rpkt->data_len = (pkt->hdr[2] << 8) + pkt->hdr[3];
+      if (pkt->rpkt->data_len < 20 || pkt->rpkt->data_len > 4096)
+	{
+	  bufferevent_free (pkt->conn->bev); /* Close connection.  */
+	  return rs_err_conn_push (pkt->conn, RSE_INVALID_PKT,
+				   "invalid packet length: %d",
+				   pkt->rpkt->data_len);
+	}
+      pkt->rpkt->data = rs_malloc (pkt->conn->ctx, pkt->rpkt->data_len);
+      if (!pkt->rpkt->data)
+	{
+	  bufferevent_free (pkt->conn->bev); /* Close connection.  */
+	  return rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
+				      NULL);
+	}
+      memcpy (pkt->rpkt->data, pkt->hdr, RS_HEADER_LEN);
+      bufferevent_setwatermark (pkt->conn->bev, EV_READ,
+				pkt->rpkt->data_len - RS_HEADER_LEN, 0);
+      rs_debug (("%s: packet header read, total pkt len=%d\n",
+		 __func__, pkt->rpkt->data_len));
+    }
+  else if (n < 0)
+    {
+      rs_debug (("%s: buffer frozen while reading header\n", __func__));
+    }
+  else	    /* Error: libevent gave us less than the low watermark. */
+    {
+      bufferevent_free (pkt->conn->bev); /* Close connection.  */
+      return rs_err_conn_push_fl (pkt->conn, RSE_INTERNAL, __FILE__, __LINE__,
+				  "got %d octets reading header", n);
+    }
+
+  return 0;
+}
+
+static int
+_read_packet (struct rs_packet *pkt)
+{
+  size_t n = 0;
+
+  rs_debug (("%s: trying to read %d octets of packet data\n", __func__,
+	     pkt->rpkt->data_len - RS_HEADER_LEN));
+
+  n = bufferevent_read (pkt->conn->bev,
+			pkt->rpkt->data + RS_HEADER_LEN,
+			pkt->rpkt->data_len - RS_HEADER_LEN);
+
+  rs_debug (("%s: read %ld octets of packet data\n", __func__, n));
+
+  if (n == pkt->rpkt->data_len - RS_HEADER_LEN)
+    {
+      bufferevent_disable (pkt->conn->bev, EV_READ);
+      rs_debug (("%s: complete packet read\n", __func__));
+      pkt->hdr_read_flag = 0;
+      memset (pkt->hdr, 0, sizeof(*pkt->hdr));
+
+      /* Checks done by rad_packet_ok:
+	 - lenghts (FIXME: checks really ok for tcp?)
+	 - invalid code field
+	 - attribute lengths >= 2
+	 - attribute sizes adding up correctly  */
+      if (!rad_packet_ok (pkt->rpkt, 0) != 0)
+	{
+	  bufferevent_free (pkt->conn->bev); /* Close connection.  */
+	  return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+				      "invalid packet: %s", fr_strerror ());
+	}
+
+      /* TODO: Verify that reception of an unsolicited response packet
+	 results in connection being closed.  */
+
+      /* If we have a request to match this response against, verify
+	 and decode the response.  */
+      if (pkt->original)
+	{
+	  /* Verify header and message authenticator.  */
+	  if (rad_verify (pkt->rpkt, pkt->original->rpkt,
+			  pkt->conn->active_peer->secret))
+	    {
+	      bufferevent_free (pkt->conn->bev); /* Close connection.  */
+	      return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+					  "rad_verify: %s", fr_strerror ());
+	    }
+
+	  /* Decode and decrypt.  */
+	  if (rad_decode (pkt->rpkt, pkt->original->rpkt,
+			  pkt->conn->active_peer->secret))
+	    {
+	      bufferevent_free (pkt->conn->bev); /* Close connection.  */
+	      return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+					  "rad_decode: %s", fr_strerror ());
+	    }
+	}
+
+#if defined (DEBUG)
+      /* Find out what happens if there's data left in the buffer.  */
+      {
+	size_t rest = 0;
+	rest = evbuffer_get_length (bufferevent_get_input (pkt->conn->bev));
+	if (rest)
+	  rs_debug (("%s: returning with %d octets left in buffer\n", __func__,
+		     rest));
+      }
+#endif
+
+      /* Hand over message to user, changes ownership of pkt.  Don't
+	 touch it afterwards -- it might have been freed.  */
+      if (pkt->conn->callbacks.received_cb)
+	pkt->conn->callbacks.received_cb (pkt, pkt->conn->user_data);
+    }
+  else if (n < 0)		/* Buffer frozen.  */
+    rs_debug (("%s: buffer frozen when reading packet\n", __func__));
+  else				/* Short packet.  */
+    rs_debug (("%s: waiting for another %d octets\n", __func__,
+	       pkt->rpkt->data_len - RS_HEADER_LEN - n));
+
+  return 0;
+}
+
+/* Read callback for TCP.
+
+   Read exactly one RADIUS message from BEV and store it in struct
+   rs_packet passed in CTX (hereby called 'pkt').
+
+   Verify the received packet against pkt->original, if !NULL.
+
+   Inform upper layer about successful reception of valid RADIUS
+   message by invoking conn->callbacks.recevied_cb(), if !NULL.  */
 static void
 _read_cb (struct bufferevent *bev, void *ctx)
 {
-  struct rs_packet *pkt = (struct rs_packet *)ctx;
-  int err;
-  size_t n;
+  struct rs_packet *pkt = (struct rs_packet *) ctx;
 
   assert (pkt);
   assert (pkt->conn);
   assert (pkt->rpkt);
 
-  pkt->rpkt->sockfd = pkt->conn->active_peer->fd; /* FIXME: Why?  */
-  pkt->rpkt->vps = NULL;			  /* FIXME: Why?  */
+  pkt->rpkt->sockfd = pkt->conn->active_peer->fd;
+  pkt->rpkt->vps = NULL;
 
   if (!pkt->hdr_read_flag)
-    {
-      n = bufferevent_read (pkt->conn->bev, pkt->hdr, RS_HEADER_LEN);
-      if (n == RS_HEADER_LEN)
-	{
-	  pkt->hdr_read_flag = 1;
-	  pkt->rpkt->data_len = (pkt->hdr[2] << 8) + pkt->hdr[3];
-	  if (pkt->rpkt->data_len < 20 /* || len > 4096 */)
-	    abort ();	/* FIXME: Read and discard invalid packet.  */
-	  pkt->rpkt->data = rs_malloc (pkt->conn->ctx, pkt->rpkt->data_len);
-	  if (!pkt->rpkt->data)
-	    {
-	      rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
-				   NULL);
-	      abort ();		/* FIXME: handle ENOMEM.  */
-	    }
-	  memcpy (pkt->rpkt->data, pkt->hdr, RS_HEADER_LEN);
-	  bufferevent_setwatermark (pkt->conn->bev, EV_READ,
-				    pkt->rpkt->data_len - RS_HEADER_LEN, 0);
-	  rs_debug ("%s: packet header read, total pkt len=%d\n",
-		    __func__, pkt->rpkt->data_len);
-	}
-      else if (n < 0)
-	return;	 /* Buffer frozen.  FIXME: Properly handled above?  */
-      else
-	{
-	  assert (!"short header");
-	  abort ();		/* FIXME: handle short header */
-	}
-    }
-
-  rs_debug ("%s: trying to read %d octets of packet data\n", __func__,
-	    pkt->rpkt->data_len - RS_HEADER_LEN);
-  n = bufferevent_read (pkt->conn->bev,
-			pkt->rpkt->data + RS_HEADER_LEN,
-			pkt->rpkt->data_len - RS_HEADER_LEN);
-  rs_debug ("%s: read %ld octets of packet data\n", __func__, n);
-
-  if (n == pkt->rpkt->data_len - RS_HEADER_LEN)
-    {
-      bufferevent_disable (pkt->conn->bev, EV_READ);
-      rs_debug ("%s: complete packet read\n", __func__);
-      pkt->hdr_read_flag = 0;
-      memset (pkt->hdr, 0, sizeof(*pkt->hdr));
-      if (!rad_packet_ok (pkt->rpkt, 0) != 0)
-	{
-	  rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
-			       "rad_packet_ok: %s", fr_strerror ());
-	  return;
-	}
-      assert (pkt->original); /* FIXME: where's the bug if this fires?  */
-
-      /* Verify header and message authenticator.  */
-      if (rad_verify (pkt->rpkt, pkt->original->rpkt,
-		      pkt->conn->active_peer->secret))
-	{
-	  rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
-			       "rad_verify: %s", fr_strerror ());
-	  return;
-	}
-
-      /* Decode and decrypt.  */
-      if (rad_decode (pkt->rpkt, pkt->original->rpkt,
-		      pkt->conn->active_peer->secret))
-	{
-	  rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
-			       "rad_decode: %s", fr_strerror ());
-	  return;
-	}
-
-      if (pkt->conn->callbacks.received_cb)
-	pkt->conn->callbacks.received_cb (pkt, pkt->conn->user_data);
-
-      err = event_base_loopbreak (pkt->conn->evb);
-      if (err < 0)
-	{
-	  rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
-			       "event_base_loopbreak: %s",
-			       evutil_gai_strerror(err));
-	  return;
-	}
-    }
-  else if (n < 0)
-    return;	       /* Buffer frozen.  FIXME: Properly handled?  */
-  else
-    {
-      assert (!"short packet");
-      abort ();			/* FIXME: handle short packet */
-    }
+    if (_read_header (pkt))
+      return;
+  _read_packet (pkt);
 }
 
 static void
@@ -328,7 +406,7 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_socket_new");
       break;
-#if defined RS_ENABLE_TLS
+#if defined (RS_ENABLE_TLS)
     case RS_CONN_TYPE_TLS:
       if (rs_tls_init (conn))
 	return -1;
@@ -460,20 +538,39 @@ rs_packet_create_auth_request (struct rs_connection *conn,
   return RSE_OK;
 }
 
+/* User callback used when we're dispatching for user.  */
+static void
+_wcb (void *user_data)
+{
+  struct rs_connection *conn = (struct rs_connection *) user_data;
+  int err;
+
+  assert (conn);
+
+  /* When we're running the event loop for the user, we must break
+     it in order to give the control back to the user.  */
+  err = event_base_loopbreak (conn->evb);
+  if (err < 0)
+    rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+			 "event_base_loopbreak: %s",
+			 evutil_gai_strerror(err));
+}
+
 int
 rs_packet_send (struct rs_packet *pkt, void *user_data)
 {
-  struct rs_connection *conn;
-  int err;
+  struct rs_connection *conn = NULL;
+  int err = RSE_OK;
 
   assert (pkt);
+  assert (pkt->conn);
   conn = pkt->conn;
 
   if (_conn_is_open_p (conn))
     _do_send (pkt);
   else
     if (_conn_open (conn, pkt))
-      return RSE_SOME_ERROR; /* FIXME: inconsistent with all the return -1 */
+      return -1;
 
   assert (conn->evb);
   assert (conn->bev);
@@ -481,37 +578,69 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
   assert (conn->active_peer->fd >= 0);
 
   conn->user_data = user_data;
-  bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
+  bufferevent_setcb (conn->bev, NULL, _write_cb, _event_cb, pkt);
 
   /* Do dispatch, unless the user wants to do it herself.  */
   if (!conn->user_dispatch_flag)
     {
+      conn->callbacks.sent_cb = _wcb;
+      conn->user_data = conn;
+      rs_debug (("%s: entering event loop\n", __func__));
       err = event_base_dispatch (conn->evb);
       if (err < 0)
 	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
 				    "event_base_dispatch: %s",
 				    evutil_gai_strerror(err));
+      rs_debug (("%s: event loop done\n", __func__));
+      conn->callbacks.sent_cb = NULL;
+      conn->user_data = NULL;
 
-      rs_debug ("%s: event loop done\n", __func__);
-      if (!event_base_got_break(conn->evb))
-	{
-	  /* Something went wrong -- we never reached loopbreak in
-	     _write_cb().  FIXME: Pull error/errors?  */
-	  return RSE_SOME_ERROR; /* FIXME */
-	}
+      if (!event_base_got_break (conn->evb))
+	return -1;
     }
 
   return RSE_OK;
 }
+
+static void
+_rcb (struct rs_packet *packet, void *user_data)
+{
+  int err = 0;
+
+  /* When we're running the event loop for the user, we must break it
+     in order to give the control back to the user.  */
+  err = event_base_loopbreak (packet->conn->evb);
+  if (err < 0)
+    rs_err_conn_push_fl (packet->conn, RSE_EVENT, __FILE__, __LINE__,
+			 "event_base_loopbreak: %s",
+			 evutil_gai_strerror(err));
+}
+
+/* Special function used in libradsec blocking dispatching mode,
+   i.e. with socket set to block on read/write and with no libradsec
+   callbacks registered.
+
+   For any other use of libradsec, a the received_cb callback should
+   be registered in the callbacks member of struct rs_connection.
+
+   On successful reception, verification and decoding of a RADIUS
+   message, PKT_OUT will upon return point at a pointer to a struct
+   rs_packet containing the message.
+
+   If anything goes wrong or if the read times out (TODO: explain),
+   PKT_OUT will point at the NULL pointer and one or more errors are
+   pushed on the connection (available through rs_err_conn_pop()).  */
 
 int
 rs_conn_receive_packet (struct rs_connection *conn,
 		        struct rs_packet *request,
 		        struct rs_packet **pkt_out)
 {
-  struct rs_packet *pkt;
+  int err = RSE_OK;
+  struct rs_packet *pkt = NULL;
 
   assert (conn);
+  assert (!conn->user_dispatch_flag); /* Dispatching mode only.  */
 
   if (rs_packet_create (conn, pkt_out))
     return -1;
@@ -526,33 +655,32 @@ rs_conn_receive_packet (struct rs_connection *conn,
   assert (conn->active_peer);
   assert (conn->active_peer->fd >= 0);
 
+  /* Install read and event callbacks with libevent.  */
   bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
   bufferevent_enable (conn->bev, EV_READ);
-  bufferevent_setcb (conn->bev, _read_cb, _write_cb, _event_cb, pkt);
+  bufferevent_setcb (conn->bev, _read_cb, NULL, _event_cb, pkt);
 
-  /* Do dispatch, unless the user wants to do it herself.  */
-  if (!conn->user_dispatch_flag)
-    {
-      event_base_dispatch (conn->evb);
-      rs_debug ("%s: event loop done", __func__);
-      if (event_base_got_break (conn->evb))
-	{
-	  rs_debug (", got this:\n");
-#if defined DEBUG
-	  rs_dump_packet (pkt);
+  /* Install read callback with ourselves, for signaling successful
+     reception of message.  */
+  conn->callbacks.received_cb = _rcb;
+
+  /* Dispatch.  */
+  rs_debug (("%s: entering event loop\n", __func__));
+  err = event_base_dispatch (conn->evb);
+  if (err < 0)
+    return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				"event_base_dispatch: %s",
+				evutil_gai_strerror(err));
+  rs_debug (("%s: event loop done\n", __func__));
+  conn->callbacks.received_cb = NULL;
+  if (!event_base_got_break (conn->evb))
+    return -1;
+
+#if defined (DEBUG)
+  rs_dump_packet (pkt);
 #endif
-	}
-      else
-	{
-	  rs_debug (", no reply\n");
-	  /* Something went wrong -- we never reached loopbreak in
-	     _read_cb().  FIXME: Pull error/errors?  */
-	  return RSE_SOME_ERROR; /* FIXME */
-	}
-    }
 
-  pkt->original = NULL;
-
+  pkt->original = NULL;		/* FIXME: Why?  */
   return RSE_OK;
 }
 

@@ -115,9 +115,6 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
 	    break;
 	}
     }
-#ifdef DEBUG
-    printf("certificate verify returns %d\n", ok);
-#endif
     return ok;
 }
 

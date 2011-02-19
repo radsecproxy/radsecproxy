@@ -21,12 +21,12 @@ static const char *_errtxt[] = {
   "bad hostname or port",	/* 7 RSE_BADADDR */
   "no peer configured",		/* 8 RSE_NOPEER */
   "libevent error",		/* 9 RSE_EVENT */
-  "connection error",		/* 10 RSE_CONNERR */
+  "socket error",		/* 10 RSE_SOCKERR */
   "invalid configuration file",	/* 11 RSE_CONFIG */
   "authentication failed",	/* 12 RSE_BADAUTH */
   "internal error",		/* 13 RSE_INTERNAL */
   "SSL error",			/* 14 RSE_SSLERR */
-  "ERR 15",			/*  RSE_ */
+  "invalid packet",		/* 15 RSE_INVALID_PKT */
   "ERR 16",			/*  RSE_ */
   "ERR 17",			/*  RSE_ */
   "ERR 18",			/*  RSE_ */

@@ -16,7 +16,7 @@
 #include <event2/util.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
-#if defined RS_ENABLE_TLS
+#if defined (RS_ENABLE_TLS)
 #include <regex.h>
 #include "rsp_list.h"
 #include "../radsecproxy.h"
@@ -59,7 +59,7 @@ rs_context_create(struct rs_context **ctx, const char *dict)
   free (buf1);
   free (buf2);
 
-#if defined RS_ENABLE_TLS
+#if defined (RS_ENABLE_TLS)
   ssl_init ();
 #endif
 #if defined (DEBUG)

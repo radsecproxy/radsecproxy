@@ -53,7 +53,7 @@ _rs_req_disconnected(void *user_data)
 }
 
 static void
-_rs_req_packet_received(const struct rs_packet *pkt, void *user_data)
+_rs_req_packet_received(struct rs_packet *pkt, void *user_data)
 {
   //struct rs_request *request = (struct rs_request *)user_data;
 }

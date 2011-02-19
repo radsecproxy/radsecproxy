@@ -14,8 +14,11 @@
 void
 rs_dump_packet (const struct rs_packet *pkt)
 {
-  const RADIUS_PACKET *p = pkt->rpkt;
-  assert(p);
+  const RADIUS_PACKET *p = NULL;
+
+  if (!pkt || !pkt->rpkt)
+    return;
+  p = pkt->rpkt;
 
   fprintf (stderr, "\tCode: %u, Identifier: %u, Lenght: %u\n",
 	   p->code,
@@ -32,7 +35,7 @@ rs_dump_attr (const struct rs_attr *attr)
 
 #if defined DEBUG
 int
-rs_debug (const char *fmt, ...)
+_rs_debug (const char *fmt, ...)
 {
   int n;
   va_list args;

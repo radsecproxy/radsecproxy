@@ -15,11 +15,12 @@ enum rs_err_code {
     RSE_BADADDR = 7,
     RSE_NOPEER = 8,
     RSE_EVENT = 9,		/* libevent error.  */
-    RSE_CONNERR = 10,
+    RSE_SOCKERR = 10,
     RSE_CONFIG = 11,
     RSE_BADAUTH = 12,
     RSE_INTERNAL = 13,
-    RSE_SSLERR = 14,	  /* OpenSSL error.  */
+    RSE_SSLERR = 14,		/* OpenSSL error.  */
+    RSE_INVALID_PKT = 15,
     RSE_SOME_ERROR = 21,  /* Unspecified error.  Shouldn't happen.  */
 };
 
@@ -62,8 +63,8 @@ struct rs_alloc_scheme {
 typedef void (*rs_conn_connected_cb) (void *user_data /* FIXME: peer? */ );
 typedef void (*rs_conn_disconnected_cb) (void *user_data
 					 /* FIXME: reason? */ );
-typedef void (*rs_conn_packet_received_cb) (const struct rs_packet *
-					    packet, void *user_data);
+typedef void (*rs_conn_packet_received_cb) (struct rs_packet *packet,
+					    void *user_data);
 typedef void (*rs_conn_packet_sent_cb) (void *user_data);
 struct rs_conn_callbacks {
     /** Callback invoked when the connection has been established.  */
@@ -92,13 +93,14 @@ int rs_conn_create(struct rs_context *ctx, struct rs_connection **conn,
 void rs_conn_set_type(struct rs_connection *conn, rs_conn_type_t type);
 int rs_conn_add_listener(struct rs_connection *conn, rs_conn_type_t type,
 			 const char *hostname, int port);
-void rs_conn_destroy(struct rs_connection *conn);
+int rs_conn_disconnect (struct rs_connection *conn);
+int rs_conn_destroy(struct rs_connection *conn);
 int rs_conn_set_eventbase(struct rs_connection *conn,
 			  struct event_base *eb);
-int rs_conn_set_callbacks(struct rs_connection *conn,
+void rs_conn_set_callbacks(struct rs_connection *conn,
 			  struct rs_conn_callbacks *cb);
-struct rs_conn_callbacks *rs_conn_get_callbacks(struct rs_connection
-						*conn);
+void rs_conn_del_callbacks(struct rs_connection *conn);
+struct rs_conn_callbacks *rs_conn_get_callbacks(struct rs_connection *conn);
 int rs_conn_select_server(struct rs_connection *conn, const char *name);
 int rs_conn_get_current_server(struct rs_connection *conn,
 			       const char *name, size_t buflen);

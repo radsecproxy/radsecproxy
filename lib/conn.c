@@ -4,7 +4,9 @@
 #include <config.h>
 #endif
 
+#include <string.h>
 #include <assert.h>
+#include <debug.h>
 #include <event2/event.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
@@ -90,12 +92,33 @@ rs_conn_add_listener (struct rs_connection *conn, rs_conn_type_t type,
 			      "%s: NYI", __func__);
 }
 
-void
+
+int
+rs_conn_disconnect (struct rs_connection *conn)
+{
+  int err = 0;
+
+  assert (conn);
+
+  err = evutil_closesocket (conn->active_peer->fd);
+  conn->active_peer->fd = -1;
+  return err;
+}
+
+int
 rs_conn_destroy (struct rs_connection *conn)
 {
   struct rs_peer *p;
+  int err = 0;
 
-#warning "TODO: Disconnect active_peer."
+  assert (conn);
+
+  if (conn->active_peer->is_connected)
+    {
+      err = rs_conn_disconnect (conn);
+      if (err)
+	return err;
+    }
 
   for (p = conn->peers; p; p = p->next)
     {
@@ -107,6 +130,8 @@ rs_conn_destroy (struct rs_connection *conn)
 
   if (conn->evb)
     event_base_free (conn->evb);
+
+  return 0;
 }
 
 int
@@ -116,11 +141,27 @@ rs_conn_set_eventbase (struct rs_connection *conn, struct event_base *eb)
 			      "%s: NYI", __func__);
 }
 
-int
+void
 rs_conn_set_callbacks (struct rs_connection *conn, struct rs_conn_callbacks *cb)
 {
-  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
-			      "%s: NYI", __func__);
+  assert (conn);
+  conn->user_dispatch_flag = 1;
+  memcpy (&conn->callbacks, cb, sizeof (conn->callbacks));
+}
+
+void
+rs_conn_del_callbacks (struct rs_connection *conn)
+{
+  assert (conn);
+  conn->user_dispatch_flag = 0;
+  memset (&conn->callbacks, 0, sizeof (conn->callbacks));
+}
+
+struct rs_conn_callbacks *
+rs_conn_get_callbacks(struct rs_connection *conn)
+{
+  assert (conn);
+  return &conn->callbacks;
 }
 
 int
