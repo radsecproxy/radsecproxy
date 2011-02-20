@@ -14,7 +14,7 @@
 #include "../radsecproxy.h"
 
 static struct tls *
-_get_tlsconf (const struct rs_context *ctx, const struct rs_realm *realm)
+_get_tlsconf (struct rs_context *ctx, const struct rs_realm *realm)
 {
   struct tls *c = rs_malloc (ctx, sizeof (struct tls));
 
@@ -33,6 +33,8 @@ _get_tlsconf (const struct rs_context *ctx, const struct rs_realm *realm)
       c->crlcheck = 0;		/* NYI */
       c->policyoids = (char **) NULL; /* NYI */
     }
+    else
+      rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
 
   return c;
 }
@@ -48,7 +50,8 @@ rs_tls_init (struct rs_connection *conn)
   ctx = conn->ctx;
 
   tlsconf = _get_tlsconf (ctx, conn->active_peer->realm);
-  assert (tlsconf);
+  if (!tlsconf)
+    return -1;
   ssl_ctx = tlsgetctx (RADPROT_TLS, tlsconf);
   if (!ssl_ctx)
     {
