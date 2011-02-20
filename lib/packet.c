@@ -141,7 +141,7 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
 	      rs_debug (("%s: openssl error: %s\n", __func__,
 			 ERR_error_string (tlserr, NULL)));
 	      rs_err_conn_push_fl (pkt->conn, RSE_SSLERR, __FILE__, __LINE__,
-				   "%d", tlserr);
+				   ERR_error_string (tlserr, NULL));
 	    }
 	}
 #endif	/* RS_ENABLE_TLS */
