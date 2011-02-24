@@ -27,7 +27,7 @@ static const char *_errtxt[] = {
   "internal error",		/* 13 RSE_INTERNAL */
   "SSL error",			/* 14 RSE_SSLERR */
   "invalid packet",		/* 15 RSE_INVALID_PKT */
-  "ERR 16",			/*  RSE_ */
+  "I/O timeout",		/* 16 RSE_IOTIMEOUT */
   "ERR 17",			/*  RSE_ */
   "ERR 18",			/*  RSE_ */
   "ERR 19",			/*  RSE_ */
@@ -175,6 +175,15 @@ rs_err_conn_pop (struct rs_connection *conn)
   err = conn->err;
   conn->err = NULL;
   return err;
+}
+
+int
+rs_err_conn_peek_code (struct rs_connection *conn)
+{
+  if (conn && conn->err)
+    return conn->err->code;
+  else
+    return RSE_OK;
 }
 
 void

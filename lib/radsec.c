@@ -18,6 +18,7 @@
 #include <radsec/radsec-impl.h>
 #if defined (RS_ENABLE_TLS)
 #include <regex.h>
+#include "debug.h"
 #include "rsp_list.h"
 #include "../radsecproxy.h"
 #endif
@@ -69,14 +70,6 @@ rs_context_create(struct rs_context **ctx, const char *dict)
   debug_init ("libradsec");	/* radsecproxy compat, FIXME: remove */
 
   memset (h, 0, sizeof(struct rs_context));
-  h->realms = malloc (sizeof (struct rs_realm));
-  if (!h->realms)
-    {
-      err = RSE_NOMEM;
-      goto err_out;
-    }
-  memset (h->realms, 0, sizeof (struct rs_realm));
-  h->realms->next = h->realms;
   fr_randinit (&h->fr_randctx, 0);
   fr_rand_seed (NULL, 0);
 
@@ -95,19 +88,6 @@ rs_context_create(struct rs_context **ctx, const char *dict)
   return err;
 }
 
-void rs_context_destroy(struct rs_context *ctx)
-{
-  free (ctx);
-}
-
-int rs_context_set_alloc_scheme(struct rs_context *ctx,
-				struct rs_alloc_scheme *scheme)
-{
-  return rs_err_ctx_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
-			     "%s: NYI", __func__);
-}
-
-
 struct rs_peer *
 _rs_peer_create (struct rs_context *ctx, struct rs_peer **rootp)
 {
@@ -117,13 +97,57 @@ _rs_peer_create (struct rs_context *ctx, struct rs_peer **rootp)
   if (p)
     {
       memset (p, 0, sizeof(struct rs_peer));
-      p->fd = -1;
       if (*rootp)
-	(*rootp)->next = p;
+	{
+	  p->next = (*rootp)->next;
+	  (*rootp)->next = p;
+	}
       else
 	*rootp = p;
     }
   return p;
+}
+
+static void
+_rs_peer_destroy (struct rs_peer *p)
+{
+  assert (p);
+  assert (p->conn);
+  assert (p->conn->ctx);
+  /* NOTE: The peer object doesn't own its connection (conn).  */
+  if (p->addr)
+    {
+      evutil_freeaddrinfo (p->addr);
+      p->addr = NULL;
+    }
+  rs_free (p->conn->ctx, p);
+}
+
+void rs_context_destroy(struct rs_context *ctx)
+{
+  struct rs_realm *r = NULL;
+  struct rs_peer *p = NULL;
+
+  for (r = ctx->realms; r; )
+    {
+      struct rs_realm *tmp = r;
+      for (p = r->peers; p; )
+	{
+	  struct rs_peer *tmp = p;
+	  p = p->next;
+	  _rs_peer_destroy (tmp);
+	}
+      r = r->next;
+      rs_free (ctx, tmp);
+    }
+  rs_free (ctx, ctx);
+}
+
+int rs_context_set_alloc_scheme(struct rs_context *ctx,
+				struct rs_alloc_scheme *scheme)
+{
+  return rs_err_ctx_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
+			     "%s: NYI", __func__);
 }
 
 int
@@ -135,8 +159,8 @@ rs_server_create (struct rs_connection *conn, struct rs_peer **server)
   if (srv)
     {
       srv->conn = conn;
-      srv->timeout = 1;
-      srv->tries = 3;
+      srv->realm->timeout = 2;
+      srv->realm->retries = 2;
     }
   else
     return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
@@ -151,7 +175,10 @@ rs_server_set_address (struct rs_peer *server, const char *hostname,
 {
   struct rs_error *err;
 
-  err = _rs_resolv (&server->addr, server->conn->type, hostname, service);
+  assert (server);
+  assert (server->realm);
+
+  err = _rs_resolv (&server->addr, server->realm->type, hostname, service);
   if (err)
     return _rs_err_conn_push_err (server->conn, err);
   return RSE_OK;
@@ -160,12 +187,16 @@ rs_server_set_address (struct rs_peer *server, const char *hostname,
 void
 rs_server_set_timeout (struct rs_peer *server, int timeout)
 {
-  server->timeout = timeout;
+  assert (server);
+  assert (server->realm);
+  server->realm->timeout = timeout;
 }
 void
-rs_server_set_tries (struct rs_peer *server, int tries)
+rs_server_set_retries (struct rs_peer *server, int retries)
 {
-  server->tries = tries;
+  assert (server);
+  assert (server->realm);
+  server->realm->retries = retries;
 }
 
 int

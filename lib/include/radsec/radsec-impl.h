@@ -23,8 +23,6 @@ typedef unsigned int rs_cred_type_t;
 extern "C" {
 #endif
 
-struct rs_packet;
-
 struct rs_credentials {
     enum rs_cred_type type;
     char *identity;
@@ -37,22 +35,19 @@ struct rs_error {
     char buf[1024];
 };
 
-struct rs_peer {
+struct rs_peer {		/* Config object for a connection.  */
     struct rs_connection *conn;
     struct rs_realm *realm;
     struct evutil_addrinfo *addr;
-    int fd;			/* Socket.  */
-    char is_connecting;		/* FIXME: replace with a single state member */
-    char is_connected;		/* FIXME: replace with a single state member */
     char *secret;
-    int timeout;		/* client only */
-    int tries;			/* client only */
     struct rs_peer *next;
 };
 
-struct rs_realm {
+struct rs_realm {	      /* Config object for a RADIUS realm.  */
     char *name;
     enum rs_conn_type type;
+    int timeout;
+    int retries;
     char *cacertfile;
     char *cacertpath;
     char *certfile;
@@ -70,15 +65,20 @@ struct rs_context {
 
 struct rs_connection {
     struct rs_context *ctx;
-    struct event_base *evb;
-    struct bufferevent *bev;
-    enum rs_conn_type type;
+    struct rs_realm *realm;	/* Owned by ctx.  */
+    struct event_base *evb;	/* Event base.  */
+    struct bufferevent *bev;	/* Buffer event.  */
+    struct event *tev;		/* Timeout event.  */
     struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;
     void *user_data;
     struct rs_peer *peers;
     struct rs_peer *active_peer;
     struct rs_error *err;
+    char is_connecting;		/* FIXME: replace with a single state member */
+    char is_connected;		/* FIXME: replace with a single state member */
+    int fd;			/* Socket.  */
+    int tryagain;
     int nextid;
     int user_dispatch_flag : 1;	/* User does the dispatching.  */
 #if defined(RS_ENABLE_TLS)
@@ -125,6 +125,8 @@ int _rs_err_conn_push_err(struct rs_connection *conn,
     (h->alloc_scheme.free ? h->alloc_scheme.free : free)(ptr)
 #define rs_realloc(h, realloc, ptr, size) \
     (h->alloc_scheme.realloc ? h->alloc_scheme.realloc : realloc)(ptr, size)
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

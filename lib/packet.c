@@ -6,6 +6,8 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/time.h>
 #include <assert.h>
 #include <freeradius/libradius.h>
 #include <event2/event.h>
@@ -63,14 +65,14 @@ _do_send (struct rs_packet *pkt)
   if (err < 0)
     return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
 				"bufferevent_write: %s",
-				evutil_gai_strerror(err));
+				evutil_gai_strerror (err));
   return RSE_OK;
 }
 
 static void
 _on_connect (struct rs_connection *conn)
 {
-  conn->active_peer->is_connected = 1;
+  conn->is_connected = 1;
   rs_debug (("%s: %p connected\n", __func__, conn->active_peer));
   if (conn->callbacks.connected_cb)
     conn->callbacks.connected_cb (conn->user_data);
@@ -79,7 +81,8 @@ _on_connect (struct rs_connection *conn)
 static void
 _on_disconnect (struct rs_connection *conn)
 {
-  conn->active_peer->is_connected = 0;
+  conn->is_connecting = 0;
+  conn->is_connected = 0;
   rs_debug (("%s: %p disconnected\n", __func__, conn->active_peer));
   if (conn->callbacks.disconnected_cb)
     conn->callbacks.disconnected_cb (conn->user_data);
@@ -89,11 +92,11 @@ static void
 _event_cb (struct bufferevent *bev, short events, void *ctx)
 {
   struct rs_packet *pkt = (struct rs_packet *)ctx;
-  struct rs_connection *conn;
-  struct rs_peer *p;
-  int sockerr;
+  struct rs_connection *conn = NULL;
+  struct rs_peer *p = NULL;
+  int sockerr = 0;
 #if defined (RS_ENABLE_TLS)
-  unsigned long tlserr;
+  unsigned long tlserr = 0;
 #endif
 
   assert (pkt);
@@ -102,7 +105,7 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
   conn = pkt->conn;
   p = conn->active_peer;
 
-  p->is_connecting = 0;
+  conn->is_connecting = 0;
   if (events & BEV_EVENT_CONNECTED)
     {
       _on_connect (conn);
@@ -112,6 +115,12 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
   else if (events & BEV_EVENT_EOF)
     {
       _on_disconnect (conn);
+    }
+  else if (events & BEV_EVENT_TIMEOUT)
+    {
+      rs_debug (("%s: %p times out on %s\n", __func__, p,
+		 (events & BEV_EVENT_READING) ? "read" : "write"));
+      rs_err_conn_push_fl (pkt->conn, RSE_IOTIMEOUT, __FILE__, __LINE__, NULL);
     }
   else if (events & BEV_EVENT_ERROR)
     {
@@ -124,11 +133,12 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
 	{
 	  rs_err_conn_push_fl (pkt->conn, RSE_SOCKERR, __FILE__, __LINE__,
 			       "%d: socket error %d (%s)",
-			       conn->active_peer->fd,
+			       conn->fd,
 			       sockerr,
 			       evutil_socket_error_to_string (sockerr));
-	  rs_debug (("%s: socket error on fd %d: %d\n", __func__,
-		     conn->active_peer->fd,
+	  rs_debug (("%s: socket error on fd %d: %s (%d)\n", __func__,
+		     conn->fd,
+		     evutil_socket_error_to_string (sockerr),
 		     sockerr));
 	}
 #if defined (RS_ENABLE_TLS)
@@ -146,6 +156,11 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
 	}
 #endif	/* RS_ENABLE_TLS */
     }
+
+#if defined (DEBUG)
+  if (events & BEV_EVENT_ERROR && events != BEV_EVENT_ERROR)
+    rs_debug (("%s: BEV_EVENT_ERROR and more: 0x%x\n", __func__, events));
+#endif
 }
 
 static void
@@ -308,7 +323,7 @@ _read_cb (struct bufferevent *bev, void *ctx)
   assert (pkt->conn);
   assert (pkt->rpkt);
 
-  pkt->rpkt->sockfd = pkt->conn->active_peer->fd;
+  pkt->rpkt->sockfd = pkt->conn->fd;
   pkt->rpkt->vps = NULL;
 
   if (!pkt->hdr_read_flag)
@@ -348,35 +363,37 @@ _evlog_cb (int severity, const char *msg)
 static int
 _init_evb (struct rs_connection *conn)
 {
-  if (!conn->evb)
-    {
+  if (conn->evb)
+    return RSE_OK;
+
 #if defined (DEBUG)
-      event_enable_debug_mode ();
+  event_enable_debug_mode ();
 #endif
-      event_set_log_callback (_evlog_cb);
-      conn->evb = event_base_new ();
-      if (!conn->evb)
-	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
-				    "event_base_new");
-    }
+  event_set_log_callback (_evlog_cb);
+  conn->evb = event_base_new ();
+  if (!conn->evb)
+    return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+				"event_base_new");
+
   return RSE_OK;
 }
 
 static int
 _init_socket (struct rs_connection *conn, struct rs_peer *p)
 {
-  if (p->fd != -1)
+  if (conn->fd != -1)
     return RSE_OK;
 
   assert (p->addr);
-  p->fd = socket (p->addr->ai_family, p->addr->ai_socktype,
-		  p->addr->ai_protocol);
-  if (p->fd < 0)
+  conn->fd = socket (p->addr->ai_family, p->addr->ai_socktype,
+		     p->addr->ai_protocol);
+  if (conn->fd < 0)
     return rs_err_conn_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
 				strerror (errno));
-  if (evutil_make_socket_nonblocking (p->fd) < 0)
+  if (evutil_make_socket_nonblocking (conn->fd) < 0)
     {
-      evutil_closesocket (p->fd);
+      evutil_closesocket (conn->fd);
+      conn->fd = -1;
       return rs_err_conn_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
 				  strerror (errno));
     }
@@ -386,8 +403,13 @@ _init_socket (struct rs_connection *conn, struct rs_peer *p)
 static struct rs_peer *
 _pick_peer (struct rs_connection *conn)
 {
+  assert (conn);
+
+  if (conn->active_peer)
+    conn->active_peer = conn->active_peer->next; /* Next.  */
   if (!conn->active_peer)
-    conn->active_peer = conn->peers;
+    conn->active_peer = conn->peers; /* From the top.  */
+
   return conn->active_peer;
 }
 
@@ -397,15 +419,20 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
   if (conn->bev)
     return RSE_OK;
 
-  switch (conn->type)
+  switch (conn->realm->type)
     {
     case RS_CONN_TYPE_UDP:
+      /* Fall through.  */
+      /* NOTE: We know this is wrong for several reasons, most notably
+	 because libevent doesn't work as expected with UDP.  The
+	 timeout handling is wrong too.  */
     case RS_CONN_TYPE_TCP:
-      conn->bev = bufferevent_socket_new (conn->evb, peer->fd, 0);
+      conn->bev = bufferevent_socket_new (conn->evb, conn->fd, 0);
       if (!conn->bev)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_socket_new");
       break;
+
 #if defined (RS_ENABLE_TLS)
     case RS_CONN_TYPE_TLS:
       if (rs_tls_init (conn))
@@ -414,62 +441,79 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
 	 seem to break when be_openssl_ctrl() (in libevent) calls
 	 SSL_set_bio() after BIO_new_socket() with flag=1.  */
       conn->bev =
-	bufferevent_openssl_socket_new (conn->evb, peer->fd, conn->tls_ssl,
+	bufferevent_openssl_socket_new (conn->evb, conn->fd, conn->tls_ssl,
 					BUFFEREVENT_SSL_CONNECTING, 0);
       if (!conn->bev)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_openssl_socket_new");
-
       break;
+
     case RS_CONN_TYPE_DTLS:
       return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 				  "%s: NYI", __func__);
 #endif	/* RS_ENABLE_TLS */
+
     default:
       return rs_err_conn_push_fl (conn, RSE_INTERNAL, __FILE__, __LINE__,
 				  "%s: unknown connection type: %d", __func__,
-				  conn->type);
+				  conn->realm->type);
     }
 
   return RSE_OK;
 }
 
 static void
-_do_connect (struct rs_peer *p)
+_do_connect (struct rs_connection *conn)
 {
+  struct rs_peer *p;
   int err;
+
+  assert (conn);
+  assert (conn->active_peer);
+  p = conn->active_peer;
+
+#if defined (DEBUG)
+  {
+    char host[80], serv[80];
+
+    getnameinfo (p->addr->ai_addr,
+		 p->addr->ai_addrlen,
+		 host, sizeof(host), serv, sizeof(serv),
+		 0 /* NI_NUMERICHOST|NI_NUMERICSERV*/);
+    rs_debug (("%s: connecting to %s:%s\n", __func__, host, serv));
+  }
+#endif
 
   err = bufferevent_socket_connect (p->conn->bev, p->addr->ai_addr,
 				    p->addr->ai_addrlen);
   if (err < 0)
     rs_err_conn_push_fl (p->conn, RSE_EVENT, __FILE__, __LINE__,
 			 "bufferevent_socket_connect: %s",
-			 evutil_gai_strerror(err));
+			 evutil_gai_strerror (err));
   else
-    p->is_connecting = 1;
+    p->conn->is_connecting = 1;
 }
 
 static int
 _conn_open(struct rs_connection *conn, struct rs_packet *pkt)
 {
-  struct rs_peer *p;
-
   if (_init_evb (conn))
     return -1;
 
-  p = _pick_peer (conn);
-  if (!p)
+  if (!conn->active_peer)
+    _pick_peer (conn);
+  if (!conn->active_peer)
     return rs_err_conn_push_fl (conn, RSE_NOPEER, __FILE__, __LINE__, NULL);
 
-  if (_init_socket (conn, p))
+  if (_init_socket (conn, conn->active_peer))
     return -1;
 
-  if (_init_bev (conn, p))
+  if (_init_bev (conn, conn->active_peer))
     return -1;
 
-  if (!p->is_connected)
-    if (!p->is_connecting)
-      _do_connect (p);
+  if (!conn->is_connected)
+    if (!conn->is_connecting)
+      _do_connect (conn);
 
   return RSE_OK;
 }
@@ -477,7 +521,7 @@ _conn_open(struct rs_connection *conn, struct rs_packet *pkt)
 static int
 _conn_is_open_p (struct rs_connection *conn)
 {
-  return conn->active_peer && conn->active_peer->is_connected;
+  return conn->active_peer && conn->is_connected;
 }
 
 /* Public functions.  */
@@ -553,14 +597,14 @@ _wcb (void *user_data)
   if (err < 0)
     rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 			 "event_base_loopbreak: %s",
-			 evutil_gai_strerror(err));
+			 evutil_gai_strerror (err));
 }
 
 int
 rs_packet_send (struct rs_packet *pkt, void *user_data)
 {
   struct rs_connection *conn = NULL;
-  int err = RSE_OK;
+  int err = 0;
 
   assert (pkt);
   assert (pkt->conn);
@@ -575,7 +619,7 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
   assert (conn->evb);
   assert (conn->bev);
   assert (conn->active_peer);
-  assert (conn->active_peer->fd >= 0);
+  assert (conn->fd >= 0);
 
   conn->user_data = user_data;
   bufferevent_setcb (conn->bev, NULL, _write_cb, _event_cb, pkt);
@@ -590,7 +634,7 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
       if (err < 0)
 	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
 				    "event_base_dispatch: %s",
-				    evutil_gai_strerror(err));
+				    evutil_gai_strerror (err));
       rs_debug (("%s: event loop done\n", __func__));
       conn->callbacks.sent_cb = NULL;
       conn->user_data = NULL;
@@ -613,7 +657,7 @@ _rcb (struct rs_packet *packet, void *user_data)
   if (err < 0)
     rs_err_conn_push_fl (packet->conn, RSE_EVENT, __FILE__, __LINE__,
 			 "event_base_loopbreak: %s",
-			 evutil_gai_strerror(err));
+			 evutil_gai_strerror (err));
 }
 
 /* Special function used in libradsec blocking dispatching mode,
@@ -636,10 +680,11 @@ rs_conn_receive_packet (struct rs_connection *conn,
 		        struct rs_packet *request,
 		        struct rs_packet **pkt_out)
 {
-  int err = RSE_OK;
+  int err = 0;
   struct rs_packet *pkt = NULL;
 
   assert (conn);
+  assert (conn->realm);
   assert (!conn->user_dispatch_flag); /* Dispatching mode only.  */
 
   if (rs_packet_create (conn, pkt_out))
@@ -648,36 +693,35 @@ rs_conn_receive_packet (struct rs_connection *conn,
   pkt->conn = conn;
   pkt->original = request;
 
-  if (_conn_open (conn, pkt))
-    return -1;
   assert (conn->evb);
   assert (conn->bev);
   assert (conn->active_peer);
-  assert (conn->active_peer->fd >= 0);
+  assert (conn->fd >= 0);
 
-  /* Install read and event callbacks with libevent.  */
+  /* Install callbacks with libevent.  */
   bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
   bufferevent_enable (conn->bev, EV_READ);
   bufferevent_setcb (conn->bev, _read_cb, NULL, _event_cb, pkt);
 
-  /* Install read callback with ourselves, for signaling successful
-     reception of message.  */
+  /* Install read callback with ourselves, for breaking event
+     loop upon reception of a valid packet.  */
   conn->callbacks.received_cb = _rcb;
 
   /* Dispatch.  */
   rs_debug (("%s: entering event loop\n", __func__));
   err = event_base_dispatch (conn->evb);
+  conn->callbacks.received_cb = NULL;
   if (err < 0)
     return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
 				"event_base_dispatch: %s",
-				evutil_gai_strerror(err));
+				evutil_gai_strerror (err));
   rs_debug (("%s: event loop done\n", __func__));
-  conn->callbacks.received_cb = NULL;
+
   if (!event_base_got_break (conn->evb))
     return -1;
 
 #if defined (DEBUG)
-  rs_dump_packet (pkt);
+      rs_dump_packet (pkt);
 #endif
 
   pkt->original = NULL;		/* FIXME: Why?  */

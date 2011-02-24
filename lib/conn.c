@@ -18,37 +18,50 @@ rs_conn_create (struct rs_context *ctx, struct rs_connection **conn,
   struct rs_connection *c;
 
   c = (struct rs_connection *) malloc (sizeof(struct rs_connection));
-  if (c)
-    {
-      memset (c, 0, sizeof(struct rs_connection));
-      c->ctx = ctx;
-      if (config)
-	{
-	  struct rs_realm *r = rs_conf_find_realm (ctx, config);
-	  if (r)
-	    {
-	      struct rs_peer *p;
+  if (!c)
+    return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
 
-	      c->type = r->type;
-	      c->peers = r->peers; /* FIXME: Copy instead?  */
-	      for (p = c->peers; p; p = p->next)
-		p->conn = c;
-	    }
+  memset (c, 0, sizeof(struct rs_connection));
+  c->ctx = ctx;
+  c->fd = -1;
+  if (config)
+    {
+      struct rs_realm *r = rs_conf_find_realm (ctx, config);
+      if (r)
+	{
+	  struct rs_peer *p;
+
+	  c->realm = r;
+	  c->peers = r->peers;	/* FIXME: Copy instead?  */
+	  for (p = c->peers; p; p = p->next)
+	    p->conn = c;
+	  c->tryagain = r->retries;
+	}
+      else
+	{
+	  c->realm = rs_malloc (ctx, sizeof (struct rs_realm));
+	  if (!c->realm)
+	    return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__,
+				       NULL);
+	  memset (c->realm, 0, sizeof (struct rs_realm));
 	}
     }
+
   if (conn)
     *conn = c;
-  return c ? RSE_OK : rs_err_ctx_push (ctx, RSE_NOMEM, NULL);
+  return RSE_OK;
 }
 
 void
 rs_conn_set_type (struct rs_connection *conn, rs_conn_type_t type)
 {
-  conn->type = type;
+  assert (conn);
+  assert (conn->realm);
+  conn->realm->type = type;
 }
 
 
-struct rs_error *
+struct rs_error *	   /* FIXME: Return int as all the others?  */
 _rs_resolv (struct evutil_addrinfo **addr, rs_conn_type_t type,
 	    const char *hostname, const char *service)
 {
@@ -74,6 +87,8 @@ _rs_resolv (struct evutil_addrinfo **addr, rs_conn_type_t type,
       hints.ai_socktype = SOCK_DGRAM;
       hints.ai_protocol = IPPROTO_UDP;
       break;
+    default:
+      return _rs_err_create (RSE_INVALID_CONN, __FILE__, __LINE__, NULL, NULL);
     }
   err = evutil_getaddrinfo (hostname, service, &hints, &res);
   if (err)
@@ -100,8 +115,8 @@ rs_conn_disconnect (struct rs_connection *conn)
 
   assert (conn);
 
-  err = evutil_closesocket (conn->active_peer->fd);
-  conn->active_peer->fd = -1;
+  err = evutil_closesocket (conn->fd);
+  conn->fd = -1;
   return err;
 }
 
@@ -113,12 +128,14 @@ rs_conn_destroy (struct rs_connection *conn)
 
   assert (conn);
 
-  if (conn->active_peer->is_connected)
+  if (conn->is_connected)
     {
       err = rs_conn_disconnect (conn);
       if (err)
 	return err;
     }
+
+  /* NOTE: conn->realm is owned by context.  */
 
   for (p = conn->peers; p; p = p->next)
     {
@@ -128,6 +145,8 @@ rs_conn_destroy (struct rs_connection *conn)
 	rs_free (conn->ctx, p->secret);
     }
 
+  if (conn->tev)
+    event_free (conn->tev);
   if (conn->evb)
     event_base_free (conn->evb);
 
@@ -183,5 +202,5 @@ int rs_conn_fd (struct rs_connection *conn)
 {
   assert (conn);
   assert (conn->active_peer);
-  return conn->active_peer->fd;
+  return conn->fd;
 }

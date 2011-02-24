@@ -21,6 +21,7 @@ enum rs_err_code {
     RSE_INTERNAL = 13,
     RSE_SSLERR = 14,		/* OpenSSL error.  */
     RSE_INVALID_PKT = 15,
+    RSE_IOTIMEOUT = 16,
     RSE_SOME_ERROR = 21,  /* Unspecified error.  Shouldn't happen.  */
 };
 
@@ -115,7 +116,7 @@ int rs_server_set_address(struct rs_peer *server, const char *hostname,
 			  const char *service);
 int rs_server_set_secret(struct rs_peer *server, const char *secret);
 void rs_server_set_timeout(struct rs_peer *server, int timeout);
-void rs_server_set_tries(struct rs_peer *server, int tries);
+void rs_server_set_retries(struct rs_peer *server, int retries);
 
 /* Packet.  */
 int rs_packet_create(struct rs_connection *conn, struct rs_packet **pkt_out);
@@ -149,6 +150,7 @@ int rs_err_conn_push(struct rs_connection *conn, int code, const char *fmt,
 int rs_err_conn_push_fl(struct rs_connection *conn, int code,
 			const char *file, int line, const char *fmt, ...);
 struct rs_error *rs_err_conn_pop(struct rs_connection *conn);
+int rs_err_conn_peek_code (struct rs_connection *conn);
 void rs_err_free(struct rs_error *err);
 char *rs_err_msg(struct rs_error *err, int dofree_flag);
 int rs_err_code(struct rs_error *err, int dofree_flag);

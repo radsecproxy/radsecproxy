@@ -8,11 +8,14 @@
 #include <string.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "debug.h"
 
 #if 0
-  # example of client config
+  # client config options
   config NAME {
       type = "UDP"|"TCP"|"TLS"|"DTLS"
+      timeout = INT
+      retries = INT
       cacertfile = STRING
       #cacertpath = STRING
       certfile = STRING
@@ -21,8 +24,6 @@
           hostname = STRING
 	  service = STRING
 	  secret = STRING
-	  timeout = INT         /* optional */
-	  tries = INT		/* optional */
       }
   }
 #endif
@@ -30,19 +31,21 @@
 int
 rs_context_read_config(struct rs_context *ctx, const char *config_file)
 {
-#warning "Missing some error handling in rs_context_read_config()"
+
+  /* FIXME: Missing some error handling in rs_context_read_config().  */
+
   cfg_opt_t server_opts[] =
     {
       CFG_STR ("hostname", NULL, CFGF_NONE),
       CFG_STR ("service", "radius", CFGF_NONE),
       CFG_STR ("secret", NULL, CFGF_NONE),
-      CFG_INT ("timeout", 3, CFGF_NONE),
-      CFG_INT ("tries", 1, CFGF_NONE),
       CFG_END ()
     };
   cfg_opt_t config_opts[] =
     {
       CFG_STR ("type", "UDP", CFGF_NONE),
+      CFG_INT ("timeout", 2, CFGF_NONE),
+      CFG_INT ("retries", 2, CFGF_NONE),
       CFG_STR ("cacertfile", NULL, CFGF_NONE),
       /*CFG_STR ("cacertpath", NULL, CFGF_NONE),*/
       CFG_STR ("certfile", NULL, CFGF_NONE),
@@ -70,8 +73,13 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       if (!r)
 	return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
       memset (r, 0, sizeof(*r));
-      r->next = ctx->realms->next;
-      ctx->realms->next = r;
+      if (ctx->realms)
+	{
+	  r->next = ctx->realms->next;
+	  ctx->realms->next = r;
+	}
+      else
+	  ctx->realms = r;
       cfg_config = cfg_getnsec (cfg, "config", i);
       r->name = strdup (cfg_title (cfg_config));
 
@@ -87,6 +95,8 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       else
 	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
 				   "invalid connection type: %s", typestr);
+      r->timeout = cfg_getint (cfg_config, "timeout");
+      r->retries = cfg_getint (cfg_config, "retries");
 
       r->cacertfile = cfg_getstr (cfg_config, "cacertfile");
       /*r->cacertpath = cfg_getstr (cfg_config, "cacertpath");*/
@@ -106,8 +116,6 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	  _rs_resolv (&p->addr, r->type, cfg_getstr (cfg_server, "hostname"),
 		      cfg_getstr (cfg_server, "service"));
 	  p->secret = strdup (cfg_getstr (cfg_server, "secret"));
-	  p->timeout = cfg_getint (cfg_server, "timeout");
-	  p->tries = cfg_getint (cfg_server, "tries");
 	}
     }
   return RSE_OK;
@@ -118,7 +126,7 @@ rs_conf_find_realm(struct rs_context *ctx, const char *name)
 {
   struct rs_realm *r;
 
-  for (r = ctx->realms->next; r != ctx->realms; r = r->next)
+  for (r = ctx->realms; r; r = r->next)
     if (!strcmp (r->name, name))
 	return r;
   return NULL;
