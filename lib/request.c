@@ -13,13 +13,18 @@
 #include <radsec/request-impl.h>
 
 int
-rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
+rs_request_create (struct rs_connection *conn, struct rs_request **req_out,
+		   const char *user_name, const char *user_pw)
 {
   struct rs_request *req = rs_malloc (conn->ctx, sizeof(*req));
   if (!req)
     return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
   memset (req, 0, sizeof(*req));
   req->conn = conn;
+
+  if (rs_packet_create_auth_request (conn, &req->req_msg, user_name, user_pw))
+    return -1;
+
   *req_out = req;
   return RSE_OK;
 }
@@ -27,8 +32,8 @@ rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
 void
 rs_request_destroy (struct rs_request *request)
 {
-  rs_packet_destroy (request->req);
-  rs_packet_destroy (request->resp);
+  rs_packet_destroy (request->req_msg);
+  rs_packet_destroy (request->resp_msg);
   rs_free (request->conn->ctx, request);
 }
 
@@ -53,7 +58,7 @@ _rs_req_disconnected(void *user_data)
 }
 
 static void
-_rs_req_packet_received(struct rs_packet *pkt, void *user_data)
+_rs_req_packet_received(struct rs_packet *msg, void *user_data)
 {
   //struct rs_request *request = (struct rs_request *)user_data;
 }
@@ -65,17 +70,16 @@ _rs_req_packet_sent(void *user_data)
 }
 
 int
-rs_request_send(struct rs_request *request, struct rs_packet *req,
-	        struct rs_packet **resp)
+rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
 {
   int err;
   struct rs_connection *conn;
 
   assert (request);
   assert (request->conn);
+  assert (request->req_msg);
   conn = request->conn;
 
-  request->req = req;		/* take ownership */
   request->saved_cb = conn->callbacks;
 
   conn->callbacks.connected_cb = _rs_req_connected;
@@ -83,11 +87,11 @@ rs_request_send(struct rs_request *request, struct rs_packet *req,
   conn->callbacks.received_cb = _rs_req_packet_received;
   conn->callbacks.sent_cb = _rs_req_packet_sent;
 
-  err = rs_packet_send(request->req, request);
+  err = rs_packet_send(request->req_msg, request);
   if (err)
     goto cleanup;
 
-  err = rs_conn_receive_packet(request->conn, request->req, resp);
+  err = rs_conn_receive_packet(request->conn, request->req_msg, resp_msg);
   if (err)
     goto cleanup;
 

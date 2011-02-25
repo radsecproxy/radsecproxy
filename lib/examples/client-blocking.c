@@ -46,21 +46,21 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
     return rs_err_conn_pop (conn);
 #endif	/* USE_CONFIG_FILE */
 
-  if (rs_packet_create_auth_request (conn, &req, USER_NAME, USER_PW))
-    return rs_err_conn_pop (conn);
-
   if (use_request_object_flag)
     {
       struct rs_request *request;
 
-      if (rs_request_create (conn, &request))
+      if (rs_request_create (conn, &request, USER_NAME, USER_PW))
 	return rs_err_conn_pop (conn);
-      if (rs_request_send (request, req, &resp))
+      if (rs_request_send (request, &resp))
 	return rs_err_conn_pop (conn);
       rs_request_destroy (request);
     }
   else
     {
+      if (rs_packet_create_auth_request (conn, &req, USER_NAME, USER_PW))
+	return rs_err_conn_pop (conn);
+
       if (rs_packet_send (req, NULL))
 	{
 	  rs_packet_destroy (req);
