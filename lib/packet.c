@@ -27,6 +27,17 @@
 #endif
 
 static int
+_loopbreak (struct rs_connection *conn)
+{
+  int err = event_base_loopbreak (conn->evb);
+  if (err < 0)
+    rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+			 "event_base_loopbreak: %s",
+			 evutil_gai_strerror (err));
+  return err;
+}
+
+static int
 _do_send (struct rs_packet *pkt)
 {
   int err;
@@ -74,6 +85,7 @@ _on_connect (struct rs_connection *conn)
 {
   conn->is_connected = 1;
   rs_debug (("%s: %p connected\n", __func__, conn->active_peer));
+  evtimer_del (conn->tev);
   if (conn->callbacks.connected_cb)
     conn->callbacks.connected_cb (conn->user_data);
 }
@@ -155,6 +167,7 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
 	    }
 	}
 #endif	/* RS_ENABLE_TLS */
+      _loopbreak (conn);
     }
 
 #if defined (DEBUG)
@@ -413,6 +426,40 @@ _pick_peer (struct rs_connection *conn)
   return conn->active_peer;
 }
 
+static void
+_conn_timeout_cb (int fd, short event, void *data)
+{
+  struct rs_connection *conn;
+
+  assert (data);
+  conn = (struct rs_connection *) data;
+
+  if (event & EV_TIMEOUT)
+    {
+      rs_debug (("%s: connection timeout on %p (fd %d) connecting to %p\n",
+		 __func__, conn, conn->fd, conn->active_peer));
+      conn->is_connecting = 0;
+      rs_err_conn_push_fl (conn, RSE_IOTIMEOUT, __FILE__, __LINE__, NULL);
+      _loopbreak (conn);
+    }
+}
+static int
+_set_timeout (struct rs_connection *conn)
+{
+  struct timeval tv;
+
+  if (!conn->tev)
+    conn->tev = evtimer_new (conn->evb, _conn_timeout_cb, conn);
+  if (!conn->tev)
+    return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+				"event_new");
+  tv.tv_sec = conn->realm->timeout;
+  tv.tv_usec = 0;
+  evtimer_add (conn->tev, &tv);
+
+  return RSE_OK;
+}
+
 static int
 _init_bev (struct rs_connection *conn, struct rs_peer *peer)
 {
@@ -484,6 +531,7 @@ _do_connect (struct rs_connection *conn)
   }
 #endif
 
+  _set_timeout (conn);
   err = bufferevent_socket_connect (p->conn->bev, p->addr->ai_addr,
 				    p->addr->ai_addrlen);
   if (err < 0)
