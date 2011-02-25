@@ -93,6 +93,8 @@ struct rs_packet {
     uint8_t hdr[4];
     RADIUS_PACKET *rpkt;
     struct rs_packet *original;
+    char valid_flag;
+    char written_flag;
 };
 
 struct rs_attr {

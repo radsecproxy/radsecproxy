@@ -586,18 +586,10 @@ rs_packet_create_auth_request (struct rs_connection *conn,
 static void
 _wcb (void *user_data)
 {
-  struct rs_connection *conn = (struct rs_connection *) user_data;
-  int err;
-
-  assert (conn);
-
-  /* When we're running the event loop for the user, we must break
-     it in order to give the control back to the user.  */
-  err = event_base_loopbreak (conn->evb);
-  if (err < 0)
-    rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
-			 "event_base_loopbreak: %s",
-			 evutil_gai_strerror (err));
+  struct rs_packet *pkt = (struct rs_packet *) user_data;
+  assert (pkt);
+  pkt->written_flag = 1;
+  bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
 }
 
 int
@@ -623,12 +615,13 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
 
   conn->user_data = user_data;
   bufferevent_setcb (conn->bev, NULL, _write_cb, _event_cb, pkt);
+  bufferevent_enable (conn->bev, EV_WRITE);
 
   /* Do dispatch, unless the user wants to do it herself.  */
   if (!conn->user_dispatch_flag)
     {
       conn->callbacks.sent_cb = _wcb;
-      conn->user_data = conn;
+      conn->user_data = pkt;
       rs_debug (("%s: entering event loop\n", __func__));
       err = event_base_dispatch (conn->evb);
       if (err < 0)
@@ -639,7 +632,7 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
       conn->callbacks.sent_cb = NULL;
       conn->user_data = NULL;
 
-      if (!event_base_got_break (conn->evb))
+      if (!pkt->written_flag)
 	return -1;
     }
 
@@ -649,15 +642,10 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
 static void
 _rcb (struct rs_packet *packet, void *user_data)
 {
-  int err = 0;
-
-  /* When we're running the event loop for the user, we must break it
-     in order to give the control back to the user.  */
-  err = event_base_loopbreak (packet->conn->evb);
-  if (err < 0)
-    rs_err_conn_push_fl (packet->conn, RSE_EVENT, __FILE__, __LINE__,
-			 "event_base_loopbreak: %s",
-			 evutil_gai_strerror (err));
+  struct rs_packet *pkt = (struct rs_packet *) user_data;
+  assert (pkt);
+  pkt->valid_flag = 1;
+  bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
 }
 
 /* Special function used in libradsec blocking dispatching mode,
@@ -698,14 +686,11 @@ rs_conn_receive_packet (struct rs_connection *conn,
   assert (conn->active_peer);
   assert (conn->fd >= 0);
 
-  /* Install callbacks with libevent.  */
   bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
-  bufferevent_enable (conn->bev, EV_READ);
   bufferevent_setcb (conn->bev, _read_cb, NULL, _event_cb, pkt);
-
-  /* Install read callback with ourselves, for breaking event
-     loop upon reception of a valid packet.  */
+  bufferevent_enable (conn->bev, EV_READ);
   conn->callbacks.received_cb = _rcb;
+  conn->user_data = pkt;
 
   /* Dispatch.  */
   rs_debug (("%s: entering event loop\n", __func__));
@@ -717,7 +702,7 @@ rs_conn_receive_packet (struct rs_connection *conn,
 				evutil_gai_strerror (err));
   rs_debug (("%s: event loop done\n", __func__));
 
-  if (!event_base_got_break (conn->evb))
+  if (!pkt->valid_flag)
     return -1;
 
 #if defined (DEBUG)
