@@ -102,6 +102,9 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
   assert (request->req_msg);
   conn = request->conn;
 
+  if (!request || !request->conn || !request->req_msg || !resp_msg)
+    return rs_err_conn_push_fl (conn, RSE_INVAL, __FILE__, __LINE__, NULL);
+
   request->saved_cb = conn->callbacks;
 
   conn->callbacks.connected_cb = _rs_req_connected;
