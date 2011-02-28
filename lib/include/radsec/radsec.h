@@ -62,8 +62,7 @@ struct rs_alloc_scheme {
 };
 
 typedef void (*rs_conn_connected_cb) (void *user_data /* FIXME: peer? */ );
-typedef void (*rs_conn_disconnected_cb) (void *user_data
-					 /* FIXME: reason? */ );
+typedef void (*rs_conn_disconnected_cb) (void *user_data /* FIXME: reason? */ );
 typedef void (*rs_conn_packet_received_cb) (struct rs_packet *packet,
 					    void *user_data);
 typedef void (*rs_conn_packet_sent_cb) (void *user_data);
@@ -85,32 +84,34 @@ int rs_context_create(struct rs_context **ctx, const char *dict);
 void rs_context_destroy(struct rs_context *ctx);
 int rs_context_set_alloc_scheme(struct rs_context *ctx,
 				struct rs_alloc_scheme *scheme);
-int rs_context_read_config(struct rs_context *ctx,
-			   const char *config_file);
+int rs_context_read_config(struct rs_context *ctx, const char *config_file);
 
 /* Connection.  */
-int rs_conn_create(struct rs_context *ctx, struct rs_connection **conn,
+int rs_conn_create(struct rs_context *ctx,
+		   struct rs_connection **conn,
 		   const char *config);
 void rs_conn_set_type(struct rs_connection *conn, rs_conn_type_t type);
-int rs_conn_add_listener(struct rs_connection *conn, rs_conn_type_t type,
-			 const char *hostname, int port);
+int rs_conn_add_listener(struct rs_connection *conn,
+			 rs_conn_type_t type,
+			 const char *hostname,
+			 int port);
 int rs_conn_disconnect (struct rs_connection *conn);
 int rs_conn_destroy(struct rs_connection *conn);
-int rs_conn_set_eventbase(struct rs_connection *conn,
-			  struct event_base *eb);
+int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb);
 void rs_conn_set_callbacks(struct rs_connection *conn,
-			  struct rs_conn_callbacks *cb);
+			   struct rs_conn_callbacks *cb);
 void rs_conn_del_callbacks(struct rs_connection *conn);
 struct rs_conn_callbacks *rs_conn_get_callbacks(struct rs_connection *conn);
 int rs_conn_select_server(struct rs_connection *conn, const char *name);
 int rs_conn_get_current_server(struct rs_connection *conn,
-			       const char *name, size_t buflen);
+			       const char *name,
+			       size_t buflen);
 int rs_conn_receive_packet(struct rs_connection *conn,
 			   struct rs_packet *request,
 			   struct rs_packet **pkt_out);
 int rs_conn_fd(struct rs_connection *conn);
 
-/* Server and client.  */
+/* Client and server.  */
 int rs_server_create(struct rs_connection *conn, struct rs_peer **server);
 int rs_server_set_address(struct rs_peer *server, const char *hostname,
 			  const char *service);
@@ -120,35 +121,45 @@ void rs_server_set_retries(struct rs_peer *server, int retries);
 
 /* Packet.  */
 int rs_packet_create(struct rs_connection *conn, struct rs_packet **pkt_out);
-int rs_packet_create_auth_request(struct rs_connection *conn,
-				  struct rs_packet **pkt,
-				  const char *user_name, /* FIXME: remove? */
-				  const char *user_pw);	/* FIXME: remove? */
+void rs_packet_destroy(struct rs_packet *pkt);
 void rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr);
 int rs_packet_send(struct rs_packet *pkt, void *data);
 struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
-void rs_packet_destroy(struct rs_packet *pkt);
+int rs_packet_create_auth_request(struct rs_connection *conn,
+				  struct rs_packet **pkt,
+				  const char *user_name,
+				  const char *user_pw);
 
 /* Attribute.  */
 /* FIXME: Replace (or complement) with a wrapper for paircreate().  */
-int rs_attr_create(struct rs_connection *conn, struct rs_attr **attr,
-		   const char *type, const char *val);
+int rs_attr_create(struct rs_connection *conn,
+		   struct rs_attr **attr,
+		   const char *type,
+		   const char *val);
 void rs_attr_destroy(struct rs_attr *attr);
 
 /* Config.  */
-struct rs_realm *rs_conf_find_realm(struct rs_context *ctx,
-				    const char *name);
+struct rs_realm *rs_conf_find_realm(struct rs_context *ctx, const char *name);
 
 /* Error.  */
-int rs_err_ctx_push(struct rs_context *ctx, int code, const char *fmt,
-		    ...);
-int rs_err_ctx_push_fl(struct rs_context *ctx, int code, const char *file,
-		       int line, const char *fmt, ...);
+int rs_err_ctx_push(struct rs_context *ctx, int code, const char *fmt, ...);
+int rs_err_ctx_push_fl(struct rs_context *ctx,
+		       int code,
+		       const char *file,
+		       int line,
+		       const char *fmt,
+		       ...);
 struct rs_error *rs_err_ctx_pop(struct rs_context *ctx);
-int rs_err_conn_push(struct rs_connection *conn, int code, const char *fmt,
+int rs_err_conn_push(struct rs_connection *conn,
+		     int code,
+		     const char *fmt,
 		     ...);
-int rs_err_conn_push_fl(struct rs_connection *conn, int code,
-			const char *file, int line, const char *fmt, ...);
+int rs_err_conn_push_fl(struct rs_connection *conn,
+			int code,
+			const char *file,
+			int line,
+			const char *fmt,
+			...);
 struct rs_error *rs_err_conn_pop(struct rs_connection *conn);
 int rs_err_conn_peek_code (struct rs_connection *conn);
 void rs_err_free(struct rs_error *err);
