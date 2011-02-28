@@ -30,13 +30,13 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
     if (rs_conn_create (h, &conn, NULL))
       return rs_err_conn_pop (conn);
     rs_conn_set_type (conn, RS_CONN_TYPE_UDP);
-    if (rs_server_create (conn, &server))
+    if (rs_peer_create (conn, &server))
       return rs_err_conn_pop (conn);
-    if (rs_server_set_address (server, av1, av2))
+    if (rs_peer_set_address (server, av1, av2))
       return rs_err_conn_pop (conn);
-    rs_server_set_timeout (server, 1);
-    rs_server_set_tries (server, 3);
-    if (rs_server_set_secret (server, SECRET))
+    rs_peer_set_timeout (server, 1);
+    rs_peer_set_retries (server, 3);
+    if (rs_peer_set_secret (server, SECRET))
       return rs_err_conn_pop (conn);
   }
 #else

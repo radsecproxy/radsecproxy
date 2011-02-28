@@ -111,13 +111,13 @@ int rs_conn_receive_packet(struct rs_connection *conn,
 			   struct rs_packet **pkt_out);
 int rs_conn_fd(struct rs_connection *conn);
 
-/* Client and server.  */
-int rs_server_create(struct rs_connection *conn, struct rs_peer **server);
-int rs_server_set_address(struct rs_peer *server, const char *hostname,
-			  const char *service);
-int rs_server_set_secret(struct rs_peer *server, const char *secret);
-void rs_server_set_timeout(struct rs_peer *server, int timeout);
-void rs_server_set_retries(struct rs_peer *server, int retries);
+/* Peers.  */
+int rs_peer_create(struct rs_connection *conn, struct rs_peer **peer_out);
+int rs_peer_set_address(struct rs_peer *peer, const char *hostname,
+			const char *service);
+int rs_peer_set_secret(struct rs_peer *peer, const char *secret);
+void rs_peer_set_timeout(struct rs_peer *peer, int timeout);
+void rs_peer_set_retries(struct rs_peer *peer, int retries);
 
 /* Packet.  */
 int rs_packet_create(struct rs_connection *conn, struct rs_packet **pkt_out);

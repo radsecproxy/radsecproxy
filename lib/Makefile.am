@@ -15,6 +15,7 @@ libradsec_la_SOURCES = \
 	debug.c \
 	err.c \
 	packet.c \
+	peer.c \
 	radsec.c \
 	request.c
 
