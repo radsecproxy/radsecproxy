@@ -16,6 +16,7 @@ int
 rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
 {
   struct rs_request *req = rs_malloc (conn->ctx, sizeof(*req));
+  assert (req_out);
   if (!req)
     return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
   memset (req, 0, sizeof(*req));
@@ -27,6 +28,7 @@ rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
 void
 rs_request_add_reqpkt (struct rs_request *req, struct rs_packet *reqpkt)
 {
+  assert (req);
   req->req_msg = reqpkt;
 }
 
@@ -37,7 +39,7 @@ rs_request_create_authn (struct rs_connection *conn,
 			 const char *user_pw)
 {
   struct rs_request *req;
-
+  assert (req_out);
   if (rs_request_create (conn, &req))
     return -1;
 
@@ -51,6 +53,7 @@ rs_request_create_authn (struct rs_connection *conn,
 void
 rs_request_destroy (struct rs_request *request)
 {
+  assert (request);
   rs_packet_destroy (request->req_msg);
   rs_packet_destroy (request->resp_msg);
   rs_free (request->conn->ctx, request);
