@@ -1,0 +1,24 @@
+Build
+-----
+
+In order to build the tests, you'll need libcgreen
+(http://www.lastcraft.com/cgreen.php).
+
+
+Run
+---
+
+NOTE: To run the tests you need 
+- a RADIUS server running at localhost:1820 with shared sekret
+  "sikrit" configured (or whatever "test-udp-auth" in test.conf says)
+- a user "molgan" with password "password" present in the RADIUS
+  database
+This requirement will disappear in the future.
+
+Run the tests by typing
+
+  ./test-udp
+
+The output should be something like
+
+  Completed "main": 32 passes, 0 failures, 0 exceptions.

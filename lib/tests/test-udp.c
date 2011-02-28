@@ -17,12 +17,13 @@ authenticate (struct rs_connection *conn, const char *user, const char *pw)
   struct rs_packet *msg, *resp;
 
   assert_true (rs_request_create (conn, &req) == 0);
-  assert_true (rs_packet_create_auth_request (conn, &msg, user, pw) == 0);
-  assert_true (rs_request_send (req, msg, &resp) == 0);
+  assert_true (rs_packet_create_authn_request (conn, &msg, user, pw) == 0);
+  rs_request_add_reqpkt (req, msg);
+  assert_true (rs_request_send (req, &resp) == 0);
   //printf ("%s\n", rs_err_msg (rs_err_conn_pop (conn), 1));
   assert_true (rs_packet_frpkt (resp)->code == PW_AUTHENTICATION_ACK);
 
-  rs_request_destroy(req);
+  rs_request_destroy (req);
 }
 
 static void
@@ -30,8 +31,8 @@ send_more_than_one_msg_in_one_packet (struct rs_connection *conn)
 {
   struct rs_packet *msg0, *msg1;
 
-  assert_true (rs_packet_create_auth_request (conn, &msg0, NULL, NULL) == 0);
-  assert_true (rs_packet_create_auth_request (conn, &msg1, NULL, NULL) == 0);
+  assert_true (rs_packet_create_authn_request (conn, &msg0, NULL, NULL) == 0);
+  assert_true (rs_packet_create_authn_request (conn, &msg1, NULL, NULL) == 0);
   assert_true (rs_packet_send (msg0, NULL) == 0);
   assert_true (rs_packet_send (msg1, NULL) == 0);
 }
