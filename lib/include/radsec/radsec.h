@@ -102,16 +102,16 @@ void rs_conn_set_callbacks(struct rs_connection *conn,
 			   struct rs_conn_callbacks *cb);
 void rs_conn_del_callbacks(struct rs_connection *conn);
 struct rs_conn_callbacks *rs_conn_get_callbacks(struct rs_connection *conn);
-int rs_conn_select_server(struct rs_connection *conn, const char *name);
-int rs_conn_get_current_server(struct rs_connection *conn,
-			       const char *name,
-			       size_t buflen);
+int rs_conn_select_peer(struct rs_connection *conn, const char *name);
+int rs_conn_get_current_peer(struct rs_connection *conn,
+			     const char *name,
+			     size_t buflen);
 int rs_conn_receive_packet(struct rs_connection *conn,
 			   struct rs_packet *request,
 			   struct rs_packet **pkt_out);
 int rs_conn_fd(struct rs_connection *conn);
 
-/* Peers.  */
+/* Peer -- client and server.  */
 int rs_peer_create(struct rs_connection *conn, struct rs_peer **peer_out);
 int rs_peer_set_address(struct rs_peer *peer, const char *hostname,
 			const char *service);

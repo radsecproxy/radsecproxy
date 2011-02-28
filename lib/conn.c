@@ -184,15 +184,15 @@ rs_conn_get_callbacks(struct rs_connection *conn)
 }
 
 int
-rs_conn_select_server (struct rs_connection *conn, const char *name)
+rs_conn_select_peer (struct rs_connection *conn, const char *name)
 {
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
 }
 
 int
-rs_conn_get_current_server (struct rs_connection *conn, const char *name,
-			    size_t buflen)
+rs_conn_get_current_peer (struct rs_connection *conn, const char *name,
+			  size_t buflen)
 {
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
 			      "%s: NYI", __func__);
