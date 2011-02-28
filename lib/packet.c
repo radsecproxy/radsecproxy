@@ -601,9 +601,9 @@ rs_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
 }
 
 int
-rs_packet_create_auth_request (struct rs_connection *conn,
-			       struct rs_packet **pkt_out,
-			       const char *user_name, const char *user_pw)
+rs_packet_create_authn_request (struct rs_connection *conn,
+				struct rs_packet **pkt_out,
+				const char *user_name, const char *user_pw)
 {
   struct rs_packet *pkt;
   struct rs_attr *attr;

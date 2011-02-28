@@ -13,16 +13,35 @@
 #include <radsec/request-impl.h>
 
 int
-rs_request_create (struct rs_connection *conn, struct rs_request **req_out,
-		   const char *user_name, const char *user_pw)
+rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
 {
   struct rs_request *req = rs_malloc (conn->ctx, sizeof(*req));
   if (!req)
     return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
   memset (req, 0, sizeof(*req));
   req->conn = conn;
+  *req_out = req;
+  return RSE_OK;
+}
 
-  if (rs_packet_create_auth_request (conn, &req->req_msg, user_name, user_pw))
+void
+rs_request_add_reqpkt (struct rs_request *req, struct rs_packet *reqpkt)
+{
+  req->req_msg = reqpkt;
+}
+
+int
+rs_request_create_authn (struct rs_connection *conn,
+			 struct rs_request **req_out,
+			 const char *user_name,
+			 const char *user_pw)
+{
+  struct rs_request *req;
+
+  if (rs_request_create (conn, &req))
+    return -1;
+
+  if (rs_packet_create_authn_request (conn, &req->req_msg, user_name, user_pw))
     return -1;
 
   *req_out = req;

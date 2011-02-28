@@ -50,7 +50,7 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
     {
       struct rs_request *request;
 
-      if (rs_request_create (conn, &request, USER_NAME, USER_PW))
+      if (rs_request_create_authn (conn, &request, USER_NAME, USER_PW))
 	return rs_err_conn_pop (conn);
       if (rs_request_send (request, &resp))
 	return rs_err_conn_pop (conn);
@@ -58,7 +58,7 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
     }
   else
     {
-      if (rs_packet_create_auth_request (conn, &req, USER_NAME, USER_PW))
+      if (rs_packet_create_authn_request (conn, &req, USER_NAME, USER_PW))
 	return rs_err_conn_pop (conn);
 
       if (rs_packet_send (req, NULL))

@@ -125,10 +125,10 @@ void rs_packet_destroy(struct rs_packet *pkt);
 void rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr);
 int rs_packet_send(struct rs_packet *pkt, void *data);
 struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
-int rs_packet_create_auth_request(struct rs_connection *conn,
-				  struct rs_packet **pkt,
-				  const char *user_name,
-				  const char *user_pw);
+int rs_packet_create_authn_request(struct rs_connection *conn,
+				   struct rs_packet **pkt,
+				   const char *user_name,
+				   const char *user_pw);
 
 /* Attribute.  */
 /* FIXME: Replace (or complement) with a wrapper for paircreate().  */
