@@ -28,7 +28,7 @@ static const char *_errtxt[] = {
   "SSL error",			/* 14 RSE_SSLERR */
   "invalid packet",		/* 15 RSE_INVALID_PKT */
   "I/O timeout",		/* 16 RSE_IOTIMEOUT */
-  "ERR 17",			/*  RSE_ */
+  "invalid argument",		/* 17 RSE_INVAL */
   "ERR 18",			/*  RSE_ */
   "ERR 19",			/*  RSE_ */
   "ERR 20",			/*  RSE_ */
