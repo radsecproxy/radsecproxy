@@ -120,6 +120,8 @@ _rs_peer_destroy (struct rs_peer *p)
       evutil_freeaddrinfo (p->addr);
       p->addr = NULL;
     }
+  if (p->secret)
+    rs_free (p->conn->ctx, p->secret);
   rs_free (p->conn->ctx, p);
 }
 

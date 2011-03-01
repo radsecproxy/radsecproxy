@@ -123,7 +123,6 @@ rs_conn_disconnect (struct rs_connection *conn)
 int
 rs_conn_destroy (struct rs_connection *conn)
 {
-  struct rs_peer *p;
   int err = 0;
 
   assert (conn);
@@ -136,14 +135,7 @@ rs_conn_destroy (struct rs_connection *conn)
     }
 
   /* NOTE: conn->realm is owned by context.  */
-
-  for (p = conn->peers; p; p = p->next)
-    {
-      if (p->addr)
-	evutil_freeaddrinfo (p->addr);
-      if (p->secret)
-	rs_free (conn->ctx, p->secret);
-    }
+  /* NOTE: conn->peers is owned by context.  */
 
   if (conn->tev)
     event_free (conn->tev);
