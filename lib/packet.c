@@ -132,7 +132,7 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
     {
       rs_debug (("%s: %p times out on %s\n", __func__, p,
 		 (events & BEV_EVENT_READING) ? "read" : "write"));
-      rs_err_conn_push_fl (pkt->conn, RSE_IOTIMEOUT, __FILE__, __LINE__, NULL);
+      rs_err_conn_push_fl (pkt->conn, RSE_TIMEOUT_IO, __FILE__, __LINE__, NULL);
     }
   else if (events & BEV_EVENT_ERROR)
     {
@@ -439,7 +439,7 @@ _conn_timeout_cb (int fd, short event, void *data)
       rs_debug (("%s: connection timeout on %p (fd %d) connecting to %p\n",
 		 __func__, conn, conn->fd, conn->active_peer));
       conn->is_connecting = 0;
-      rs_err_conn_push_fl (conn, RSE_IOTIMEOUT, __FILE__, __LINE__, NULL);
+      rs_err_conn_push_fl (conn, RSE_TIMEOUT_IO, __FILE__, __LINE__, NULL);
       _loopbreak (conn);
     }
 }

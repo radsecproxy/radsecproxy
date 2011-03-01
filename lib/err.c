@@ -27,8 +27,9 @@ static const char *_errtxt[] = {
   "internal error",		/* 13 RSE_INTERNAL */
   "SSL error",			/* 14 RSE_SSLERR */
   "invalid packet",		/* 15 RSE_INVALID_PKT */
-  "I/O timeout",		/* 16 RSE_IOTIMEOUT */
+  "connect timeout",		/* 16 RSE_TIMEOUT_CONN */
   "invalid argument",		/* 17 RSE_INVAL */
+  "I/O timeout",		/* 18 RSE_TIMEOUT_IO */
 };
 #define ERRTXT_SIZE (sizeof(_errtxt) / sizeof(*_errtxt))
 

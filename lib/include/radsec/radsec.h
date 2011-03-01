@@ -21,8 +21,9 @@ enum rs_err_code {
     RSE_INTERNAL = 13,
     RSE_SSLERR = 14,		/* OpenSSL error.  */
     RSE_INVALID_PKT = 15,
-    RSE_IOTIMEOUT = 16,
+    RSE_TIMEOUT_CONN = 16,
     RSE_INVAL = 17,
+    RSE_TIMEOUT_IO = 18,
 };
 
 enum rs_conn_type {
