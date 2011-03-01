@@ -149,6 +149,5 @@ void rs_context_destroy(struct rs_context *ctx)
 int rs_context_set_alloc_scheme(struct rs_context *ctx,
 				struct rs_alloc_scheme *scheme)
 {
-  return rs_err_ctx_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__,
-			     "%s: NYI", __func__);
+  return rs_err_ctx_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__, NULL);
 }

@@ -496,8 +496,7 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
       break;
 
     case RS_CONN_TYPE_DTLS:
-      return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
-				  "%s: NYI", __func__);
+      return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__, NULL);
 #endif	/* RS_ENABLE_TLS */
 
     default:

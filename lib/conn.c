@@ -103,8 +103,7 @@ int
 rs_conn_add_listener (struct rs_connection *conn, rs_conn_type_t type,
 		      const char *hostname, int port)
 {
-  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
-			      "%s: NYI", __func__);
+  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__, NULL);
 }
 
 
@@ -142,14 +141,16 @@ rs_conn_destroy (struct rs_connection *conn)
   if (conn->evb)
     event_base_free (conn->evb);
 
+  /* TODO: free tls_ctx  */
+  /* TODO: free tls_ssl  */
+
   return 0;
 }
 
 int
 rs_conn_set_eventbase (struct rs_connection *conn, struct event_base *eb)
 {
-  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
-			      "%s: NYI", __func__);
+  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__, NULL);
 }
 
 void
@@ -178,16 +179,14 @@ rs_conn_get_callbacks(struct rs_connection *conn)
 int
 rs_conn_select_peer (struct rs_connection *conn, const char *name)
 {
-  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
-			      "%s: NYI", __func__);
+  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__, NULL);
 }
 
 int
 rs_conn_get_current_peer (struct rs_connection *conn, const char *name,
 			  size_t buflen)
 {
-  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__,
-			      "%s: NYI", __func__);
+  return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__, NULL);
 }
 
 int rs_conn_fd (struct rs_connection *conn)
