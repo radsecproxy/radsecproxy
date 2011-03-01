@@ -23,7 +23,6 @@ enum rs_err_code {
     RSE_INVALID_PKT = 15,
     RSE_IOTIMEOUT = 16,
     RSE_INVAL = 17,
-    RSE_SOME_ERROR = 21,  /* Unspecified error.  Shouldn't happen.  */
 };
 
 enum rs_conn_type {

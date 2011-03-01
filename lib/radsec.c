@@ -54,7 +54,7 @@ rs_context_create(struct rs_context **ctx, const char *dict)
   fn = basename (buf2);
   if (dict_init (dir, fn) < 0)
     {
-      err = RSE_SOME_ERROR;
+      err = RSE_FR;
       goto err_out;
     }
   free (buf1);

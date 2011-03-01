@@ -29,10 +29,6 @@ static const char *_errtxt[] = {
   "invalid packet",		/* 15 RSE_INVALID_PKT */
   "I/O timeout",		/* 16 RSE_IOTIMEOUT */
   "invalid argument",		/* 17 RSE_INVAL */
-  "ERR 18",			/*  RSE_ */
-  "ERR 19",			/*  RSE_ */
-  "ERR 20",			/*  RSE_ */
-  "some error",			/* 21 RSE_SOME_ERROR */
 };
 #define ERRTXT_SIZE (sizeof(_errtxt) / sizeof(*_errtxt))
 

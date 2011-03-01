@@ -401,13 +401,13 @@ _init_socket (struct rs_connection *conn, struct rs_peer *p)
   conn->fd = socket (p->addr->ai_family, p->addr->ai_socktype,
 		     p->addr->ai_protocol);
   if (conn->fd < 0)
-    return rs_err_conn_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
+    return rs_err_conn_push_fl (conn, RSE_SOCKERR, __FILE__, __LINE__,
 				strerror (errno));
   if (evutil_make_socket_nonblocking (conn->fd) < 0)
     {
       evutil_closesocket (conn->fd);
       conn->fd = -1;
-      return rs_err_conn_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
+      return rs_err_conn_push_fl (conn, RSE_SOCKERR, __FILE__, __LINE__,
 				  strerror (errno));
     }
   return RSE_OK;

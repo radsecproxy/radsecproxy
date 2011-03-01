@@ -6,6 +6,7 @@
 
 #include <assert.h>
 #include <openssl/ssl.h>
+#include <openssl/err.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 
@@ -42,10 +43,12 @@ _get_tlsconf (struct rs_connection *conn, const struct rs_realm *realm)
 int
 rs_tls_init (struct rs_connection *conn)
 {
-  struct rs_context *ctx;
-  struct tls *tlsconf;
-  SSL_CTX *ssl_ctx;
-  SSL *ssl;
+  struct rs_context *ctx = NULL;
+  struct tls *tlsconf = NULL;
+  SSL_CTX *ssl_ctx = NULL;
+  SSL *ssl = NULL;
+  unsigned long sslerr = 0;
+
   assert (conn->ctx);
   ctx = conn->ctx;
 
@@ -55,18 +58,18 @@ rs_tls_init (struct rs_connection *conn)
   ssl_ctx = tlsgetctx (RADPROT_TLS, tlsconf);
   if (!ssl_ctx)
     {
-      /* TODO: check radsecproxy error  */
-      return rs_err_conn_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
-				  NULL);
+      for (sslerr = ERR_get_error (); sslerr; sslerr = ERR_get_error ())
+	 rs_err_conn_push_fl (conn, RSE_SSLERR, __FILE__, __LINE__,
+			      ERR_error_string (sslerr, NULL));
+      return -1;
     }
-
   ssl = SSL_new (ssl_ctx);
   if (!ssl)
     {
-      /* TODO: check and report SSL error  */
-      /* TODO: free ssl_ctx  */
-      return rs_err_conn_push_fl (conn, RSE_SOME_ERROR, __FILE__, __LINE__,
-				  NULL);
+      for (sslerr = ERR_get_error (); sslerr; sslerr = ERR_get_error ())
+	rs_err_conn_push_fl (conn, RSE_SSLERR, __FILE__, __LINE__,
+			     ERR_error_string (sslerr, NULL));
+      return -1;
     }
 
   conn->tls_ctx = ssl_ctx;
