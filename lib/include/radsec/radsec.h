@@ -124,7 +124,7 @@ void rs_peer_set_retries(struct rs_peer *peer, int retries);
 int rs_packet_create(struct rs_connection *conn, struct rs_packet **pkt_out);
 void rs_packet_destroy(struct rs_packet *pkt);
 void rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr);
-int rs_packet_send(struct rs_packet *pkt, void *data);
+int rs_packet_send(struct rs_packet *pkt, void *user_data);
 struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
 int rs_packet_create_authn_request(struct rs_connection *conn,
 				   struct rs_packet **pkt,
