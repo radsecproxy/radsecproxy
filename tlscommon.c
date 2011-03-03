@@ -231,7 +231,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 
     if (sslversion < 0x00908100L ||
         (sslversion >= 0x10000000L && sslversion < 0x10000020L)) {
-        debug(DBG_WARN, "%s: %s seems to be of a version with a  "
+        debug(DBG_WARN, "%s: %s seems to be of a version with a "
 	      "certain security critical bug (fixed in OpenSSL 0.9.8p and "
 	      "1.0.0b).  Disabling OpenSSL session caching for context %p.",
 	      __func__, SSLeay_version(SSLEAY_VERSION), ctx);
