@@ -46,9 +46,11 @@ _do_send (struct rs_packet *pkt)
   assert (pkt->rpkt);
   assert (!pkt->original);
 
+  /* Add Message-Authenticator, RFC 2869.  */
+  /* FIXME: Make Message-Authenticator optional?  */
   vp = paircreate (PW_MESSAGE_AUTHENTICATOR, PW_TYPE_OCTETS);
   if (!vp)
-    return rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
+    return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 				"paircreate: %s", fr_strerror ());
   pairadd (&pkt->rpkt->vps, vp);
 
