@@ -452,7 +452,7 @@ _set_timeout (struct rs_connection *conn)
     conn->tev = evtimer_new (conn->evb, _conn_timeout_cb, conn);
   if (!conn->tev)
     return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
-				"event_new");
+				"evtimer_new");
   tv.tv_sec = conn->realm->timeout;
   tv.tv_usec = 0;
   evtimer_add (conn->tev, &tv);
