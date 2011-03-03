@@ -404,13 +404,15 @@ _init_socket (struct rs_connection *conn, struct rs_peer *p)
 		     p->addr->ai_protocol);
   if (conn->fd < 0)
     return rs_err_conn_push_fl (conn, RSE_SOCKERR, __FILE__, __LINE__,
-				strerror (errno));
+				"socket: %d (%s)",
+				errno, strerror (errno));
   if (evutil_make_socket_nonblocking (conn->fd) < 0)
     {
       evutil_closesocket (conn->fd);
       conn->fd = -1;
       return rs_err_conn_push_fl (conn, RSE_SOCKERR, __FILE__, __LINE__,
-				  strerror (errno));
+				  "evutil_make_socket_nonblocking: %d (%s)",
+				  errno, strerror (errno));
     }
   return RSE_OK;
 }
