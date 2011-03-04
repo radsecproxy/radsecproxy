@@ -118,6 +118,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	  p->secret = strdup (cfg_getstr (cfg_server, "secret"));
 	}
     }
+  cfg_free (cfg);
   return RSE_OK;
 }
 
