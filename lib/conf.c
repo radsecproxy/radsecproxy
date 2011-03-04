@@ -98,10 +98,10 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       r->timeout = cfg_getint (cfg_config, "timeout");
       r->retries = cfg_getint (cfg_config, "retries");
 
-      r->cacertfile = cfg_getstr (cfg_config, "cacertfile");
-      /*r->cacertpath = cfg_getstr (cfg_config, "cacertpath");*/
-      r->certfile = cfg_getstr (cfg_config, "certfile");
-      r->certkeyfile = cfg_getstr (cfg_config, "certkeyfile");
+      r->cacertfile = strdup (cfg_getstr (cfg_config, "cacertfile"));
+      /*r->cacertpath = strdup (cfg_getstr (cfg_config, "cacertpath"));*/
+      r->certfile = strdup (cfg_getstr (cfg_config, "certfile"));
+      r->certkeyfile = strdup (cfg_getstr (cfg_config, "certkeyfile"));
 
       /* Add peers, one per server stanza.  */
       for (j = 0; j < cfg_size (cfg_config, "server"); j++)
