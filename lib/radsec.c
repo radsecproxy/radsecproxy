@@ -142,7 +142,6 @@ void rs_context_destroy(struct rs_context *ctx)
       r = r->next;
       rs_free (ctx, tmp);
     }
-  dict_free ();
   rs_free (ctx, ctx);
 }
 
