@@ -69,7 +69,6 @@ struct rs_connection {
     struct rs_context *ctx;
     struct rs_realm *realm;	/* Owned by ctx.  */
     struct event_base *evb;	/* Event base.  */
-    struct bufferevent *bev;	/* Buffer event.  */
     struct event *tev;		/* Timeout event.  */
     struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;
@@ -80,10 +79,17 @@ struct rs_connection {
     char is_connecting;		/* FIXME: replace with a single state member */
     char is_connected;		/* FIXME: replace with a single state member */
     int fd;			/* Socket.  */
-    int tryagain;
-    int nextid;
+    int tryagain;		/* For server failover.  */
+    int nextid;			/* Next RADIUS packet identifier.  */
     int user_dispatch_flag : 1;	/* User does the dispatching.  */
+    /* TCP transport specifics.  */
+    struct bufferevent *bev;	/* Buffer event.  */
+    /* UDP transport specifics.  */
+    struct event *wev;		/* Write event (for UDP).  */
+    struct event *rev;		/* Read event (for UDP).  */
+    struct rs_packet *out_queue; /* Queue for outgoing UDP packets.  */
 #if defined(RS_ENABLE_TLS)
+    /* TLS specifics.  */
     SSL_CTX *tls_ctx;
     SSL *tls_ssl;
 #endif
@@ -97,6 +103,7 @@ struct rs_packet {
     struct rs_packet *original;
     char valid_flag;
     char written_flag;
+    struct rs_packet *next;	/* Used for UDP output queue.  */
 };
 
 struct rs_attr {

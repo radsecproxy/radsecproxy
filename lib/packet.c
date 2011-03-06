@@ -8,23 +8,37 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/time.h>
+#include <sys/types.h>
 #include <assert.h>
 #include <freeradius/libradius.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
-#include "tls.h"
+#include "compat.h"
 #include "debug.h"
 #if defined (RS_ENABLE_TLS)
 #include <event2/bufferevent_ssl.h>
 #include <openssl/err.h>
+#include "tls.h"
 #endif
 #if defined (DEBUG)
 #include <netdb.h>
 #include <sys/socket.h>
 #include <event2/buffer.h>
 #endif
+
+static int
+_close_conn (struct rs_connection **connp)
+{
+  int r;
+  assert (connp);
+  assert (*connp);
+  r = rs_conn_destroy (*connp);
+  if (!r)
+    *connp = NULL;
+  return r;
+}
 
 static int
 _loopbreak (struct rs_connection *conn)
@@ -37,11 +51,12 @@ _loopbreak (struct rs_connection *conn)
   return err;
 }
 
+/* Badly named helper function for preparing a RADIUS message and
+   queue it.  FIXME: Rename.  */
 static int
 _do_send (struct rs_packet *pkt)
 {
-  int err;
-  VALUE_PAIR *vp;
+  VALUE_PAIR *vp = NULL;
 
   assert (pkt->rpkt);
   assert (!pkt->original);
@@ -73,23 +88,39 @@ _do_send (struct rs_packet *pkt)
   }
 #endif
 
-  err = bufferevent_write (pkt->conn->bev, pkt->rpkt->data,
-			   pkt->rpkt->data_len);
-  if (err < 0)
-    return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
-				"bufferevent_write: %s",
-				evutil_gai_strerror (err));
+  if (pkt->conn->bev)
+    {
+      int err = bufferevent_write (pkt->conn->bev, pkt->rpkt->data,
+				   pkt->rpkt->data_len);
+      if (err < 0)
+	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				    "bufferevent_write: %s",
+				    evutil_gai_strerror (err));
+    }
+  else
+    {
+      struct rs_packet **pp = &pkt->conn->out_queue;
+
+      while (*pp && (*pp)->next)
+	*pp = (*pp)->next;
+      *pp = pkt;
+    }
+
   return RSE_OK;
 }
 
 static void
-_on_connect (struct rs_connection *conn)
+_on_connect (struct rs_connection *conn, struct rs_packet *pkt)
 {
+  assert (!conn->is_connecting);
   conn->is_connected = 1;
   rs_debug (("%s: %p connected\n", __func__, conn->active_peer));
-  evtimer_del (conn->tev);
+  if (conn->tev)
+    evtimer_del (conn->tev);
   if (conn->callbacks.connected_cb)
     conn->callbacks.connected_cb (conn->user_data);
+  if (pkt)
+    _do_send (pkt);
 }
 
 static void
@@ -103,9 +134,9 @@ _on_disconnect (struct rs_connection *conn)
 }
 
 static void
-_event_cb (struct bufferevent *bev, short events, void *ctx)
+_event_cb (struct bufferevent *bev, short events, void *user_data)
 {
-  struct rs_packet *pkt = (struct rs_packet *)ctx;
+  struct rs_packet *pkt = (struct rs_packet *) user_data;
   struct rs_connection *conn = NULL;
   struct rs_peer *p = NULL;
   int sockerr = 0;
@@ -122,9 +153,7 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
   conn->is_connecting = 0;
   if (events & BEV_EVENT_CONNECTED)
     {
-      _on_connect (conn);
-      if (_do_send (pkt))
-	rs_debug (("%s: error sending\n", __func__));
+      _on_connect (conn, pkt);
     }
   else if (events & BEV_EVENT_EOF)
     {
@@ -145,15 +174,11 @@ _event_cb (struct bufferevent *bev, short events, void *ctx)
 	}
       else
 	{
+	  rs_debug (("%s: %d: %d (%s)\n", __func__, conn->fd, sockerr,
+		     evutil_socket_error_to_string (sockerr)));
 	  rs_err_conn_push_fl (pkt->conn, RSE_SOCKERR, __FILE__, __LINE__,
-			       "%d: socket error %d (%s)",
-			       conn->fd,
-			       sockerr,
+			       "%d: %d (%s)", conn->fd, sockerr,
 			       evutil_socket_error_to_string (sockerr));
-	  rs_debug (("%s: socket error on fd %d: %s (%d)\n", __func__,
-		     conn->fd,
-		     evutil_socket_error_to_string (sockerr),
-		     sockerr));
 	}
 #if defined (RS_ENABLE_TLS)
       if (conn->tls_ssl)	/* FIXME: correct check?  */
@@ -204,7 +229,7 @@ _read_header (struct rs_packet *pkt)
       pkt->rpkt->data_len = (pkt->hdr[2] << 8) + pkt->hdr[3];
       if (pkt->rpkt->data_len < 20 || pkt->rpkt->data_len > 4096)
 	{
-	  bufferevent_free (pkt->conn->bev); /* Close connection.  */
+	  _close_conn (&pkt->conn);
 	  return rs_err_conn_push (pkt->conn, RSE_INVALID_PKT,
 				   "invalid packet length: %d",
 				   pkt->rpkt->data_len);
@@ -212,7 +237,7 @@ _read_header (struct rs_packet *pkt)
       pkt->rpkt->data = rs_malloc (pkt->conn->ctx, pkt->rpkt->data_len);
       if (!pkt->rpkt->data)
 	{
-	  bufferevent_free (pkt->conn->bev); /* Close connection.  */
+	  _close_conn (&pkt->conn);
 	  return rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
 				      NULL);
 	}
@@ -228,7 +253,7 @@ _read_header (struct rs_packet *pkt)
     }
   else	    /* Error: libevent gave us less than the low watermark. */
     {
-      bufferevent_free (pkt->conn->bev); /* Close connection.  */
+      _close_conn (&pkt->conn);
       return rs_err_conn_push_fl (pkt->conn, RSE_INTERNAL, __FILE__, __LINE__,
 				  "got %d octets reading header", n);
     }
@@ -264,7 +289,7 @@ _read_packet (struct rs_packet *pkt)
 	 - attribute sizes adding up correctly  */
       if (!rad_packet_ok (pkt->rpkt, 0) != 0)
 	{
-	  bufferevent_free (pkt->conn->bev); /* Close connection.  */
+	  _close_conn (&pkt->conn);
 	  return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 				      "invalid packet: %s", fr_strerror ());
 	}
@@ -280,7 +305,7 @@ _read_packet (struct rs_packet *pkt)
 	  if (rad_verify (pkt->rpkt, pkt->original->rpkt,
 			  pkt->conn->active_peer->secret))
 	    {
-	      bufferevent_free (pkt->conn->bev); /* Close connection.  */
+	      _close_conn (&pkt->conn);
 	      return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 					  "rad_verify: %s", fr_strerror ());
 	    }
@@ -289,7 +314,7 @@ _read_packet (struct rs_packet *pkt)
 	  if (rad_decode (pkt->rpkt, pkt->original->rpkt,
 			  pkt->conn->active_peer->secret))
 	    {
-	      bufferevent_free (pkt->conn->bev); /* Close connection.  */
+	      _close_conn (&pkt->conn);
 	      return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 					  "rad_decode: %s", fr_strerror ());
 	    }
@@ -376,7 +401,7 @@ _evlog_cb (int severity, const char *msg)
 }
 
 static int
-_init_evb (struct rs_connection *conn)
+_init_eventbase (struct rs_connection *conn)
 {
   if (conn->evb)
     return RSE_OK;
@@ -465,27 +490,21 @@ _set_timeout (struct rs_connection *conn)
 }
 
 static int
-_init_bev (struct rs_connection *conn, struct rs_peer *peer)
+_init_bufferevent (struct rs_connection *conn, struct rs_peer *peer)
 {
   if (conn->bev)
     return RSE_OK;
 
-  switch (conn->realm->type)
+  if (conn->realm->type == RS_CONN_TYPE_TCP)
     {
-    case RS_CONN_TYPE_UDP:
-      /* Fall through.  */
-      /* NOTE: We know this is wrong for several reasons, most notably
-	 because libevent doesn't work as expected with UDP.  The
-	 timeout handling is wrong too.  */
-    case RS_CONN_TYPE_TCP:
       conn->bev = bufferevent_socket_new (conn->evb, conn->fd, 0);
       if (!conn->bev)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_socket_new");
-      break;
-
+    }
 #if defined (RS_ENABLE_TLS)
-    case RS_CONN_TYPE_TLS:
+  else if (conn->realm->type == RS_CONN_TYPE_TLS)
+    {
       if (rs_tls_init (conn))
 	return -1;
       /* Would be convenient to pass BEV_OPT_CLOSE_ON_FREE but things
@@ -497,13 +516,10 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
       if (!conn->bev)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_openssl_socket_new");
-      break;
-
-    case RS_CONN_TYPE_DTLS:
-      return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__, NULL);
+    }
 #endif	/* RS_ENABLE_TLS */
-
-    default:
+  else
+    {
       return rs_err_conn_push_fl (conn, RSE_INTERNAL, __FILE__, __LINE__,
 				  "%s: unknown connection type: %d", __func__,
 				  conn->realm->type);
@@ -512,11 +528,81 @@ _init_bev (struct rs_connection *conn, struct rs_peer *peer)
   return RSE_OK;
 }
 
+/* Callback for conn->wev and conn->rev.  FIXME: Rename.  */
+static void
+_evcb (evutil_socket_t fd, short what, void *user_data)
+{
+  //rs_debug (("%s: fd=%d what=0x%x\n", __func__, fd, what));
+  if (what & EV_TIMEOUT)
+    {
+      struct rs_connection *conn = (struct rs_connection *) user_data;
+      assert (conn);
+      conn->is_connecting = 0;
+      rs_debug (("%s: UDP timeout NYI", __func__));
+    }
+  else if (what & EV_READ)
+    {
+      struct rs_connection *conn = (struct rs_connection *) user_data;
+      assert (conn);
+      /* read a single UDP packet and stick it in a new struct
+	 rs_packet */
+
+      rs_debug (("%s: UDP read NYI", __func__));
+    }
+  else if (what & EV_WRITE)
+    {
+      struct rs_packet *pkt = (struct rs_packet *) user_data;
+      assert (pkt);
+      /* Socket ready for writing, possibly as a result of a
+	 successful connect.  */
+      if (!pkt->conn->is_connected)
+	_on_connect (pkt->conn, pkt);
+      if (pkt->conn->out_queue)
+	{
+	  /* Send one packet, the first.  */
+	  ssize_t r = 0;
+	  struct rs_packet *p = pkt->conn->out_queue;
+
+	  assert (p->rpkt);
+	  assert (p->rpkt->data);
+	  r = compat_send (fd, p->rpkt->data, p->rpkt->data_len, 0);
+	  if (r == -1)
+	    {
+	      int sockerr = evutil_socket_geterror (p->conn->fd);
+	      if (sockerr != EAGAIN)
+		rs_err_conn_push_fl (p->conn, RSE_SOCKERR, __FILE__, __LINE__,
+				     "%d: send: %d (%s)", fd, sockerr,
+				     evutil_socket_error_to_string (sockerr));
+	      return;		/* Don't unlink packet. */
+	    }
+	  pkt->conn->out_queue = p->next;
+	}
+    }
+}
+
+static int
+_init_udp (struct rs_connection *conn, struct rs_packet *pkt)
+{
+  assert (!conn->bev);
+
+  conn->rev = event_new (conn->evb, conn->fd, EV_READ|EV_PERSIST, _evcb, conn);
+  conn->wev = event_new (conn->evb, conn->fd, EV_WRITE|EV_PERSIST, _evcb, pkt);
+  if (!conn->rev || !conn->wev)
+    {
+      if (conn->rev)
+	event_free (conn->rev);
+      /* ENOMEM _or_ EINVAL but EINVAL only if we use EV_SIGNAL, at
+	 least for now (libevent-2.0.5).  */
+      return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
+    }
+  return RSE_OK;
+}
+
 static void
 _do_connect (struct rs_connection *conn)
 {
   struct rs_peer *p;
-  int err;
+  int err, sockerr;
 
   assert (conn);
   assert (conn->active_peer);
@@ -534,21 +620,37 @@ _do_connect (struct rs_connection *conn)
   }
 #endif
 
-  _set_timeout (conn);
-  err = bufferevent_socket_connect (p->conn->bev, p->addr->ai_addr,
-				    p->addr->ai_addrlen);
-  if (err < 0)
-    rs_err_conn_push_fl (p->conn, RSE_EVENT, __FILE__, __LINE__,
-			 "bufferevent_socket_connect: %s",
-			 evutil_gai_strerror (err));
-  else
-    p->conn->is_connecting = 1;
+  if (p->conn->bev)		/* TCP */
+    {
+      _set_timeout (conn);
+      err = bufferevent_socket_connect (p->conn->bev, p->addr->ai_addr,
+					p->addr->ai_addrlen);
+      if (err < 0)
+	rs_err_conn_push_fl (p->conn, RSE_EVENT, __FILE__, __LINE__,
+			     "bufferevent_socket_connect: %s",
+			     evutil_gai_strerror (err));
+      else
+	p->conn->is_connecting = 1;
+    }
+  else				/* UDP */
+    {
+      err = connect (p->conn->fd, p->addr->ai_addr, p->addr->ai_addrlen);
+      if (err < 0)
+	{
+	  sockerr = evutil_socket_geterror (p->conn->fd);
+	  rs_debug (("%s: %d: connect: %d (%s)\n", __func__, p->conn->fd,
+		     sockerr, evutil_socket_error_to_string (sockerr)));
+	  rs_err_conn_push_fl (p->conn, RSE_SOCKERR, __FILE__, __LINE__,
+			       "%d: connect: %d (%s)", p->conn->fd, sockerr,
+			       evutil_socket_error_to_string (sockerr));
+	}
+    }
 }
 
 static int
-_conn_open(struct rs_connection *conn, struct rs_packet *pkt)
+_conn_open (struct rs_connection *conn, struct rs_packet *pkt)
 {
-  if (_init_evb (conn))
+  if (_init_eventbase (conn))
     return -1;
 
   if (!conn->active_peer)
@@ -559,8 +661,17 @@ _conn_open(struct rs_connection *conn, struct rs_packet *pkt)
   if (_init_socket (conn, conn->active_peer))
     return -1;
 
-  if (_init_bev (conn, conn->active_peer))
-    return -1;
+  if (conn->realm->type == RS_CONN_TYPE_TCP
+      || conn->realm->type == RS_CONN_TYPE_TLS)
+    {
+      if (_init_bufferevent (conn, conn->active_peer))
+	return -1;
+    }
+  else
+    {
+      if (_init_udp (conn, pkt))
+	return -1;
+    }
 
   if (!conn->is_connected)
     if (!conn->is_connecting)
@@ -640,7 +751,10 @@ _wcb (void *user_data)
   struct rs_packet *pkt = (struct rs_packet *) user_data;
   assert (pkt);
   pkt->written_flag = 1;
-  bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
+  if (pkt->conn->bev)
+    bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
+  else
+    event_del (pkt->conn->wev);
 }
 
 int
@@ -660,13 +774,24 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
       return -1;
 
   assert (conn->evb);
-  assert (conn->bev);
   assert (conn->active_peer);
   assert (conn->fd >= 0);
 
   conn->user_data = user_data;
-  bufferevent_setcb (conn->bev, NULL, _write_cb, _event_cb, pkt);
-  bufferevent_enable (conn->bev, EV_WRITE);
+
+  if (conn->bev)		/* TCP */
+    {
+      bufferevent_setcb (conn->bev, NULL, _write_cb, _event_cb, pkt);
+      bufferevent_enable (conn->bev, EV_WRITE);
+    }
+  else			/* UDP */
+    {
+      err = event_add (conn->wev, NULL);
+      if (err < 0)
+	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				    "event_add: %s",
+				    evutil_gai_strerror (err));
+    }
 
   /* Do dispatch, unless the user wants to do it herself.  */
   if (!conn->user_dispatch_flag)
@@ -696,7 +821,10 @@ _rcb (struct rs_packet *packet, void *user_data)
   struct rs_packet *pkt = (struct rs_packet *) user_data;
   assert (pkt);
   pkt->valid_flag = 1;
-  bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
+  if (pkt->conn->bev)
+    bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
+  else
+    event_del (pkt->conn->rev);
 }
 
 /* Special function used in libradsec blocking dispatching mode,
@@ -737,11 +865,22 @@ rs_conn_receive_packet (struct rs_connection *conn,
   assert (conn->active_peer);
   assert (conn->fd >= 0);
 
-  bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
-  bufferevent_setcb (conn->bev, _read_cb, NULL, _event_cb, pkt);
-  bufferevent_enable (conn->bev, EV_READ);
   conn->callbacks.received_cb = _rcb;
   conn->user_data = pkt;
+  if (conn->bev)
+    {
+      bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
+      bufferevent_setcb (conn->bev, _read_cb, NULL, _event_cb, pkt);
+      bufferevent_enable (conn->bev, EV_READ);
+    }
+  else
+    {
+      err = event_add (conn->rev, NULL);
+      if (err < 0)
+	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				    "event_add: %s",
+				    evutil_gai_strerror (err));
+    }
 
   /* Dispatch.  */
   rs_debug (("%s: entering event loop\n", __func__));

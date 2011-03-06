@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <debug.h>
 #include <event2/event.h>
+#include <event2/bufferevent.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 
@@ -126,25 +127,22 @@ rs_conn_destroy (struct rs_connection *conn)
 
   assert (conn);
 
-  if (conn->is_connected)
-    {
-      err = rs_conn_disconnect (conn);
-      if (err)
-	return err;
-    }
-
   /* NOTE: conn->realm is owned by context.  */
   /* NOTE: conn->peers is owned by context.  */
 
+  if (conn->is_connected)
+    err = rs_conn_disconnect (conn);
   if (conn->tev)
     event_free (conn->tev);
+  if (conn->bev)
+    bufferevent_free (conn->bev);
   if (conn->evb)
     event_base_free (conn->evb);
 
   /* TODO: free tls_ctx  */
   /* TODO: free tls_ssl  */
 
-  return 0;
+  return err;
 }
 
 int

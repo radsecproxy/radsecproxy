@@ -125,7 +125,8 @@ _rs_peer_destroy (struct rs_peer *p)
   rs_free (p->conn->ctx, p);
 }
 
-void rs_context_destroy(struct rs_context *ctx)
+void
+rs_context_destroy (struct rs_context *ctx)
 {
   struct rs_realm *r = NULL;
   struct rs_peer *p = NULL;
