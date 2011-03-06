@@ -95,19 +95,13 @@ _rs_req_packet_sent(void *user_data)
 int
 rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
 {
-  int err;
-  struct rs_connection *conn;
-
-  assert (request);
-  assert (request->conn);
-  assert (request->req_msg);
-  conn = request->conn;
+  int err = 0;
+  struct rs_connection *conn = NULL;
 
   if (!request || !request->conn || !request->req_msg || !resp_msg)
     return rs_err_conn_push_fl (conn, RSE_INVAL, __FILE__, __LINE__, NULL);
-
+  conn = request->conn;
   request->saved_cb = conn->callbacks;
-
   conn->callbacks.connected_cb = _rs_req_connected;
   conn->callbacks.disconnected_cb = _rs_req_disconnected;
   conn->callbacks.received_cb = _rs_req_packet_received;
