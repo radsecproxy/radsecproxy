@@ -1,4 +1,9 @@
 /* Copyright 2011 NORDUnet A/S. All rights reserved.
    See the file COPYING for licensing information.  */
 
-ssize_t compat_send (int sockfd, const void *buf, size_t len, int flags);
+/* RFC 5080 2.2.1.  Retransmission Behavior */
+#define IRT 2
+#define MRC 5
+#define MRT 16
+#define MRD 30
+

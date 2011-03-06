@@ -1,3 +1,10 @@
+/* Copyright 2011 NORDUnet A/S. All rights reserved.
+   See the file COPYING for licensing information.  */
+
+#if defined HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include "compat.h"

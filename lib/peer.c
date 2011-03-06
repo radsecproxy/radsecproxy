@@ -1,4 +1,6 @@
-/* See the file COPYING for licensing information.  */
+/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+   See the file COPYING for licensing information.  */
+
 #if defined HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,7 +8,22 @@
 #include <assert.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "peer.h"
 
+struct rs_peer *
+peer_pick_peer (struct rs_connection *conn)
+{
+  assert (conn);
+
+  if (conn->active_peer)
+    conn->active_peer = conn->active_peer->next; /* Next.  */
+  if (!conn->active_peer)
+    conn->active_peer = conn->peers; /* From the top.  */
+
+  return conn->active_peer;
+}
+
+/* Public functions.  */
 int
 rs_peer_create (struct rs_connection *conn, struct rs_peer **peer_out)
 {

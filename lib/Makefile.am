@@ -15,10 +15,14 @@ libradsec_la_SOURCES = \
 	conn.c \
 	debug.c \
 	err.c \
+	event.c \
 	packet.c \
 	peer.c \
 	radsec.c \
-	request.c
+	request.c \
+	send.c \
+	tcp.c \
+	udp.c
 
 libradsec_la_SOURCES += \
 	rsp_debug.c \

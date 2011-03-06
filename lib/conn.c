@@ -1,4 +1,5 @@
-/* See the file COPYING for licensing information.  */
+/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+   See the file COPYING for licensing information.  */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -11,6 +12,8 @@
 #include <event2/bufferevent.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "event.h"
+#include "tcp.h"
 
 int
 rs_conn_create (struct rs_context *ctx, struct rs_connection **conn,
@@ -192,4 +195,92 @@ int rs_conn_fd (struct rs_connection *conn)
   assert (conn);
   assert (conn->active_peer);
   return conn->fd;
+}
+
+static void
+_rcb (struct rs_packet *packet, void *user_data)
+{
+  struct rs_packet *pkt = (struct rs_packet *) user_data;
+  assert (pkt);
+  pkt->valid_flag = 1;
+  if (pkt->conn->bev)
+    bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
+  else
+    event_del (pkt->conn->rev);
+}
+
+/* Special function used in libradsec blocking dispatching mode,
+   i.e. with socket set to block on read/write and with no libradsec
+   callbacks registered.
+
+   For any other use of libradsec, a the received_cb callback should
+   be registered in the callbacks member of struct rs_connection.
+
+   On successful reception, verification and decoding of a RADIUS
+   message, PKT_OUT will upon return point at a pointer to a struct
+   rs_packet containing the message.
+
+   If anything goes wrong or if the read times out (TODO: explain),
+   PKT_OUT will point at the NULL pointer and one or more errors are
+   pushed on the connection (available through rs_err_conn_pop()).  */
+
+int
+rs_conn_receive_packet (struct rs_connection *conn,
+		        struct rs_packet *request,
+		        struct rs_packet **pkt_out)
+{
+  int err = 0;
+  struct rs_packet *pkt = NULL;
+
+  assert (conn);
+  assert (conn->realm);
+  assert (!conn->user_dispatch_flag); /* Dispatching mode only.  */
+
+  if (rs_packet_create (conn, pkt_out))
+    return -1;
+  pkt = *pkt_out;
+  pkt->conn = conn;
+  pkt->original = request;
+
+  assert (conn->evb);
+  assert (conn->bev);
+  assert (conn->active_peer);
+  assert (conn->fd >= 0);
+
+  conn->callbacks.received_cb = _rcb;
+  conn->user_data = pkt;
+  if (conn->bev)
+    {
+      bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
+      bufferevent_setcb (conn->bev, tcp_read_cb, NULL, tcp_event_cb, pkt);
+      bufferevent_enable (conn->bev, EV_READ);
+    }
+  else
+    {
+      err = event_add (conn->rev, NULL);
+      if (err < 0)
+	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				    "event_add: %s",
+				    evutil_gai_strerror (err));
+    }
+
+  /* Dispatch.  */
+  rs_debug (("%s: entering event loop\n", __func__));
+  err = event_base_dispatch (conn->evb);
+  conn->callbacks.received_cb = NULL;
+  if (err < 0)
+    return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				"event_base_dispatch: %s",
+				evutil_gai_strerror (err));
+  rs_debug (("%s: event loop done\n", __func__));
+
+  if (!pkt->valid_flag)
+    return -1;
+
+#if defined (DEBUG)
+      rs_dump_packet (pkt);
+#endif
+
+  pkt->original = NULL;		/* FIXME: Why?  */
+  return RSE_OK;
 }
