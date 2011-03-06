@@ -142,6 +142,11 @@ void rs_context_destroy(struct rs_context *ctx)
       r = r->next;
       rs_free (ctx, tmp);
     }
+
+  if (ctx->cfg)
+    cfg_free (ctx->cfg);
+  ctx->cfg = NULL;
+
   rs_free (ctx, ctx);
 }
 

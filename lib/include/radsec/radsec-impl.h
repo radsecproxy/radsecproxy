@@ -5,6 +5,7 @@
 
 #include <freeradius/libradius.h>
 #include <event2/util.h>
+#include <confuse.h>
 #if defined(RS_ENABLE_TLS)
 #include <openssl/ssl.h>
 #endif
@@ -61,6 +62,7 @@ struct rs_context {
     struct rs_alloc_scheme alloc_scheme;
     struct rs_error *err;
     fr_randctx fr_randctx;
+    cfg_t *cfg;
 };
 
 struct rs_connection {
