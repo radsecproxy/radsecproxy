@@ -23,6 +23,24 @@
 #include <event2/buffer.h>
 #endif
 
+static void
+_conn_timeout_cb (int fd, short event, void *data)
+{
+  struct rs_connection *conn;
+
+  assert (data);
+  conn = (struct rs_connection *) data;
+
+  if (event & EV_TIMEOUT)
+    {
+      rs_debug (("%s: connection timeout on %p (fd %d) connecting to %p\n",
+		 __func__, conn, conn->fd, conn->active_peer));
+      conn->is_connecting = 0;
+      rs_err_conn_push_fl (conn, RSE_TIMEOUT_IO, __FILE__, __LINE__, NULL);
+      event_loopbreak (conn);
+    }
+}
+
 static int
 _close_conn (struct rs_connection **connp)
 {
@@ -274,3 +292,19 @@ tcp_write_cb (struct bufferevent *bev, void *ctx)
     pkt->conn->callbacks.sent_cb (pkt->conn->user_data);
 }
 
+int
+tcp_set_connect_timeout (struct rs_connection *conn)
+{
+  struct timeval tv;
+
+  if (!conn->tev)
+    conn->tev = evtimer_new (conn->evb, _conn_timeout_cb, conn);
+  if (!conn->tev)
+    return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+				"evtimer_new");
+  tv.tv_sec = conn->realm->timeout;
+  tv.tv_usec = 0;
+  evtimer_add (conn->tev, &tv);
+
+  return RSE_OK;
+}

@@ -14,10 +14,11 @@
 #endif
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "tcp.h"
+#include "udp.h"
 #if defined (RS_ENABLE_TLS)
 #include "tls.h"
 #endif
-#include "udp.h"
 #include "event.h"
 #include "packet.h"
 #include "debug.h"
@@ -72,24 +73,6 @@ event_init_socket (struct rs_connection *conn, struct rs_peer *p)
 				  errno, strerror (errno));
     }
   return RSE_OK;
-}
-
-static void
-_conn_timeout_cb (int fd, short event, void *data)
-{
-  struct rs_connection *conn;
-
-  assert (data);
-  conn = (struct rs_connection *) data;
-
-  if (event & EV_TIMEOUT)
-    {
-      rs_debug (("%s: connection timeout on %p (fd %d) connecting to %p\n",
-		 __func__, conn, conn->fd, conn->active_peer));
-      conn->is_connecting = 0;
-      rs_err_conn_push_fl (conn, RSE_TIMEOUT_IO, __FILE__, __LINE__, NULL);
-      event_loopbreak (conn);
-    }
 }
 
 int
@@ -155,7 +138,7 @@ event_do_connect (struct rs_connection *conn)
 
   if (p->conn->bev)		/* TCP */
     {
-      event_set_timeout (conn);
+      tcp_set_connect_timeout (conn);
       err = bufferevent_socket_connect (p->conn->bev, p->addr->ai_addr,
 					p->addr->ai_addrlen);
       if (err < 0)
@@ -191,23 +174,6 @@ event_loopbreak (struct rs_connection *conn)
   return err;
 }
 
-
-int
-event_set_timeout (struct rs_connection *conn)
-{
-  struct timeval tv;
-
-  if (!conn->tev)
-    conn->tev = evtimer_new (conn->evb, _conn_timeout_cb, conn);
-  if (!conn->tev)
-    return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
-				"evtimer_new");
-  tv.tv_sec = conn->realm->timeout;
-  tv.tv_usec = 0;
-  evtimer_add (conn->tev, &tv);
-
-  return RSE_OK;
-}
 
 void
 event_on_disconnect (struct rs_connection *conn)
