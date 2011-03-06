@@ -62,34 +62,50 @@ rs_request_destroy (struct rs_request *request)
 
 #if 0
 static void
-_timer_cb(evutil_socket_t fd, short what, void *arg)
+_timer_cb (evutil_socket_t fd, short what, void *arg)
 
 {
 }
 #endif
 
 static void
-_rs_req_connected(void *user_data)
+_rs_req_connected (void *user_data)
 {
-  //struct rs_request *request = (struct rs_request *)user_data;
+  struct rs_request *request = (struct rs_request *) user_data;
+  assert (request);
+  assert (request->conn);
+  if (request->saved_cb.connected_cb)
+    request->saved_cb.connected_cb (request->saved_user_data);
 }
 
 static void
-_rs_req_disconnected(void *user_data)
+_rs_req_disconnected (void *user_data)
 {
-  //struct rs_request *request = (struct rs_request *)user_data;
+  struct rs_request *request = (struct rs_request *) user_data;
+  assert (request);
+  assert (request->conn);
+  if (request->saved_cb.disconnected_cb)
+    request->saved_cb.disconnected_cb (request->saved_user_data);
 }
 
 static void
-_rs_req_packet_received(struct rs_packet *msg, void *user_data)
+_rs_req_packet_received (struct rs_packet *msg, void *user_data)
 {
-  //struct rs_request *request = (struct rs_request *)user_data;
+  struct rs_request *request = (struct rs_request *) user_data;
+  assert (request);
+  assert (request->conn);
+  if (request->saved_cb.received_cb)
+    request->saved_cb.received_cb (msg, request->saved_user_data);
 }
 
 static void
-_rs_req_packet_sent(void *user_data)
+_rs_req_packet_sent (void *user_data)
 {
-  //struct rs_request *request = (struct rs_request *)user_data;
+  struct rs_request *request = (struct rs_request *) user_data;
+  assert (request);
+  assert (request->conn);
+  if (request->saved_cb.sent_cb)
+    request->saved_cb.sent_cb (request->saved_user_data);
 }
 
 int
@@ -101,6 +117,10 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
   if (!request || !request->conn || !request->req_msg || !resp_msg)
     return rs_err_conn_push_fl (conn, RSE_INVAL, __FILE__, __LINE__, NULL);
   conn = request->conn;
+
+  request->saved_user_data = conn->user_data;
+  conn->user_data = request;
+
   request->saved_cb = conn->callbacks;
   conn->callbacks.connected_cb = _rs_req_connected;
   conn->callbacks.disconnected_cb = _rs_req_disconnected;
@@ -116,6 +136,7 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
     goto cleanup;
 
 cleanup:
+  conn->user_data = request->saved_user_data;
   conn->callbacks = request->saved_cb;
   return err;
 }
