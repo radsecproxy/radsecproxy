@@ -31,8 +31,11 @@
 int
 rs_context_read_config(struct rs_context *ctx, const char *config_file)
 {
-
   /* FIXME: Missing some error handling in rs_context_read_config().  */
+
+  cfg_t *cfg, *cfg_config, *cfg_server;
+  int i, j;
+  const char *s;
 
   cfg_opt_t server_opts[] =
     {
@@ -58,8 +61,6 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       CFG_SEC ("config", config_opts, CFGF_TITLE | CFGF_MULTI),
       CFG_END ()
     };
-  cfg_t *cfg, *cfg_config, *cfg_server;
-  int i, j;
 
   cfg = cfg_init (opts, CFGF_NONE);
   if (cfg_parse (cfg, config_file) == CFG_PARSE_ERROR)
@@ -81,7 +82,11 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       else
 	  ctx->realms = r;
       cfg_config = cfg_getnsec (cfg, "config", i);
-      r->name = strdup (cfg_title (cfg_config));
+      s = cfg_title (cfg_config);
+      if (s == NULL)
+	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
+				   "missing config name");
+      r->name = strdup (s);
 
       typestr = cfg_getstr (cfg_config, "type");
       if (!strcmp (typestr, "UDP"))
@@ -98,10 +103,10 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       r->timeout = cfg_getint (cfg_config, "timeout");
       r->retries = cfg_getint (cfg_config, "retries");
 
-      r->cacertfile = strdup (cfg_getstr (cfg_config, "cacertfile"));
-      /*r->cacertpath = strdup (cfg_getstr (cfg_config, "cacertpath"));*/
-      r->certfile = strdup (cfg_getstr (cfg_config, "certfile"));
-      r->certkeyfile = strdup (cfg_getstr (cfg_config, "certkeyfile"));
+      r->cacertfile = cfg_getstr (cfg_config, "cacertfile");
+      /*r->cacertpath = cfg_getstr (cfg_config, "cacertpath");*/
+      r->certfile = cfg_getstr (cfg_config, "certfile");
+      r->certkeyfile = cfg_getstr (cfg_config, "certkeyfile");
 
       /* Add peers, one per server stanza.  */
       for (j = 0; j < cfg_size (cfg_config, "server"); j++)
@@ -115,10 +120,13 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	  cfg_server = cfg_getnsec (cfg_config, "server", j);
 	  _rs_resolv (&p->addr, r->type, cfg_getstr (cfg_server, "hostname"),
 		      cfg_getstr (cfg_server, "service"));
-	  p->secret = strdup (cfg_getstr (cfg_server, "secret"));
+	  p->secret = cfg_getstr (cfg_server, "secret");
 	}
     }
-  cfg_free (cfg);
+
+  /* Save config object in context, for freeing in
+     rs_context_destroy().  */
+  ctx->cfg =  cfg;
   return RSE_OK;
 }
 
