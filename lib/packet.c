@@ -370,7 +370,7 @@ _evlog_cb (int severity, const char *msg)
       sevstr = "???";
       break;
     }
-  fprintf (stderr, "libevent: [%s] %s\n", sevstr, msg); /* FIXME: stderr?  */
+  rs_debug (("libevent: [%s] %s\n", sevstr, msg));
 }
 
 static int
