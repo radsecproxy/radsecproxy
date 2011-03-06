@@ -330,9 +330,9 @@ _read_packet (struct rs_packet *pkt)
    Inform upper layer about successful reception of valid RADIUS
    message by invoking conn->callbacks.recevied_cb(), if !NULL.  */
 static void
-_read_cb (struct bufferevent *bev, void *ctx)
+_read_cb (struct bufferevent *bev, void *user_data)
 {
-  struct rs_packet *pkt = (struct rs_packet *) ctx;
+  struct rs_packet *pkt = (struct rs_packet *) user_data;
 
   assert (pkt);
   assert (pkt->conn);
@@ -765,21 +765,21 @@ rs_conn_receive_packet (struct rs_connection *conn,
 }
 
 void
-rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr)
+rs_packet_add_attr (struct rs_packet *pkt, struct rs_attr *attr)
 {
   pairadd (&pkt->rpkt->vps, attr->vp);
   attr->pkt = pkt;
 }
 
 struct radius_packet *
-rs_packet_frpkt(struct rs_packet *pkt)
+rs_packet_frpkt (struct rs_packet *pkt)
 {
   assert (pkt);
   return pkt->rpkt;
 }
 
 void
-rs_packet_destroy(struct rs_packet *pkt)
+rs_packet_destroy (struct rs_packet *pkt)
 {
   if (pkt)
     {
