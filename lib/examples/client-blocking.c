@@ -8,6 +8,7 @@
 #include <freeradius/libradius.h>
 #include <radsec/radsec.h>
 #include <radsec/request.h>
+#include "debug.h"		/* For rs_dump_packet().  */
 
 #define SECRET "sikrit"
 #define USER_NAME "molgan"
@@ -16,9 +17,10 @@
 struct rs_error *
 blocking_client (const char *av1, const char *av2, int use_request_object_flag)
 {
-  struct rs_context *h;
-  struct rs_connection *conn;
-  struct rs_packet *req, *resp = NULL;
+  struct rs_context *h = NULL;
+  struct rs_connection *conn = NULL;
+  struct rs_request *request = NULL;
+  struct rs_packet *req = NULL, *resp = NULL;
 
   if (rs_context_create (&h, "/usr/share/freeradius/dictionary"))
     return NULL;
@@ -28,67 +30,59 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
     struct rs_peer *server;
 
     if (rs_conn_create (h, &conn, NULL))
-      return rs_err_conn_pop (conn);
+      goto cleanup;
     rs_conn_set_type (conn, RS_CONN_TYPE_UDP);
     if (rs_peer_create (conn, &server))
-      return rs_err_conn_pop (conn);
+      goto cleanup;
     if (rs_peer_set_address (server, av1, av2))
-      return rs_err_conn_pop (conn);
+      goto cleanup;
     rs_peer_set_timeout (server, 1);
     rs_peer_set_retries (server, 3);
     if (rs_peer_set_secret (server, SECRET))
-      return rs_err_conn_pop (conn);
+      goto cleanup;
   }
 #else
   if (rs_context_read_config (h, av1))
-    return rs_err_ctx_pop (h);
+    goto cleanup;
   if (rs_conn_create (h, &conn, av2))
-    return rs_err_conn_pop (conn);
+    goto cleanup;
 #endif	/* USE_CONFIG_FILE */
 
   if (use_request_object_flag)
     {
-      struct rs_request *request;
-
       if (rs_request_create_authn (conn, &request, USER_NAME, USER_PW))
-	return rs_err_conn_pop (conn);
+	goto cleanup;
       if (rs_request_send (request, &resp))
-	return rs_err_conn_pop (conn);
-      rs_request_destroy (request);
+	goto cleanup;
     }
   else
     {
       if (rs_packet_create_authn_request (conn, &req, USER_NAME, USER_PW))
-	return rs_err_conn_pop (conn);
-
+	goto cleanup;
       if (rs_packet_send (req, NULL))
-	{
-	  rs_packet_destroy (req);
-	  return rs_err_conn_pop (conn);
-	}
+	goto cleanup;
       if (rs_conn_receive_packet (conn, req, &resp))
-	{
-	  rs_packet_destroy (req);
-	  return rs_err_conn_pop (conn);
-	}
-      rs_packet_destroy (req);
+	goto cleanup;
     }
 
   if (resp)
-    {
-      RADIUS_PACKET *fr_pkt = NULL;
-      VALUE_PAIR *fr_vp = NULL;
+    rs_dump_packet (resp);
+  else
+    fprintf (stderr, "%s: no response\n", __func__);
 
-      fr_pkt = rs_packet_frpkt (resp);
-      fr_vp = fr_pkt->vps;	/* FIXME: Is there an accessor?  */
-      if (fr_vp)
-	vp_printlist(stdout, fr_vp);
-      rs_packet_destroy (resp);
-    }
+ cleanup:
+  if (resp)
+    rs_packet_destroy (resp);
+  if (req)
+    rs_packet_destroy (req);
+  if (conn)
+    rs_conn_destroy (conn);
+  if (request)
+    rs_request_destroy (request);
+  if (h)
+    rs_context_destroy (h);
 
-  rs_conn_destroy (conn);
-  rs_context_destroy (h);
-  return NULL;
+  return rs_err_conn_pop (conn);
 }
 
 int
