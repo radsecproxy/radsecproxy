@@ -9,6 +9,7 @@
 #include <event2/bufferevent.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "conn.h"
 #include "debug.h"
 #include "packet.h"
 
@@ -18,15 +19,47 @@
 #include <event2/buffer.h>
 #endif
 
-/* Badly named helper function for preparing a RADIUS message and
-   queue it.  FIXME: Rename.  */
+int
+packet_verify_response (struct rs_connection *conn,
+			struct rs_packet *response,
+			struct rs_packet *request)
+{
+  assert (conn);
+  assert (conn->active_peer);
+  assert (conn->active_peer->secret);
+  assert (response);
+  assert (response->rpkt);
+  assert (request);
+  assert (request->rpkt);
+
+  /* Verify header and message authenticator.  */
+  if (rad_verify (response->rpkt, request->rpkt, conn->active_peer->secret))
+    {
+      conn_close (&conn);
+      return rs_err_conn_push_fl (conn, RSE_FR, __FILE__, __LINE__,
+				  "rad_verify: %s", fr_strerror ());
+    }
+
+  /* Decode and decrypt.  */
+  if (rad_decode (response->rpkt, request->rpkt, conn->active_peer->secret))
+    {
+      conn_close (&conn);
+      return rs_err_conn_push_fl (conn, RSE_FR, __FILE__, __LINE__,
+				  "rad_decode: %s", fr_strerror ());
+    }
+
+  return RSE_OK;
+}
+
+
+/* Badly named function for preparing a RADIUS message and queue it.
+   FIXME: Rename.  */
 int
 packet_do_send (struct rs_packet *pkt)
 {
   VALUE_PAIR *vp = NULL;
 
   assert (pkt->rpkt);
-  assert (!pkt->original);
 
   /* Add Message-Authenticator, RFC 2869.  */
   /* FIXME: Make Message-Authenticator optional?  */

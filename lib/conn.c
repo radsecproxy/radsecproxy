@@ -12,8 +12,33 @@
 #include <event2/bufferevent.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "conn.h"
 #include "event.h"
+#include "packet.h"
 #include "tcp.h"
+
+int
+conn_close (struct rs_connection **connp)
+{
+  int r;
+  assert (connp);
+  assert (*connp);
+  r = rs_conn_destroy (*connp);
+  if (!r)
+    *connp = NULL;
+  return r;
+}
+
+int
+conn_user_dispatch_p (const struct rs_connection *conn)
+{
+  assert (conn);
+
+  return (conn->callbacks.connected_cb ||
+	  conn->callbacks.disconnected_cb ||
+	  conn->callbacks.received_cb ||
+	  conn->callbacks.sent_cb);
+}
 
 int
 rs_conn_create (struct rs_context *ctx, struct rs_connection **conn,
@@ -158,7 +183,6 @@ void
 rs_conn_set_callbacks (struct rs_connection *conn, struct rs_conn_callbacks *cb)
 {
   assert (conn);
-  conn->user_dispatch_flag = 1;
   memcpy (&conn->callbacks, cb, sizeof (conn->callbacks));
 }
 
@@ -166,7 +190,6 @@ void
 rs_conn_del_callbacks (struct rs_connection *conn)
 {
   assert (conn);
-  conn->user_dispatch_flag = 0;
   memset (&conn->callbacks, 0, sizeof (conn->callbacks));
 }
 
@@ -202,7 +225,9 @@ _rcb (struct rs_packet *packet, void *user_data)
 {
   struct rs_packet *pkt = (struct rs_packet *) user_data;
   assert (pkt);
-  pkt->valid_flag = 1;
+  assert (pkt->conn);
+
+  pkt->flags |= rs_packet_received_flag;
   if (pkt->conn->bev)
     bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
   else
@@ -216,17 +241,18 @@ _rcb (struct rs_packet *packet, void *user_data)
    For any other use of libradsec, a the received_cb callback should
    be registered in the callbacks member of struct rs_connection.
 
-   On successful reception, verification and decoding of a RADIUS
-   message, PKT_OUT will upon return point at a pointer to a struct
-   rs_packet containing the message.
+   On successful reception of a RADIUS message it will be verified
+   against REQ_MSG, if !NULL.
+
+   If PKT_OUT is !NULL it will upon return point at a pointer to a
+   struct rs_packet containing the message.
 
    If anything goes wrong or if the read times out (TODO: explain),
-   PKT_OUT will point at the NULL pointer and one or more errors are
-   pushed on the connection (available through rs_err_conn_pop()).  */
-
+   PKT_OUT will not be changed and one or more errors are pushed on
+   the connection (available through rs_err_conn_pop()).  */
 int
 rs_conn_receive_packet (struct rs_connection *conn,
-		        struct rs_packet *request,
+		        struct rs_packet *req_msg,
 		        struct rs_packet **pkt_out)
 {
   int err = 0;
@@ -234,13 +260,11 @@ rs_conn_receive_packet (struct rs_connection *conn,
 
   assert (conn);
   assert (conn->realm);
-  assert (!conn->user_dispatch_flag); /* Dispatching mode only.  */
+  assert (!conn_user_dispatch_p (conn)); /* Dispatching mode only.  */
 
-  if (rs_packet_create (conn, pkt_out))
+  if (rs_packet_create (conn, &pkt))
     return -1;
-  pkt = *pkt_out;
   pkt->conn = conn;
-  pkt->original = request;
 
   assert (conn->evb);
   assert (conn->bev);
@@ -249,6 +273,8 @@ rs_conn_receive_packet (struct rs_connection *conn,
 
   conn->callbacks.received_cb = _rcb;
   conn->user_data = pkt;
+  pkt->flags &= ~rs_packet_received_flag;
+
   if (conn->bev)
     {
       bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
@@ -264,7 +290,7 @@ rs_conn_receive_packet (struct rs_connection *conn,
 				    evutil_gai_strerror (err));
     }
 
-  /* Dispatch.  */
+
   rs_debug (("%s: entering event loop\n", __func__));
   err = event_base_dispatch (conn->evb);
   conn->callbacks.received_cb = NULL;
@@ -274,13 +300,16 @@ rs_conn_receive_packet (struct rs_connection *conn,
 				evutil_gai_strerror (err));
   rs_debug (("%s: event loop done\n", __func__));
 
-  if (!pkt->valid_flag)
-    return -1;
+  if ((pkt->flags & rs_packet_received_flag) == 0
+      || (req_msg
+	  && packet_verify_response (pkt->conn, pkt, req_msg) != RSE_OK))
+    {
+      assert (rs_err_conn_peek_code (pkt->conn));
+      return -1;
+    }
 
-#if defined (DEBUG)
-      rs_dump_packet (pkt);
-#endif
-
-  pkt->original = NULL;		/* FIXME: Why?  */
+  if (pkt_out)
+    *pkt_out = pkt;
   return RSE_OK;
 }
+

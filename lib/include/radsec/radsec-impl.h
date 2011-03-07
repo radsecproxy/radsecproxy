@@ -81,7 +81,6 @@ struct rs_connection {
     int fd;			/* Socket.  */
     int tryagain;		/* For server failover.  */
     int nextid;			/* Next RADIUS packet identifier.  */
-    int user_dispatch_flag : 1;	/* User does the dispatching.  */
     /* TCP transport specifics.  */
     struct bufferevent *bev;	/* Buffer event.  */
     /* UDP transport specifics.  */
@@ -95,14 +94,17 @@ struct rs_connection {
 #endif
 };
 
+enum rs_packet_flags {
+    rs_packet_hdr_read_flag,
+    rs_packet_received_flag,
+    rs_packet_sent_flag,
+};
+
 struct rs_packet {
     struct rs_connection *conn;
-    char hdr_read_flag;
-    uint8_t hdr[4];
+    unsigned int flags;
+    uint8_t hdr[RS_HEADER_LEN];
     RADIUS_PACKET *rpkt;
-    struct rs_packet *original;
-    char valid_flag;
-    char written_flag;
     struct rs_packet *next;	/* Used for UDP output queue.  */
 };
 

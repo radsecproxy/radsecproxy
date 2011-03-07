@@ -14,8 +14,15 @@
 #include "packet.h"
 #include "event.h"
 #include "peer.h"
+#include "conn.h"
 #include "tcp.h"
 #include "udp.h"
+
+/* RFC 5080 2.2.1.  Retransmission Behavior */
+#define IRT 2
+#define MRC 5
+#define MRT 16
+#define MRD 30
 
 static int
 _conn_open (struct rs_connection *conn, struct rs_packet *pkt)
@@ -62,7 +69,7 @@ _wcb (void *user_data)
 {
   struct rs_packet *pkt = (struct rs_packet *) user_data;
   assert (pkt);
-  pkt->written_flag = 1;
+  pkt->flags |= rs_packet_sent_flag;
   if (pkt->conn->bev)
     bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
   else
@@ -100,27 +107,27 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
     {
       err = event_add (conn->wev, NULL);
       if (err < 0)
-	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "event_add: %s",
 				    evutil_gai_strerror (err));
     }
 
   /* Do dispatch, unless the user wants to do it herself.  */
-  if (!conn->user_dispatch_flag)
+  if (!conn_user_dispatch_p (conn))
     {
       conn->callbacks.sent_cb = _wcb;
       conn->user_data = pkt;
       rs_debug (("%s: entering event loop\n", __func__));
       err = event_base_dispatch (conn->evb);
       if (err < 0)
-	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "event_base_dispatch: %s",
 				    evutil_gai_strerror (err));
       rs_debug (("%s: event loop done\n", __func__));
       conn->callbacks.sent_cb = NULL;
       conn->user_data = NULL;
 
-      if (!pkt->written_flag)
+      if ((pkt->flags & rs_packet_sent_flag) == 0)
 	return -1;
     }
 

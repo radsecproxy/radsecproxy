@@ -16,6 +16,7 @@
 #include <radsec/radsec-impl.h>
 #include "tcp.h"
 #include "packet.h"
+#include "conn.h"
 #include "debug.h"
 #include "event.h"
 
@@ -41,18 +42,6 @@ _conn_timeout_cb (int fd, short event, void *data)
     }
 }
 
-static int
-_close_conn (struct rs_connection **connp)
-{
-  int r;
-  assert (connp);
-  assert (*connp);
-  r = rs_conn_destroy (*connp);
-  if (!r)
-    *connp = NULL;
-  return r;
-}
-
 /* Read one RADIUS packet header.  Return !0 on error.  A return value
    of 0 means that we need more data.  */
 static int
@@ -63,11 +52,11 @@ _read_header (struct rs_packet *pkt)
   n = bufferevent_read (pkt->conn->bev, pkt->hdr, RS_HEADER_LEN);
   if (n == RS_HEADER_LEN)
     {
-      pkt->hdr_read_flag = 1;
+      pkt->flags |= rs_packet_hdr_read_flag;
       pkt->rpkt->data_len = (pkt->hdr[2] << 8) + pkt->hdr[3];
       if (pkt->rpkt->data_len < 20 || pkt->rpkt->data_len > 4096)
 	{
-	  _close_conn (&pkt->conn);
+	  conn_close (&pkt->conn);
 	  return rs_err_conn_push (pkt->conn, RSE_INVALID_PKT,
 				   "invalid packet length: %d",
 				   pkt->rpkt->data_len);
@@ -75,7 +64,7 @@ _read_header (struct rs_packet *pkt)
       pkt->rpkt->data = rs_malloc (pkt->conn->ctx, pkt->rpkt->data_len);
       if (!pkt->rpkt->data)
 	{
-	  _close_conn (&pkt->conn);
+	  conn_close (&pkt->conn);
 	  return rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
 				      NULL);
 	}
@@ -91,7 +80,7 @@ _read_header (struct rs_packet *pkt)
     }
   else	    /* Error: libevent gave us less than the low watermark. */
     {
-      _close_conn (&pkt->conn);
+      conn_close (&pkt->conn);
       return rs_err_conn_push_fl (pkt->conn, RSE_INTERNAL, __FILE__, __LINE__,
 				  "got %d octets reading header", n);
     }
@@ -117,7 +106,7 @@ _read_packet (struct rs_packet *pkt)
     {
       bufferevent_disable (pkt->conn->bev, EV_READ);
       rs_debug (("%s: complete packet read\n", __func__));
-      pkt->hdr_read_flag = 0;
+      pkt->flags &= ~rs_packet_hdr_read_flag;
       memset (pkt->hdr, 0, sizeof(*pkt->hdr));
 
       /* Checks done by rad_packet_ok:
@@ -125,37 +114,11 @@ _read_packet (struct rs_packet *pkt)
 	 - invalid code field
 	 - attribute lengths >= 2
 	 - attribute sizes adding up correctly  */
-      if (!rad_packet_ok (pkt->rpkt, 0) != 0)
+      if (!rad_packet_ok (pkt->rpkt, 0))
 	{
-	  _close_conn (&pkt->conn);
+	  conn_close (&pkt->conn);
 	  return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 				      "invalid packet: %s", fr_strerror ());
-	}
-
-      /* TODO: Verify that reception of an unsolicited response packet
-	 results in connection being closed.  */
-
-      /* If we have a request to match this response against, verify
-	 and decode the response.  */
-      if (pkt->original)
-	{
-	  /* Verify header and message authenticator.  */
-	  if (rad_verify (pkt->rpkt, pkt->original->rpkt,
-			  pkt->conn->active_peer->secret))
-	    {
-	      _close_conn (&pkt->conn);
-	      return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
-					  "rad_verify: %s", fr_strerror ());
-	    }
-
-	  /* Decode and decrypt.  */
-	  if (rad_decode (pkt->rpkt, pkt->original->rpkt,
-			  pkt->conn->active_peer->secret))
-	    {
-	      _close_conn (&pkt->conn);
-	      return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
-					  "rad_decode: %s", fr_strerror ());
-	    }
 	}
 
 #if defined (DEBUG)
@@ -169,8 +132,8 @@ _read_packet (struct rs_packet *pkt)
       }
 #endif
 
-      /* Hand over message to user, changes ownership of pkt.  Don't
-	 touch it afterwards -- it might have been freed.  */
+      /* Hand over message to user.  This changes ownership of pkt.
+	 Don't touch it afterwards -- it might have been freed.  */
       if (pkt->conn->callbacks.received_cb)
 	pkt->conn->callbacks.received_cb (pkt, pkt->conn->user_data);
     }
@@ -183,14 +146,12 @@ _read_packet (struct rs_packet *pkt)
   return 0;
 }
 
-/* Read callback for TCP.
+/* The read callback for TCP.
 
    Read exactly one RADIUS message from BEV and store it in struct
-   rs_packet passed in CTX (hereby called 'pkt').
+   rs_packet passed in USER_DATA.
 
-   Verify the received packet against pkt->original, if !NULL.
-
-   Inform upper layer about successful reception of valid RADIUS
+   Inform upper layer about successful reception of received RADIUS
    message by invoking conn->callbacks.recevied_cb(), if !NULL.  */
 void
 tcp_read_cb (struct bufferevent *bev, void *user_data)
@@ -204,9 +165,9 @@ tcp_read_cb (struct bufferevent *bev, void *user_data)
   pkt->rpkt->sockfd = pkt->conn->fd;
   pkt->rpkt->vps = NULL;
 
-  if (!pkt->hdr_read_flag)
+  if ((pkt->flags & rs_packet_hdr_read_flag) == 0)
     if (_read_header (pkt))
-      return;
+      return;			/* Error.  */
   _read_packet (pkt);
 }
 
