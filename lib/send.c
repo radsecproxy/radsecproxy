@@ -96,7 +96,7 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
       bufferevent_setcb (conn->bev, NULL, tcp_write_cb, tcp_event_cb, pkt);
       bufferevent_enable (conn->bev, EV_WRITE);
     }
-  else			/* UDP */
+  else				/* UDP */
     {
       err = event_add (conn->wev, NULL);
       if (err < 0)

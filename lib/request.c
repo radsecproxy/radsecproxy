@@ -127,11 +127,11 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
   conn->callbacks.received_cb = _rs_req_packet_received;
   conn->callbacks.sent_cb = _rs_req_packet_sent;
 
-  err = rs_packet_send(request->req_msg, request);
+  err = rs_packet_send (request->req_msg, request);
   if (err)
     goto cleanup;
 
-  err = rs_conn_receive_packet(request->conn, request->req_msg, resp_msg);
+  err = rs_conn_receive_packet (request->conn, request->req_msg, resp_msg);
   if (err)
     goto cleanup;
 

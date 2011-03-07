@@ -28,7 +28,7 @@
 
 /* Public functions.  */
 int
-rs_context_create(struct rs_context **ctx, const char *dict)
+rs_context_create (struct rs_context **ctx, const char *dict)
 {
   int err = RSE_OK;
   struct rs_context *h;
@@ -154,8 +154,10 @@ rs_context_destroy (struct rs_context *ctx)
   rs_free (ctx, ctx);
 }
 
-int rs_context_set_alloc_scheme(struct rs_context *ctx,
-				struct rs_alloc_scheme *scheme)
+int
+rs_context_set_alloc_scheme (struct rs_context *ctx,
+			     struct rs_alloc_scheme *scheme)
 {
   return rs_err_ctx_push_fl (ctx, RSE_NOSYS, __FILE__, __LINE__, NULL);
 }
+
