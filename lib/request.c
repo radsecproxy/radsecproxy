@@ -12,6 +12,7 @@
 #include <radsec/radsec-impl.h>
 #include <radsec/request.h>
 #include <radsec/request-impl.h>
+#include "conn.h"
 
 int
 rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
@@ -68,75 +69,21 @@ _timer_cb (evutil_socket_t fd, short what, void *arg)
 }
 #endif
 
-static void
-_rs_req_connected (void *user_data)
-{
-  struct rs_request *request = (struct rs_request *) user_data;
-  assert (request);
-  assert (request->conn);
-  if (request->saved_cb.connected_cb)
-    request->saved_cb.connected_cb (request->saved_user_data);
-}
-
-static void
-_rs_req_disconnected (void *user_data)
-{
-  struct rs_request *request = (struct rs_request *) user_data;
-  assert (request);
-  assert (request->conn);
-  if (request->saved_cb.disconnected_cb)
-    request->saved_cb.disconnected_cb (request->saved_user_data);
-}
-
-static void
-_rs_req_packet_received (struct rs_packet *msg, void *user_data)
-{
-  struct rs_request *request = (struct rs_request *) user_data;
-  assert (request);
-  assert (request->conn);
-  if (request->saved_cb.received_cb)
-    request->saved_cb.received_cb (msg, request->saved_user_data);
-}
-
-static void
-_rs_req_packet_sent (void *user_data)
-{
-  struct rs_request *request = (struct rs_request *) user_data;
-  assert (request);
-  assert (request->conn);
-  if (request->saved_cb.sent_cb)
-    request->saved_cb.sent_cb (request->saved_user_data);
-}
-
 int
 rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
 {
-  int err = 0;
   struct rs_connection *conn = NULL;
 
   if (!request || !request->conn || !request->req_msg || !resp_msg)
     return rs_err_conn_push_fl (conn, RSE_INVAL, __FILE__, __LINE__, NULL);
   conn = request->conn;
+  assert (!conn_user_dispatch_p (conn)); /* This function is high level.  */
 
-  request->saved_user_data = conn->user_data;
-  conn->user_data = request;
+  if (rs_packet_send (request->req_msg, request))
+    return -1;
 
-  request->saved_cb = conn->callbacks;
-  conn->callbacks.connected_cb = _rs_req_connected;
-  conn->callbacks.disconnected_cb = _rs_req_disconnected;
-  conn->callbacks.received_cb = _rs_req_packet_received;
-  conn->callbacks.sent_cb = _rs_req_packet_sent;
+  if (rs_conn_receive_packet (request->conn, request->req_msg, resp_msg))
+    return -1;
 
-  err = rs_packet_send (request->req_msg, request);
-  if (err)
-    goto cleanup;
-
-  err = rs_conn_receive_packet (request->conn, request->req_msg, resp_msg);
-  if (err)
-    goto cleanup;
-
-cleanup:
-  conn->user_data = request->saved_user_data;
-  conn->callbacks = request->saved_cb;
-  return err;
+  return RSE_OK;
 }
