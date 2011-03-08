@@ -178,7 +178,9 @@ rs_err_conn_pop (struct rs_connection *conn)
 int
 rs_err_conn_peek_code (struct rs_connection *conn)
 {
-  if (conn && conn->err)
+  if (!conn)
+    return -1;			/* FIXME: RSE_INVALID_CONN */
+  if (conn->err)
     return conn->err->code;
   else
     return RSE_OK;
@@ -188,26 +190,15 @@ void
 rs_err_free (struct rs_error *err)
 {
   assert (err);
-  if (err->msg)
-    free (err->msg);
   free (err);
 }
 
 char *
-rs_err_msg (struct rs_error *err, int dofree_flag)
+rs_err_msg (struct rs_error *err)
 {
-  char *msg;
-
   if (!err)
     return NULL;
-  if (err->msg)
-    msg = err->msg;
-  else
-    msg = strdup (err->buf);
-
-  if (dofree_flag)
-    rs_err_free (err);
-  return msg;
+  return err->buf;
 }
 
 int

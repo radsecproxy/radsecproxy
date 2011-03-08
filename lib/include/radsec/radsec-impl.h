@@ -32,7 +32,6 @@ struct rs_credentials {
 
 struct rs_error {
     int code;
-    char *msg;
     char buf[1024];
 };
 

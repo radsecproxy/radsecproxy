@@ -100,7 +100,7 @@ main (int argc, char *argv[])
   err = blocking_client (argv[1], argv[2], use_request_object_flag);
   if (err)
     {
-      fprintf (stderr, "%s\n", rs_err_msg (err, 0));
+      fprintf (stderr, "%s\n", rs_err_msg (err));
       return rs_err_code (err, 1);
     }
   return 0;
