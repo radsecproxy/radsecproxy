@@ -305,7 +305,7 @@ rs_conn_receive_packet (struct rs_connection *conn,
 	  && packet_verify_response (pkt->conn, pkt, req_msg) != RSE_OK))
     {
       assert (rs_err_conn_peek_code (pkt->conn));
-      return -1;
+      return rs_err_conn_peek_code (conn);
     }
 
   if (pkt_out)

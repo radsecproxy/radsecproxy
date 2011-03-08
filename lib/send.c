@@ -128,7 +128,10 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
       conn->user_data = NULL;
 
       if ((pkt->flags & rs_packet_sent_flag) == 0)
-	return -1;
+	{
+	  assert (rs_err_conn_peek_code (conn));
+	  return rs_err_conn_peek_code (conn);
+	}
     }
 
   return RSE_OK;
