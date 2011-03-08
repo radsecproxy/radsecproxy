@@ -21,6 +21,7 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
   struct rs_connection *conn = NULL;
   struct rs_request *request = NULL;
   struct rs_packet *req = NULL, *resp = NULL;
+  struct rs_error *err = NULL;
 
   if (rs_context_create (&h, "/usr/share/freeradius/dictionary"))
     return NULL;
@@ -71,6 +72,7 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
     fprintf (stderr, "%s: no response\n", __func__);
 
  cleanup:
+  err = rs_err_conn_pop (conn);
   if (resp)
     rs_packet_destroy (resp);
   if (req)
@@ -82,7 +84,7 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
   if (h)
     rs_context_destroy (h);
 
-  return rs_err_conn_pop (conn);
+  return err;
 }
 
 int
