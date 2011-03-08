@@ -75,6 +75,7 @@ struct rs_connection {
     struct rs_peer *peers;
     struct rs_peer *active_peer;
     struct rs_error *err;
+    struct timeval timeout;
     char is_connecting;		/* FIXME: replace with a single state member */
     char is_connected;		/* FIXME: replace with a single state member */
     int fd;			/* Socket.  */

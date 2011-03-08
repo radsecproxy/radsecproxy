@@ -64,6 +64,7 @@ rs_conn_create (struct rs_context *ctx, struct rs_connection **conn,
 	  c->peers = r->peers;	/* FIXME: Copy instead?  */
 	  for (p = c->peers; p; p = p->next)
 	    p->conn = c;
+	  c->timeout.tv_sec = r->timeout;
 	  c->tryagain = r->retries;
 	}
       else
@@ -313,3 +314,10 @@ rs_conn_receive_packet (struct rs_connection *conn,
   return RSE_OK;
 }
 
+void
+rs_conn_set_timeout(struct rs_connection *conn, struct timeval *tv)
+{
+  assert (conn);
+  assert (tv);
+  conn->timeout = *tv;
+}

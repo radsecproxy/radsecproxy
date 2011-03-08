@@ -18,12 +18,6 @@
 #include "tcp.h"
 #include "udp.h"
 
-/* RFC 5080 2.2.1.  Retransmission Behavior */
-#define IRT 2
-#define MRC 5
-#define MRT 16
-#define MRD 30
-
 static int
 _conn_open (struct rs_connection *conn, struct rs_packet *pkt)
 {

@@ -37,7 +37,7 @@ _conn_timeout_cb (int fd, short event, void *data)
       rs_debug (("%s: connection timeout on %p (fd %d) connecting to %p\n",
 		 __func__, conn, conn->fd, conn->active_peer));
       conn->is_connecting = 0;
-      rs_err_conn_push_fl (conn, RSE_TIMEOUT_IO, __FILE__, __LINE__, NULL);
+      rs_err_conn_push_fl (conn, RSE_TIMEOUT_CONN, __FILE__, __LINE__, NULL);
       event_loopbreak (conn);
     }
 }
@@ -256,16 +256,11 @@ tcp_write_cb (struct bufferevent *bev, void *ctx)
 int
 tcp_set_connect_timeout (struct rs_connection *conn)
 {
-  struct timeval tv;
-
   if (!conn->tev)
     conn->tev = evtimer_new (conn->evb, _conn_timeout_cb, conn);
   if (!conn->tev)
     return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				"evtimer_new");
-  tv.tv_sec = conn->realm->timeout;
-  tv.tv_usec = 0;
-  evtimer_add (conn->tev, &tv);
-
+  evtimer_add (conn->tev, &conn->timeout);
   return RSE_OK;
 }

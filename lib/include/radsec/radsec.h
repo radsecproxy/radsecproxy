@@ -3,6 +3,7 @@
 /* See the file COPYING for licensing information.  */
 
 #include <unistd.h>
+#include <sys/time.h>
 
 enum rs_err_code {
     RSE_OK = 0,
@@ -21,9 +22,10 @@ enum rs_err_code {
     RSE_INTERNAL = 13,
     RSE_SSLERR = 14,		/* OpenSSL error.  */
     RSE_INVALID_PKT = 15,
-    RSE_TIMEOUT_CONN = 16,
-    RSE_INVAL = 17,
-    RSE_TIMEOUT_IO = 18,
+    RSE_TIMEOUT_CONN = 16,	/* Connection timeout.  */
+    RSE_INVAL = 17,		/* Invalid argument.  */
+    RSE_TIMEOUT_IO = 18,	/* I/O timeout.  */
+    RSE_TIMEOUT = 19,		/* High level timeout.  */
 };
 
 enum rs_conn_type {
@@ -111,6 +113,7 @@ int rs_conn_receive_packet(struct rs_connection *conn,
 			   struct rs_packet *request,
 			   struct rs_packet **pkt_out);
 int rs_conn_fd(struct rs_connection *conn);
+void rs_conn_set_timeout(struct rs_connection *conn, struct timeval *tv);
 
 /* Peer -- client and server.  */
 int rs_peer_create(struct rs_connection *conn, struct rs_peer **peer_out);

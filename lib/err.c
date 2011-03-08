@@ -31,6 +31,7 @@ static const char *_errtxt[] = {
   "connect timeout",		/* 16 RSE_TIMEOUT_CONN */
   "invalid argument",		/* 17 RSE_INVAL */
   "I/O timeout",		/* 18 RSE_TIMEOUT_IO */
+  "timeout",			/* 19 RSE_TIMEOUT */
 };
 #define ERRTXT_SIZE (sizeof(_errtxt) / sizeof(*_errtxt))
 
