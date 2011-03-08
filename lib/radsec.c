@@ -114,14 +114,14 @@ _rs_peer_destroy (struct rs_peer *p)
   assert (p);
   assert (p->conn);
   assert (p->conn->ctx);
-  /* NOTE: The peer object doesn't own its connection (conn).  */
+  /* NOTE: The peer object doesn't own its connection (conn), nor its
+     realm.  */
+  /* NOTE: secret is owned by config object.  */
   if (p->addr)
     {
       evutil_freeaddrinfo (p->addr);
       p->addr = NULL;
     }
-  if (p->secret)
-    rs_free (p->conn->ctx, p->secret);
   rs_free (p->conn->ctx, p);
 }
 
