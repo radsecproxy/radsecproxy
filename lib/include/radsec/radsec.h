@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 
-enum rs_err_code {
+enum rs_error_code {
     RSE_OK = 0,
     RSE_NOMEM = 1,
     RSE_NOSYS = 2,
@@ -167,7 +167,7 @@ int rs_err_conn_push_fl(struct rs_connection *conn,
 struct rs_error *rs_err_conn_pop(struct rs_connection *conn);
 int rs_err_conn_peek_code (struct rs_connection *conn);
 void rs_err_free(struct rs_error *err);
-char *rs_err_msg(struct rs_error *err, int dofree_flag);
+char *rs_err_msg(struct rs_error *err);
 int rs_err_code(struct rs_error *err, int dofree_flag);
 
 #if defined (__cplusplus)
