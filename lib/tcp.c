@@ -209,6 +209,7 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
       if (sockerr == 0)	/* FIXME: True that errno == 0 means closed? */
 	{
 	  event_on_disconnect (conn);
+	  rs_err_conn_push_fl (pkt->conn, RSE_DISCO, __FILE__, __LINE__, NULL);
 	}
       else
 	{

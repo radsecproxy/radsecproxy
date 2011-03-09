@@ -32,6 +32,7 @@ static const char *_errtxt[] = {
   "invalid argument",		/* 17 RSE_INVAL */
   "I/O timeout",		/* 18 RSE_TIMEOUT_IO */
   "timeout",			/* 19 RSE_TIMEOUT */
+  "peer disconnected",		/* 20 RSE_DISCO */
 };
 #define ERRTXT_SIZE (sizeof(_errtxt) / sizeof(*_errtxt))
 

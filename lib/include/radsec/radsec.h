@@ -26,6 +26,7 @@ enum rs_error_code {
     RSE_INVAL = 17,		/* Invalid argument.  */
     RSE_TIMEOUT_IO = 18,	/* I/O timeout.  */
     RSE_TIMEOUT = 19,		/* High level timeout.  */
+    RSE_DISCO = 20,
 };
 
 enum rs_conn_type {
