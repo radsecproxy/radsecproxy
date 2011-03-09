@@ -6,6 +6,8 @@
 #endif
 
 #include <assert.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <event2/event.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
@@ -15,7 +17,7 @@
 #include "udp.h"
 
 /* Send one packet, the first in queue.  */
-static void
+static int
 _send (struct rs_connection *conn, int fd)
 {
   ssize_t r = 0;
@@ -30,12 +32,12 @@ _send (struct rs_connection *conn, int fd)
     {
       int sockerr = evutil_socket_geterror (pkt->conn->fd);
       if (sockerr != EAGAIN)
-	rs_err_conn_push_fl (pkt->conn, RSE_SOCKERR, __FILE__, __LINE__,
-			     "%d: send: %d (%s)", fd, sockerr,
-			     evutil_socket_error_to_string (sockerr));
-      return;		/* Don't unlink packet. */
+	return rs_err_conn_push_fl (pkt->conn, RSE_SOCKERR, __FILE__, __LINE__,
+				    "%d: send: %d (%s)", fd, sockerr,
+				    evutil_socket_error_to_string (sockerr));
     }
 
+  assert (r == pkt->rpkt->data_len);
   /* Unlink the packet.  */
   conn->out_queue = pkt->next;
 
@@ -44,38 +46,83 @@ _send (struct rs_connection *conn, int fd)
     {
       r = event_add (pkt->conn->wev, NULL);
       if (r < 0)
-	{
-	  rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
-			       "event_add: %s", evutil_gai_strerror (r));
-	  return;
-	}
+	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				    "event_add: %s", evutil_gai_strerror (r));
+      rs_debug (("%s: re-adding the write event\n", __func__));
     }
+
+  return RSE_OK;
 }
 
-/* Callback for conn->wev and conn->rev.  FIXME: Rename.  */
+/* Callback for conn->wev and conn->rev.  FIXME: Rename.
+
+   USER_DATA contains connection for EV_READ and a packet for
+   EV_WRITE.  This is because we don't have a connect/establish entry
+   point at the user level -- send implies connect so when we're
+   connected we need the packet to send.  */
 static void
 _evcb (evutil_socket_t fd, short what, void *user_data)
 {
-  //rs_debug (("%s: fd=%d what=0x%x\n", __func__, fd, what));
-  if (what & EV_TIMEOUT)
-    {
-      struct rs_connection *conn = (struct rs_connection *) user_data;
-      assert (conn);
-      conn->is_connecting = 0;
-      rs_debug (("%s: UDP timeout NYI", __func__));
-    }
-  else if (what & EV_READ)
-    {
-      struct rs_connection *conn = (struct rs_connection *) user_data;
-      assert (conn);
-      /* read a single UDP packet and stick it in a new struct
-	 rs_packet */
+  rs_debug (("%s: fd=%d what =", __func__, fd));
+  if (what & EV_TIMEOUT) rs_debug ((" TIMEOUT"));
+  if (what & EV_READ) rs_debug ((" READ"));
+  if (what & EV_WRITE) rs_debug ((" WRITE"));
+  rs_debug (("\n"));
 
-      /* TODO: Verify that reception of an unsolicited response packet
-	 results in connection being closed.  */
-      rs_debug (("%s: UDP read NYI", __func__));
+  if (what & EV_READ)
+    {
+      /* Read a single UDP packet and stick it in USER_DATA.  */
+      /* TODO: Verify that unsolicited packets are dropped.  */
+      struct rs_packet *pkt = (struct rs_packet *) user_data;
+      ssize_t r = 0;
 
-      /* TODO: delete retransmit timer */
+      assert (pkt);
+      assert (pkt->conn);
+
+      pkt->rpkt->data = rs_malloc (pkt->conn->ctx, 4096);
+      if (pkt->rpkt->data == NULL)
+	{
+	  rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
+	  return;
+	}
+      r = compat_recv (fd, pkt->rpkt->data, 4096, MSG_TRUNC);
+      if (r == -1)
+	{
+	  int sockerr = evutil_socket_geterror (pkt->conn->fd);
+	  if (sockerr == EAGAIN)
+	    {
+	      /* FIXME: Really shouldn't happen since we've been told
+		 that fd is readable!  */
+	      rs_debug (("%s: EAGAIN reading UDP packet -- wot?"));
+	      return;
+	    }
+
+	  /* Hard error.  */
+	  rs_err_conn_push_fl (pkt->conn, RSE_SOCKERR, __FILE__, __LINE__,
+			       "%d: recv: %d (%s)", fd, sockerr,
+			       evutil_socket_error_to_string (sockerr));
+	  event_del (pkt->conn->tev);
+	  return;
+	}
+      event_del (pkt->conn->tev);
+      if (r < 20 || r > 4096)	/* Short or long packet.  */
+	{
+	  rs_err_conn_push (pkt->conn, RSE_INVALID_PKT,
+			    "invalid packet length: %d",
+			    pkt->rpkt->data_len);
+	  return;
+	}
+      pkt->rpkt->data_len = (pkt->rpkt->data[2] << 8) + pkt->rpkt->data[3];
+      if (!rad_packet_ok (pkt->rpkt, 0))
+	{
+	  rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
+			       "invalid packet: %s", fr_strerror ());
+	  return;
+	}
+      /* Hand over message to user.  This changes ownership of pkt.
+	 Don't touch it afterwards -- it might have been freed.  */
+      if (pkt->conn->callbacks.received_cb)
+	pkt->conn->callbacks.received_cb (pkt, pkt->conn->user_data);
     }
   else if (what & EV_WRITE)
     {
@@ -86,8 +133,15 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 	event_on_connect (pkt->conn, pkt);
 
       if (pkt->conn->out_queue)
-	_send (pkt->conn, fd);
+	if (_send (pkt->conn, fd) == RSE_OK)
+	  if (pkt->conn->callbacks.sent_cb)
+	    pkt->conn->callbacks.sent_cb (pkt->conn->user_data);
     }
+
+#if defined (DEBUG)
+  if (what & EV_TIMEOUT)
+    rs_debug (("%s: timeout on UDP event, shouldn't happen\n", __func__));
+#endif
 }
 
 int
@@ -95,7 +149,7 @@ udp_init (struct rs_connection *conn, struct rs_packet *pkt)
 {
   assert (!conn->bev);
 
-  conn->rev = event_new (conn->evb, conn->fd, EV_READ|EV_PERSIST, _evcb, conn);
+  conn->rev = event_new (conn->evb, conn->fd, EV_READ|EV_PERSIST, _evcb, NULL);
   conn->wev = event_new (conn->evb, conn->fd, EV_WRITE, _evcb, pkt);
   if (!conn->rev || !conn->wev)
     {

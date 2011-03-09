@@ -111,8 +111,6 @@ packet_do_send (struct rs_packet *pkt)
       while (*pp && (*pp)->next)
 	*pp = (*pp)->next;
       *pp = pkt;
-
-      conn_activate_timeout (pkt->conn); /* Retransmission timer.  */
     }
 
   return RSE_OK;

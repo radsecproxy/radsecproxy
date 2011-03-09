@@ -228,29 +228,33 @@ rs_conn_receive_packet (struct rs_connection *conn,
     return -1;
 
   assert (conn->evb);
-  assert (conn->bev);
-  assert (conn->active_peer);
   assert (conn->fd >= 0);
 
   conn->callbacks.received_cb = _rcb;
   conn->user_data = pkt;
   pkt->flags &= ~rs_packet_received_flag;
 
-  if (conn->bev)
+  if (conn->bev)		/* TCP.  */
     {
       bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
       bufferevent_setcb (conn->bev, tcp_read_cb, NULL, tcp_event_cb, pkt);
       bufferevent_enable (conn->bev, EV_READ);
     }
-  else
+  else				/* UDP.  */
     {
+      /* Put fresh packet in user_data for the callback and enable the
+	 read event.  */
+      event_assign (conn->rev, conn->evb, event_get_fd (conn->rev),
+		    EV_READ, event_get_callback (conn->rev), pkt);
       err = event_add (conn->rev, NULL);
       if (err < 0)
 	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
 				    "event_add: %s",
 				    evutil_gai_strerror (err));
-    }
 
+      /* Activae retransmission timer.  */
+      conn_activate_timeout (pkt->conn);
+    }
 
   rs_debug (("%s: entering event loop\n", __func__));
   err = event_base_dispatch (conn->evb);
