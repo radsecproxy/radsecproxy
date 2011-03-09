@@ -18,6 +18,7 @@
 #include "debug.h"
 #include "conn.h"
 #include "tcp.h"
+#include "udp.h"
 
 /* RFC 5080 2.2.1.  Retransmission Behavior.  */
 #define IRT 2
@@ -91,7 +92,7 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
   struct timeval end = {0,0};
   struct timeval now = {0,0};
   struct timeval tmp_tv = {0,0};
-  struct timeval mrt_tv = {MRT,0};
+  const struct timeval mrt_tv = {MRT,0};
 
   if (!request || !request->conn || !request->req_msg || !resp_msg)
     return rs_err_conn_push_fl (conn, RSE_INVAL, __FILE__, __LINE__, NULL);
@@ -104,6 +105,7 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
   while (1)
     {
       rs_conn_set_timeout (conn, &rt);
+
       r = rs_packet_send (request->req_msg, NULL);
       if (r == RSE_OK)
 	{
@@ -113,13 +115,11 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
 	  if (r == RSE_OK)
 	    break;		/* Success.  */
 
-	  /* Timing out on receiving data or reconnecting a broken TCP
-	     connection is ok.  */
 	  if (r != RSE_TIMEOUT_CONN && r != RSE_TIMEOUT_IO)
 	    break;		/* Error.  */
 	}
-      else if (r != RSE_TIMEOUT_CONN) /* Timeout on TCP connect is ok.  */
-	break;			      /* Error.  */
+      else if (r != RSE_TIMEOUT_CONN && r != RSE_TIMEOUT_IO)
+	break;			/* Error.  */
 
       gettimeofday (&now, NULL);
       if (++count > MRC || timercmp (&now, &end, >))
@@ -128,13 +128,16 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
 	  break;		/* Timeout.  */
 	}
 
-      /* rt = 2 * rt + _rand_rt (rt, RAND); */
-      timeradd (&rt, &rt, &rt);	/* rt = 2 * rt */
+      /* rt = 2 * rt + rand_rt (rt, RAND); */
+      timeradd (&rt, &rt, &rt);
       _rand_rt (&tmp_tv, IRT, RAND);
       timeradd (&rt, &tmp_tv, &rt);
       if (timercmp (&rt, &mrt_tv, >))
 	_rand_rt (&rt, MRT, RAND);
     }
+
+  timerclear (&rt);
+  rs_conn_set_timeout (conn, &rt);
 
   rs_debug (("%s: returning %d\n", __func__, r));
   return r;
