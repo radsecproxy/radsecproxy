@@ -88,6 +88,7 @@ packet_do_send (struct rs_packet *pkt)
   }
 #endif
 
+  /* Put message in output buffer.  */
   if (pkt->conn->bev)		/* TCP.  */
     {
       int err = bufferevent_write (pkt->conn->bev, pkt->rpkt->data,
