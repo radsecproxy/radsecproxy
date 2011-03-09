@@ -7,11 +7,11 @@
 
 #include <string.h>
 #include <assert.h>
-#include <debug.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "debug.h"
 #include "conn.h"
 #include "event.h"
 #include "packet.h"
@@ -88,45 +88,6 @@ rs_conn_set_type (struct rs_connection *conn, rs_conn_type_t type)
   assert (conn);
   assert (conn->realm);
   conn->realm->type = type;
-}
-
-
-struct rs_error *	   /* FIXME: Return int as all the others?  */
-_rs_resolv (struct evutil_addrinfo **addr, rs_conn_type_t type,
-	    const char *hostname, const char *service)
-{
-  int err;
-  struct evutil_addrinfo hints, *res = NULL;
-
-  memset (&hints, 0, sizeof(struct evutil_addrinfo));
-  hints.ai_family = AF_INET;   /* IPv4 only.  TODO: Set AF_UNSPEC.  */
-  hints.ai_flags = AI_ADDRCONFIG;
-  switch (type)
-    {
-    case RS_CONN_TYPE_NONE:
-      return _rs_err_create (RSE_INVALID_CONN, __FILE__, __LINE__, NULL, NULL);
-    case RS_CONN_TYPE_TCP:
-      /* Fall through.  */
-    case RS_CONN_TYPE_TLS:
-      hints.ai_socktype = SOCK_STREAM;
-      hints.ai_protocol = IPPROTO_TCP;
-      break;
-    case RS_CONN_TYPE_UDP:
-      /* Fall through.  */
-    case RS_CONN_TYPE_DTLS:
-      hints.ai_socktype = SOCK_DGRAM;
-      hints.ai_protocol = IPPROTO_UDP;
-      break;
-    default:
-      return _rs_err_create (RSE_INVALID_CONN, __FILE__, __LINE__, NULL, NULL);
-    }
-  err = evutil_getaddrinfo (hostname, service, &hints, &res);
-  if (err)
-    return _rs_err_create (RSE_BADADDR, __FILE__, __LINE__,
-			   "%s:%s: bad host name or service name (%s)",
-			   hostname, service, evutil_gai_strerror(err));
-  *addr = res;			/* Simply use first result.  */
-  return NULL;
 }
 
 int

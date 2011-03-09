@@ -113,18 +113,11 @@ struct rs_attr {
     VALUE_PAIR *vp;
 };
 
-/* Nonpublic functions.  */
-struct rs_error *_rs_resolv(struct evutil_addrinfo **addr,
-			    rs_conn_type_t type, const char *hostname,
+/* Nonpublic functions (in radsec.c -- FIXME: move?).  */
+struct rs_error *rs_resolv (struct evutil_addrinfo **addr,
+			    rs_conn_type_t type,
+			    const char *hostname,
 			    const char *service);
-struct rs_peer *_rs_peer_create(struct rs_context *ctx,
-				struct rs_peer **rootp);
-struct rs_error *_rs_err_create(unsigned int code, const char *file,
-				int line, const char *fmt, ...);
-int _rs_err_conn_push_err(struct rs_connection *conn,
-			  struct rs_error *err);
-
-
 #if defined (__cplusplus)
 }
 #endif

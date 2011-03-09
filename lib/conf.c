@@ -9,6 +9,7 @@
 #include <string.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "peer.h"
 #include "debug.h"
 
 #if 0
@@ -112,15 +113,15 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       /* Add peers, one per server stanza.  */
       for (j = 0; j < cfg_size (cfg_config, "server"); j++)
 	{
-	  struct rs_peer *p = _rs_peer_create (ctx, &r->peers);
+	  struct rs_peer *p = peer_create (ctx, &r->peers);
 	  if (!p)
 	    return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__,
 				       NULL);
 	  p->realm = r;
 
 	  cfg_server = cfg_getnsec (cfg_config, "server", j);
-	  _rs_resolv (&p->addr, r->type, cfg_getstr (cfg_server, "hostname"),
-		      cfg_getstr (cfg_server, "service"));
+	  rs_resolv (&p->addr, r->type, cfg_getstr (cfg_server, "hostname"),
+		     cfg_getstr (cfg_server, "service"));
 	  p->secret = cfg_getstr (cfg_server, "secret");
 	}
     }
