@@ -59,19 +59,25 @@ packet_do_send (struct rs_packet *pkt)
 {
   VALUE_PAIR *vp = NULL;
 
+  assert (pkt);
+  assert (pkt->conn);
+  assert (pkt->conn->active_peer);
+  assert (pkt->conn->active_peer->secret);
   assert (pkt->rpkt);
 
-  /* Add Message-Authenticator, RFC 2869.  */
+  /* Add a Message-Authenticator, RFC 2869, if not already present.  */
   /* FIXME: Make Message-Authenticator optional?  */
   vp = paircreate (PW_MESSAGE_AUTHENTICATOR, PW_TYPE_OCTETS);
   if (!vp)
     return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 				"paircreate: %s", fr_strerror ());
-  pairadd (&pkt->rpkt->vps, vp);
+  pairreplace (&pkt->rpkt->vps, vp);
 
+  /* Encode message.  */
   if (rad_encode (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
     return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 				"rad_encode: %s", fr_strerror ());
+  /* Sign message.  */
   if (rad_sign (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
     return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
 				"rad_sign: %s", fr_strerror ());
