@@ -107,3 +107,18 @@ udp_init (struct rs_connection *conn, struct rs_packet *pkt)
     }
   return RSE_OK;
 }
+
+int
+udp_init_retransmit_timer (struct rs_connection *conn)
+{
+  assert (conn);
+
+  if (conn->tev)
+    event_free (conn->tev);
+  conn->tev = evtimer_new (conn->evb, event_retransmit_timeout_cb, conn);
+  if (!conn->tev)
+    return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+				"evtimer_new");
+
+  return RSE_OK;
+}

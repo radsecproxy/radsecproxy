@@ -88,7 +88,7 @@ packet_do_send (struct rs_packet *pkt)
   }
 #endif
 
-  if (pkt->conn->bev)
+  if (pkt->conn->bev)		/* TCP.  */
     {
       int err = bufferevent_write (pkt->conn->bev, pkt->rpkt->data,
 				   pkt->rpkt->data_len);
@@ -97,13 +97,15 @@ packet_do_send (struct rs_packet *pkt)
 				    "bufferevent_write: %s",
 				    evutil_gai_strerror (err));
     }
-  else
+  else				/* UDP.  */
     {
       struct rs_packet **pp = &pkt->conn->out_queue;
 
       while (*pp && (*pp)->next)
 	*pp = (*pp)->next;
       *pp = pkt;
+
+      conn_activate_timeout (pkt->conn); /* Retransmission timer.  */
     }
 
   return RSE_OK;

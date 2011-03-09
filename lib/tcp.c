@@ -24,24 +24,6 @@
 #include <event2/buffer.h>
 #endif
 
-static void
-_conn_timeout_cb (int fd, short event, void *data)
-{
-  struct rs_connection *conn;
-
-  assert (data);
-  conn = (struct rs_connection *) data;
-
-  if (event & EV_TIMEOUT)
-    {
-      rs_debug (("%s: connection timeout on %p (fd %d) connecting to %p\n",
-		 __func__, conn, conn->fd, conn->active_peer));
-      conn->is_connecting = 0;
-      rs_err_conn_push_fl (conn, RSE_TIMEOUT_CONN, __FILE__, __LINE__, NULL);
-      event_loopbreak (conn);
-    }
-}
-
 /* Read one RADIUS packet header.  Return !0 on error.  A return value
    of 0 means that we need more data.  */
 static int
@@ -191,6 +173,8 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
   conn->is_connecting = 0;
   if (events & BEV_EVENT_CONNECTED)
     {
+      if (conn->tev)
+	evtimer_del (conn->tev); /* Cancel connect timer.  */
       event_on_connect (conn, pkt);
     }
   else if (events & BEV_EVENT_EOF)
@@ -255,13 +239,16 @@ tcp_write_cb (struct bufferevent *bev, void *ctx)
 }
 
 int
-tcp_set_connect_timeout (struct rs_connection *conn)
+tcp_init_connect_timer (struct rs_connection *conn)
 {
-  if (!conn->tev)
-    conn->tev = evtimer_new (conn->evb, _conn_timeout_cb, conn);
+  assert (conn);
+
+  if (conn->tev)
+    event_free (conn->tev);
+  conn->tev = evtimer_new (conn->evb, event_conn_timeout_cb, conn);
   if (!conn->tev)
     return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				"evtimer_new");
-  evtimer_add (conn->tev, &conn->timeout);
+
   return RSE_OK;
 }

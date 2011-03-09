@@ -282,3 +282,20 @@ rs_conn_set_timeout(struct rs_connection *conn, struct timeval *tv)
   assert (tv);
   conn->timeout = *tv;
 }
+
+int
+conn_activate_timeout (struct rs_connection *conn)
+{
+  assert (conn);
+  assert (conn->tev);
+  assert (conn->evb);
+  if (conn->timeout.tv_sec || conn->timeout.tv_usec)
+    {
+      rs_debug (("%s: activating timer: %d.%d\n", __func__,
+		 conn->timeout.tv_sec, conn->timeout.tv_usec));
+      if (evtimer_add (conn->tev, &conn->timeout))
+	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+				    "evtimer_add: %d", errno);
+    }
+  return RSE_OK;
+}

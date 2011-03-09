@@ -21,6 +21,7 @@
 #endif
 #include "event.h"
 #include "packet.h"
+#include "conn.h"
 #include "debug.h"
 
 static void
@@ -49,6 +50,41 @@ _evlog_cb (int severity, const char *msg)
       break;
     }
   fprintf (stderr, "libevent: [%s] %s\n", sevstr, msg); /* FIXME: stderr?  */
+}
+
+void
+event_conn_timeout_cb (int fd, short event, void *data)
+{
+  struct rs_connection *conn = NULL;
+
+  assert (data);
+  conn = (struct rs_connection *) data;
+
+  if (event & EV_TIMEOUT)
+    {
+      rs_debug (("%s: connection timeout on %p (fd %d) connecting to %p\n",
+		 __func__, conn, conn->fd, conn->active_peer));
+      conn->is_connecting = 0;
+      rs_err_conn_push_fl (conn, RSE_TIMEOUT_CONN, __FILE__, __LINE__, NULL);
+      event_loopbreak (conn);
+    }
+}
+
+void
+event_retransmit_timeout_cb (int fd, short event, void *data)
+{
+  struct rs_connection *conn = NULL;
+
+  assert (data);
+  conn = (struct rs_connection *) data;
+
+  if (event & EV_TIMEOUT)
+    {
+      rs_debug (("%s: retransmission timeout on %p (fd %d) sending to %p\n",
+		 __func__, conn, conn->fd, conn->active_peer));
+      rs_err_conn_push_fl (conn, RSE_TIMEOUT_IO, __FILE__, __LINE__, NULL);
+      event_loopbreak (conn);
+    }
 }
 
 int
@@ -138,7 +174,7 @@ event_do_connect (struct rs_connection *conn)
 
   if (p->conn->bev)		/* TCP */
     {
-      tcp_set_connect_timeout (conn);
+      conn_activate_timeout (conn); /* Connect timeout.  */
       err = bufferevent_socket_connect (p->conn->bev, p->addr->ai_addr,
 					p->addr->ai_addrlen);
       if (err < 0)
@@ -191,10 +227,10 @@ event_on_connect (struct rs_connection *conn, struct rs_packet *pkt)
   assert (!conn->is_connecting);
   conn->is_connected = 1;
   rs_debug (("%s: %p connected\n", __func__, conn->active_peer));
-  if (conn->tev)
-    evtimer_del (conn->tev);
+
   if (conn->callbacks.connected_cb)
     conn->callbacks.connected_cb (conn->user_data);
+
   if (pkt)
     packet_do_send (pkt);
 }
@@ -202,6 +238,7 @@ event_on_connect (struct rs_connection *conn, struct rs_packet *pkt)
 int
 event_init_eventbase (struct rs_connection *conn)
 {
+  assert (conn);
   if (conn->evb)
     return RSE_OK;
 

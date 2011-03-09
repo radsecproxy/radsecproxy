@@ -35,12 +35,16 @@ _conn_open (struct rs_connection *conn, struct rs_packet *pkt)
   if (conn->realm->type == RS_CONN_TYPE_TCP
       || conn->realm->type == RS_CONN_TYPE_TLS)
     {
+      if (tcp_init_connect_timer (conn))
+	return -1;
       if (event_init_bufferevent (conn, conn->active_peer))
 	return -1;
     }
   else
     {
       if (udp_init (conn, pkt))
+	return -1;
+      if (udp_init_retransmit_timer (conn))
 	return -1;
     }
 

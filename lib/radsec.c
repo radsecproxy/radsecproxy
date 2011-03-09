@@ -20,6 +20,7 @@
 #if defined (RS_ENABLE_TLS)
 #include <regex.h>
 #include "debug.h"
+#include "err.h"
 #include "rsp_list.h"
 #include "../radsecproxy.h"
 #endif
@@ -91,24 +92,44 @@ rs_context_create (struct rs_context **ctx, const char *dict)
   return err;
 }
 
-struct rs_peer *
-_rs_peer_create (struct rs_context *ctx, struct rs_peer **rootp)
+struct rs_error *	   /* FIXME: Return int as all the others?  */
+rs_resolv (struct evutil_addrinfo **addr,
+	   rs_conn_type_t type,
+	   const char *hostname,
+	   const char *service)
 {
-  struct rs_peer *p;
+  int err;
+  struct evutil_addrinfo hints, *res = NULL;
 
-  p = (struct rs_peer *) rs_malloc (ctx, sizeof(*p));
-  if (p)
+  memset (&hints, 0, sizeof(struct evutil_addrinfo));
+  hints.ai_family = AF_INET;   /* IPv4 only.  TODO: Set AF_UNSPEC.  */
+  hints.ai_flags = AI_ADDRCONFIG;
+  switch (type)
     {
-      memset (p, 0, sizeof(struct rs_peer));
-      if (*rootp)
-	{
-	  p->next = (*rootp)->next;
-	  (*rootp)->next = p;
-	}
-      else
-	*rootp = p;
+    case RS_CONN_TYPE_NONE:
+      return err_create (RSE_INVALID_CONN, __FILE__, __LINE__, NULL, NULL);
+    case RS_CONN_TYPE_TCP:
+      /* Fall through.  */
+    case RS_CONN_TYPE_TLS:
+      hints.ai_socktype = SOCK_STREAM;
+      hints.ai_protocol = IPPROTO_TCP;
+      break;
+    case RS_CONN_TYPE_UDP:
+      /* Fall through.  */
+    case RS_CONN_TYPE_DTLS:
+      hints.ai_socktype = SOCK_DGRAM;
+      hints.ai_protocol = IPPROTO_UDP;
+      break;
+    default:
+      return err_create (RSE_INVALID_CONN, __FILE__, __LINE__, NULL, NULL);
     }
-  return p;
+  err = evutil_getaddrinfo (hostname, service, &hints, &res);
+  if (err)
+    return err_create (RSE_BADADDR, __FILE__, __LINE__,
+		       "%s:%s: bad host name or service name (%s)",
+		       hostname, service, evutil_gai_strerror(err));
+  *addr = res;			/* Simply use first result.  */
+  return NULL;
 }
 
 static void

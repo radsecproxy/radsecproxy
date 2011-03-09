@@ -4,4 +4,4 @@
 void tcp_event_cb (struct bufferevent *bev, short events, void *user_data);
 void tcp_read_cb (struct bufferevent *bev, void *user_data);
 void tcp_write_cb (struct bufferevent *bev, void *ctx);
-int tcp_set_connect_timeout (struct rs_connection *conn);
+int tcp_init_connect_timer (struct rs_connection *conn);
