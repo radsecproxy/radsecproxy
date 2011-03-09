@@ -42,15 +42,15 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
   cfg_opt_t server_opts[] =
     {
       CFG_STR ("hostname", NULL, CFGF_NONE),
-      CFG_STR ("service", "radius", CFGF_NONE),
-      CFG_STR ("secret", NULL, CFGF_NONE),
+      CFG_STR ("service", "2083", CFGF_NONE),
+      CFG_STR ("secret", "radsec", CFGF_NONE),
       CFG_END ()
     };
   cfg_opt_t config_opts[] =
     {
       CFG_STR ("type", "UDP", CFGF_NONE),
-      CFG_INT ("timeout", 2, CFGF_NONE),
-      CFG_INT ("retries", 2, CFGF_NONE),
+      CFG_INT ("timeout", 2, CFGF_NONE), /* FIXME: Remove?  */
+      CFG_INT ("retries", 2, CFGF_NONE), /* FIXME: Remove?  */
       CFG_STR ("cacertfile", NULL, CFGF_NONE),
       /*CFG_STR ("cacertpath", NULL, CFGF_NONE),*/
       CFG_STR ("certfile", NULL, CFGF_NONE),
