@@ -17,15 +17,14 @@
 #include <event2/util.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "err.h"
+#include "debug.h"
+#include "rsp_debug.h"
 #if defined (RS_ENABLE_TLS)
 #include <regex.h>
-#include "debug.h"
-#include "err.h"
 #include "rsp_list.h"
 #include "../radsecproxy.h"
 #endif
-#include "rsp_debug.h"
-
 
 /* Public functions.  */
 int
