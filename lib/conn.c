@@ -226,7 +226,6 @@ rs_conn_receive_packet (struct rs_connection *conn,
 
   if (rs_packet_create (conn, &pkt))
     return -1;
-  pkt->conn = conn;
 
   assert (conn->evb);
   assert (conn->bev);
