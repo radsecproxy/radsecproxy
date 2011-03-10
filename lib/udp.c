@@ -128,6 +128,7 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
     {
       struct rs_packet *pkt = (struct rs_packet *) user_data;
       assert (pkt);
+      assert (pkt->conn);
 
       if (!pkt->conn->is_connected)
 	event_on_connect (pkt->conn, pkt);
@@ -150,7 +151,7 @@ udp_init (struct rs_connection *conn, struct rs_packet *pkt)
   assert (!conn->bev);
 
   conn->rev = event_new (conn->evb, conn->fd, EV_READ|EV_PERSIST, _evcb, NULL);
-  conn->wev = event_new (conn->evb, conn->fd, EV_WRITE, _evcb, pkt);
+  conn->wev = event_new (conn->evb, conn->fd, EV_WRITE, _evcb, NULL);
   if (!conn->rev || !conn->wev)
     {
       if (conn->rev)

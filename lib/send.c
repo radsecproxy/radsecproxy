@@ -103,6 +103,8 @@ rs_packet_send (struct rs_packet *pkt, void *user_data)
     }
   else				/* UDP */
     {
+      event_assign (conn->wev, conn->evb, event_get_fd (conn->wev),
+		    EV_WRITE, event_get_callback (conn->wev), pkt);
       err = event_add (conn->wev, NULL);
       if (err < 0)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
