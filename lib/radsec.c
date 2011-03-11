@@ -163,6 +163,7 @@ rs_context_destroy (struct rs_context *ctx)
 	  p = p->next;
 	  _rs_peer_destroy (tmp);
 	}
+      rs_free (ctx, r->name);
       r = r->next;
       rs_free (ctx, tmp);
     }
