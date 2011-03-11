@@ -132,6 +132,8 @@ rs_conn_destroy (struct rs_connection *conn)
   /* TODO: free tls_ctx  */
   /* TODO: free tls_ssl  */
 
+  rs_free (conn->ctx, conn);
+
   return err;
 }
 
