@@ -89,6 +89,8 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
 				   "missing config name");
       r->name = strdup (s);
+      if (!r->name)
+	return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
 
       typestr = cfg_getstr (cfg_config, "type");
       if (!strcmp (typestr, "UDP"))
