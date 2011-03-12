@@ -1,4 +1,6 @@
-/* See the file COPYING for licensing information.  */
+/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+   See the file COPYING for licensing information.  */
+
 #if defined HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,18 +8,54 @@
 #include <assert.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "err.h"
+#include "peer.h"
 
+struct rs_peer *
+peer_pick_peer (struct rs_connection *conn)
+{
+  assert (conn);
+
+  if (conn->active_peer)
+    conn->active_peer = conn->active_peer->next; /* Next.  */
+  if (!conn->active_peer)
+    conn->active_peer = conn->peers; /* From the top.  */
+
+  return conn->active_peer;
+}
+
+struct rs_peer *
+peer_create (struct rs_context *ctx, struct rs_peer **rootp)
+{
+  struct rs_peer *p;
+
+  p = (struct rs_peer *) rs_malloc (ctx, sizeof(*p));
+  if (p)
+    {
+      memset (p, 0, sizeof(struct rs_peer));
+      if (*rootp)
+	{
+	  p->next = (*rootp)->next;
+	  (*rootp)->next = p;
+	}
+      else
+	*rootp = p;
+    }
+  return p;
+}
+
+/* Public functions.  */
 int
 rs_peer_create (struct rs_connection *conn, struct rs_peer **peer_out)
 {
   struct rs_peer *peer;
 
-  peer = _rs_peer_create (conn->ctx, &conn->peers);
+  peer = peer_create (conn->ctx, &conn->peers);
   if (peer)
     {
       peer->conn = conn;
-      peer->realm->timeout = 2;
-      peer->realm->retries = 2;
+      peer->realm->timeout = 2;	/* FIXME: Why?  */
+      peer->realm->retries = 2;	/* FIXME: Why?  */
     }
   else
     return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
@@ -35,9 +73,9 @@ rs_peer_set_address (struct rs_peer *peer, const char *hostname,
   assert (peer);
   assert (peer->realm);
 
-  err = _rs_resolv (&peer->addr, peer->realm->type, hostname, service);
+  err = rs_resolv (&peer->addr, peer->realm->type, hostname, service);
   if (err)
-    return _rs_err_conn_push_err (peer->conn, err);
+    return err_conn_push_err (peer->conn, err);
   return RSE_OK;
 }
 

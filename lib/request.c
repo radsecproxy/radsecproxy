@@ -1,16 +1,31 @@
-/* See the file COPYING for licensing information.  */
+/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+   See the file COPYING for licensing information.  */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
 #endif
 
-#include <time.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <assert.h>
+#include <sys/time.h>
 #include <event2/event.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include <radsec/request.h>
 #include <radsec/request-impl.h>
+#include <freeradius/libradius.h>
+#include "debug.h"
+#include "conn.h"
+#include "tcp.h"
+#include "udp.h"
+
+/* RFC 5080 2.2.1.  Retransmission Behavior.  */
+#define IRT 2
+#define MRC 5
+#define MRT 16
+#define MRD 30
+#define RAND 100		/* Rand factor, milliseconds. */
 
 int
 rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
@@ -59,68 +74,71 @@ rs_request_destroy (struct rs_request *request)
   rs_free (request->conn->ctx, request);
 }
 
-#if 0
 static void
-_timer_cb(evutil_socket_t fd, short what, void *arg)
-
+_rand_rt (struct timeval *res, uint32_t rtprev, uint32_t factor)
 {
-}
-#endif
-
-static void
-_rs_req_connected(void *user_data)
-{
-  //struct rs_request *request = (struct rs_request *)user_data;
-}
-
-static void
-_rs_req_disconnected(void *user_data)
-{
-  //struct rs_request *request = (struct rs_request *)user_data;
-}
-
-static void
-_rs_req_packet_received(struct rs_packet *msg, void *user_data)
-{
-  //struct rs_request *request = (struct rs_request *)user_data;
-}
-
-static void
-_rs_req_packet_sent(void *user_data)
-{
-  //struct rs_request *request = (struct rs_request *)user_data;
+  uint32_t ms = rtprev * (fr_rand () % factor);
+  res->tv_sec = rtprev + ms / 1000;
+  res->tv_usec = (ms % 1000) * 1000;
 }
 
 int
 rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
 {
-  int err;
-  struct rs_connection *conn;
-
-  assert (request);
-  assert (request->conn);
-  assert (request->req_msg);
-  conn = request->conn;
+  int r = 0;
+  struct rs_connection *conn = NULL;
+  int count = 0;
+  struct timeval rt = {0,0};
+  struct timeval end = {0,0};
+  struct timeval now = {0,0};
+  struct timeval tmp_tv = {0,0};
+  const struct timeval mrt_tv = {MRT,0};
 
   if (!request || !request->conn || !request->req_msg || !resp_msg)
     return rs_err_conn_push_fl (conn, RSE_INVAL, __FILE__, __LINE__, NULL);
+  conn = request->conn;
+  assert (!conn_user_dispatch_p (conn)); /* This function is high level.  */
 
-  request->saved_cb = conn->callbacks;
+  gettimeofday (&end, NULL);
+  end.tv_sec += MRD;
+  _rand_rt (&rt, IRT, RAND);
+  while (1)
+    {
+      rs_conn_set_timeout (conn, &rt);
 
-  conn->callbacks.connected_cb = _rs_req_connected;
-  conn->callbacks.disconnected_cb = _rs_req_disconnected;
-  conn->callbacks.received_cb = _rs_req_packet_received;
-  conn->callbacks.sent_cb = _rs_req_packet_sent;
+      r = rs_packet_send (request->req_msg, NULL);
+      if (r == RSE_OK)
+	{
+	  r = rs_conn_receive_packet (request->conn,
+				      request->req_msg,
+				      resp_msg);
+	  if (r == RSE_OK)
+	    break;		/* Success.  */
 
-  err = rs_packet_send(request->req_msg, request);
-  if (err)
-    goto cleanup;
+	  if (r != RSE_TIMEOUT_CONN && r != RSE_TIMEOUT_IO)
+	    break;		/* Error.  */
+	}
+      else if (r != RSE_TIMEOUT_CONN && r != RSE_TIMEOUT_IO)
+	break;			/* Error.  */
 
-  err = rs_conn_receive_packet(request->conn, request->req_msg, resp_msg);
-  if (err)
-    goto cleanup;
+      gettimeofday (&now, NULL);
+      if (++count > MRC || timercmp (&now, &end, >))
+	{
+	  r = RSE_TIMEOUT;
+	  break;		/* Timeout.  */
+	}
 
-cleanup:
-  conn->callbacks = request->saved_cb;
-  return err;
+      /* rt = 2 * rt + rand_rt (rt, RAND); */
+      timeradd (&rt, &rt, &rt);
+      _rand_rt (&tmp_tv, IRT, RAND);
+      timeradd (&rt, &tmp_tv, &rt);
+      if (timercmp (&rt, &mrt_tv, >))
+	_rand_rt (&rt, MRT, RAND);
+    }
+
+  timerclear (&rt);
+  rs_conn_set_timeout (conn, &rt);
+
+  rs_debug (("%s: returning %d\n", __func__, r));
+  return r;
 }

@@ -1,4 +1,5 @@
-/* See the file COPYING for licensing information.  */
+/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+   See the file COPYING for licensing information.  */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -6,10 +7,38 @@
 
 #include <string.h>
 #include <assert.h>
-#include <debug.h>
 #include <event2/event.h>
+#include <event2/bufferevent.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "debug.h"
+#include "conn.h"
+#include "event.h"
+#include "packet.h"
+#include "tcp.h"
+
+int
+conn_close (struct rs_connection **connp)
+{
+  int r;
+  assert (connp);
+  assert (*connp);
+  r = rs_conn_destroy (*connp);
+  if (!r)
+    *connp = NULL;
+  return r;
+}
+
+int
+conn_user_dispatch_p (const struct rs_connection *conn)
+{
+  assert (conn);
+
+  return (conn->callbacks.connected_cb ||
+	  conn->callbacks.disconnected_cb ||
+	  conn->callbacks.received_cb ||
+	  conn->callbacks.sent_cb);
+}
 
 int
 rs_conn_create (struct rs_context *ctx, struct rs_connection **conn,
@@ -35,6 +64,7 @@ rs_conn_create (struct rs_context *ctx, struct rs_connection **conn,
 	  c->peers = r->peers;	/* FIXME: Copy instead?  */
 	  for (p = c->peers; p; p = p->next)
 	    p->conn = c;
+	  c->timeout.tv_sec = r->timeout;
 	  c->tryagain = r->retries;
 	}
       else
@@ -58,45 +88,6 @@ rs_conn_set_type (struct rs_connection *conn, rs_conn_type_t type)
   assert (conn);
   assert (conn->realm);
   conn->realm->type = type;
-}
-
-
-struct rs_error *	   /* FIXME: Return int as all the others?  */
-_rs_resolv (struct evutil_addrinfo **addr, rs_conn_type_t type,
-	    const char *hostname, const char *service)
-{
-  int err;
-  struct evutil_addrinfo hints, *res = NULL;
-
-  memset (&hints, 0, sizeof(struct evutil_addrinfo));
-  hints.ai_family = AF_INET;   /* IPv4 only.  TODO: Set AF_UNSPEC.  */
-  hints.ai_flags = AI_ADDRCONFIG;
-  switch (type)
-    {
-    case RS_CONN_TYPE_NONE:
-      return _rs_err_create (RSE_INVALID_CONN, __FILE__, __LINE__, NULL, NULL);
-    case RS_CONN_TYPE_TCP:
-      /* Fall through.  */
-    case RS_CONN_TYPE_TLS:
-      hints.ai_socktype = SOCK_STREAM;
-      hints.ai_protocol = IPPROTO_TCP;
-      break;
-    case RS_CONN_TYPE_UDP:
-      /* Fall through.  */
-    case RS_CONN_TYPE_DTLS:
-      hints.ai_socktype = SOCK_DGRAM;
-      hints.ai_protocol = IPPROTO_UDP;
-      break;
-    default:
-      return _rs_err_create (RSE_INVALID_CONN, __FILE__, __LINE__, NULL, NULL);
-    }
-  err = evutil_getaddrinfo (hostname, service, &hints, &res);
-  if (err)
-    return _rs_err_create (RSE_BADADDR, __FILE__, __LINE__,
-			   "%s:%s: bad host name or service name (%s)",
-			   hostname, service, evutil_gai_strerror(err));
-  *addr = res;			/* Simply use first result.  */
-  return NULL;
 }
 
 int
@@ -126,25 +117,24 @@ rs_conn_destroy (struct rs_connection *conn)
 
   assert (conn);
 
-  if (conn->is_connected)
-    {
-      err = rs_conn_disconnect (conn);
-      if (err)
-	return err;
-    }
-
   /* NOTE: conn->realm is owned by context.  */
   /* NOTE: conn->peers is owned by context.  */
 
+  if (conn->is_connected)
+    err = rs_conn_disconnect (conn);
   if (conn->tev)
     event_free (conn->tev);
+  if (conn->bev)
+    bufferevent_free (conn->bev);
   if (conn->evb)
     event_base_free (conn->evb);
 
   /* TODO: free tls_ctx  */
   /* TODO: free tls_ssl  */
 
-  return 0;
+  rs_free (conn->ctx, conn);
+
+  return err;
 }
 
 int
@@ -157,7 +147,6 @@ void
 rs_conn_set_callbacks (struct rs_connection *conn, struct rs_conn_callbacks *cb)
 {
   assert (conn);
-  conn->user_dispatch_flag = 1;
   memcpy (&conn->callbacks, cb, sizeof (conn->callbacks));
 }
 
@@ -165,7 +154,6 @@ void
 rs_conn_del_callbacks (struct rs_connection *conn)
 {
   assert (conn);
-  conn->user_dispatch_flag = 0;
   memset (&conn->callbacks, 0, sizeof (conn->callbacks));
 }
 
@@ -194,4 +182,125 @@ int rs_conn_fd (struct rs_connection *conn)
   assert (conn);
   assert (conn->active_peer);
   return conn->fd;
+}
+
+static void
+_rcb (struct rs_packet *packet, void *user_data)
+{
+  struct rs_packet *pkt = (struct rs_packet *) user_data;
+  assert (pkt);
+  assert (pkt->conn);
+
+  pkt->flags |= rs_packet_received_flag;
+  if (pkt->conn->bev)
+    bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
+  else
+    event_del (pkt->conn->rev);
+}
+
+/* Special function used in libradsec blocking dispatching mode,
+   i.e. with socket set to block on read/write and with no libradsec
+   callbacks registered.
+
+   For any other use of libradsec, a the received_cb callback should
+   be registered in the callbacks member of struct rs_connection.
+
+   On successful reception of a RADIUS message it will be verified
+   against REQ_MSG, if !NULL.
+
+   If PKT_OUT is !NULL it will upon return point at a pointer to a
+   struct rs_packet containing the message.
+
+   If anything goes wrong or if the read times out (TODO: explain),
+   PKT_OUT will not be changed and one or more errors are pushed on
+   the connection (available through rs_err_conn_pop()).  */
+int
+rs_conn_receive_packet (struct rs_connection *conn,
+		        struct rs_packet *req_msg,
+		        struct rs_packet **pkt_out)
+{
+  int err = 0;
+  struct rs_packet *pkt = NULL;
+
+  assert (conn);
+  assert (conn->realm);
+  assert (!conn_user_dispatch_p (conn)); /* Dispatching mode only.  */
+
+  if (rs_packet_create (conn, &pkt))
+    return -1;
+
+  assert (conn->evb);
+  assert (conn->fd >= 0);
+
+  conn->callbacks.received_cb = _rcb;
+  conn->user_data = pkt;
+  pkt->flags &= ~rs_packet_received_flag;
+
+  if (conn->bev)		/* TCP.  */
+    {
+      bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
+      bufferevent_setcb (conn->bev, tcp_read_cb, NULL, tcp_event_cb, pkt);
+      bufferevent_enable (conn->bev, EV_READ);
+    }
+  else				/* UDP.  */
+    {
+      /* Put fresh packet in user_data for the callback and enable the
+	 read event.  */
+      event_assign (conn->rev, conn->evb, event_get_fd (conn->rev),
+		    EV_READ, event_get_callback (conn->rev), pkt);
+      err = event_add (conn->rev, NULL);
+      if (err < 0)
+	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				    "event_add: %s",
+				    evutil_gai_strerror (err));
+
+      /* Activae retransmission timer.  */
+      conn_activate_timeout (pkt->conn);
+    }
+
+  rs_debug (("%s: entering event loop\n", __func__));
+  err = event_base_dispatch (conn->evb);
+  conn->callbacks.received_cb = NULL;
+  if (err < 0)
+    return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+				"event_base_dispatch: %s",
+				evutil_gai_strerror (err));
+  rs_debug (("%s: event loop done\n", __func__));
+
+  if ((pkt->flags & rs_packet_received_flag) == 0
+      || (req_msg
+	  && packet_verify_response (pkt->conn, pkt, req_msg) != RSE_OK))
+    {
+      assert (rs_err_conn_peek_code (pkt->conn));
+      return rs_err_conn_peek_code (conn);
+    }
+
+  if (pkt_out)
+    *pkt_out = pkt;
+  return RSE_OK;
+}
+
+void
+rs_conn_set_timeout(struct rs_connection *conn, struct timeval *tv)
+{
+  assert (conn);
+  assert (tv);
+  conn->timeout = *tv;
+}
+
+int
+conn_activate_timeout (struct rs_connection *conn)
+{
+  assert (conn);
+  assert (conn->tev);
+  assert (conn->evb);
+  if (conn->timeout.tv_sec || conn->timeout.tv_usec)
+    {
+      rs_debug (("%s: activating timer: %d.%d\n", __func__,
+		 conn->timeout.tv_sec, conn->timeout.tv_usec));
+      if (evtimer_add (conn->tev, &conn->timeout))
+	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+				    "evtimer_add: %d", errno);
+    }
+  return RSE_OK;
 }

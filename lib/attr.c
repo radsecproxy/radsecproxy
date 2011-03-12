@@ -1,4 +1,5 @@
-/* See the file COPYING for licensing information.  */
+/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+   See the file COPYING for licensing information.  */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -9,7 +10,10 @@
 #include <radsec/radsec-impl.h>
 
 int
-rs_attr_create(struct rs_connection *conn, struct rs_attr **attr, const char *type, const char *val)
+rs_attr_create(struct rs_connection *conn,
+	       struct rs_attr **attr,
+	       const char *type,
+	       const char *val)
 {
   VALUE_PAIR *vp;
   struct rs_attr *a;

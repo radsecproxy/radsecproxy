@@ -32,7 +32,6 @@ struct rs_credentials {
 
 struct rs_error {
     int code;
-    char *msg;
     char buf[1024];
 };
 
@@ -69,7 +68,6 @@ struct rs_connection {
     struct rs_context *ctx;
     struct rs_realm *realm;	/* Owned by ctx.  */
     struct event_base *evb;	/* Event base.  */
-    struct bufferevent *bev;	/* Buffer event.  */
     struct event *tev;		/* Timeout event.  */
     struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;
@@ -77,26 +75,37 @@ struct rs_connection {
     struct rs_peer *peers;
     struct rs_peer *active_peer;
     struct rs_error *err;
+    struct timeval timeout;
     char is_connecting;		/* FIXME: replace with a single state member */
     char is_connected;		/* FIXME: replace with a single state member */
     int fd;			/* Socket.  */
-    int tryagain;
-    int nextid;
-    int user_dispatch_flag : 1;	/* User does the dispatching.  */
+    int tryagain;		/* For server failover.  */
+    int nextid;			/* Next RADIUS packet identifier.  */
+    /* TCP transport specifics.  */
+    struct bufferevent *bev;	/* Buffer event.  */
+    /* UDP transport specifics.  */
+    struct event *wev;		/* Write event (for UDP).  */
+    struct event *rev;		/* Read event (for UDP).  */
+    struct rs_packet *out_queue; /* Queue for outgoing UDP packets.  */
 #if defined(RS_ENABLE_TLS)
+    /* TLS specifics.  */
     SSL_CTX *tls_ctx;
     SSL *tls_ssl;
 #endif
 };
 
+enum rs_packet_flags {
+    rs_packet_hdr_read_flag,
+    rs_packet_received_flag,
+    rs_packet_sent_flag,
+};
+
 struct rs_packet {
     struct rs_connection *conn;
-    char hdr_read_flag;
-    uint8_t hdr[4];
+    unsigned int flags;
+    uint8_t hdr[RS_HEADER_LEN];
     RADIUS_PACKET *rpkt;
-    struct rs_packet *original;
-    char valid_flag;
-    char written_flag;
+    struct rs_packet *next;	/* Used for UDP output queue.  */
 };
 
 struct rs_attr {
@@ -104,18 +113,11 @@ struct rs_attr {
     VALUE_PAIR *vp;
 };
 
-/* Nonpublic functions.  */
-struct rs_error *_rs_resolv(struct evutil_addrinfo **addr,
-			    rs_conn_type_t type, const char *hostname,
+/* Nonpublic functions (in radsec.c -- FIXME: move?).  */
+struct rs_error *rs_resolv (struct evutil_addrinfo **addr,
+			    rs_conn_type_t type,
+			    const char *hostname,
 			    const char *service);
-struct rs_peer *_rs_peer_create(struct rs_context *ctx,
-				struct rs_peer **rootp);
-struct rs_error *_rs_err_create(unsigned int code, const char *file,
-				int line, const char *fmt, ...);
-int _rs_err_conn_push_err(struct rs_connection *conn,
-			  struct rs_error *err);
-
-
 #if defined (__cplusplus)
 }
 #endif

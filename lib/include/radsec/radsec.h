@@ -3,8 +3,9 @@
 /* See the file COPYING for licensing information.  */
 
 #include <unistd.h>
+#include <sys/time.h>
 
-enum rs_err_code {
+enum rs_error_code {
     RSE_OK = 0,
     RSE_NOMEM = 1,
     RSE_NOSYS = 2,
@@ -21,9 +22,11 @@ enum rs_err_code {
     RSE_INTERNAL = 13,
     RSE_SSLERR = 14,		/* OpenSSL error.  */
     RSE_INVALID_PKT = 15,
-    RSE_TIMEOUT_CONN = 16,
-    RSE_INVAL = 17,
-    RSE_TIMEOUT_IO = 18,
+    RSE_TIMEOUT_CONN = 16,	/* Connection timeout.  */
+    RSE_INVAL = 17,		/* Invalid argument.  */
+    RSE_TIMEOUT_IO = 18,	/* I/O timeout.  */
+    RSE_TIMEOUT = 19,		/* High level timeout.  */
+    RSE_DISCO = 20,
 };
 
 enum rs_conn_type {
@@ -111,6 +114,7 @@ int rs_conn_receive_packet(struct rs_connection *conn,
 			   struct rs_packet *request,
 			   struct rs_packet **pkt_out);
 int rs_conn_fd(struct rs_connection *conn);
+void rs_conn_set_timeout(struct rs_connection *conn, struct timeval *tv);
 
 /* Peer -- client and server.  */
 int rs_peer_create(struct rs_connection *conn, struct rs_peer **peer_out);
@@ -164,7 +168,7 @@ int rs_err_conn_push_fl(struct rs_connection *conn,
 struct rs_error *rs_err_conn_pop(struct rs_connection *conn);
 int rs_err_conn_peek_code (struct rs_connection *conn);
 void rs_err_free(struct rs_error *err);
-char *rs_err_msg(struct rs_error *err, int dofree_flag);
+char *rs_err_msg(struct rs_error *err);
 int rs_err_code(struct rs_error *err, int dofree_flag);
 
 #if defined (__cplusplus)
