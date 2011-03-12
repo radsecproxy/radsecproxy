@@ -131,23 +131,6 @@ rs_resolv (struct evutil_addrinfo **addr,
   return NULL;
 }
 
-static void
-_rs_peer_destroy (struct rs_peer *p)
-{
-  assert (p);
-  assert (p->conn);
-  assert (p->conn->ctx);
-
-  /* NOTE: The peer object doesn't own conn, nor realm.  */
-  /* NOTE: secret is owned by config */
-  if (p->addr)
-    {
-      evutil_freeaddrinfo (p->addr);
-      p->addr = NULL;
-    }
-  rs_free (p->conn->ctx, p);
-}
-
 void
 rs_context_destroy (struct rs_context *ctx)
 {
@@ -160,8 +143,10 @@ rs_context_destroy (struct rs_context *ctx)
       for (p = r->peers; p; )
 	{
 	  struct rs_peer *tmp = p;
+	  if (p->addr)
+	    evutil_freeaddrinfo (p->addr);
 	  p = p->next;
-	  _rs_peer_destroy (tmp);
+	  rs_free (ctx, tmp);
 	}
       rs_free (ctx, r->name);
       r = r->next;
