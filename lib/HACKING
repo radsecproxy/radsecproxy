@@ -1,15 +1,14 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
 
-Status as of libradsec-0.0.1-dev (2011-02-28).
+Status as of libradsec-0.0.1-dev (2011-03-12).
 
 * Build instructions
 cd libradsec/lib
 sh autogen.sh
-./configure
+./configure #--enable-tls
 make
 
-
-examples/client -r examples/client-tls.conf blocking-tls ; echo $?
+examples/client -r examples/client-tls.conf blocking-tls; echo $?
 
 * Design of the API
 - There are three usage modes
@@ -21,25 +20,30 @@ examples/client -r examples/client-tls.conf blocking-tls ; echo $?
 - Fully reentrant (FIXME: any issues with libfreeradius-radius?)
 
 * Dependencies
-- libfreeradius-radius -- no i/o used
-- libconfuse
-- libevent 2.0.x
+This is on Ubuntu 10.10.
 
+- libfreeradius-radius (2.1.9+dfsg-1ubuntu1)
+  sudo apt-get install libfreeradius-dev libfreeradius2
+- libconfuse (2.7-1)
+  sudo apt-get install libconfuse-dev libconfuse0
+- libevent from source (release-2.0.10-stable)
+  git clone --branch release-2.0.10-stable git://levent.git.sourceforge.net/gitroot/levent/levent
+  cd levent; sh autogen.sh && ./configure --enable-openssl
+  make && sudo make install
+  
 * Functionality and quality
 ** Tested and verified
 ** Not well tested
 - reading config file
-- short read
-- short write
-- basic tls support
+- [TCP] short read
+- [TCP] short write
+- [TLS] basic tls support
 ** Known issues
 - leaking memory
-- udp issues with libevent
-- error stack is one entry deep
+- error stack is only one entry deep
 ** Not implemented
-- client: udp (resending packets), access-challenge, read/write timeout
 - custom allocation scheme used in all places
 - server failover
-- TLS: verify CNAME
-- TLS preshared key support
-- DTLS support
+- [TLS] verification of CNAME
+- [TLS] preshared key support
+- [DTLS] support

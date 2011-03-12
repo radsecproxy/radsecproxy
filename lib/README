@@ -8,7 +8,7 @@ libradsec depends on
 - libradius from the FreeRADIUS freeradius-server
 - libevent2
 - libconfuse
-- openssl (if configured with tls or dtls support)
+- openssl (if configured with --enable-tls)
 
 
 To compile the library and the examples, do something like
@@ -16,14 +16,14 @@ To compile the library and the examples, do something like
  sh autogen.sh && ./configure && make
 
 If any of the libraries are not found, try setting environment
-variable LDFLAGS at configure time.
+variable LDFLAGS at configure time like so:
 
  LDFLAGS="-L/usr/lib/freeradius -L/usr/local/lib" ./configure
 
 
 The parts of the library which has been tested has been so on Linux
-(Ubuntu 10.04) with libfreeradius2 (2.1.8+dfsg-1ubuntu1), libconfuse0
-(2.6-2) and libevent-2.0.7-rc-dev (http://monkey.org/~provos/).
+(Ubuntu 10.10) with libfreeradius2 (2.1.9+dfsg-1ubuntu1), libconfuse0
+(2.7-1) and libevent-2.0.10-stable (http://monkey.org/~provos/).
 
 The file HACKING contains more detailed info on the state of the
 various parts of the library.
