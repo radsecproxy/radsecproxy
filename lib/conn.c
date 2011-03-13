@@ -41,7 +41,8 @@ conn_user_dispatch_p (const struct rs_connection *conn)
 }
 
 int
-rs_conn_create (struct rs_context *ctx, struct rs_connection **conn,
+rs_conn_create (struct rs_context *ctx,
+		struct rs_connection **conn,
 		const char *config)
 {
   struct rs_connection *c;
@@ -91,8 +92,10 @@ rs_conn_set_type (struct rs_connection *conn, rs_conn_type_t type)
 }
 
 int
-rs_conn_add_listener (struct rs_connection *conn, rs_conn_type_t type,
-		      const char *hostname, int port)
+rs_conn_add_listener (struct rs_connection *conn,
+		      rs_conn_type_t type,
+		      const char *hostname,
+		      int port)
 {
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__, NULL);
 }
@@ -171,7 +174,8 @@ rs_conn_select_peer (struct rs_connection *conn, const char *name)
 }
 
 int
-rs_conn_get_current_peer (struct rs_connection *conn, const char *name,
+rs_conn_get_current_peer (struct rs_connection *conn,
+			  const char *name,
 			  size_t buflen)
 {
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__, NULL);
@@ -198,22 +202,6 @@ _rcb (struct rs_packet *packet, void *user_data)
     event_del (pkt->conn->rev);
 }
 
-/* Special function used in libradsec blocking dispatching mode,
-   i.e. with socket set to block on read/write and with no libradsec
-   callbacks registered.
-
-   For any other use of libradsec, a the received_cb callback should
-   be registered in the callbacks member of struct rs_connection.
-
-   On successful reception of a RADIUS message it will be verified
-   against REQ_MSG, if !NULL.
-
-   If PKT_OUT is !NULL it will upon return point at a pointer to a
-   struct rs_packet containing the message.
-
-   If anything goes wrong or if the read times out (TODO: explain),
-   PKT_OUT will not be changed and one or more errors are pushed on
-   the connection (available through rs_err_conn_pop()).  */
 int
 rs_conn_receive_packet (struct rs_connection *conn,
 		        struct rs_packet *req_msg,
