@@ -41,10 +41,10 @@ rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
 }
 
 void
-rs_request_add_reqpkt (struct rs_request *req, struct rs_packet *reqpkt)
+rs_request_add_reqpkt (struct rs_request *req, struct rs_packet *req_msg)
 {
   assert (req);
-  req->req_msg = reqpkt;
+  req->req_msg = req_msg;
 }
 
 int
