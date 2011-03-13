@@ -53,15 +53,17 @@ rs_request_create_authn (struct rs_connection *conn,
 			 const char *user_name,
 			 const char *user_pw)
 {
-  struct rs_request *req;
+  struct rs_request *req = NULL;
   assert (req_out);
+
   if (rs_request_create (conn, &req))
     return -1;
 
   if (rs_packet_create_authn_request (conn, &req->req_msg, user_name, user_pw))
     return -1;
 
-  *req_out = req;
+  if (req_out)
+    *req_out = req;
   return RSE_OK;
 }
 
@@ -141,4 +143,11 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
 
   rs_debug (("%s: returning %d\n", __func__, r));
   return r;
+}
+
+struct rs_packet *
+rs_request_get_reqmsg (const struct rs_request *request)
+{
+  assert (request);
+  return request->req_msg;
 }
