@@ -71,8 +71,11 @@ void
 rs_request_destroy (struct rs_request *request)
 {
   assert (request);
-  rs_packet_destroy (request->req_msg);
-  rs_packet_destroy (request->resp_msg);
+  assert (request->conn);
+  assert (request->conn->ctx);
+
+  if (request->req_msg)
+    rs_packet_destroy (request->req_msg);
   rs_free (request->conn->ctx, request);
 }
 
