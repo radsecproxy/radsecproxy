@@ -20,11 +20,12 @@
 int
 conn_close (struct rs_connection **connp)
 {
-  int r;
+  int r = 0;
   assert (connp);
   assert (*connp);
-  r = rs_conn_destroy (*connp);
-  if (!r)
+  if ((*connp)->is_connected)
+    r = rs_conn_disconnect (*connp);
+  if (r == RSE_OK)
     *connp = NULL;
   return r;
 }
