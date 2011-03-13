@@ -155,7 +155,10 @@ udp_init (struct rs_connection *conn, struct rs_packet *pkt)
   if (!conn->rev || !conn->wev)
     {
       if (conn->rev)
-	event_free (conn->rev);
+	{
+	  event_free (conn->rev);
+	  conn->rev = NULL;
+	}
       /* ENOMEM _or_ EINVAL but EINVAL only if we use EV_SIGNAL, at
 	 least for now (libevent-2.0.5).  */
       return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
