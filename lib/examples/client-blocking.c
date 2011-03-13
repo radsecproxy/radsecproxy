@@ -73,14 +73,10 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
 
  cleanup:
   err = rs_err_conn_pop (conn);
-  if (resp)
-    rs_packet_destroy (resp);
-  if (req)
-    rs_packet_destroy (req);
-  if (conn)
-    rs_conn_destroy (conn);
   if (request)
     rs_request_destroy (request);
+  if (conn)
+    rs_conn_destroy (conn);
   if (h)
     rs_context_destroy (h);
 
