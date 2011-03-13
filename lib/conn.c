@@ -131,6 +131,10 @@ rs_conn_destroy (struct rs_connection *conn)
     bufferevent_free (conn->bev);
   if (conn->evb)
     event_base_free (conn->evb);
+  if (conn->rev)
+    event_free (conn->rev);
+  if (conn->wev)
+    event_free (conn->wev);
 
   /* TODO: free tls_ctx  */
   /* TODO: free tls_ssl  */
