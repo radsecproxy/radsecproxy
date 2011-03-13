@@ -11,7 +11,7 @@
 #include "debug.h"		/* For rs_dump_packet().  */
 
 #define SECRET "sikrit"
-#define USER_NAME "molgan"
+#define USER_NAME "molgan@PROJECT-MOONSHOT.ORG"
 #define USER_PW "password"
 
 struct rs_error *
