@@ -49,7 +49,6 @@ struct rs_context;		/* radsec-impl.h */
 struct rs_connection;		/* radsec-impl.h */
 struct rs_packet;		/* radsec-impl.h */
 struct rs_conn;			/* radsec-impl.h */
-struct rs_attr;			/* radsec-impl.h */
 struct rs_error;		/* radsec-impl.h */
 struct rs_peer;			/* radsec-impl.h */
 struct radius_packet;		/* <freeradius/libradius.h> */
@@ -222,9 +221,6 @@ int rs_packet_create(struct rs_connection *conn, struct rs_packet **pkt_out);
 /** Free all memory allocated for packet \a pkt.  */
 void rs_packet_destroy(struct rs_packet *pkt);
 
-/** Add attribute \a attr to packet \a pkt.  */
-void rs_packet_add_attr(struct rs_packet *pkt, struct rs_attr *attr);
-
 /** Send packet \a pkt on the connection associated with \a pkt.  \a
     user_data is sent to the \a rs_conn_packet_received_cb callback
     registered with the connection.  If no callback is registered with
@@ -248,19 +244,6 @@ int rs_packet_create_authn_request(struct rs_connection *conn,
 				   struct rs_packet **pkt,
 				   const char *user_name,
 				   const char *user_pw);
-
-/***************/
-/* Attribute.  */
-/***************/
-/* FIXME: Replace (or complement) with a wrapper for paircreate().  */
-/** Create a RADIUS attribute of type \a type and with the value \a
-    val.  */
-int rs_attr_create(struct rs_connection *conn,
-		   struct rs_attr **attr,
-		   const char *type,
-		   const char *val);
-/** Free memory for RADIUS attribute \a attr.  */
-void rs_attr_destroy(struct rs_attr *attr);
 
 /************/
 /* Config.  */

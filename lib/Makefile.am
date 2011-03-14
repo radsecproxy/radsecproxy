@@ -9,7 +9,6 @@ AM_CFLAGS = -Wall -g
 lib_LTLIBRARIES = libradsec.la
 
 libradsec_la_SOURCES = \
-	attr.c \
 	compat.c \
 	conf.c \
 	conn.c \

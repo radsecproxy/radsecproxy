@@ -1,6 +1,8 @@
 /* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
    See the file COPYING for licensing information.  */
 
+/* NOTE: This file is not in use at the moment (libradsec-0.0.1).  */
+
 #if defined HAVE_CONFIG_H
 #include <config.h>
 #endif

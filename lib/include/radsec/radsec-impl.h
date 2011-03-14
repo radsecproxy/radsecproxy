@@ -104,13 +104,8 @@ struct rs_packet {
     struct rs_connection *conn;
     unsigned int flags;
     uint8_t hdr[RS_HEADER_LEN];
-    RADIUS_PACKET *rpkt;
+    RADIUS_PACKET *rpkt;	/* FreeRADIUS object.  */
     struct rs_packet *next;	/* Used for UDP output queue.  */
-};
-
-struct rs_attr {
-    struct rs_packet *pkt;
-    VALUE_PAIR *vp;
 };
 
 /* Nonpublic functions (in radsec.c -- FIXME: move?).  */

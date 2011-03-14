@@ -13,9 +13,7 @@ extern "C" {
 #endif
 
 struct rs_packet;
-struct rs_attr;
 void rs_dump_packet (const struct rs_packet *pkt);
-void rs_dump_attr (const struct rs_attr *attr);
 int _rs_debug (const char *fmt, ...);
 
 #if defined (DEBUG)

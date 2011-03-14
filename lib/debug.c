@@ -28,12 +28,6 @@ rs_dump_packet (const struct rs_packet *pkt)
   fflush (stderr);
 }
 
-void
-rs_dump_attr (const struct rs_attr *attr)
-{
-  vp_printlist (stderr, attr->vp);
-}
-
 #if defined DEBUG
 int
 _rs_debug (const char *fmt, ...)

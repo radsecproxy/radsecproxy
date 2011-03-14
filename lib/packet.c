@@ -150,7 +150,7 @@ rs_packet_create_authn_request (struct rs_connection *conn,
 				const char *user_name, const char *user_pw)
 {
   struct rs_packet *pkt;
-  struct rs_attr *attr;
+  VALUE_PAIR *vp = NULL;
 
   if (rs_packet_create (conn, pkt_out))
     return -1;
@@ -159,26 +159,23 @@ rs_packet_create_authn_request (struct rs_connection *conn,
 
   if (user_name)
     {
-      if (rs_attr_create (conn, &attr, "User-Name", user_name))
-	return -1;
-      rs_packet_add_attr (pkt, attr);
+      vp = pairmake ("User-Name", user_name, T_OP_EQ);
+      if (vp == NULL)
+	return rs_err_conn_push_fl (conn, RSE_FR, __FILE__, __LINE__,
+				    "pairmake: %s", fr_strerror ());
+      pairadd (&pkt->rpkt->vps, vp);
+    }
 
-      if (user_pw)
-	{
-	  if (rs_attr_create (conn, &attr, "User-Password", user_pw))
-	    return -1;
-	  rs_packet_add_attr (pkt, attr);
-	}
+  if (user_pw)
+    {
+      vp = pairmake ("User-Password", user_pw, T_OP_EQ);
+      if (vp == NULL)
+	return rs_err_conn_push_fl (conn, RSE_FR, __FILE__, __LINE__,
+				    "pairmake: %s", fr_strerror ());
+      pairadd (&pkt->rpkt->vps, vp);
     }
 
   return RSE_OK;
-}
-
-void
-rs_packet_add_attr (struct rs_packet *pkt, struct rs_attr *attr)
-{
-  pairadd (&pkt->rpkt->vps, attr->vp);
-  attr->pkt = pkt;
 }
 
 struct radius_packet *
