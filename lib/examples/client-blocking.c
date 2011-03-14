@@ -67,12 +67,20 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
     }
 
   if (resp)
-    rs_dump_packet (resp);
+    {
+      rs_dump_packet (resp);
+      if (rs_packet_frpkt (resp)->code == PW_AUTHENTICATION_ACK)
+	printf ("Good auth.\n");
+      else
+	printf ("Bad auth: %d\n", rs_packet_frpkt (resp)->code);
+    }
   else
     fprintf (stderr, "%s: no response\n", __func__);
 
  cleanup:
   err = rs_err_conn_pop (conn);
+  if (resp)
+    rs_packet_destroy (resp);
   if (request)
     rs_request_destroy (request);
   if (conn)
