@@ -47,3 +47,13 @@ This is on Ubuntu 10.10.
 - [TLS] verification of CNAME
 - [TLS] preshared key support
 - [DTLS] support
+
+* Found a bug?
+If possible, please build the library with DEBUG defined
+(CFLAGS=-DDEBUG) and reproduce the problem.  With DEBUG defined, lots
+of asserts are enabled which might give a hint about what's gone
+wrong.
+
+Running the library under gdb is another good idea.  If you experience
+a crash, catching that in gdb and providing a backtrace is highly
+valuable for debugging.
