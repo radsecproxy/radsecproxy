@@ -126,6 +126,12 @@ rs_conn_destroy (struct rs_connection *conn)
 
   if (conn->is_connected)
     err = rs_conn_disconnect (conn);
+
+  if (conn->tls_ssl) /* FIXME: Free SSL strucxt in rs_conn_disconnect?  */
+    SSL_free (conn->tls_ssl);
+  if (conn->tls_ctx)
+    SSL_CTX_free (conn->tls_ctx);
+
   if (conn->tev)
     event_free (conn->tev);
   if (conn->bev)
@@ -136,9 +142,6 @@ rs_conn_destroy (struct rs_connection *conn)
     event_free (conn->wev);
   if (conn->evb)
     event_base_free (conn->evb);
-
-  /* TODO: free tls_ctx  */
-  /* TODO: free tls_ssl  */
 
   rs_free (conn->ctx, conn);
 
