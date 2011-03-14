@@ -188,11 +188,10 @@ rs_packet_frpkt (struct rs_packet *pkt)
 void
 rs_packet_destroy (struct rs_packet *pkt)
 {
-  if (pkt)
-    {
-      // FIXME: memory leak! TODO: free all attributes
-      rad_free (&pkt->rpkt);
-      rs_free (pkt->conn->ctx, pkt);
-    }
-}
+  assert (pkt);
+  assert (pkt->conn);
+  assert (pkt->conn->ctx);
 
+  rad_free (&pkt->rpkt); /* Note: This frees the VALUE_PAIR's too.  */
+  rs_free (pkt->conn->ctx, pkt);
+}
