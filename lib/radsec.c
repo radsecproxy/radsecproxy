@@ -158,7 +158,7 @@ rs_context_destroy (struct rs_context *ctx)
 	      p = p->next;
 	      rs_free (ctx, tmp);
 	    }
-	  rs_free (ctx, r->name); /* FIXME: Stop freeing once we stop strdup in rs_context_read_config().  */
+	  free (ctx, r->name);
 	  r = r->next;
 	  rs_free (ctx, tmp);
 	}
