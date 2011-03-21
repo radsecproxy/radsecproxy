@@ -6,6 +6,12 @@
 #include <unistd.h>
 #include <sys/time.h>
 
+#ifdef SYSCONFDIR
+#define RS_FREERADIUS_DICT SYSCONFDIR "/raddb/dictionary"
+#else  /* !SYSCONFDIR */
+#define RS_FREERADIUS_DICT "/usr/local/raddb/dictionary"
+#endif  /* !SYSCONFDIR */
+
 enum rs_error_code {
     RSE_OK = 0,
     RSE_NOMEM = 1,

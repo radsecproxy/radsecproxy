@@ -68,8 +68,7 @@ rs_context_init_freeradius_dict (struct rs_context *ctx, const char *dict)
       dict = ctx->config->dictionary;
 
   if (dict == NULL)
-    return rs_err_ctx_push_fl (ctx, RSE_INVAL, __FILE__, __LINE__,
-			       "missing dictionary");
+    dict = RS_FREERADIUS_DICT;
 
   dictlen = strlen (dict);
   dir = rs_calloc (ctx, 1, dictlen + 1);
