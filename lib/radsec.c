@@ -32,10 +32,8 @@ rs_context_create (struct rs_context **ctx)
 {
   struct rs_context *h;
 
-  if (ctx)
-    *ctx = NULL;
-  h = (struct rs_context *) malloc (sizeof(struct rs_context));
-  if (!h)
+  h = calloc (1, sizeof(*h));
+  if (h == NULL)
     return RSE_NOMEM;
 
 #if defined (RS_ENABLE_TLS)
@@ -47,11 +45,10 @@ rs_context_create (struct rs_context **ctx)
 #endif
   debug_init ("libradsec");	/* radsecproxy compat, FIXME: remove */
 
-  memset (h, 0, sizeof(struct rs_context));
   fr_randinit (&h->fr_randctx, 0);
   fr_rand_seed (NULL, 0);
 
-  if (ctx)
+  if (ctx != NULL)
     *ctx = h;
 
   return RSE_OK;
@@ -158,7 +155,7 @@ rs_context_destroy (struct rs_context *ctx)
 	      p = p->next;
 	      rs_free (ctx, tmp);
 	    }
-	  free (ctx, r->name);
+	  free (r->name);
 	  r = r->next;
 	  rs_free (ctx, tmp);
 	}
@@ -174,7 +171,7 @@ rs_context_destroy (struct rs_context *ctx)
       rs_free (ctx, ctx->config);
     }
 
-  rs_free (ctx, ctx);
+  free (ctx);
 }
 
 int
