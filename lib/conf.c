@@ -13,8 +13,11 @@
 #include "debug.h"
 
 #if 0
-  # client config options
-  config NAME {
+  # common config options
+  dictionary = STRING
+
+  # common realm config options
+  realm NAME {
       type = "UDP"|"TCP"|"TLS"|"DTLS"
       timeout = INT
       retries = INT
@@ -22,6 +25,10 @@
       #cacertpath = STRING
       certfile = STRING
       certkeyfile = STRING
+  }
+
+  # client specific realm config options
+  realm NAME {
       server {
           hostname = STRING
 	  service = STRING
@@ -33,11 +40,12 @@
 int
 rs_context_read_config(struct rs_context *ctx, const char *config_file)
 {
-  /* FIXME: Missing some error handling in rs_context_read_config().  */
+  /* FIXME: Missing some error handling!  */
 
-  cfg_t *cfg, *cfg_config, *cfg_server;
+  cfg_t *cfg, *cfg_realm, *cfg_server;
   int i, j;
   const char *s;
+  struct rs_config *config = NULL;
 
   cfg_opt_t server_opts[] =
     {
@@ -46,7 +54,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       CFG_STR ("secret", "radsec", CFGF_NONE),
       CFG_END ()
     };
-  cfg_opt_t config_opts[] =
+  cfg_opt_t realm_opts[] =
     {
       CFG_STR ("type", "UDP", CFGF_NONE),
       CFG_INT ("timeout", 2, CFGF_NONE), /* FIXME: Remove?  */
@@ -60,7 +68,8 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
     };
   cfg_opt_t opts[] =
     {
-      CFG_SEC ("config", config_opts, CFGF_TITLE | CFGF_MULTI),
+      CFG_STR ("dictionary", NULL, CFGF_NONE),
+      CFG_SEC ("realm", realm_opts, CFGF_TITLE | CFGF_MULTI),
       CFG_END ()
     };
 
@@ -68,31 +77,37 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
   if (cfg_parse (cfg, config_file) == CFG_PARSE_ERROR)
     return rs_err_ctx_push (ctx, RSE_CONFIG, "%s: invalid configuration file",
 			    config_file);
-  for (i = 0; i < cfg_size (cfg, "config"); i++)
+
+  config = rs_calloc (ctx, 1, sizeof (*config));
+  if (config == NULL)
+    return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
+  ctx->config = config;
+  config->dictionary = cfg_getstr (cfg, "dictionary");
+
+  for (i = 0; i < cfg_size (cfg, "realm"); i++)
     {
-      struct rs_realm *r = rs_malloc (ctx, sizeof(*r));
+      struct rs_realm *r = rs_calloc (ctx, 1, sizeof(*r));
       const char *typestr;
 
       if (!r)
 	return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
-      memset (r, 0, sizeof(*r));
-      if (ctx->realms)
+      if (config->realms)
 	{
-	  r->next = ctx->realms->next;
-	  ctx->realms->next = r;
+	  r->next = config->realms->next;
+	  config->realms->next = r;
 	}
       else
-	  ctx->realms = r;
-      cfg_config = cfg_getnsec (cfg, "config", i);
-      s = cfg_title (cfg_config);
+	  config->realms = r;
+      cfg_realm = cfg_getnsec (cfg, "realm", i);
+      s = cfg_title (cfg_realm);
       if (s == NULL)
 	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
 				   "missing config name");
-      r->name = strdup (s);
+      r->name = strdup (s);	/* FIXME: Don't strdup.  */
       if (!r->name)
 	return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
 
-      typestr = cfg_getstr (cfg_config, "type");
+      typestr = cfg_getstr (cfg_realm, "type");
       if (!strcmp (typestr, "UDP"))
 	r->type = RS_CONN_TYPE_UDP;
       else if (!strcmp (typestr, "TCP"))
@@ -104,16 +119,16 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       else
 	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
 				   "invalid connection type: %s", typestr);
-      r->timeout = cfg_getint (cfg_config, "timeout");
-      r->retries = cfg_getint (cfg_config, "retries");
+      r->timeout = cfg_getint (cfg_realm, "timeout");
+      r->retries = cfg_getint (cfg_realm, "retries");
 
-      r->cacertfile = cfg_getstr (cfg_config, "cacertfile");
-      /*r->cacertpath = cfg_getstr (cfg_config, "cacertpath");*/
-      r->certfile = cfg_getstr (cfg_config, "certfile");
-      r->certkeyfile = cfg_getstr (cfg_config, "certkeyfile");
+      r->cacertfile = cfg_getstr (cfg_realm, "cacertfile");
+      /*r->cacertpath = cfg_getstr (cfg_realm, "cacertpath");*/
+      r->certfile = cfg_getstr (cfg_realm, "certfile");
+      r->certkeyfile = cfg_getstr (cfg_realm, "certkeyfile");
 
       /* Add peers, one per server stanza.  */
-      for (j = 0; j < cfg_size (cfg_config, "server"); j++)
+      for (j = 0; j < cfg_size (cfg_realm, "server"); j++)
 	{
 	  struct rs_peer *p = peer_create (ctx, &r->peers);
 	  if (!p)
@@ -121,7 +136,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 				       NULL);
 	  p->realm = r;
 
-	  cfg_server = cfg_getnsec (cfg_config, "server", j);
+	  cfg_server = cfg_getnsec (cfg_realm, "server", j);
 	  rs_resolv (&p->addr, r->type, cfg_getstr (cfg_server, "hostname"),
 		     cfg_getstr (cfg_server, "service"));
 	  p->secret = cfg_getstr (cfg_server, "secret");
@@ -130,7 +145,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 
   /* Save config object in context, for freeing in
      rs_context_destroy().  */
-  ctx->cfg =  cfg;
+  ctx->config->cfg =  cfg;
   return RSE_OK;
 }
 
@@ -139,7 +154,7 @@ rs_conf_find_realm(struct rs_context *ctx, const char *name)
 {
   struct rs_realm *r;
 
-  for (r = ctx->realms; r; r = r->next)
+  for (r = ctx->config->realms; r; r = r->next)
     if (!strcmp (r->name, name))
 	return r;
   return NULL;

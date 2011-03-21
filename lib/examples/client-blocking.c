@@ -23,13 +23,15 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
   struct rs_packet *req = NULL, *resp = NULL;
   struct rs_error *err = NULL;
 
-  if (rs_context_create (&h, "/usr/share/freeradius/dictionary"))
+  if (rs_context_create (&h))
     return NULL;
 
 #if !defined (USE_CONFIG_FILE)
   {
     struct rs_peer *server;
 
+    if (rs_context_init_freeradius_dict (h, "/usr/share/freeradius/dictionary"))
+      goto cleanup;
     if (rs_conn_create (h, &conn, NULL))
       goto cleanup;
     rs_conn_set_type (conn, RS_CONN_TYPE_UDP);
@@ -42,12 +44,14 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
     if (rs_peer_set_secret (server, SECRET))
       goto cleanup;
   }
-#else
+#else  /* defined (USE_CONFIG_FILE) */
   if (rs_context_read_config (h, av1))
+    goto cleanup;
+  if (rs_context_init_freeradius_dict (h, NULL))
     goto cleanup;
   if (rs_conn_create (h, &conn, av2))
     goto cleanup;
-#endif	/* USE_CONFIG_FILE */
+#endif	/* defined (USE_CONFIG_FILE) */
 
   if (use_request_object_flag)
     {
@@ -78,7 +82,9 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
     fprintf (stderr, "%s: no response\n", __func__);
 
  cleanup:
-  err = rs_err_conn_pop (conn);
+  err = rs_err_ctx_pop (h);
+  if (err == RSE_OK)
+    err = rs_err_conn_pop (conn);
   if (resp)
     rs_packet_destroy (resp);
   if (request)

@@ -35,7 +35,8 @@ struct rs_error {
     char buf[1024];
 };
 
-struct rs_peer {		/* Config object for a connection.  */
+/** Configuration object for a connection.  */
+struct rs_peer {
     struct rs_connection *conn;
     struct rs_realm *realm;
     struct evutil_addrinfo *addr;
@@ -43,7 +44,8 @@ struct rs_peer {		/* Config object for a connection.  */
     struct rs_peer *next;
 };
 
-struct rs_realm {	      /* Config object for a RADIUS realm.  */
+/** Configuration object for a RADIUS realm.  */
+struct rs_realm {
     char *name;
     enum rs_conn_type type;
     int timeout;
@@ -56,12 +58,18 @@ struct rs_realm {	      /* Config object for a RADIUS realm.  */
     struct rs_realm *next;
 };
 
-struct rs_context {
+/** Top configuration object.  */
+struct rs_config {
+    char *dictionary;
     struct rs_realm *realms;
+    cfg_t *cfg;
+};
+
+struct rs_context {
+    struct rs_config *config;
     struct rs_alloc_scheme alloc_scheme;
     struct rs_error *err;
     fr_randctx fr_randctx;
-    cfg_t *cfg;
 };
 
 struct rs_connection {

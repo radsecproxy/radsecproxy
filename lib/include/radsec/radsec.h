@@ -91,17 +91,29 @@ struct rs_conn_callbacks {
     that the context must not be freed before all other libradsec
     objects have been freed.
 
-    \a ctx Address of pointer to a struct rs_context.  This is the output.
+    \a ctx Address of pointer to a struct rs_context.  This is the
+    output of this function.
 
-    \a dict Name of a FreeRADIUS dictionary.
-
-    \return RSE_OK (0) on success, RSE_NOMEM on out of memory or
-    RSE_FR on FreeRADIUS initialization error.  */
-int rs_context_create(struct rs_context **ctx, const char *dict);
+    \return RSE_OK (0) on success or RSE_NOMEM on out of memory.  */
+int rs_context_create(struct rs_context **ctx);
 
 /** Free a context.  Note that the context must not be freed before
     all other libradsec objects have been freed.  */
 void rs_context_destroy(struct rs_context *ctx);
+
+/** Initialize FreeRADIUS dictionary needed for creating packets.
+
+    \a ctx Context.
+
+    \a dict Optional string with full path to FreeRADIUS dictionary.
+    If \a dict is NULL the path to the dictionary file is taken from
+    the "dictionary" configuration directive.  Note that the
+    configuration file must be read prior to using this option (see \a
+    rs_context_read_config).
+
+    \return RSE_OK (0) on success, RSE_NOMEM on memory allocation
+    error and RSE_FR on FreeRADIUS error.  */
+int rs_context_init_freeradius_dict(struct rs_context *ctx, const char *dict);
 
 /** Set allocation scheme to use.  \a scheme is the allocation scheme
     to use, see \a rs_alloc_scheme.  \return On success, RSE_OK (0) is

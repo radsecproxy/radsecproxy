@@ -28,40 +28,15 @@
 
 /* Public functions.  */
 int
-rs_context_create (struct rs_context **ctx, const char *dict)
+rs_context_create (struct rs_context **ctx)
 {
-  int err = RSE_OK;
   struct rs_context *h;
-  char *buf1 = NULL, *buf2 = NULL;
-  char *dir, *fn;
-
-  assert (dict);
 
   if (ctx)
     *ctx = NULL;
   h = (struct rs_context *) malloc (sizeof(struct rs_context));
   if (!h)
     return RSE_NOMEM;
-
-  /* Initialize freeradius dictionary.  */
-  buf1 = malloc (strlen (dict) + 1);
-  buf2 = malloc (strlen (dict) + 1);
-  if (!buf1 || !buf2)
-    {
-      err = RSE_NOMEM;
-      goto err_out;
-    }
-  strcpy (buf1, dict);
-  dir = dirname (buf1);
-  strcpy (buf2, dict);
-  fn = basename (buf2);
-  if (dict_init (dir, fn) < 0)
-    {
-      err = RSE_FR;
-      goto err_out;
-    }
-  free (buf1);
-  free (buf2);
 
 #if defined (RS_ENABLE_TLS)
   ssl_init ();
@@ -80,15 +55,48 @@ rs_context_create (struct rs_context **ctx, const char *dict)
     *ctx = h;
 
   return RSE_OK;
+}
 
- err_out:
-  if (buf1)
-    free (buf1);
-  if (buf2)
-    free (buf2);
-  if (h)
-    free (h);
-  return err;
+/** Initialize freeradius dictionary.  */
+int
+rs_context_init_freeradius_dict (struct rs_context *ctx, const char *dict)
+{
+  int r = RSE_OK;
+  size_t dictlen;
+  char *dir = NULL;
+  char *fn = NULL;
+
+  if (dict == NULL)
+    if (ctx->config != NULL)
+      dict = ctx->config->dictionary;
+
+  if (dict == NULL)
+    return rs_err_ctx_push_fl (ctx, RSE_INVAL, __FILE__, __LINE__,
+			       "missing dictionary");
+
+  dictlen = strlen (dict);
+  dir = rs_calloc (ctx, 1, dictlen + 1);
+  fn = rs_calloc (ctx, 1, dictlen + 1);
+  if (dir == NULL || fn == NULL)
+    {
+      r = rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
+      goto out;
+    }
+  strncpy (dir, dict, dictlen);
+  strncpy (fn, dict, dictlen);
+
+  if (dict_init (dirname (dir), basename (fn)) < 0)
+    {
+      r = rs_err_ctx_push_fl (ctx, RSE_FR, __FILE__, __LINE__, "dict_init");
+      goto out;
+    }
+
+ out:
+  if (dir)
+    rs_free (ctx, dir);
+  if (fn)
+    rs_free (ctx, fn);
+  return r;
 }
 
 struct rs_error *	   /* FIXME: Return int as all the others?  */
@@ -137,25 +145,34 @@ rs_context_destroy (struct rs_context *ctx)
   struct rs_realm *r = NULL;
   struct rs_peer *p = NULL;
 
-  for (r = ctx->realms; r; )
+  if (ctx->config)
     {
-      struct rs_realm *tmp = r;
-      for (p = r->peers; p; )
+      for (r = ctx->config->realms; r; )
 	{
-	  struct rs_peer *tmp = p;
-	  if (p->addr)
-	    evutil_freeaddrinfo (p->addr);
-	  p = p->next;
+	  struct rs_realm *tmp = r;
+	  for (p = r->peers; p; )
+	    {
+	      struct rs_peer *tmp = p;
+	      if (p->addr)
+		evutil_freeaddrinfo (p->addr);
+	      p = p->next;
+	      rs_free (ctx, tmp);
+	    }
+	  rs_free (ctx, r->name); /* FIXME: Stop freeing once we stop strdup in rs_context_read_config().  */
+	  r = r->next;
 	  rs_free (ctx, tmp);
 	}
-      rs_free (ctx, r->name);
-      r = r->next;
-      rs_free (ctx, tmp);
     }
 
-  if (ctx->cfg)
-    cfg_free (ctx->cfg);
-  ctx->cfg = NULL;
+  if (ctx->config)
+    {
+      if (ctx->config->cfg)
+	{
+	  cfg_free (ctx->config->cfg);
+	  ctx->config->cfg = NULL;
+	}
+      rs_free (ctx, ctx->config);
+    }
 
   rs_free (ctx, ctx);
 }
