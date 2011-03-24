@@ -1,6 +1,6 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
 
-Status as of libradsec-0.0.1-dev (2011-03-12).
+Status as of libradsec-0.0.1-dev (2011-03-24).
 
 * Build instructions
 cd libradsec/lib
@@ -8,7 +8,7 @@ sh autogen.sh
 ./configure #--enable-tls
 make
 
-examples/client -r examples/client-tls.conf blocking-tls; echo $?
+examples/client -r examples/client.conf blocking-tls; echo $?
 
 * Design of the API
 - There are three usage modes
@@ -20,7 +20,7 @@ examples/client -r examples/client-tls.conf blocking-tls; echo $?
 - Fully reentrant (FIXME: any issues with libfreeradius-radius?)
 
 * Dependencies
-This is on Ubuntu 10.10.
+The details below apply to Ubuntu 10.10.
 
 - libfreeradius-radius (2.1.9+dfsg-1ubuntu1)
   sudo apt-get install libfreeradius-dev libfreeradius2
@@ -30,21 +30,22 @@ This is on Ubuntu 10.10.
   git clone --branch release-2.0.10-stable git://levent.git.sourceforge.net/gitroot/levent/levent
   cd levent; sh autogen.sh && ./configure --enable-openssl
   make && sudo make install
+- OpenSSL (optional, for TLS and DTLS support)
+  sudo apt-get install libssl-dev
   
 * Functionality and quality
-** Tested and verified
 ** Not well tested
 - reading config file
 - [TCP] short read
 - [TCP] short write
 - [TLS] basic tls support
 ** Known issues
-- leaking memory
 - error stack is only one entry deep
 ** Not implemented
 - custom allocation scheme used in all places
+  issue: libfreeradius-radius
 - server failover
-- [TLS] verification of CNAME
+- [TLS] verification of CN
 - [TLS] preshared key support
 - [DTLS] support
 
@@ -57,3 +58,5 @@ wrong.
 Running the library under gdb is another good idea.  If you experience
 a crash, catching that in gdb and providing a backtrace is highly
 valuable for debugging.
+
+Contact: mailto:linus+libradsec@nordu.net

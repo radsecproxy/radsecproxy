@@ -1,8 +1,11 @@
-libradsec-0.0.1-dev is a non-working RADIUS library doing UDP, TCP,
-TLS and DTLS.
+libradsec is a RADIUS library for clients doing RADIUS over UDP or
+TLS.  The goal is to add support for writing servers (and thus
+proxies) and to add transports TCP and DTLS.
 
-Canonical pickup point:
+
+The canonical pickup point is
 http://git.nordu.net/?p=radsecproxy.git;a=shortlog;h=refs/heads/libradsec
+
 
 libradsec depends on 
 - libradius from the FreeRADIUS freeradius-server
@@ -18,7 +21,7 @@ To compile the library and the examples, do something like
 If any of the libraries are not found, try setting environment
 variable LDFLAGS at configure time like so:
 
- LDFLAGS="-L/usr/lib/freeradius -L/usr/local/lib" ./configure
+ LDFLAGS="-L/usr/lib/freeradius -L/usr/local/lib" ./configure --enable-tls
 
 
 The parts of the library which has been tested has been so on Linux
