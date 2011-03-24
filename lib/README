@@ -7,6 +7,11 @@ The canonical pickup point is
 http://git.nordu.net/?p=radsecproxy.git;a=shortlog;h=refs/heads/libradsec
 
 
+The source code is licensed under two different licenses, a 3-clause
+BSD license and the GNU General Public License (version 2 or later).
+Users of this library may choose which of these suits them best.
+
+
 libradsec depends on 
 - libradius from the FreeRADIUS freeradius-server
 - libevent2
