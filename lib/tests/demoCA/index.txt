@@ -1,0 +1,2 @@
+V	240216122242Z		01	unknown	/C=SE/ST=Bogus State/O=Bogus Ltd/OU=Bogus/CN=My Bogus CA for testing libradsec
+V	240216123520Z		02	unknown	/C=SE/ST=Bogus State/O=Bogus Ltd/OU=Bogus/CN=My Bogus Certificate for testing libradsec
