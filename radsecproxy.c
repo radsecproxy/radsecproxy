@@ -3030,36 +3030,37 @@ void getmainconfig(const char *configfile) {
     if (!rewriteconfs)
 	debugx(1, DBG_ERR, "malloc failed");
 
-    if (!getgenericconfig(&cfs, NULL,
+    if (!getgenericconfig(
+	    &cfs, NULL,
 #ifdef RADPROT_UDP
-			  "ListenUDP", CONF_MSTR, &listenargs[RAD_UDP],
-			  "SourceUDP", CONF_STR, &sourcearg[RAD_UDP],
+	    "ListenUDP", CONF_MSTR, &listenargs[RAD_UDP],
+	    "SourceUDP", CONF_STR, &sourcearg[RAD_UDP],
 #endif
 #ifdef RADPROT_TCP
-			  "ListenTCP", CONF_MSTR, &listenargs[RAD_TCP],
-			  "SourceTCP", CONF_STR, &sourcearg[RAD_TCP],
+	    "ListenTCP", CONF_MSTR, &listenargs[RAD_TCP],
+	    "SourceTCP", CONF_STR, &sourcearg[RAD_TCP],
 #endif
 #ifdef RADPROT_TLS
-			  "ListenTLS", CONF_MSTR, &listenargs[RAD_TLS],
-			  "SourceTLS", CONF_STR, &sourcearg[RAD_TLS],
+	    "ListenTLS", CONF_MSTR, &listenargs[RAD_TLS],
+	    "SourceTLS", CONF_STR, &sourcearg[RAD_TLS],
 #endif
 #ifdef RADPROT_DTLS
-			  "ListenDTLS", CONF_MSTR, &listenargs[RAD_DTLS],
-			  "SourceDTLS", CONF_STR, &sourcearg[RAD_DTLS],
+	    "ListenDTLS", CONF_MSTR, &listenargs[RAD_DTLS],
+	    "SourceDTLS", CONF_STR, &sourcearg[RAD_DTLS],
 #endif
-			  "TTLAttribute", CONF_STR, &options.ttlattr,
-			  "addTTL", CONF_LINT, &addttl,
-			  "LogLevel", CONF_LINT, &loglevel,
-			  "LogDestination", CONF_STR, &options.logdestination,
-			  "LoopPrevention", CONF_BLN, &options.loopprevention,
-			  "Client", CONF_CBK, confclient_cb, NULL,
-			  "Server", CONF_CBK, confserver_cb, NULL,
-			  "Realm", CONF_CBK, confrealm_cb, NULL,
+	    "TTLAttribute", CONF_STR, &options.ttlattr,
+	    "addTTL", CONF_LINT, &addttl,
+	    "LogLevel", CONF_LINT, &loglevel,
+	    "LogDestination", CONF_STR, &options.logdestination,
+	    "LoopPrevention", CONF_BLN, &options.loopprevention,
+	    "Client", CONF_CBK, confclient_cb, NULL,
+	    "Server", CONF_CBK, confserver_cb, NULL,
+	    "Realm", CONF_CBK, confrealm_cb, NULL,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-			  "TLS", CONF_CBK, conftls_cb, NULL,
+	    "TLS", CONF_CBK, conftls_cb, NULL,
 #endif
-			  "Rewrite", CONF_CBK, confrewrite_cb, NULL,
-			  NULL
+	    "Rewrite", CONF_CBK, confrewrite_cb, NULL,
+	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
 
