@@ -33,6 +33,21 @@
 #define RAD_DTLS 3
 #define RAD_PROTOCOUNT 4
 
+enum rsp_fticks_reporting_type {
+    RSP_FTICKS_REPORTING_NONE = 0, /* Default.  */
+    RSP_FTICKS_REPORTING_BASIC,
+    RSP_FTICKS_REPORTING_FULL
+};
+
+enum rsp_fticks_mac_type {
+    RSP_FTICKS_MAC_STATIC = 0,	/* Default.  */
+    RSP_FTICKS_MAC_ORIGINAL,
+    RSP_FTICKS_MAC_VENDOR_HASHED,
+    RSP_FTICKS_MAC_VENDOR_KEY_HASHED,
+    RSP_FTICKS_MAC_FULLY_HASHED,
+    RSP_FTICKS_MAC_FULLY_KEY_HASHED
+};
+
 struct options {
     char *logdestination;
     char *ttlattr;
@@ -40,6 +55,9 @@ struct options {
     uint8_t addttl;
     uint8_t loglevel;
     uint8_t loopprevention;
+    enum rsp_fticks_reporting_type fticks_reporting;
+    enum rsp_fticks_mac_type fticks_mac;
+    char *fticks_key;
 };
 
 struct commonprotoopts {

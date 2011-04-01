@@ -3002,11 +3002,76 @@ int setprotoopts(uint8_t type, char **listenargs, char *sourcearg) {
     return 1;
 }
 
+int configure_fticks(char **reporting, char **mac, char **key) {
+    int r = 0;
+
+    if (*reporting == NULL)
+	goto out;
+
+    if (strcasecmp(*reporting, "None") == 0)
+	options.fticks_reporting = RSP_FTICKS_REPORTING_NONE;
+    else if (strcasecmp(*reporting, "Basic") == 0)
+	options.fticks_reporting = RSP_FTICKS_REPORTING_BASIC;
+    else if (strcasecmp(*reporting, "Full") == 0)
+	options.fticks_reporting = RSP_FTICKS_REPORTING_FULL;
+    else {
+	debugx(1, DBG_ERR, "config error: invalid F-Ticks-Reporting value: %s",
+	       *reporting);
+	r = 1;
+	goto out;
+    }
+
+    if (strcasecmp(*mac, "Static") == 0)
+	options.fticks_mac = RSP_FTICKS_MAC_STATIC;
+    else if (strcasecmp(*mac, "Original") == 0)
+	options.fticks_mac = RSP_FTICKS_MAC_ORIGINAL;
+    else if (strcasecmp(*mac, "VendorHashed") == 0)
+	options.fticks_mac = RSP_FTICKS_MAC_VENDOR_HASHED;
+    else if (strcasecmp(*mac, "VendorKeyHashed") == 0)
+	options.fticks_mac = RSP_FTICKS_MAC_VENDOR_KEY_HASHED;
+    else if (strcasecmp(*mac, "FullyHashed") == 0)
+	options.fticks_mac = RSP_FTICKS_MAC_FULLY_HASHED;
+    else if (strcasecmp(*mac, "FullyKeyHashed") == 0)
+	options.fticks_mac = RSP_FTICKS_MAC_FULLY_KEY_HASHED;
+    else {
+	debugx(1, DBG_ERR, "config error: invalid F-Ticks-MAC value: %s", *mac);
+	r = 1;
+	goto out;
+    }
+
+    if (*key == NULL
+	&& (options.fticks_mac == RSP_FTICKS_MAC_VENDOR_KEY_HASHED
+	    || options.fticks_mac == RSP_FTICKS_MAC_FULLY_KEY_HASHED)) {
+	debugx(1, DBG_ERR,
+	       "config error: F-Ticks-MAC %s requires an F-Ticks-Key", *mac);
+	options.fticks_mac = RSP_FTICKS_MAC_STATIC;
+	r = 1;
+	goto out;
+    }
+
+    if (*key != NULL)
+	options.fticks_key = *key;
+
+out:
+    if (*reporting != NULL) {
+	free(*reporting);
+	*reporting = NULL;
+    }
+    if (*mac != NULL) {
+	free(*mac);
+	*mac = NULL;
+    }
+    return r;
+}
+
 void getmainconfig(const char *configfile) {
     long int addttl = LONG_MIN, loglevel = LONG_MIN;
     struct gconffile *cfs;
     char **listenargs[RAD_PROTOCOUNT];
     char *sourcearg[RAD_PROTOCOUNT];
+    char *fticks_reporting_str = NULL;
+    char *fticks_mac_str = NULL;
+    char *fticks_key_str = NULL;
     int i;
 
     cfs = openconfigfile(configfile);
@@ -3060,6 +3125,9 @@ void getmainconfig(const char *configfile) {
 	    "TLS", CONF_CBK, conftls_cb, NULL,
 #endif
 	    "Rewrite", CONF_CBK, confrewrite_cb, NULL,
+	    "F-Ticks-Reporting", CONF_STR, &fticks_reporting_str,
+	    "F-Ticks-MAC", CONF_STR, &fticks_mac_str,
+	    "F-Ticks-Key", CONF_STR, &fticks_key_str,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
@@ -3076,6 +3144,8 @@ void getmainconfig(const char *configfile) {
     }
     if (!setttlattr(&options, DEFAULT_TTL_ATTR))
     	debugx(1, DBG_ERR, "Failed to set TTLAttribute, exiting");
+
+    configure_fticks(&fticks_reporting_str, &fticks_mac_str, &fticks_key_str);
 
     for (i = 0; i < RAD_PROTOCOUNT; i++)
 	if (listenargs[i] || sourcearg[i])
