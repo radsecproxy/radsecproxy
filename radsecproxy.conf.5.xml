@@ -168,6 +168,37 @@ blocktype name {
 	  </para>
         </listitem>
       </varlistentry>
+
+      <varlistentry>
+        <term><literal>FTicksReporting</literal></term>
+        <listitem>
+	  <para>
+	    TODO!  (See <literal>radsecproxy.conf-example</literal>
+	    for now.)
+	  </para>
+	</listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term><literal>FTicksMAC</literal></term>
+        <listitem>
+	  <para>
+	    TODO!  (See <literal>radsecproxy.conf-example</literal>
+	    for now.)
+	  </para>
+	</listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term><literal>FTicksKey</literal></term>
+        <listitem>
+	  <para>
+	    TODO!  (See <literal>radsecproxy.conf-example</literal>
+	    for now.)
+	  </para>
+	</listitem>
+      </varlistentry>
+
       <varlistentry>
         <term><literal>ListenUDP</literal></term>
         <listitem>
