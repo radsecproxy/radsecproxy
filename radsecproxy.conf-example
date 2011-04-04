@@ -30,7 +30,7 @@
 #LogDestination         x-syslog:///log_local2
 
 # For generating log entries conforming to the F-Ticks system, specify
-# F-Ticks-Reporting with one of the following values.
+# FTicksReporting with one of the following values.
 #   None  -- Do not log in F-Ticks format.  This is the default.
 #   Basic -- Do log in F-Ticks format but do not log VISINST.
 #   Full  -- Do log in F-Ticks format and do log VISINST.
@@ -38,7 +38,7 @@
 # its matching client configuration block has to contain the
 # fticksVISCOUNTRY option.
 
-# You can optionally specify F-Ticks-MAC in order to determine if and
+# You can optionally specify FTicksMAC in order to determine if and
 # how Calling-Station-Id is logged.
 #   Static          -- Use a static string as a placeholder for
 #                      Calling-Station-Id.  This is the default.
@@ -48,13 +48,13 @@
 #   FullyHashed     -- Hash the entire string.
 #   FullyKeyHashed  -- Like FullyHashed but salt with F-Ticks-Key.
 
-# In order to use F-Ticks-MAC with one of VendorKeyHashed or
-# FullyKeyHashed, specify a key with F-Ticks-Key.
-# F-Ticks-Key <key>
+# In order to use FTicksMAC with one of VendorKeyHashed or
+# FullyKeyHashed, specify a key with FTicksKey.
+# FTicksKey <key>
 
 # Default F-Ticks configuration:
-#F-Ticks-Reporting None
-#F-Ticks-Mac FullyKeyHashed
+#FTicksReporting None
+#FTicksMac FullyKeyHashed
 
 # There is an option for doing some simple loop prevention.  Note that
 # the LoopPrevention directive can be used in server blocks too,

@@ -3017,7 +3017,7 @@ int configure_fticks(char **reporting, char **mac, char **key) {
     else if (strcasecmp(*reporting, "Full") == 0)
 	options.fticks_reporting = RSP_FTICKS_REPORTING_FULL;
     else {
-	debugx(1, DBG_ERR, "config error: invalid F-Ticks-Reporting value: %s",
+	debugx(1, DBG_ERR, "config error: invalid FTicksReporting value: %s",
 	       *reporting);
 	r = 1;
 	goto out;
@@ -3036,7 +3036,7 @@ int configure_fticks(char **reporting, char **mac, char **key) {
     else if (strcasecmp(*mac, "FullyKeyHashed") == 0)
 	options.fticks_mac = RSP_FTICKS_MAC_FULLY_KEY_HASHED;
     else {
-	debugx(1, DBG_ERR, "config error: invalid F-Ticks-MAC value: %s", *mac);
+	debugx(1, DBG_ERR, "config error: invalid FTicksMAC value: %s", *mac);
 	r = 1;
 	goto out;
     }
@@ -3045,7 +3045,7 @@ int configure_fticks(char **reporting, char **mac, char **key) {
 	&& (options.fticks_mac == RSP_FTICKS_MAC_VENDOR_KEY_HASHED
 	    || options.fticks_mac == RSP_FTICKS_MAC_FULLY_KEY_HASHED)) {
 	debugx(1, DBG_ERR,
-	       "config error: F-Ticks-MAC %s requires an F-Ticks-Key", *mac);
+	       "config error: FTicksMAC %s requires an FTicksKey", *mac);
 	options.fticks_mac = RSP_FTICKS_MAC_STATIC;
 	r = 1;
 	goto out;
@@ -3127,9 +3127,9 @@ void getmainconfig(const char *configfile) {
 	    "TLS", CONF_CBK, conftls_cb, NULL,
 #endif
 	    "Rewrite", CONF_CBK, confrewrite_cb, NULL,
-	    "F-Ticks-Reporting", CONF_STR, &fticks_reporting_str,
-	    "F-Ticks-MAC", CONF_STR, &fticks_mac_str,
-	    "F-Ticks-Key", CONF_STR, &fticks_key_str,
+	    "FTicksReporting", CONF_STR, &fticks_reporting_str,
+	    "FTicksMAC", CONF_STR, &fticks_mac_str,
+	    "FTicksKey", CONF_STR, &fticks_key_str,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
