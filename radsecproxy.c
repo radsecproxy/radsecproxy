@@ -2660,22 +2660,23 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     memset(conf, 0, sizeof(struct clsrvconf));
     conf->certnamecheck = 1;
 
-    if (!getgenericconfig(cf, block,
-			  "type", CONF_STR, &conftype,
-			  "host", CONF_MSTR, &conf->hostsrc,
-			  "secret", CONF_STR, &conf->secret,
+    if (!getgenericconfig(
+	    cf, block,
+	    "type", CONF_STR, &conftype,
+	    "host", CONF_MSTR, &conf->hostsrc,
+	    "secret", CONF_STR, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-			  "tls", CONF_STR, &conf->tls,
-			  "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
-			  "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+	    "tls", CONF_STR, &conf->tls,
+	    "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
+	    "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
-			  "DuplicateInterval", CONF_LINT, &dupinterval,
-			  "addTTL", CONF_LINT, &addttl,
-			  "rewrite", CONF_STR, &rewriteinalias,
-			  "rewriteIn", CONF_STR, &conf->confrewritein,
-			  "rewriteOut", CONF_STR, &conf->confrewriteout,
-			  "rewriteattribute", CONF_STR, &conf->confrewriteusername,
-			  NULL
+	    "DuplicateInterval", CONF_LINT, &dupinterval,
+	    "addTTL", CONF_LINT, &addttl,
+	    "rewrite", CONF_STR, &rewriteinalias,
+	    "rewriteIn", CONF_STR, &conf->confrewritein,
+	    "rewriteOut", CONF_STR, &conf->confrewriteout,
+	    "rewriteattribute", CONF_STR, &conf->confrewriteusername,
+	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
 
