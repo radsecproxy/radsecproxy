@@ -126,7 +126,7 @@ blocktype name {
     </para>
     <variablelist>
       <varlistentry>
-        <term><literal>logLevel</literal></term>
+        <term><literal>LogLevel</literal></term>
         <listitem>
 	  <para>
 	    This option specifies the debug level. It must be set to
@@ -138,7 +138,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>logDestination</literal></term>
+        <term><literal>LogDestination</literal></term>
         <listitem>
 	  <para>
 	    This specifies where the log messages should go. By
@@ -169,7 +169,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>listenUDP</literal></term>
+        <term><literal>ListenUDP</literal></term>
         <listitem>
 	  <para>
 	    Normally the proxy will listen to the standard RADIUS UDP
@@ -194,7 +194,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>listenTCP</literal></term>
+        <term><literal>ListenTCP</literal></term>
         <listitem>
 	  <para>
 	    This option is similar to the <literal>listenUDP</literal>
@@ -205,7 +205,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>listenTLS</literal></term>
+        <term><literal>ListenTLS</literal></term>
         <listitem>
 	  <para>
 	    This is similar to the <literal>listenUDP</literal>
@@ -217,7 +217,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>listenDTLS</literal></term>
+        <term><literal>ListenDTLS</literal></term>
         <listitem>
 	  <para>
 	    This is similar to the <literal>listenUDP</literal>
@@ -228,7 +228,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>sourceUDP</literal></term>
+        <term><literal>SourceUDP</literal></term>
         <listitem>
 	  <para>
 	    This can be used to specify source address and/or source
@@ -238,7 +238,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>sourceTCP</literal></term>
+        <term><literal>SourceTCP</literal></term>
         <listitem>
 	  <para>
 	    This can be used to specify source address and/or source
@@ -247,7 +247,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>sourceTLS</literal></term>
+        <term><literal>SourceTLS</literal></term>
         <listitem>
 	  <para>
 	    This can be used to specify source address and/or source
@@ -256,7 +256,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>sourceDTLS</literal></term>
+        <term><literal>SourceDTLS</literal></term>
         <listitem>
 	  <para>
 	    This can be used to specify source address and/or source
@@ -278,7 +278,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>addTTL</literal></term>
+        <term><literal>AddTTL</literal></term>
         <listitem>
 	  <para>
 	    If a TTL attribute is present, the proxy will decrement
@@ -294,7 +294,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>loopPrevention</literal></term>
+        <term><literal>LoopPrevention</literal></term>
         <listitem>
 	  <para>
 	    This can be set to <literal>on</literal> or
@@ -310,7 +310,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>include</literal></term>
+        <term><literal>Include</literal></term>
         <listitem>
 	  <para>
 	    This is not a normal configuration option; it can be
