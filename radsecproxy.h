@@ -57,7 +57,7 @@ struct options {
     uint8_t loopprevention;
     enum rsp_fticks_reporting_type fticks_reporting;
     enum rsp_fticks_mac_type fticks_mac;
-    char *fticks_key;
+    uint8_t *fticks_key;
 };
 
 struct commonprotoopts {

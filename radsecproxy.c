@@ -78,6 +78,7 @@
 #include "tcp.h"
 #include "tls.h"
 #include "dtls.h"
+#include "fticks.h"
 
 static struct options options;
 static struct list *clconfs, *srvconfs;
@@ -1691,6 +1692,80 @@ void replyh(struct server *server, unsigned char *buf) {
     debug(msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response ? DBG_WARN : DBG_INFO,
 	  "replyh: passing %s to client %s (%s)", radmsgtype2string(msg->code), from->conf->name, addr2string(from->addr));
 
+    if (options.fticks_reporting && from->conf->fticks_viscountry != NULL) {
+	unsigned char *username = NULL;
+	unsigned char *realm = NULL;
+	uint8_t visinst[8+40+1+1]; /* Room for 40 octets of VISINST.  */
+	uint8_t *macin = NULL;
+	uint8_t macout[2*32+1]; /* Room for ASCII representation of SHA256.  */
+
+	username = radattr2ascii(radmsg_gettype(rqout->rq->msg,
+						RAD_Attr_User_Name));
+	if (username != NULL) {
+	    realm = (unsigned char *) strrchr((char *) username, '@');
+	    if (realm != NULL)
+		realm++;
+	    else
+		realm = (unsigned char *) "";
+	}
+
+	memset(visinst, 0, sizeof(visinst));
+	if (options.fticks_reporting == RSP_FTICKS_REPORTING_FULL)
+	    snprintf((char *) visinst, sizeof(visinst), "VISINST=%s#",
+		     from->conf->name);
+
+#define BOGUS_MAC "00:00:00:00:00:00" /* FIXME: Is there a standard
+				       * for bogus MAC addresses?  */
+	memset(macout, 0, sizeof(macout));
+	strncpy((char *) macout, BOGUS_MAC, sizeof(macout) - 1);
+	if (options.fticks_mac != RSP_FTICKS_MAC_STATIC) {
+	    macin = radattr2ascii(radmsg_gettype(rqout->rq->msg,
+						 RAD_Attr_Calling_Station_Id));
+	}
+#if RS_TESTING || 1
+	if (macin == NULL)
+	    macin = (uint8_t *) strdup(BOGUS_MAC);
+#endif	/* RS_TESTING */
+
+	switch (options.fticks_mac)
+	{
+	case RSP_FTICKS_MAC_STATIC:
+	    memcpy(macout, BOGUS_MAC, sizeof(BOGUS_MAC));
+	    break;
+	case RSP_FTICKS_MAC_ORIGINAL:
+	    memcpy(macout, macin, sizeof(macout));
+	    break;
+	case RSP_FTICKS_MAC_VENDOR_HASHED:
+	    fticks_hashmac(macin + 3, NULL, sizeof(macout), macout);
+	    break;
+	case RSP_FTICKS_MAC_VENDOR_KEY_HASHED:
+	    fticks_hashmac(macin + 3, options.fticks_key, sizeof(macout),
+			   macout);
+	    break;
+	case RSP_FTICKS_MAC_FULLY_HASHED:
+	    fticks_hashmac(macin, NULL, sizeof(macout), macout);
+	    break;
+	case RSP_FTICKS_MAC_FULLY_KEY_HASHED:
+	    fticks_hashmac(macin, options.fticks_key, sizeof(macout), macout);
+	    break;
+	default:
+	    debugx(2, DBG_ERR, "invalid fticks mac configuration: %d",
+		   options.fticks_mac);
+	}
+	debug(0xff,
+	      "F-TICKS/eduroam/1.0#REALM=%s#VISCOUNTRY=%s#%sCSI=%s#RESULT=%s#",
+	      realm,
+	      from->conf->fticks_viscountry,
+	      visinst,
+	      macout,
+	      msg->code == RAD_Access_Accept ? "OK" : "FAIL");
+	if (macin != NULL)
+	    free(macin);
+	if (username != NULL)
+	    free(username);
+
+    }
+
     radmsg_free(rqout->rq->msg);
     rqout->rq->msg = msg;
     sendreply(newrqref(rqout->rq));
@@ -3004,64 +3079,67 @@ int setprotoopts(uint8_t type, char **listenargs, char *sourcearg) {
     return 1;
 }
 
-int configure_fticks(char **reporting, char **mac, char **key) {
+/* FIXME: Move to fticks.c.  */
+int configure_fticks(uint8_t **reportingp, uint8_t **macp, uint8_t **keyp) {
     int r = 0;
+    const char *reporting = (const char *) *reportingp;
+    const char *mac = (const char *) *macp;
 
-    if (*reporting == NULL)
+    if (reporting == NULL)
 	goto out;
 
-    if (strcasecmp(*reporting, "None") == 0)
+    if (strcasecmp(reporting, "None") == 0)
 	options.fticks_reporting = RSP_FTICKS_REPORTING_NONE;
-    else if (strcasecmp(*reporting, "Basic") == 0)
+    else if (strcasecmp(reporting, "Basic") == 0)
 	options.fticks_reporting = RSP_FTICKS_REPORTING_BASIC;
-    else if (strcasecmp(*reporting, "Full") == 0)
+    else if (strcasecmp(reporting, "Full") == 0)
 	options.fticks_reporting = RSP_FTICKS_REPORTING_FULL;
     else {
 	debugx(1, DBG_ERR, "config error: invalid FTicksReporting value: %s",
-	       *reporting);
+	       reporting);
 	r = 1;
 	goto out;
     }
 
-    if (strcasecmp(*mac, "Static") == 0)
+    if (strcasecmp(mac, "Static") == 0)
 	options.fticks_mac = RSP_FTICKS_MAC_STATIC;
-    else if (strcasecmp(*mac, "Original") == 0)
+    else if (strcasecmp(mac, "Original") == 0)
 	options.fticks_mac = RSP_FTICKS_MAC_ORIGINAL;
-    else if (strcasecmp(*mac, "VendorHashed") == 0)
+    else if (strcasecmp(mac, "VendorHashed") == 0)
 	options.fticks_mac = RSP_FTICKS_MAC_VENDOR_HASHED;
-    else if (strcasecmp(*mac, "VendorKeyHashed") == 0)
+    else if (strcasecmp(mac, "VendorKeyHashed") == 0)
 	options.fticks_mac = RSP_FTICKS_MAC_VENDOR_KEY_HASHED;
-    else if (strcasecmp(*mac, "FullyHashed") == 0)
+    else if (strcasecmp(mac, "FullyHashed") == 0)
 	options.fticks_mac = RSP_FTICKS_MAC_FULLY_HASHED;
-    else if (strcasecmp(*mac, "FullyKeyHashed") == 0)
+    else if (strcasecmp(mac, "FullyKeyHashed") == 0)
 	options.fticks_mac = RSP_FTICKS_MAC_FULLY_KEY_HASHED;
     else {
-	debugx(1, DBG_ERR, "config error: invalid FTicksMAC value: %s", *mac);
+	debugx(1, DBG_ERR, "config error: invalid FTicksMAC value: %s", mac);
 	r = 1;
 	goto out;
     }
 
-    if (*key == NULL
+    if (*keyp == NULL
 	&& (options.fticks_mac == RSP_FTICKS_MAC_VENDOR_KEY_HASHED
 	    || options.fticks_mac == RSP_FTICKS_MAC_FULLY_KEY_HASHED)) {
 	debugx(1, DBG_ERR,
-	       "config error: FTicksMAC %s requires an FTicksKey", *mac);
+	       "config error: FTicksMAC %s requires an FTicksKey", mac);
 	options.fticks_mac = RSP_FTICKS_MAC_STATIC;
 	r = 1;
 	goto out;
     }
 
-    if (*key != NULL)
-	options.fticks_key = *key;
+    if (*keyp != NULL)
+	options.fticks_key = *keyp;
 
 out:
-    if (*reporting != NULL) {
-	free(*reporting);
-	*reporting = NULL;
+    if (*reportingp != NULL) {
+	free(*reportingp);
+	*reportingp = NULL;
     }
-    if (*mac != NULL) {
-	free(*mac);
-	*mac = NULL;
+    if (*macp != NULL) {
+	free(*macp);
+	*macp = NULL;
     }
     return r;
 }
@@ -3071,9 +3149,9 @@ void getmainconfig(const char *configfile) {
     struct gconffile *cfs;
     char **listenargs[RAD_PROTOCOUNT];
     char *sourcearg[RAD_PROTOCOUNT];
-    char *fticks_reporting_str = NULL;
-    char *fticks_mac_str = NULL;
-    char *fticks_key_str = NULL;
+    uint8_t *fticks_reporting_str = NULL;
+    uint8_t *fticks_mac_str = NULL;
+    uint8_t *fticks_key_str = NULL;
     int i;
 
     cfs = openconfigfile(configfile);
