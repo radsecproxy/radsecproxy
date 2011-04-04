@@ -51,6 +51,75 @@ hash(const uint8_t *in,
     }
 }
 
+int
+fticks_configure(struct options *options,
+		 uint8_t **reportingp,
+		 uint8_t **macp,
+		 uint8_t **keyp)
+{
+    int r = 0;
+    const char *reporting = (const char *) *reportingp;
+    const char *mac = (const char *) *macp;
+
+    if (reporting == NULL)
+	goto out;
+
+    if (strcasecmp(reporting, "None") == 0)
+	options->fticks_reporting = RSP_FTICKS_REPORTING_NONE;
+    else if (strcasecmp(reporting, "Basic") == 0)
+	options->fticks_reporting = RSP_FTICKS_REPORTING_BASIC;
+    else if (strcasecmp(reporting, "Full") == 0)
+	options->fticks_reporting = RSP_FTICKS_REPORTING_FULL;
+    else {
+	debugx(1, DBG_ERR, "config error: invalid FTicksReporting value: %s",
+	       reporting);
+	r = 1;
+	goto out;
+    }
+
+    if (strcasecmp(mac, "Static") == 0)
+	options->fticks_mac = RSP_FTICKS_MAC_STATIC;
+    else if (strcasecmp(mac, "Original") == 0)
+	options->fticks_mac = RSP_FTICKS_MAC_ORIGINAL;
+    else if (strcasecmp(mac, "VendorHashed") == 0)
+	options->fticks_mac = RSP_FTICKS_MAC_VENDOR_HASHED;
+    else if (strcasecmp(mac, "VendorKeyHashed") == 0)
+	options->fticks_mac = RSP_FTICKS_MAC_VENDOR_KEY_HASHED;
+    else if (strcasecmp(mac, "FullyHashed") == 0)
+	options->fticks_mac = RSP_FTICKS_MAC_FULLY_HASHED;
+    else if (strcasecmp(mac, "FullyKeyHashed") == 0)
+	options->fticks_mac = RSP_FTICKS_MAC_FULLY_KEY_HASHED;
+    else {
+	debugx(1, DBG_ERR, "config error: invalid FTicksMAC value: %s", mac);
+	r = 1;
+	goto out;
+    }
+
+    if (*keyp == NULL
+	&& (options->fticks_mac == RSP_FTICKS_MAC_VENDOR_KEY_HASHED
+	    || options->fticks_mac == RSP_FTICKS_MAC_FULLY_KEY_HASHED)) {
+	debugx(1, DBG_ERR,
+	       "config error: FTicksMAC %s requires an FTicksKey", mac);
+	options->fticks_mac = RSP_FTICKS_MAC_STATIC;
+	r = 1;
+	goto out;
+    }
+
+    if (*keyp != NULL)
+	options->fticks_key = *keyp;
+
+out:
+    if (*reportingp != NULL) {
+	free(*reportingp);
+	*reportingp = NULL;
+    }
+    if (*macp != NULL) {
+	free(*macp);
+	*macp = NULL;
+    }
+    return r;
+}
+
 /** Hash the MAC in \a IN, keying with \a KEY if it's not NULL.
 
     \a IN and \a KEY are NULL terminated strings.

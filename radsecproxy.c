@@ -3008,71 +3008,6 @@ int setprotoopts(uint8_t type, char **listenargs, char *sourcearg) {
     return 1;
 }
 
-/* FIXME: Move to fticks.c.  */
-int configure_fticks(uint8_t **reportingp, uint8_t **macp, uint8_t **keyp) {
-    int r = 0;
-    const char *reporting = (const char *) *reportingp;
-    const char *mac = (const char *) *macp;
-
-    if (reporting == NULL)
-	goto out;
-
-    if (strcasecmp(reporting, "None") == 0)
-	options.fticks_reporting = RSP_FTICKS_REPORTING_NONE;
-    else if (strcasecmp(reporting, "Basic") == 0)
-	options.fticks_reporting = RSP_FTICKS_REPORTING_BASIC;
-    else if (strcasecmp(reporting, "Full") == 0)
-	options.fticks_reporting = RSP_FTICKS_REPORTING_FULL;
-    else {
-	debugx(1, DBG_ERR, "config error: invalid FTicksReporting value: %s",
-	       reporting);
-	r = 1;
-	goto out;
-    }
-
-    if (strcasecmp(mac, "Static") == 0)
-	options.fticks_mac = RSP_FTICKS_MAC_STATIC;
-    else if (strcasecmp(mac, "Original") == 0)
-	options.fticks_mac = RSP_FTICKS_MAC_ORIGINAL;
-    else if (strcasecmp(mac, "VendorHashed") == 0)
-	options.fticks_mac = RSP_FTICKS_MAC_VENDOR_HASHED;
-    else if (strcasecmp(mac, "VendorKeyHashed") == 0)
-	options.fticks_mac = RSP_FTICKS_MAC_VENDOR_KEY_HASHED;
-    else if (strcasecmp(mac, "FullyHashed") == 0)
-	options.fticks_mac = RSP_FTICKS_MAC_FULLY_HASHED;
-    else if (strcasecmp(mac, "FullyKeyHashed") == 0)
-	options.fticks_mac = RSP_FTICKS_MAC_FULLY_KEY_HASHED;
-    else {
-	debugx(1, DBG_ERR, "config error: invalid FTicksMAC value: %s", mac);
-	r = 1;
-	goto out;
-    }
-
-    if (*keyp == NULL
-	&& (options.fticks_mac == RSP_FTICKS_MAC_VENDOR_KEY_HASHED
-	    || options.fticks_mac == RSP_FTICKS_MAC_FULLY_KEY_HASHED)) {
-	debugx(1, DBG_ERR,
-	       "config error: FTicksMAC %s requires an FTicksKey", mac);
-	options.fticks_mac = RSP_FTICKS_MAC_STATIC;
-	r = 1;
-	goto out;
-    }
-
-    if (*keyp != NULL)
-	options.fticks_key = *keyp;
-
-out:
-    if (*reportingp != NULL) {
-	free(*reportingp);
-	*reportingp = NULL;
-    }
-    if (*macp != NULL) {
-	free(*macp);
-	*macp = NULL;
-    }
-    return r;
-}
-
 void getmainconfig(const char *configfile) {
     long int addttl = LONG_MIN, loglevel = LONG_MIN;
     struct gconffile *cfs;
@@ -3154,7 +3089,8 @@ void getmainconfig(const char *configfile) {
     if (!setttlattr(&options, DEFAULT_TTL_ATTR))
     	debugx(1, DBG_ERR, "Failed to set TTLAttribute, exiting");
 
-    configure_fticks(&fticks_reporting_str, &fticks_mac_str, &fticks_key_str);
+    fticks_configure(&options, &fticks_reporting_str, &fticks_mac_str,
+		     &fticks_key_str);
 
     for (i = 0; i < RAD_PROTOCOUNT; i++)
 	if (listenargs[i] || sourcearg[i])
