@@ -98,7 +98,7 @@ blocktype name {
     <para>
       There is one special option that can be used both as a basic
       option and inside all blocks. That is the option
-      <literal>include</literal> where the value specifies files to be
+      <literal>Include</literal> where the value specifies files to be
       included. The value can be a single file, or it can use normal
       shell globbing to specify multiple files, e.g.:
       <blockquote>
@@ -110,7 +110,7 @@ blocktype name {
       the order they are specified, when reaching the end of a file,
       the next file is read. When reaching the end of the last
       included file, the proxy returns to read the next line following
-      the <literal>include</literal> option. Included files may again
+      the <literal>Include</literal> option. Included files may again
       include other files.
     </para>
   </refsect1>
@@ -197,7 +197,7 @@ blocktype name {
         <term><literal>ListenTCP</literal></term>
         <listitem>
 	  <para>
-	    This option is similar to the <literal>listenUDP</literal>
+	    This option is similar to the <literal>ListenUDP</literal>
 	    option, except that it is used for receiving connections
 	    from TCP clients. The default port number is
 	    <literal>1812</literal>.
@@ -208,11 +208,11 @@ blocktype name {
         <term><literal>ListenTLS</literal></term>
         <listitem>
 	  <para>
-	    This is similar to the <literal>listenUDP</literal>
+	    This is similar to the <literal>ListenUDP</literal>
 	    option, except that it is used for receiving connections
 	    from TLS clients. The default port number is
 	    <literal>2083</literal>. Note that this option was
-	    previously called <literal>listenTCP</literal>.
+	    previously called <literal>ListenTCP</literal>.
 	  </para>
         </listitem>
       </varlistentry>
@@ -220,7 +220,7 @@ blocktype name {
         <term><literal>ListenDTLS</literal></term>
         <listitem>
 	  <para>
-	    This is similar to the <literal>listenUDP</literal>
+	    This is similar to the <literal>ListenUDP</literal>
 	    option, except that it is used for receiving connections
 	    from DTLS clients. The default port number is
 	    <literal>2083</literal>.
@@ -284,7 +284,7 @@ blocktype name {
 	    If a TTL attribute is present, the proxy will decrement
 	    the value and discard the message if zero. Normally the
 	    proxy does nothing if no TTL attribute is present. If you
-	    use the addTTL option with a value 1-255, the proxy will
+	    use the AddTTL option with a value 1-255, the proxy will
 	    when forwarding a message with no TTL attribute, add one
 	    with the specified value. Note that this option can also
 	    be specified for a client/server. It will then override
@@ -386,9 +386,9 @@ blocktype name {
       <literal>secret</literal>, <literal>tls</literal>,
       <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
-      <literal>duplicateInterval</literal>, <literal>addTTL</literal>,
-      <literal>rewrite</literal>, <literal>rewriteIn</literal>,
-      <literal>rewriteOut</literal> and
+      <literal>duplicateInterval</literal>, <literal>AddTTL</literal>,
+      <literal>fticksVISCOUNTRY</literal>, <literal>rewrite</literal>,
+      <literal>rewriteIn</literal>, <literal>rewriteOut</literal>, and
       <literal>rewriteAttribute</literal>.
 
       We already discussed the <literal>host</literal> option. The
@@ -438,10 +438,15 @@ blocktype name {
       one), or returned a copy of the previous reply.
     </para>
     <para>
-      The <literal>addTTL</literal> option is similar to the
-      <literal>addTTL</literal> option used in the basic config. See
+      The <literal>AddTTL</literal> option is similar to the
+      <literal>AddTTL</literal> option used in the basic config. See
       that for details. Any value configured here overrides the basic
       one when sending messages to this client.
+    </para>
+    <para>
+      The <literal>fticksVISCOUNTRY</literal> option configures
+      clients eligible to F-Ticks logging as defined by the
+      <literal>FTicksReporting</literal> basic option.
     </para>
     <para>
       The <literal>rewrite</literal> option is deprecated. Use
@@ -525,12 +530,12 @@ blocktype name {
       <literal>type</literal>, <literal>secret</literal>,
       <literal>tls</literal>, <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
-      <literal>addTTL</literal>, <literal>rewrite</literal>,
+      <literal>AddTTL</literal>, <literal>rewrite</literal>,
       <literal>rewriteIn</literal>, <literal>rewriteOut</literal>,
       <literal>statusServer</literal>, <literal>retryCount</literal>,
       <literal>retryInterval</literal>,
       <literal>dynamicLookupCommand</literal> and
-      <literal>loopPrevention</literal>.
+      <literal>LoopPrevention</literal>.
     </para>
     <para>
       We already discussed the <literal>host</literal> option. The
@@ -539,7 +544,7 @@ blocktype name {
       <literal>secret</literal>, <literal>tls</literal>,
       <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
-      <literal>addTTL</literal>, <literal>rewrite</literal>,
+      <literal>AddTTL</literal>, <literal>rewrite</literal>,
       <literal>rewriteIn</literal> and <literal>rewriteOut</literal>
       are just as specified for the <literal>client block</literal>
       above, except that <literal>defaultServer</literal> (and not
@@ -570,7 +575,7 @@ blocktype name {
       documented separately/later.
     </para>
     <para>
-      Using the <literal>loopPrevention</literal> option here
+      Using the <literal>LoopPrevention</literal> option here
       overrides any basic setting of this option.  See section
       <literal>BASIC OPTIONS</literal> for details on this option.
     </para>
