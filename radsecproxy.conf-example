@@ -30,10 +30,13 @@
 #LogDestination         x-syslog:///log_local2
 
 # For generating log entries conforming to the F-Ticks system, specify
-# F-Ticks-Reporting with one of
+# F-Ticks-Reporting with one of the following values.
 #   None  -- Do not log in F-Ticks format.  This is the default.
 #   Basic -- Do log in F-Ticks format but do not log VISINST.
 #   Full  -- Do log in F-Ticks format and do log VISINST.
+# Please note that in order to get F-Ticks logging for a given client,
+# its matching client configuration block has to contain the
+# fticksVISCOUNTRY option.
 
 # You can optionally specify F-Ticks-MAC in order to determine if and
 # how Calling-Station-Id is logged.

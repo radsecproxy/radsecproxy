@@ -124,6 +124,7 @@ struct clsrvconf {
     struct tls *tlsconf;
     struct list *clients;
     struct server *servers;
+    char *fticks_viscountry;
 };
 
 #include "tlscommon.h"

@@ -2676,6 +2676,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "rewriteIn", CONF_STR, &conf->confrewritein,
 	    "rewriteOut", CONF_STR, &conf->confrewriteout,
 	    "rewriteattribute", CONF_STR, &conf->confrewriteusername,
+	    "fticksVISCOUNTRY", CONF_STR, &conf->fticks_viscountry,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
