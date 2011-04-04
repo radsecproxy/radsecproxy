@@ -69,7 +69,7 @@ am_radsecproxy_OBJECTS = radsecproxy-radsecproxy.$(OBJEXT) \
 	radsecproxy-tlv11.$(OBJEXT) radsecproxy-hostport.$(OBJEXT) \
 	radsecproxy-radmsg.$(OBJEXT) radsecproxy-udp.$(OBJEXT) \
 	radsecproxy-tcp.$(OBJEXT) radsecproxy-tls.$(OBJEXT) \
-	radsecproxy-dtls.$(OBJEXT)
+	radsecproxy-dtls.$(OBJEXT) radsecproxy-fticks.$(OBJEXT)
 radsecproxy_OBJECTS = $(am_radsecproxy_OBJECTS)
 radsecproxy_DEPENDENCIES =
 radsecproxy_LINK = $(CCLD) $(radsecproxy_CFLAGS) $(CFLAGS) \
@@ -238,6 +238,7 @@ radsecproxy_SOURCES = radsecproxy.c \
                       tcp.c \
                       tls.c \
                       dtls.c \
+                      fticks.c \
                       radsecproxy.h \
                       tlscommon.h \
                       gconfig.h \
@@ -251,7 +252,8 @@ radsecproxy_SOURCES = radsecproxy.c \
                       udp.h \
                       tcp.h \
                       tls.h \
-                      dtls.h
+                      dtls.h \
+		      fticks.h
 
 catgconf_SOURCES = debug.c \
                       util.c \
@@ -399,6 +401,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/catgconf-util.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/radsecproxy-debug.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/radsecproxy-dtls.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/radsecproxy-fticks.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/radsecproxy-gconfig.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/radsecproxy-hash.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/radsecproxy-hostport.Po@am__quote@
@@ -677,6 +680,20 @@ radsecproxy-dtls.obj: dtls.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='dtls.c' object='radsecproxy-dtls.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(radsecproxy_CFLAGS) $(CFLAGS) -c -o radsecproxy-dtls.obj `if test -f 'dtls.c'; then $(CYGPATH_W) 'dtls.c'; else $(CYGPATH_W) '$(srcdir)/dtls.c'; fi`
+
+radsecproxy-fticks.o: fticks.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(radsecproxy_CFLAGS) $(CFLAGS) -MT radsecproxy-fticks.o -MD -MP -MF $(DEPDIR)/radsecproxy-fticks.Tpo -c -o radsecproxy-fticks.o `test -f 'fticks.c' || echo '$(srcdir)/'`fticks.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/radsecproxy-fticks.Tpo $(DEPDIR)/radsecproxy-fticks.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='fticks.c' object='radsecproxy-fticks.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(radsecproxy_CFLAGS) $(CFLAGS) -c -o radsecproxy-fticks.o `test -f 'fticks.c' || echo '$(srcdir)/'`fticks.c
+
+radsecproxy-fticks.obj: fticks.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(radsecproxy_CFLAGS) $(CFLAGS) -MT radsecproxy-fticks.obj -MD -MP -MF $(DEPDIR)/radsecproxy-fticks.Tpo -c -o radsecproxy-fticks.obj `if test -f 'fticks.c'; then $(CYGPATH_W) 'fticks.c'; else $(CYGPATH_W) '$(srcdir)/fticks.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/radsecproxy-fticks.Tpo $(DEPDIR)/radsecproxy-fticks.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='fticks.c' object='radsecproxy-fticks.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(radsecproxy_CFLAGS) $(CFLAGS) -c -o radsecproxy-fticks.obj `if test -f 'fticks.c'; then $(CYGPATH_W) 'fticks.c'; else $(CYGPATH_W) '$(srcdir)/fticks.c'; fi`
 install-man1: $(dist_man_MANS)
 	@$(NORMAL_INSTALL)
 	test -z "$(man1dir)" || $(MKDIR_P) "$(DESTDIR)$(man1dir)"
