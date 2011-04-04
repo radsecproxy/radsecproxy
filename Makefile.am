@@ -17,6 +17,7 @@ radsecproxy_SOURCES = radsecproxy.c \
                       tcp.c \
                       tls.c \
                       dtls.c \
+                      fticks.c \
                       radsecproxy.h \
                       tlscommon.h \
                       gconfig.h \
@@ -30,7 +31,8 @@ radsecproxy_SOURCES = radsecproxy.c \
                       udp.h \
                       tcp.h \
                       tls.h \
-                      dtls.h
+                      dtls.h \
+		      fticks.h
 
 catgconf_SOURCES    = debug.c \
                       util.c \

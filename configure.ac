@@ -46,6 +46,9 @@ AC_ARG_ENABLE(dtls,
       exit -1
     fi
   ])
+
+AC_CHECK_LIB([nettle], [nettle_sha256_init],,
+    AC_MSG_ERROR([required library nettle not found]))
  
 dnl Check if we're on Solaris and set CFLAGS accordingly
 AC_CANONICAL_SYSTEM
