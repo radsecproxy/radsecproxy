@@ -54,7 +54,7 @@
 
 # Default F-Ticks configuration:
 #FTicksReporting None
-#FTicksMac FullyKeyHashed
+#FTicksMAC FullyKeyHashed
 
 # There is an option for doing some simple loop prevention.  Note that
 # the LoopPrevention directive can be used in server blocks too,
