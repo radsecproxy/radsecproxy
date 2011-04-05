@@ -1667,7 +1667,8 @@ void replyh(struct server *server, unsigned char *buf) {
     }
 
     if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)
-	fticks_log(&options, from, msg, rqout);
+	if (options.fticks_reporting && from->conf->fticks_viscountry != NULL)
+	    fticks_log(&options, from, msg, rqout);
 
     msg->id = (char)rqout->rq->rqid;
     memcpy(msg->auth, rqout->rq->rqauth, 16);
