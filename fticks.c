@@ -189,11 +189,13 @@ fticks_log(const struct options *options,
 	memcpy(macout, macin, sizeof(macout));
 	break;
     case RSP_FTICKS_MAC_VENDOR_HASHED:
-	fticks_hashmac(macin + 3, NULL, sizeof(macout), macout);
+	memcpy(macout, macin, 9);
+	fticks_hashmac(macin + 9, NULL, sizeof(macout) - 9, macout + 9);
 	break;
     case RSP_FTICKS_MAC_VENDOR_KEY_HASHED:
-	fticks_hashmac(macin + 3, options->fticks_key, sizeof(macout),
-		       macout);
+	memcpy(macout, macin, 9);
+	fticks_hashmac(macin + 9, options->fticks_key,
+		       sizeof(macout) - 9, macout + 9);
 	break;
     case RSP_FTICKS_MAC_FULLY_HASHED:
 	fticks_hashmac(macin, NULL, sizeof(macout), macout);
