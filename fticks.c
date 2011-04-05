@@ -21,7 +21,7 @@ format_hash(const uint8_t *hash, size_t out_len, uint8_t *out)
 {
     int i;
 
-    for (i = 0; i < out_len / 2; i++)
+    for (i = 0; i < out_len / 2 - 1; i++)
 	sprintf((char *) out + i*2, "%02x", hash[i % SHA256_DIGEST_SIZE]);
 }
 
