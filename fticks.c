@@ -19,10 +19,10 @@
 static void
 format_hash(const uint8_t *hash, size_t out_len, uint8_t *out)
 {
-    int i;
+    int ir, iw;
 
-    for (i = 0; i < out_len / 2 - 1; i++)
-	sprintf((char *) out + i*2, "%02x", hash[i % SHA256_DIGEST_SIZE]);
+    for (ir = 0, iw = 0; iw <= out_len - 3; ir++, iw += 2)
+	sprintf((char *) out + iw, "%02x", hash[ir % SHA256_DIGEST_SIZE]);
 }
 
 static void
