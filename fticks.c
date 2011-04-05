@@ -146,8 +146,8 @@ fticks_log(const struct options *options,
 	   const struct radmsg *msg,
 	   const struct rqout *rqout)
 {
-    unsigned char *username = NULL;
-    unsigned char *realm = NULL;
+    uint8_t *username = NULL;
+    uint8_t *realm = NULL;
     uint8_t visinst[8+40+1+1]; /* Room for 40 octets of VISINST.  */
     uint8_t *macin = NULL;
     uint8_t macout[2*32+1]; /* Room for ASCII representation of SHA256.  */
@@ -155,12 +155,12 @@ fticks_log(const struct options *options,
     username = radattr2ascii(radmsg_gettype(rqout->rq->msg,
 					    RAD_Attr_User_Name));
     if (username != NULL) {
-	realm = (unsigned char *) strrchr((char *) username, '@');
+	realm = (uint8_t *) strrchr((char *) username, '@');
 	if (realm != NULL)
 	    realm++;
-	else
-	    realm = (unsigned char *) "";
     }
+    if (realm == NULL)
+	realm = (uint8_t *) "";
 
     memset(visinst, 0, sizeof(visinst));
     if (options->fticks_reporting == RSP_FTICKS_REPORTING_FULL) {
