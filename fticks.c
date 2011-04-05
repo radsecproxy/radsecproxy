@@ -183,11 +183,17 @@ fticks_log(const struct options *options,
 		break;
 	    case RSP_FTICKS_MAC_VENDOR_HASHED:
 		memcpy(macout, macin, 9);
-		fticks_hashmac(macin + 9, NULL, sizeof(macout) - 9, macout + 9);
+		fticks_hashmac(macin, NULL, sizeof(macout) - 9, macout + 9);
 		break;
 	    case RSP_FTICKS_MAC_VENDOR_KEY_HASHED:
 		memcpy(macout, macin, 9);
-		fticks_hashmac(macin + 9, options->fticks_key,
+		/* We are hashing the first nine octets too for easier
+		 * correlation between vendor-key-hashed and
+		 * fully-key-hashed log records.  This opens up for a
+		 * known plaintext attack on the key but the
+		 * consequences of that is considered outweighed by
+		 * the convenience gained.  */
+		fticks_hashmac(macin, options->fticks_key,
 			       sizeof(macout) - 9, macout + 9);
 		break;
 	    case RSP_FTICKS_MAC_FULLY_HASHED:
