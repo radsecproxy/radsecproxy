@@ -163,49 +163,45 @@ fticks_log(const struct options *options,
     }
 
     memset(visinst, 0, sizeof(visinst));
-    if (options->fticks_reporting == RSP_FTICKS_REPORTING_FULL)
+    if (options->fticks_reporting == RSP_FTICKS_REPORTING_FULL) {
 	snprintf((char *) visinst, sizeof(visinst), "VISINST=%s#",
 		 client->conf->name);
+    }
 
-#define BOGUS_MAC "00:00:00:00:00:00" /* FIXME: Is there a standard
-				       * for bogus MAC addresses?  */
     memset(macout, 0, sizeof(macout));
-    strncpy((char *) macout, BOGUS_MAC, sizeof(macout) - 1);
-    if (options->fticks_mac != RSP_FTICKS_MAC_STATIC) {
+    if (options->fticks_mac == RSP_FTICKS_MAC_STATIC) {
+	strncpy((char *) macout, "undisclosed", sizeof(macout) - 1);
+    }
+    else {
 	macin = radattr2ascii(radmsg_gettype(rqout->rq->msg,
 					     RAD_Attr_Calling_Station_Id));
-    }
-#if RS_TESTING || 1
-    if (macin == NULL)
-	macin = (uint8_t *) strdup(BOGUS_MAC);
-#endif	/* RS_TESTING */
-
-    switch (options->fticks_mac)
-    {
-    case RSP_FTICKS_MAC_STATIC:
-	memcpy(macout, BOGUS_MAC, sizeof(BOGUS_MAC));
-	break;
-    case RSP_FTICKS_MAC_ORIGINAL:
-	memcpy(macout, macin, sizeof(macout));
-	break;
-    case RSP_FTICKS_MAC_VENDOR_HASHED:
-	memcpy(macout, macin, 9);
-	fticks_hashmac(macin + 9, NULL, sizeof(macout) - 9, macout + 9);
-	break;
-    case RSP_FTICKS_MAC_VENDOR_KEY_HASHED:
-	memcpy(macout, macin, 9);
-	fticks_hashmac(macin + 9, options->fticks_key,
-		       sizeof(macout) - 9, macout + 9);
-	break;
-    case RSP_FTICKS_MAC_FULLY_HASHED:
-	fticks_hashmac(macin, NULL, sizeof(macout), macout);
-	break;
-    case RSP_FTICKS_MAC_FULLY_KEY_HASHED:
-	fticks_hashmac(macin, options->fticks_key, sizeof(macout), macout);
-	break;
-    default:
-	debugx(2, DBG_ERR, "invalid fticks mac configuration: %d",
-	       options->fticks_mac);
+	if (macin) {
+	    switch (options->fticks_mac)
+	    {
+	    case RSP_FTICKS_MAC_ORIGINAL:
+		memcpy(macout, macin, sizeof(macout));
+		break;
+	    case RSP_FTICKS_MAC_VENDOR_HASHED:
+		memcpy(macout, macin, 9);
+		fticks_hashmac(macin + 9, NULL, sizeof(macout) - 9, macout + 9);
+		break;
+	    case RSP_FTICKS_MAC_VENDOR_KEY_HASHED:
+		memcpy(macout, macin, 9);
+		fticks_hashmac(macin + 9, options->fticks_key,
+			       sizeof(macout) - 9, macout + 9);
+		break;
+	    case RSP_FTICKS_MAC_FULLY_HASHED:
+		fticks_hashmac(macin, NULL, sizeof(macout), macout);
+		break;
+	    case RSP_FTICKS_MAC_FULLY_KEY_HASHED:
+		fticks_hashmac(macin, options->fticks_key, sizeof(macout),
+			       macout);
+		break;
+	    default:
+		debugx(2, DBG_ERR, "invalid fticks mac configuration: %d",
+		       options->fticks_mac);
+	    }
+	}
     }
     debug(0xff,
 	  "F-TICKS/eduroam/1.0#REALM=%s#VISCOUNTRY=%s#%sCSI=%s#RESULT=%s#",
