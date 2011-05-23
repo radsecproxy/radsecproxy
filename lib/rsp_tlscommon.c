@@ -10,6 +10,7 @@
 #include <config.h>
 #endif
 
+#include <sys/types.h>
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 #include <signal.h>
 #include <sys/socket.h>
@@ -22,7 +23,6 @@
 #include <fcntl.h>
 #endif
 #include <sys/time.h>
-#include <sys/types.h>
 #include <sys/select.h>
 #include <ctype.h>
 #include <sys/wait.h>
