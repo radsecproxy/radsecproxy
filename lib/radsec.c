@@ -105,7 +105,7 @@ rs_resolv (struct evutil_addrinfo **addr,
   struct evutil_addrinfo hints, *res = NULL;
 
   memset (&hints, 0, sizeof(struct evutil_addrinfo));
-  hints.ai_family = AF_INET;   /* IPv4 only.  TODO: Set AF_UNSPEC.  */
+  hints.ai_family = AF_UNSPEC;
   hints.ai_flags = AI_ADDRCONFIG;
   switch (type)
     {
