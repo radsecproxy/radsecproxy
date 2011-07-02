@@ -95,7 +95,7 @@ rs_context_init_freeradius_dict (struct rs_context *ctx, const char *dict)
   return r;
 }
 
-struct rs_error *	   /* FIXME: Return int as all the others?  */
+struct rs_error *
 rs_resolv (struct evutil_addrinfo **addr,
 	   rs_conn_type_t type,
 	   const char *hostname,
