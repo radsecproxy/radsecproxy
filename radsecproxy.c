@@ -2260,10 +2260,8 @@ int dynamicconfig(struct server *server) {
 
     close(fd[1]);
     pushgconffile(&cf, fdopen(fd[0], "r"), conf->dynamiclookupcommand);
-    ok = getgenericconfig(&cf, NULL,
-			  "Server", CONF_CBK, confserver_cb, (void *)conf,
-			  NULL
-	);
+    ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb,
+			  (void *) conf, NULL);
     freegconf(&cf);
 
     if (waitpid(pid, &status, 0) < 0) {
