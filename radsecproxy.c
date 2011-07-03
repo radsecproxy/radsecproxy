@@ -2789,7 +2789,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
 
     if (!addhostport(&conf->hostports, conf->hostsrc, conf->portsrc, 0)) {
-	debug(DBG_ERR, "error in block %s, failed to parse %s", block, conf->hostsrc);
+	debug(DBG_ERR, "error in block %s, failed to parse %s", block, *conf->hostsrc);
 	return 0;
     }
 
