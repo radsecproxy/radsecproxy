@@ -37,10 +37,12 @@
   }
 #endif
 
+/* FIXME: Leaking memory in error cases?  */
 int
 rs_context_read_config(struct rs_context *ctx, const char *config_file)
 {
   cfg_t *cfg, *cfg_realm, *cfg_server;
+  int err = 0;
   int i, j;
   const char *s;
   struct rs_config *config = NULL;
@@ -74,9 +76,22 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
   cfg = cfg_init (opts, CFGF_NONE);
   if (cfg == NULL)
     return rs_err_ctx_push (ctx, RSE_CONFIG, "unable to initialize libconfuse");
-  if (cfg_parse (cfg, config_file) == CFG_PARSE_ERROR)
-    return rs_err_ctx_push (ctx, RSE_CONFIG, "%s: invalid configuration file",
-			    config_file);
+  err = cfg_parse (cfg, config_file);
+  switch (err)
+    {
+    case  CFG_SUCCESS:
+      break;
+    case CFG_FILE_ERROR:
+      return rs_err_ctx_push (ctx, RSE_CONFIG,
+			      "%s: unable to open configuration file",
+			      config_file);
+    case CFG_PARSE_ERROR:
+      return rs_err_ctx_push (ctx, RSE_CONFIG, "%s: invalid configuration file",
+			      config_file);
+    default:
+	return rs_err_ctx_push (ctx, RSE_CONFIG, "%s: unknown parse error",
+				config_file);
+    }
 
   config = rs_calloc (ctx, 1, sizeof (*config));
   if (config == NULL)
