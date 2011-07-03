@@ -92,3 +92,4 @@
 	- Don't disable OpenSSL session caching for 0.9.8p and newer in
 	  the 0.9.x track.
 	- Detect OpenSSL version at runtime rather than at compile time.
+2011-07-03 1.4.3-dev
