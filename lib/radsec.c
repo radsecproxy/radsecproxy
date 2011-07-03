@@ -64,7 +64,7 @@ rs_context_init_freeradius_dict (struct rs_context *ctx, const char *dict)
   char *fn = NULL;
 
   if (dict == NULL)
-    if (ctx->config != NULL)
+    if (ctx->config != NULL && ctx->config->dictionary)
       dict = ctx->config->dictionary;
 
   if (dict == NULL)
@@ -83,7 +83,8 @@ rs_context_init_freeradius_dict (struct rs_context *ctx, const char *dict)
 
   if (dict_init (dirname (dir), basename (fn)) < 0)
     {
-      r = rs_err_ctx_push_fl (ctx, RSE_FR, __FILE__, __LINE__, "dict_init");
+      r = rs_err_ctx_push_fl (ctx, RSE_FR, __FILE__, __LINE__,
+			      "failing dict_init(\"%s\")", dict);
       goto out;
     }
 

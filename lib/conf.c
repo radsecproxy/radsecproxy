@@ -40,8 +40,6 @@
 int
 rs_context_read_config(struct rs_context *ctx, const char *config_file)
 {
-  /* FIXME: Missing some error handling!  */
-
   cfg_t *cfg, *cfg_realm, *cfg_server;
   int i, j;
   const char *s;
@@ -74,6 +72,8 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
     };
 
   cfg = cfg_init (opts, CFGF_NONE);
+  if (cfg == NULL)
+    return rs_err_ctx_push (ctx, RSE_CONFIG, "unable to initialize libconfuse");
   if (cfg_parse (cfg, config_file) == CFG_PARSE_ERROR)
     return rs_err_ctx_push (ctx, RSE_CONFIG, "%s: invalid configuration file",
 			    config_file);
@@ -139,6 +139,8 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	  p->realm = r;
 
 	  cfg_server = cfg_getnsec (cfg_realm, "server", j);
+	  /* FIXME: Handle resolve errors, possibly by postponing name
+	     resolution.  */
 	  rs_resolv (&p->addr, r->type, cfg_getstr (cfg_server, "hostname"),
 		     cfg_getstr (cfg_server, "service"));
 	  p->secret = cfg_getstr (cfg_server, "secret");
