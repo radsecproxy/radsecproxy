@@ -12,15 +12,17 @@ examples/client -r examples/client.conf blocking-tls; echo $?
 
 * Design of the API
 - There are three usage modes
-  - You use the send and receive calls (blocking mode)
-  - You register callbacks and run the libevent dispatch loop (user
-    dispatch mode)
-  - You run your own event loop, using fd's for select and do the I/O
-    using the libradsec send/receive calls (on-your-own mode)
-- Fully reentrant (FIXME: any issues with libfreeradius-radius?)
+  - Application use the send and receive calls (blocking mode)
+  - Application registers callbacks and runs the libevent dispatch
+    loop (a.k.a. user dispatch mode)
+  - Application runs its own event loop, using fd's for select and
+    performs I/O using the libradsec send/receive calls
+    (a.k.a. on-your-own mode)
+- Fully reentrant (FIXME: issues with libfreeradius-radius?)
+- User chooses allocation regime
 
 * Dependencies
-The details below apply to Ubuntu 10.10.
+Details apply to Ubuntu 10.10.
 
 - libfreeradius-radius (2.1.9+dfsg-1ubuntu1)
   sudo apt-get install libfreeradius-dev libfreeradius2
@@ -41,22 +43,22 @@ The details below apply to Ubuntu 10.10.
 - [TLS] basic tls support
 ** Known issues
 - error stack is only one entry deep
+- custom allocation scheme is not used in all places
 ** Not implemented
-- custom allocation scheme used in all places
-  issue: libfreeradius-radius
 - server failover
 - [TLS] verification of CN
 - [TLS] preshared key support
 - [DTLS] support
 
 * Found a bug?
-If possible, please build the library with DEBUG defined
-(CFLAGS=-DDEBUG) and reproduce the problem.  With DEBUG defined, lots
-of asserts are enabled which might give a hint about what's gone
-wrong.
+Please report it.  This is how we improve the quality of the code.
+
+If possible, please build the library with DEBUG defined (CFLAGS="-g
+-DDEBUG") and reproduce the problem.  With DEBUG defined, lots of
+asserts are enabled which might give a hint about what's gone wrong.
 
 Running the library under gdb is another good idea.  If you experience
-a crash, catching that in gdb and providing a backtrace is highly
+a crash, catching it in gdb and providing a backtrace is highly
 valuable for debugging.
 
 Contact: mailto:linus+libradsec@nordu.net
