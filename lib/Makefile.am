@@ -35,5 +35,5 @@ libradsec_la_SOURCES += \
 	rsp_tlscommon.c
 endif
 
-libradsec_la_LDFLAGS = -version-info 0:0:0
+libradsec_la_LDFLAGS = -version-info 0:0:0 -export-symbols radsec.sym
 libradsec_la_CFLAGS = $(AM_CFLAGS) -Werror # -DDEBUG -DDEBUG_LEVENT 
