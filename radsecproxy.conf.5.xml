@@ -360,7 +360,10 @@ We already discussed the
 one of <literal>udp</literal>, <literal>tcp</literal>, <literal>tls</literal>
 or <literal>dtls</literal>. The value of <literal>secret</literal> is the
 shared RADIUS key used with this client. If the secret contains whitespace,
-the value must be quoted. This option is optional for TLS/DTLS.
+the value must be quoted.  A secret must be supplied for UDP/TCP.  If
+no secret is supplied for TLS/DTLS, a default value of "mysecret" is 
+being used.  This value will change in a future release to match the 
+upcoming standard.
     </para>
     <para>
 For a TLS/DTLS client you may also specify the <literal>tls</literal> option.

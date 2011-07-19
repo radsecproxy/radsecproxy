@@ -93,5 +93,9 @@
 	  the 0.9.x track.
 	- Detect OpenSSL version at runtime rather than at compile time.
 2011-07-03 1.4.3-dev
+	Notes:
+	- The default secret for TLS and DTLS will change in a future
+	  relase.  Plaese make sure to specify a secret in both client and
+	  server blocks to avoid surprises.
 	Bug fixes:
 	- Debug printout issue.
