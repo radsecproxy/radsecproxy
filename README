@@ -1,10 +1,10 @@
-This is unreleased radsecproxy 1.4.3-rc0.
+This is radsecproxy 1.4.3 from 22 July 2011.
 
 radsecproxy is a generic RADIUS proxy that supports both UDP and TLS
 (RadSec) RADIUS transports.  There is also experimental support for
 TCP and DTLS.
 
-It should build on most Linux and BSD platforms by simply typing
+It should build on most Unix and OSX platforms by simply typing
 "./configure && make".  It is possible to specify which RADIUS
 transport the build should support.  Without any special options to
 configure, all transports supported by the system will be enabled.

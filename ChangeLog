@@ -92,7 +92,7 @@
 	- Don't disable OpenSSL session caching for 0.9.8p and newer in
 	  the 0.9.x track.
 	- Detect OpenSSL version at runtime rather than at compile time.
-2011-07-21 1.4.3-rc0
+2011-07-22 1.4.3
 	Notes:
 	- The default secret for TLS and DTLS will change in a future
 	  relase.  Plaese make sure to specify a secret in both client and
