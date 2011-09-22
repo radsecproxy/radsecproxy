@@ -24,6 +24,10 @@
 #include "conn.h"
 #include "debug.h"
 
+#if defined (DEBUG)
+extern int _event_debug_mode_on;
+#endif
+
 static void
 _evlog_cb (int severity, const char *msg)
 {
@@ -243,7 +247,8 @@ event_init_eventbase (struct rs_connection *conn)
     return RSE_OK;
 
 #if defined (DEBUG)
-  event_enable_debug_mode ();
+  if (!_event_debug_mode_on)
+    event_enable_debug_mode ();
 #endif
   event_set_log_callback (_evlog_cb);
   conn->evb = event_base_new ();
