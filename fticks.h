@@ -1,6 +1,7 @@
 /* Copyright (C) 2011 NORDUnet A/S
  * See LICENSE for information about licensing.
  */
+
 int fticks_configure(struct options *options,
 		     uint8_t **reportingp,
 		     uint8_t **macp,
@@ -13,4 +14,3 @@ void fticks_log(const struct options *options,
 		const struct client *client,
 		const struct radmsg *msg,
 		const struct rqout *rqout);
-
