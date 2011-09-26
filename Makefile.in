@@ -260,7 +260,9 @@ catgconf_SOURCES = debug.c \
                       gconfig.c \
                       catgconf.c
 
-radsecproxy_CFLAGS = -g -Wall -fno-strict-aliasing @SSL_CFLAGS@ @TARGET_CFLAGS@
+radsecproxy_CFLAGS = -g -Wall -Werror -fno-strict-aliasing \
+	@SSL_CFLAGS@ @TARGET_CFLAGS@
+
 radsecproxy_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
 radsecproxy_LDADD = @SSL_LIBS@
 catgconf_CFLAGS = -g -Wall -fno-strict-aliasing @TARGET_CFLAGS@
