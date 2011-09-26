@@ -7,6 +7,11 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#include <sys/time.h>
+#include <stdint.h>
+#include <pthread.h>
+#include <regex.h>
+#include "list.h"
 #include "tlv11.h"
 #include "radmsg.h"
 #include "gconfig.h"

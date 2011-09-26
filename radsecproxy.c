@@ -69,7 +69,6 @@
 #include <openssl/err.h>
 #include <openssl/md5.h>
 #include "debug.h"
-#include "list.h"
 #include "hash.h"
 #include "util.h"
 #include "hostport.h"

@@ -24,9 +24,8 @@
 #include <arpa/inet.h>
 #include <regex.h>
 #include <pthread.h>
-#include "list.h"
-#include "hostport.h"
 #include "radsecproxy.h"
+#include "hostport.h"
 
 #ifdef RADPROT_UDP
 #include "debug.h"

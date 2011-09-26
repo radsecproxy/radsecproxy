@@ -26,7 +26,6 @@
 #include <pthread.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include "list.h"
 #include "hash.h"
 #include "radsecproxy.h"
 

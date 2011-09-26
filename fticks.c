@@ -10,7 +10,6 @@
 #include <regex.h>
 #include <pthread.h>
 #include <sys/time.h>
-#include "list.h"
 #include "radsecproxy.h"
 #include "debug.h"
 

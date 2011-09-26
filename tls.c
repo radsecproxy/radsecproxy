@@ -26,9 +26,8 @@
 #include <pthread.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include "list.h"
-#include "hostport.h"
 #include "radsecproxy.h"
+#include "hostport.h"
 
 #ifdef RADPROT_TLS
 #include "debug.h"
