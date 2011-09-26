@@ -17,7 +17,7 @@
 #include "fticks.h"
 
 static void
-format_hash(const uint8_t *hash, size_t out_len, uint8_t *out)
+_format_hash(const uint8_t *hash, size_t out_len, uint8_t *out)
 {
     int ir, iw;
 
@@ -26,10 +26,10 @@ format_hash(const uint8_t *hash, size_t out_len, uint8_t *out)
 }
 
 static void
-hash(const uint8_t *in,
-     const uint8_t *key,
-     size_t out_len,
-     uint8_t *out)
+_hash(const uint8_t *in,
+      const uint8_t *key,
+      size_t out_len,
+      uint8_t *out)
 {
     if (key == NULL) {
 	struct sha256_ctx ctx;
@@ -38,7 +38,7 @@ hash(const uint8_t *in,
 	sha256_init(&ctx);
 	sha256_update(&ctx, strlen((char *) in), in);
 	sha256_digest(&ctx, sizeof(hash), hash);
-	format_hash(hash, out_len, out);
+	_format_hash(hash, out_len, out);
     }
     else {
 	struct hmac_sha256_ctx ctx;
@@ -47,7 +47,7 @@ hash(const uint8_t *in,
 	hmac_sha256_set_key(&ctx, strlen((char *) key), key);
 	hmac_sha256_update(&ctx, strlen((char *) in), in);
 	hmac_sha256_digest(&ctx, sizeof(hash), hash);
-	format_hash(hash, out_len, out);
+	_format_hash(hash, out_len, out);
     }
 }
 
@@ -120,13 +120,17 @@ out:
     return r;
 }
 
-/** Hash the MAC in \a IN, keying with \a KEY if it's not NULL.
+/** Hash the Ethernet MAC address in \a IN, keying a HMAC with \a KEY
+    unless \a KEY is NULL.  If \a KEY is null \a IN is hashed with an
+    ordinary cryptographic hash function such as SHA-2.
 
     \a IN and \a KEY are NULL terminated strings.
 
-    \a IN is sanitised by lowercasing it, removing all but [0-9a-f]
-    and truncating it at first ';' (due to RADIUS praxis with tacking
-    on SSID to MAC in Calling-Station-Id).  */
+    \a IN is supposed to be an Ethernet MAC address and is sanitised
+    by lowercasing it, removing all but [0-9a-f] and truncating it at
+    the first ';' found.  The truncation is done because RADIUS
+    supposedly has a praxis of tacking on SSID to the MAC address in
+    Calling-Station-Id.  */
 void
 fticks_hashmac(const uint8_t *in,
 	       const uint8_t *key,
@@ -137,7 +141,7 @@ fticks_hashmac(const uint8_t *in,
     /* TODO: s/[!0-9a-f]//1 */
     /* TODO: truncate after first ';', if any */
 
-    hash(in, key, out_len, out);
+    _hash(in, key, out_len, out);
 }
 
 void
