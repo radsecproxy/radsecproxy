@@ -4,6 +4,8 @@
 
 #include <stdio.h>		/* For sprintf().  */
 #include <string.h>
+#include <ctype.h>
+#include <errno.h>
 #include <nettle/sha.h>
 #include <nettle/hmac.h>
 
@@ -129,18 +131,41 @@ out:
     by lowercasing it, removing all but [0-9a-f] and truncating it at
     the first ';' found.  The truncation is done because RADIUS
     supposedly has a praxis of tacking on SSID to the MAC address in
-    Calling-Station-Id.  */
-void
+    Calling-Station-Id.
+
+    \return 0 on success, -ENOMEM on out of memory.
+*/
+int
 fticks_hashmac(const uint8_t *in,
 	       const uint8_t *key,
 	       size_t out_len,
 	       uint8_t *out)
 {
-    /* TODO: lowercase */
-    /* TODO: s/[!0-9a-f]//1 */
-    /* TODO: truncate after first ';', if any */
+    uint8_t *in_copy = NULL;
+    uint8_t *p = NULL;
+    int i;
 
-    _hash(in, key, out_len, out);
+    in_copy = calloc(1, strlen(in) + 1);
+    if (in_copy == NULL)
+	return -ENOMEM;
+
+    /* Sanitise and lowercase 'in' into 'in_copy'.  */
+    for (i = 0, p = in_copy; in[i] != '\0'; i++) {
+	if (in[i] == ';') {
+	    *p++ = '\0';
+	    break;
+	}
+	if (in[i] >= '0' && in[i] <= '9') {
+	    *p++ = in[i];
+	}
+	else if (tolower(in[i]) >= 'a' && tolower(in[i]) <= 'f') {
+	    *p++ = tolower(in[i]);
+	}
+    }
+
+    _hash(in_copy, key, out_len, out);
+    free(in_copy);
+    return 0;
 }
 
 void
