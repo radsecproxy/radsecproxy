@@ -1,5 +1,7 @@
 AUTOMAKE_OPTIONS = foreign
 
+SUBDIRS = tests
+
 sbin_PROGRAMS = radsecproxy
 bin_PROGRAMS = catgconf
 noinst_LIBRARIES = librsp.a
