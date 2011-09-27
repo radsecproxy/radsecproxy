@@ -1,56 +1,56 @@
 AUTOMAKE_OPTIONS = foreign
 
 sbin_PROGRAMS = radsecproxy
-bin_PROGRAMS  = catgconf
+bin_PROGRAMS = catgconf
 noinst_LIBRARIES = librsp.a
 
 radsecproxy_SOURCES = main.c
 
-nodist_librsp_a_SOURCES = $(radsecproxy_SOURCES)
+librsp_a_SOURCES = \
+	radsecproxy.c \
+	tlscommon.c \
+	gconfig.c \
+	util.c \
+	debug.c \
+	list.c \
+	hash.c \
+	tlv11.c \
+	hostport.c \
+	radmsg.c \
+	udp.c \
+	tcp.c \
+	tls.c \
+	dtls.c \
+	fticks.c \
+	radsecproxy.h \
+	tlscommon.h \
+	gconfig.h \
+	debug.h \
+	util.h \
+	list.h \
+	hash.h \
+	tlv11.h \
+	hostport.h \
+	radmsg.h \
+	udp.h \
+	tcp.h \
+	tls.h \
+	dtls.h \
+	fticks.h
 
-librsp_a_SOURCES = radsecproxy.c \
-                      tlscommon.c \
-                      gconfig.c \
-                      util.c \
-                      debug.c \
-                      list.c \
-                      hash.c \
-                      tlv11.c \
-                      hostport.c \
-                      radmsg.c \
-                      udp.c \
-                      tcp.c \
-                      tls.c \
-                      dtls.c \
-                      fticks.c \
-                      radsecproxy.h \
-                      tlscommon.h \
-                      gconfig.h \
-                      debug.h \
-                      util.h \
-                      list.h \
-                      hash.h \
-                      tlv11.h \
-                      hostport.h \
-                      radmsg.h \
-                      udp.h \
-                      tcp.h \
-                      tls.h \
-                      dtls.h \
-		      fticks.h
+catgconf_SOURCES = \
+	debug.c \
+	util.c \
+	gconfig.c \
+	catgconf.c
 
-catgconf_SOURCES    = debug.c \
-                      util.c \
-                      gconfig.c \
-                      catgconf.c
-
-radsecproxy_CFLAGS  = -g -Wall -Werror -fno-strict-aliasing \
-	@SSL_CFLAGS@ @TARGET_CFLAGS@
+radsecproxy_CFLAGS = \
+	-g -Wall -Werror -fno-strict-aliasing @SSL_CFLAGS@ @TARGET_CFLAGS@
 radsecproxy_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
-radsecproxy_LDADD   = librsp.a @SSL_LIBS@
+radsecproxy_LDADD = librsp.a @SSL_LIBS@
 
-catgconf_CFLAGS     = -g -Wall -fno-strict-aliasing @TARGET_CFLAGS@
-catgconf_LDFLAGS    = @TARGET_LDFLAGS@
+catgconf_CFLAGS = -g -Wall -fno-strict-aliasing @TARGET_CFLAGS@
+catgconf_LDFLAGS = @TARGET_LDFLAGS@
 
 dist_man_MANS = radsecproxy.1 $(GENMANPAGES)
 EXTRA_DIST = LICENSE THANKS radsecproxy.conf-example radsecproxy.conf.5.xml \
