@@ -145,7 +145,7 @@ fticks_hashmac(const uint8_t *in,
     uint8_t *p = NULL;
     int i;
 
-    in_copy = calloc(1, strlen(in) + 1);
+    in_copy = calloc(1, strlen((const char *) in) + 1);
     if (in_copy == NULL)
 	return -ENOMEM;
 
