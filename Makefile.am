@@ -22,8 +22,11 @@ librsp_a_SOURCES = \
 	udp.c \
 	tcp.c \
 	tls.c \
-	dtls.c \
-	fticks.c
+	dtls.c
+
+if WANT_FTICKS
+librsp_a_SOURCES += fticks.c
+endif
 
 catgconf_SOURCES = \
 	debug.c \

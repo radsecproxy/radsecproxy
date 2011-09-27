@@ -48,9 +48,25 @@ AC_ARG_ENABLE(dtls,
     fi
   ])
 
+AC_ARG_ENABLE(fticks,
+AC_HELP_STRING([--enable-fticks],[build with F-Ticks support [default=no]]),
+[case $enableval in
+yes|no) ;;
+*) AC_MSG_ERROR([bad value $enableval for --enable-fticks, need yes or no]) ;;
+esac],
+[enable_fticks=no])
+
+if test "$enable_fticks" = "yes"; then
 AC_CHECK_LIB([nettle], [nettle_sha256_init],,
-    AC_MSG_ERROR([required library nettle not found]))
- 
+    [AC_MSG_WARN([required library nettle not found, fticks support disabled])
+     enable_fticks=no])
+fi
+
+if test "$enable_fticks" = "yes"; then
+AC_DEFINE([WANT_FTICKS], [1])
+fi
+AM_CONDITIONAL(WANT_FTICKS, test "$enable_fticks" = "yes")
+
 dnl Check if we're on Solaris and set CFLAGS accordingly
 AC_CANONICAL_SYSTEM
 case "${target_os}" in
