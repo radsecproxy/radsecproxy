@@ -23,22 +23,7 @@ librsp_a_SOURCES = \
 	tcp.c \
 	tls.c \
 	dtls.c \
-	fticks.c \
-	radsecproxy.h \
-	tlscommon.h \
-	gconfig.h \
-	debug.h \
-	util.h \
-	list.h \
-	hash.h \
-	tlv11.h \
-	hostport.h \
-	radmsg.h \
-	udp.h \
-	tcp.h \
-	tls.h \
-	dtls.h \
-	fticks.h
+	fticks.c
 
 catgconf_SOURCES = \
 	debug.c \
