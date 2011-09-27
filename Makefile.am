@@ -34,9 +34,11 @@ catgconf_SOURCES = \
 	gconfig.c \
 	catgconf.c
 
-radsecproxy_CFLAGS = \
+librsp_a_CFLAGS = \
 	-g -Wall -Werror -fno-strict-aliasing @SSL_CFLAGS@ @TARGET_CFLAGS@
-radsecproxy_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
+librsp_a_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
+radsecproxy_CFLAGS = $(librsp_a_CFLAGS)
+radsecproxy_LDFLAGS = $(librsp_a_LDFLAGS)
 radsecproxy_LDADD = librsp.a @SSL_LIBS@
 
 catgconf_CFLAGS = -g -Wall -fno-strict-aliasing @TARGET_CFLAGS@
