@@ -3195,7 +3195,7 @@ int createpidfile(const char *pidfile) {
     return f && !fclose(f) && r >= 0;
 }
 
-int main(int argc, char **argv) {
+int radsecproxy_main(int argc, char **argv) {
     pthread_t sigth;
     sigset_t sigset;
     struct list_node *entry;

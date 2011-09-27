@@ -2,8 +2,13 @@ AUTOMAKE_OPTIONS = foreign
 
 sbin_PROGRAMS = radsecproxy
 bin_PROGRAMS  = catgconf
+noinst_LIBRARIES = librsp.a
 
-radsecproxy_SOURCES = radsecproxy.c \
+radsecproxy_SOURCES = main.c
+
+nodist_librsp_a_SOURCES = $(radsecproxy_SOURCES)
+
+librsp_a_SOURCES = radsecproxy.c \
                       tlscommon.c \
                       gconfig.c \
                       util.c \
@@ -42,7 +47,7 @@ catgconf_SOURCES    = debug.c \
 radsecproxy_CFLAGS  = -g -Wall -Werror -fno-strict-aliasing \
 	@SSL_CFLAGS@ @TARGET_CFLAGS@
 radsecproxy_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
-radsecproxy_LDADD   = @SSL_LIBS@
+radsecproxy_LDADD   = librsp.a @SSL_LIBS@
 
 catgconf_CFLAGS     = -g -Wall -fno-strict-aliasing @TARGET_CFLAGS@
 catgconf_LDFLAGS    = @TARGET_LDFLAGS@
