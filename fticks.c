@@ -64,7 +64,6 @@ fticks_configure(struct options *options,
 
     if (reporting == NULL)
 	goto out;
-
     if (strcasecmp(reporting, "None") == 0)
 	options->fticks_reporting = RSP_FTICKS_REPORTING_NONE;
     else if (strcasecmp(reporting, "Basic") == 0)
@@ -78,6 +77,8 @@ fticks_configure(struct options *options,
 	goto out;
     }
 
+    if (mac == NULL)
+	goto out;
     if (strcasecmp(mac, "Static") == 0)
 	options->fticks_mac = RSP_FTICKS_MAC_STATIC;
     else if (strcasecmp(mac, "Original") == 0)
