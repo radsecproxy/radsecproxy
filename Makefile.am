@@ -53,6 +53,8 @@ EXTRA_DIST += \
 	radsecproxy.conf.5.xml radsecproxy.conf-example \
 	tools/README tools/naptr-eduroam.sh tools/radsec-dynsrv.sh
 
+DISTCHECK_CONFIGURE_FLAGS = --enable-fticks
+
 if HAVE_DOCBOOK2X_MAN
 GENMANPAGES = radsecproxy.conf.5
 endif
