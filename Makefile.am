@@ -44,7 +44,11 @@ radsecproxy_conf_CFLAGS = -g -Wall -fno-strict-aliasing @TARGET_CFLAGS@
 radsecproxy_conf_LDFLAGS = @TARGET_LDFLAGS@
 
 dist_man_MANS = radsecproxy.1 $(GENMANPAGES)
+
 EXTRA_DIST = \
+	configure Makefile.in tests/Makefile.in \
+	compile config.guess config.sub install-sh missing depcomp
+EXTRA_DIST += \
 	LICENSE THANKS \
 	radsecproxy.conf.5.xml radsecproxy.conf-example \
 	tools/README tools/naptr-eduroam.sh tools/radsec-dynsrv.sh
