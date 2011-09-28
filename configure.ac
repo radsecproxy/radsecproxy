@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 AC_INIT(radsecproxy, 1.5-dev, radsecproxy@uninett.no)
-=======
-AC_INIT(radsecproxy, 1.4.3, radsecproxy@uninett.no)
->>>>>>> master
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
 AC_PROG_CC
