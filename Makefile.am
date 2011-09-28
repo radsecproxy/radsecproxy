@@ -9,23 +9,23 @@ noinst_LIBRARIES = librsp.a
 radsecproxy_SOURCES = main.c
 
 librsp_a_SOURCES = \
-	radsecproxy.c \
-	tlscommon.c \
-	gconfig.c \
-	util.c \
-	debug.c \
-	list.c \
-	hash.c \
-	tlv11.c \
-	hostport.c \
-	radmsg.c \
-	udp.c \
-	tcp.c \
-	tls.c \
-	dtls.c
+	debug.c debug.h \
+	dtls.c dtls.h \
+	gconfig.c gconfig.h \
+	hash.c hash.h \
+	hostport.c hostport.h \
+	list.c list.h \
+	radmsg.c radmsg.h \
+	radsecproxy.c radsecproxy.h \
+	tcp.c tcp.h \
+	tls.c tls.h \
+	tlscommon.c tlscommon.h \
+	tlv11.c tlv11.h \
+	udp.c udp.h \
+	util.c util.h
 
 if WANT_FTICKS
-librsp_a_SOURCES += fticks.c
+librsp_a_SOURCES += fticks.c fticks.h
 endif
 
 catgconf_SOURCES = \
