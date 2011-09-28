@@ -45,7 +45,7 @@ radsecproxy_conf_LDFLAGS = @TARGET_LDFLAGS@
 
 dist_man_MANS = radsecproxy.1 $(GENMANPAGES)
 EXTRA_DIST = \
-	LICENSE THANKS  \
+	LICENSE THANKS \
 	radsecproxy.conf.5.xml radsecproxy.conf-example \
 	tools/README tools/naptr-eduroam.sh tools/radsec-dynsrv.sh
 
