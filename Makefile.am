@@ -29,10 +29,10 @@ librsp_a_SOURCES += fticks.c fticks.h
 endif
 
 catgconf_SOURCES = \
-	debug.c \
-	util.c \
-	gconfig.c \
-	catgconf.c
+	catgconf.c \
+	debug.c debug.h \
+	gconfig.c gconfig.h \
+	util.c util.h
 
 librsp_a_CFLAGS = \
 	-g -Wall -Werror -fno-strict-aliasing @SSL_CFLAGS@ @TARGET_CFLAGS@
