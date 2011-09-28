@@ -3,7 +3,7 @@ AUTOMAKE_OPTIONS = foreign
 SUBDIRS = tests
 
 sbin_PROGRAMS = radsecproxy
-bin_PROGRAMS = catgconf
+bin_PROGRAMS = radsecproxy-conf
 noinst_LIBRARIES = librsp.a
 
 radsecproxy_SOURCES = main.c
@@ -28,7 +28,7 @@ if WANT_FTICKS
 librsp_a_SOURCES += fticks.c fticks.h
 endif
 
-catgconf_SOURCES = \
+radsecproxy_conf_SOURCES = \
 	catgconf.c \
 	debug.c debug.h \
 	gconfig.c gconfig.h \
