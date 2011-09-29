@@ -1,3 +1,7 @@
+/* Copyright (C) 2011 NORDUnet A/S
+ * See LICENSE for information about licensing.
+ */
+
 #include <stdio.h>
 #include <errno.h>
 #include "../radsecproxy.h"

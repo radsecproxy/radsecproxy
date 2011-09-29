@@ -1,3 +1,7 @@
+/* Copyright (C) 2011 NORDUnet A/S
+ * See LICENSE for information about licensing.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
