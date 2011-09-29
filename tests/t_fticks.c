@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include "../radsecproxy.h"
-#include "../fticks.h"
+#include "../fticks_hashmac.h"
 
 static int
 _check_hash(const char *mac, const char *key, const char *hash, const char*hmac)
