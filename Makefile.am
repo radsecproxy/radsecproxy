@@ -24,24 +24,25 @@ librsp_a_SOURCES = \
 	udp.c udp.h \
 	util.c util.h
 
-if WANT_FTICKS
-librsp_a_SOURCES += fticks.c fticks.h
-endif
-
 radsecproxy_conf_SOURCES = \
 	catgconf.c \
 	debug.c debug.h \
 	gconfig.c gconfig.h \
 	util.c util.h
 
-librsp_a_CFLAGS = \
+####################
+AM_CFLAGS = \
 	-g -Wall -Werror -fno-strict-aliasing @SSL_CFLAGS@ @TARGET_CFLAGS@
-radsecproxy_CFLAGS = $(librsp_a_CFLAGS)
+
 radsecproxy_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
 radsecproxy_LDADD = librsp.a @SSL_LIBS@
 
-radsecproxy_conf_CFLAGS = -g -Wall -fno-strict-aliasing @TARGET_CFLAGS@
 radsecproxy_conf_LDFLAGS = @TARGET_LDFLAGS@
+
+####################
+if HAVE_DOCBOOK2X_MAN
+GENMANPAGES = radsecproxy.conf.5
+endif
 
 dist_man_MANS = radsecproxy.1 $(GENMANPAGES)
 
@@ -55,10 +56,16 @@ EXTRA_DIST += \
 
 DISTCHECK_CONFIGURE_FLAGS = --enable-fticks
 
-if HAVE_DOCBOOK2X_MAN
-GENMANPAGES = radsecproxy.conf.5
+####################
+if WANT_FTICKS
+librsp_a_SOURCES += fticks.c fticks.h fticks_hashmac.c fticks_hashmac.h
+bin_PROGRAMS += radsecproxy-hash
+radsecproxy_hash_LDADD = fticks_hashmac.o hash.o list.o
+#radsecproxy_hash_LDFLAGS = @TARGET_LDFLAGS@
+dist_man_MANS += radsecproxy-hash.1
 endif
 
+####################
 radsecproxy.conf.5: $(srcdir)/radsecproxy.conf.5.xml
 	docbook2x-man $<
 
@@ -68,4 +75,4 @@ html: $(srcdir)/radsecproxy.conf.5.xml
 	-openjade -E2000 -t sgml-raw -d /usr/share/sgml/docbook/stylesheet/dsssl/modular/html/docbook.dsl -o radsecproxy.conf.html $<
 
 clean-local:
-	-rm radsecproxy.conf.5
+	-rm $(GENMANPAGES)
