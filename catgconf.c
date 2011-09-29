@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     int c, compact = 0;
     struct gconffile *cfs;
 
-    debug_init("catgconf");
+    debug_init("radsecproxy-conf");
     debug_set_level(DBG_WARN);
 
     while ((c = getopt(argc, argv, "c")) != -1) {
