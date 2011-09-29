@@ -44,7 +44,7 @@ if HAVE_DOCBOOK2X_MAN
 GENMANPAGES = radsecproxy.conf.5
 endif
 
-dist_man_MANS = radsecproxy.1 $(GENMANPAGES)
+dist_man_MANS = radsecproxy.1 radsecproxy-hash.1 $(GENMANPAGES)
 
 EXTRA_DIST = \
 	configure Makefile.in tests/Makefile.in \
@@ -61,8 +61,6 @@ if WANT_FTICKS
 librsp_a_SOURCES += fticks.c fticks.h fticks_hashmac.c fticks_hashmac.h
 bin_PROGRAMS += radsecproxy-hash
 radsecproxy_hash_LDADD = fticks_hashmac.o hash.o list.o
-#radsecproxy_hash_LDFLAGS = @TARGET_LDFLAGS@
-dist_man_MANS += radsecproxy-hash.1
 endif
 
 ####################
