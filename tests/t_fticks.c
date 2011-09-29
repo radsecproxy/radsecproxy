@@ -35,6 +35,10 @@ main (int argc, char *argv[])
 {
   if (_check_hash(MAC1, KEY1, HASH1, HMAC1) != 0)
     return 1;
+  /* Again, for good measure.  (Or rather to make sure there's no
+     state left.)  */
+  if (_check_hash(MAC1, KEY1, HASH1, HMAC1) != 0)
+    return 1;
   if (_check_hash(MAC1_UC, KEY1, HASH1, HMAC1) != 0)
     return 1;
   if (_check_hash(MAC1_APPENDED, KEY1, HASH1, HMAC1) != 0)
