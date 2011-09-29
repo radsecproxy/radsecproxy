@@ -110,38 +110,6 @@ char *addr2string(struct sockaddr *addr) {
     return addr_buf[i];
 }
 
-#if 0
-/* not in use */
-int connectport(int type, char *host, char *port) {
-    struct addrinfo hints, *res0, *res;
-    int s = -1;
-
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype = type;
-    hints.ai_family = AF_UNSPEC;
-
-    if (getaddrinfo(host, port, &hints, &res0) != 0) {
-	debug(DBG_ERR, "connectport: can't resolve host %s port %s", host, port);
-	return -1;
-    }
-
-    for (res = res0; res; res = res->ai_next) {
-	s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-	if (s < 0) {
-	    debug(DBG_WARN, "connectport: socket failed");
-	    continue;
-	}
-	if (connect(s, res->ai_addr, res->ai_addrlen) == 0)
-	    break;
-	debug(DBG_WARN, "connectport: connect failed");
-	close(s);
-	s = -1;
-    }
-    freeaddrinfo(res0);
-    return s;
-}
-#endif
-
 /* Disable the "Don't Fragment" bit for UDP sockets. It is set by default, which may cause an "oversized"
    RADIUS packet to be discarded on first attempt (due to Path MTU discovery).
 */
