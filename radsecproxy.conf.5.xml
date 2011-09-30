@@ -32,10 +32,10 @@
       for details).
     </para>
     <para>
-    If the configuration file can not be found, the proxy will exit
-    with an error message. Note that there is also an include facility
-    so that any configuration file may include other configuration
-    files. The proxy will also exit on configuration errors.
+      If the configuration file can not be found, the proxy will exit
+      with an error message. Note that there is also an include facility
+      so that any configuration file may include other configuration
+      files. The proxy will also exit on configuration errors.
     </para>
   </refsect1>
   <refsect1>
@@ -693,7 +693,7 @@ blocktype name {
 	the users in this domain to use one server, while other users
 	could be matched by another realm block and use another
 	server.
-    </para>
+      </para>
     </refsect2>
     <refsect2>
       <title>Realm block options</title>
@@ -899,10 +899,10 @@ blocktype name {
     <para>
       <citerefentry>
         <refentrytitle>radsecproxy</refentrytitle><manvolnum>1</manvolnum>
-      </citerefentry>,
-      <ulink url="http://tools.ietf.org/html/draft-ietf-radext-radsec">
-        <citetitle>RadSec internet draft</citetitle>
-      </ulink>
+	</citerefentry>,
+	<ulink url="http://tools.ietf.org/html/draft-ietf-radext-radsec">
+	  <citetitle>RadSec internet draft</citetitle>
+	</ulink>
     </para>
   </refsect1>
 </refentry>
