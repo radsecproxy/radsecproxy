@@ -177,7 +177,8 @@ blocktype name {
 	    logging and can be set to <literal>None</literal>,
 	    <literal>Basic</literal> or <literal>Full</literal>.  Its
 	    default value is <literal>None</literal>.
-
+	  </para>
+	  <para>
 	    See <literal>radsecproxy.conf-example</literal> for
 	    details.  Note that radsecproxy has to be configured with
 	    support for F-Ticks (<literal>--enable-fticks</literal>)
@@ -192,14 +193,18 @@ blocktype name {
 	  <para>
 	    The FTicksMAC option can be used to control if and how
 	    Calling-Station-Id is being logged.  It can be set to one
-	    of <literal>Static</literal>, <literal>Original</literal>,
+	    of <literal>Static</literal>,
+	    <literal>Original</literal>,
 	    <literal>VendorHashed</literal>,
 	    <literal>VendorKeyHashed</literal>,
 	    <literal>FullyHashed</literal> or
 	    <literal>FullyKeyHashed</literal>.
-
-	    Its default value is <static>Static</static>.
-
+	  </para>
+	  <para>
+	    The default value for FTicksMAC is <literal>Static</literal>.
+	    Before chosing any of <literal>Original</literal>
+	  </para>
+	  <para>
 	    See <literal>radsecproxy.conf-example</literal> for
 	    details.  Note that radsecproxy has to be configured with
 	    support for F-Ticks (<literal>--enable-fticks</literal>)
@@ -216,7 +221,8 @@ blocktype name {
 	    when producing HMAC's as an effect of specifying
 	    VendorKeyHashed or FullyKeyHashed for the FTicksMAC
 	    option.
-
+	  </para>
+	  <para>
 	    Note that radsecproxy has to be configured with support
 	    for F-Ticks (<literal>--enable-fticks</literal>) for this
 	    option to have any effect.
