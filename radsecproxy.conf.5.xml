@@ -459,7 +459,9 @@ blocktype name {
       <literal>tls</literal> or <literal>dtls</literal>. The value of
       <literal>secret</literal> is the shared RADIUS key used with
       this client. If the secret contains whitespace, the value must
-      be quoted. This option is optional for TLS/DTLS.
+      be quoted. This option is optional for TLS/DTLS and if omitted
+      will default to "mysecret".  Note that the default value of
+      <literal>secret</literal> will change in an upcoming release.
     </para>
     <para>
       For a TLS/DTLS client you may also specify the
