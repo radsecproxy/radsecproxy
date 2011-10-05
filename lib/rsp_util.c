@@ -88,22 +88,26 @@ struct sockaddr *addr_copy(struct sockaddr *in) {
 }
 
 char *addr2string(struct sockaddr *addr) {
-    struct sockaddr_in6 *sa6;
+    union {
+	struct sockaddr *sa;
+	struct sockaddr_in *sa4;
+	struct sockaddr_in6 *sa6;
+    } u;
     struct sockaddr_in sa4;
     static char addr_buf[2][INET6_ADDRSTRLEN];
     static int i = 0;
     i = !i;
-    if (addr->sa_family == AF_INET6) {
-	sa6 = (struct sockaddr_in6 *)addr;
-	if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) {
+    u.sa = addr;
+    if (u.sa->sa_family == AF_INET6) {
+	if (IN6_IS_ADDR_V4MAPPED(&u.sa6->sin6_addr)) {
 	    memset(&sa4, 0, sizeof(sa4));
 	    sa4.sin_family = AF_INET;
-	    sa4.sin_port = sa6->sin6_port;
-	    memcpy(&sa4.sin_addr, &sa6->sin6_addr.s6_addr[12], 4);
-	    addr = (struct sockaddr *)&sa4;
+	    sa4.sin_port = u.sa6->sin6_port;
+	    memcpy(&sa4.sin_addr, &u.sa6->sin6_addr.s6_addr[12], 4);
+	    u.sa4 = &sa4;
 	}
     }
-    if (getnameinfo(addr, SOCKADDRP_SIZE(addr), addr_buf[i], sizeof(addr_buf[i]),
+    if (getnameinfo(u.sa, SOCKADDRP_SIZE(u.sa), addr_buf[i], sizeof(addr_buf[i]),
                     NULL, 0, NI_NUMERICHOST)) {
         debug(DBG_WARN, "getnameinfo failed");
         return "getnameinfo_failed";
