@@ -7,7 +7,7 @@
 	- catgconf renamed to radsecproxy-conf.
 
 	Bug fixes:
-	- All compiler warnings removed.  Building with -Werror.
+	- All compiler warnings removed.  Now compiling with -Werror.
 
 2011-07-22 1.4.3
 	Notes:
