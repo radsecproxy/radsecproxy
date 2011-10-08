@@ -1,0 +1,16 @@
+*.o
+.~/
+.gitignore
+config.log
+config.status
+librsp.a
+Makefile
+Makefile.in
+configure
+autom4te.cache
+.deps
+TAGS
+radsecproxy
+radsecproxy-conf
+radsecproxy-hash
+radsecproxy.conf.5
