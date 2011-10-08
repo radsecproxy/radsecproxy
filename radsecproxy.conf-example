@@ -39,12 +39,13 @@
 # fticksVISCOUNTRY option.
 
 # You can optionally specify FTicksMAC in order to determine if and
-# how Calling-Station-Id is logged.
+# how Calling-Station-Id (users Ethernet MAC address) is being logged.
 #   Static          -- Use a static string as a placeholder for
-#                      Calling-Station-Id.  This is the default.
+#                      Calling-Station-Id.
 #   Original        -- Log Calling-Station-Id as-is.
 #   VendorHashed    -- Keep first three segments as-is, hash the rest.
-#   VendorKeyHashed -- Like VendorHashed but salt with F-Ticks-Key.
+#   VendorKeyHashed -- Like VendorHashed but salt with F-Ticks-Key.    This
+#   		       is the default.
 #   FullyHashed     -- Hash the entire string.
 #   FullyKeyHashed  -- Like FullyHashed but salt with F-Ticks-Key.
 

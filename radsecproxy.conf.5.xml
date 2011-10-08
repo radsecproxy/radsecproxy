@@ -176,13 +176,17 @@ blocktype name {
 	    The FTicksReporting option is used to enable F-Ticks
 	    logging and can be set to <literal>None</literal>,
 	    <literal>Basic</literal> or <literal>Full</literal>.  Its
-	    default value is <literal>None</literal>.
+	    default value is <literal>None</literal>.  If
+	    FTicksReporting is set to anything other than
+	    <literal>None</literal>, note that the default value for
+	    FTicksMAC is <literal>VendorKeyHashed</literal> which
+	    needs FTicksKey to be set.
 	  </para>
 	  <para>
 	    See <literal>radsecproxy.conf-example</literal> for
 	    details.  Note that radsecproxy has to be configured with
-	    support for F-Ticks (<literal>--enable-fticks</literal>)
-	    for this option to have any effect.
+	    F-Ticks support (<literal>--enable-fticks</literal>) for
+	    this option to have any effect.
 	  </para>
 	</listitem>
       </varlistentry>
@@ -192,23 +196,31 @@ blocktype name {
         <listitem>
 	  <para>
 	    The FTicksMAC option can be used to control if and how
-	    Calling-Station-Id is being logged.  It can be set to one
-	    of <literal>Static</literal>,
-	    <literal>Original</literal>,
+	    Calling-Station-Id (the users Ethernet MAC address) is
+	    being logged.  It can be set to one of
+	    <literal>Static</literal>, <literal>Original</literal>,
 	    <literal>VendorHashed</literal>,
 	    <literal>VendorKeyHashed</literal>,
 	    <literal>FullyHashed</literal> or
 	    <literal>FullyKeyHashed</literal>.
 	  </para>
 	  <para>
-	    The default value for FTicksMAC is <literal>Static</literal>.
-	    Before chosing any of <literal>Original</literal>
+	    The default value for FTicksMAC is
+	    <literal>VendorKeyHashed</literal>.  This means that
+	    FTicksKey has to be set.
+	  <para>
+	    Before chosing any of <literal>Original</literal>,
+	    <literal>FullyHashed</literal> or
+	    <literal>VendorHashed</literal>, consider the implications
+	    for user privacy when MAC addresses are collected.  How
+	    will the logs be stored, transferred and accessed?
+	  </para>
 	  </para>
 	  <para>
 	    See <literal>radsecproxy.conf-example</literal> for
 	    details.  Note that radsecproxy has to be configured with
-	    support for F-Ticks (<literal>--enable-fticks</literal>)
-	    for this option to have any effect.
+	    F-Ticks support (<literal>--enable-fticks</literal>) for
+	    this option to have any effect.
 	  </para>
 	</listitem>
       </varlistentry>
@@ -223,8 +235,8 @@ blocktype name {
 	    option.
 	  </para>
 	  <para>
-	    Note that radsecproxy has to be configured with support
-	    for F-Ticks (<literal>--enable-fticks</literal>) for this
+	    Note that radsecproxy has to be configured with F-Ticks
+	    support (<literal>--enable-fticks</literal>) for this
 	    option to have any effect.
 	  </para>
 	</listitem>

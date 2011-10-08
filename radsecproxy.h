@@ -45,10 +45,10 @@ enum rsp_fticks_reporting_type {
 };
 
 enum rsp_fticks_mac_type {
-    RSP_FTICKS_MAC_STATIC = 0,	/* Default.  */
+    RSP_FTICKS_MAC_STATIC = 0,
     RSP_FTICKS_MAC_ORIGINAL,
     RSP_FTICKS_MAC_VENDOR_HASHED,
-    RSP_FTICKS_MAC_VENDOR_KEY_HASHED,
+    RSP_FTICKS_MAC_VENDOR_KEY_HASHED, /* Default.  */
     RSP_FTICKS_MAC_FULLY_HASHED,
     RSP_FTICKS_MAC_FULLY_KEY_HASHED
 };
