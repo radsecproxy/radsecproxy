@@ -2,6 +2,9 @@
 	New features:
 	- Support for F-Ticks logging.
 	- New binary radsecproxy-hash.
+	- A DynamicLookupCommand script can now signal "server not found"
+	by exiting with code 10.  The scripts in the tools directory now
+	do this.
 
 	Incompatible changes:
 	- catgconf renamed to radsecproxy-conf.
