@@ -1,6 +1,6 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
 
-Status as of libradsec-0.0.2-dev (2011-03-24).
+Status as of libradsec-0.0.2.dev (2011-03-24).
 
 * Build instructions
 cd libradsec/lib
