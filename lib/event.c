@@ -6,6 +6,9 @@
 #endif
 
 #include <assert.h>
+#include <string.h>
+#include <errno.h>
+
 #include <event2/event.h>
 #include <event2/bufferevent.h>
 #if defined (RS_ENABLE_TLS)

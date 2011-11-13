@@ -8,8 +8,6 @@
 #define true 1			/* FIXME: Bug report cgreen.  */
 #define false 0
 
-#define FREERADIUS_DICT "/usr/share/freeradius/dictionary"
-
 static void
 authenticate (struct rs_connection *conn, const char *user, const char *pw)
 {
@@ -21,7 +19,7 @@ authenticate (struct rs_connection *conn, const char *user, const char *pw)
   rs_request_add_reqpkt (req, msg);
   assert_true (rs_request_send (req, &resp) == 0);
   //printf ("%s\n", rs_err_msg (rs_err_conn_pop (conn), 1));
-  assert_true (rs_packet_frpkt (resp)->code == PW_AUTHENTICATION_ACK);
+  assert_true (rs_packet_frpkt (resp)->code == PW_ACCESS_ACCEPT);
 
   rs_request_destroy (req);
 }
@@ -45,9 +43,9 @@ send_large_packet (struct rs_connection *conn)
   char *buf;
   int f;
 
-  buf = malloc (4096);
+  buf = malloc (RS_MAX_PACKET_LEN);
   assert_true (buf != NULL);
-  memset (buf, 0, 4096);
+  memset (buf, 0, RS_MAX_PACKET_LEN);
 
   assert_true (rs_packet_create (conn, &msg0) == 0);
   /* 16 chunks --> heap corruption in evbuffer_drain detected by free() */
@@ -79,7 +77,7 @@ test_auth ()
   setup.username = "molgan";
   setup.pw = "password";
 
-  assert_true (rs_context_create (&ctx, FREERADIUS_DICT) == 0);
+  assert_true (rs_context_create (&ctx, NULL) == 0);
   assert_true (rs_context_read_config (ctx, setup.config_file) == 0);
   assert_true (rs_conn_create (ctx, &conn, setup.config_name) == 0);
 
@@ -98,7 +96,7 @@ test_buffering_cb (const uint8_t *buf, ssize_t len)
   hd (buf, len);
 #endif
   assert_true (len >= 20);
-  assert_true (len <= 4096);
+  assert_true (len <= RS_MAX_PACKET_LEN);
   assert_true ((buf[2] << 8) +  buf[3] == len);
   return len;
 }
@@ -111,7 +109,7 @@ test_buffering ()
   struct timeval timeout;
   struct polldata *polldata;
 
-  assert_true (rs_context_create (&ctx, FREERADIUS_DICT) == 0);
+  assert_true (rs_context_create (&ctx, NULL) == 0);
   assert_true (rs_context_read_config (ctx, "test.conf") == 0);
   assert_true (rs_conn_create (ctx, &conn, "test-udp-buffering") == 0);
 

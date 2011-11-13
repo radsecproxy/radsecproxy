@@ -52,12 +52,12 @@ int main(int argc, const char *argv[])
 	if (argc > 2) password = argv[2];
 
 	rcode = nr_packet_attr_append(&request, NULL,
-				      NR_DA_USER_NAME,
+				      RS_DA_USER_NAME,
 				      user, 0);
 	if (rcode < 0) goto error;
 	
 	rcode = nr_packet_attr_append(&request, NULL,
-				      NR_DA_USER_PASSWORD,
+				      RS_DA_USER_PASSWORD,
 				      password, 0);
 	if (rcode < 0) goto error;
 
@@ -75,7 +75,7 @@ int main(int argc, const char *argv[])
 	if (rcode < 0) goto error;
 
 	rcode = nr_packet_attr_append(&response, &request,
-				      NR_DA_REPLY_MESSAGE,
+				      RS_DA_REPLY_MESSAGE,
 				      "Success!", 0);
 	if (rcode < 0) goto error;
 

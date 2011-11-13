@@ -29,17 +29,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  \brief Encoding and decoding packets
  */
 
-#include	<networkradius-devel/client.h>
+#include	"client.h"
 
-#if NR_MAX_PACKET_LEN < 64
-#error NR_MAX_PACKET_LEN is too small.  It should be at least 64.
+#if RS_MAX_PACKET_LEN < 64
+#error RS_MAX_PACKET_LEN is too small.  It should be at least 64.
 #endif
 
-#if NR_MAX_PACKET_LEN > 16384
-#error NR_MAX_PACKET_LEN is too large.  It should be smaller than 16K.
+#if RS_MAX_PACKET_LEN > 16384
+#error RS_MAX_PACKET_LEN is too large.  It should be smaller than 16K.
 #endif
 
-const char *nr_packet_codes[NR_MAX_PACKET_CODE + 1] = {
+const char *nr_packet_codes[RS_MAX_PACKET_CODE + 1] = {
   NULL,
   "Access-Request",
   "Access-Accept",
@@ -61,7 +61,7 @@ const char *nr_packet_codes[NR_MAX_PACKET_CODE + 1] = {
 };
 
 
-static uint64_t allowed_responses[NR_MAX_PACKET_CODE + 1] = {
+static uint64_t allowed_responses[RS_MAX_PACKET_CODE + 1] = {
 	0,
 	(1 << PW_ACCESS_ACCEPT) | (1 << PW_ACCESS_REJECT) | (1 << PW_ACCESS_CHALLENGE),
 	0, 0,
@@ -89,18 +89,18 @@ int nr_packet_ok_raw(const uint8_t *data, size_t sizeof_data)
 
 	if (!data || (sizeof_data < 20)) {
 		nr_debug_error("Invalid argument");
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	packet_len = (data[2] << 8) | data[3];
 	if (packet_len < 20) {
 		nr_debug_error("Packet length is too small");
-		return -NR_ERR_PACKET_TOO_SMALL;
+		return -RSE_PACKET_TOO_SMALL;
 	}
 
 	if (packet_len > sizeof_data) {
 		nr_debug_error("Packet length overflows received data");
-		return -NR_ERR_PACKET_TOO_LARGE;
+		return -RSE_PACKET_TOO_LARGE;
 	}
 
 	/*
@@ -112,17 +112,17 @@ int nr_packet_ok_raw(const uint8_t *data, size_t sizeof_data)
 	for (attr = data + 20; attr < end; attr += attr[1]) {
 		if ((attr + 2) > end) {
 			nr_debug_error("Attribute overflows packet");
-			return -NR_ERR_ATTR_OVERFLOW;
+			return -RSE_ATTR_OVERFLOW;
 		}
 
 		if (attr[1] < 2) {
 			nr_debug_error("Attribute length is too small");
-			return -NR_ERR_ATTR_TOO_SMALL;
+			return -RSE_ATTR_TOO_SMALL;
 		}
 
 		if ((attr + attr[1]) > end) {
 			nr_debug_error("Attribute length is too large");
-			return -NR_ERR_ATTR_TOO_LARGE;
+			return -RSE_ATTR_TOO_LARGE;
 		}
 	}
 
@@ -133,14 +133,14 @@ int nr_packet_ok(RADIUS_PACKET *packet)
 {
 	int rcode;
 
-	if (!packet) return -NR_ERR_INVALID_ARG;
+	if (!packet) return -RSE_INVAL;
 
-	if ((packet->flags & NR_PACKET_OK) != 0) return 0;
+	if ((packet->flags & RS_PACKET_OK) != 0) return 0;
 
 	rcode = nr_packet_ok_raw(packet->data, packet->length);
 	if (rcode < 0) return rcode;
 
-	packet->flags |= NR_PACKET_OK;
+	packet->flags |= RS_PACKET_OK;
 	return 0;
 }
 
@@ -176,7 +176,7 @@ static int msg_auth_ok(const RADIUS_PACKET *original,
 	
 	if (ma[1] != 18) {
 		nr_debug_error("Message-Authenticator has invalid length");
-		return -NR_ERR_MSG_AUTH_LEN;
+		return -RSE_MSG_AUTH_LEN;
 	}
 
 	memcpy(packet_vector, data + 4, sizeof(packet_vector));
@@ -203,7 +203,7 @@ static int msg_auth_ok(const RADIUS_PACKET *original,
 	case PW_ACCESS_CHALLENGE:
 		if (!original) {
 			nr_debug_error("Cannot validate response without request");
-			return -NR_ERR_REQUEST_REQUIRED;
+			return -RSE_REQUEST_REQUIRED;
 		}
 		memcpy(data + 4, original->vector, sizeof(original->vector));
 		break;
@@ -219,7 +219,7 @@ static int msg_auth_ok(const RADIUS_PACKET *original,
 	if (digest_cmp(calc_auth_vector, msg_auth_vector,
 		       sizeof(calc_auth_vector)) != 0) {
 		nr_debug_error("Invalid Message-Authenticator");
-		return -NR_ERR_MSG_AUTH_WRONG;
+		return -RSE_MSG_AUTH_WRONG;
 	}
 
 	return 1;
@@ -234,7 +234,7 @@ static int packet_auth_ok(const RADIUS_PACKET *original,
 {
 	uint8_t packet_vector[sizeof(original->vector)];
 	uint8_t calc_digest[sizeof(original->vector)];
-	NR_MD5_CTX ctx;
+	RS_MD5_CTX ctx;
 
 	if ((data[0] == PW_ACCESS_REQUEST) ||
 	    (data[0] == PW_STATUS_SERVER)) return 1;
@@ -247,17 +247,17 @@ static int packet_auth_ok(const RADIUS_PACKET *original,
 		memcpy(data + 4, original->vector, sizeof(original->vector));
 	}
 
-	nr_MD5Init(&ctx);
-	nr_MD5Update(&ctx, data, length);
-	nr_MD5Update(&ctx, original->secret, original->sizeof_secret);
-	nr_MD5Final(calc_digest, &ctx);
+	RS_MD5Init(&ctx);
+	RS_MD5Update(&ctx, data, length);
+	RS_MD5Update(&ctx, original->secret, original->sizeof_secret);
+	RS_MD5Final(calc_digest, &ctx);
 
 	memcpy(data + 4, packet_vector, sizeof(packet_vector));
 
 	if (digest_cmp(calc_digest, packet_vector,
 		       sizeof(packet_vector)) != 0) {
 		nr_debug_error("Invalid authentication vector");
-		return -NR_ERR_AUTH_VECTOR_WRONG;
+		return -RSE_AUTH_VECTOR_WRONG;
 	}
 
 	return 0;
@@ -274,10 +274,10 @@ int nr_packet_verify(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 
 	if (!packet || !packet->data || !packet->secret) {
 		nr_debug_error("Invalid argument");
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
-	if ((packet->flags & NR_PACKET_VERIFIED) != 0) return 0;
+	if ((packet->flags & RS_PACKET_VERIFIED) != 0) return 0;
 
 	/*
 	 *	Packet isn't well formed.  Ignore it.
@@ -291,16 +291,16 @@ int nr_packet_verify(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 	if (original) {
 		uint64_t mask;
 
-		if (original->code > NR_MAX_PACKET_CODE) {
+		if (original->code > RS_MAX_PACKET_CODE) {
 			nr_debug_error("Invalid original code %u",
 					   original->code);
-			return -NR_ERR_REQUEST_CODE_INVALID;
+			return -RSE_INVALID_REQUEST_CODE;
 		}
 
 		if (packet->data[1] != original->id) {
 			nr_debug_error("Ignoring response with wrong ID %u",
 					   packet->data[1]);
-			return -NR_ERR_RESPONSE_ID_INVALID;
+			return -RSE_INVALID_RESPONSE_CODE;
 		}
 
 		mask = 1;
@@ -309,18 +309,18 @@ int nr_packet_verify(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 		if ((allowed_responses[original->code] & mask) == 0) {
 			nr_debug_error("Ignoring response with wrong code %u",
 					   packet->data[0]);
-			return -NR_ERR_RESPONSE_CODE_INVALID;
+			return -RSE_INVALID_RESPONSE_CODE;
 		}
 
 		if ((memcmp(&packet->src, &original->dst, sizeof(packet->src)) != 0) &&
-		    (sockaddr_cmp(&(packet->src), &(original->dst)) != 0)) {
+		    (evutil_sockaddr_cmp(&(packet->src), &(original->dst)) != 0)) {
 			nr_debug_error("Ignoring response from wrong IP/port");
-			return -NR_ERR_RESPONSE_SRC_INVALID;
+			return -RSE_INVALID_RESPONSE_SRC;
 		}
 
 	} else if (allowed_responses[packet->data[0]] != 0) {
 		nr_debug_error("Ignoring response without original");
-		return -NR_ERR_RESPONSE_CODE_INVALID;
+		return -RSE_INVALID_RESPONSE_CODE;
 	}
 
 #ifdef PW_MESSAGE_AUTHENTICATOR
@@ -344,7 +344,7 @@ int nr_packet_verify(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 	rcode = packet_auth_ok(original, packet->data, packet->length);
 	if (rcode < 0) return rcode;
 
-	packet->flags |= NR_PACKET_VERIFIED;
+	packet->flags |= RS_PACKET_VERIFIED;
 
 	return 0;
 }
@@ -357,9 +357,9 @@ int nr_packet_decode(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 	const uint8_t	*end;
 	VALUE_PAIR	**tail, *vp;
 
-	if (!packet) return -NR_ERR_INVALID_ARG;
+	if (!packet) return -RSE_INVAL;
 
-	if ((packet->flags & NR_PACKET_DECODED) != 0) return 0;
+	if ((packet->flags & RS_PACKET_DECODED) != 0) return 0;
       
 	rcode = nr_packet_ok(packet);
 	if (rcode < 0) return rcode;
@@ -387,10 +387,10 @@ int nr_packet_decode(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 			vp = vp->next;
 		}
 
-		if (num_attributes > NR_MAX_ATTRIBUTES) {
+		if (num_attributes > RS_MAX_ATTRIBUTES) {
 			nr_debug_error("Too many attributes");
 			nr_vp_free(&packet->vps);
-			return -NR_ERR_TOO_MANY_ATTRS;
+			return -RSE_TOO_MANY_ATTRS;
 		}
 	}
 
@@ -398,7 +398,7 @@ int nr_packet_decode(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 	packet->id = data[1];
 	memcpy(packet->vector, data + 4, sizeof(packet->vector));
 
-	packet->flags |= NR_PACKET_DECODED;
+	packet->flags |= RS_PACKET_DECODED;
 
 	return 0;
 }
@@ -411,9 +411,9 @@ int nr_packet_sign(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 	const uint8_t *attr, *end;
 #endif
 
-	if ((packet->flags & NR_PACKET_SIGNED) != 0) return 0;
+	if ((packet->flags & RS_PACKET_SIGNED) != 0) return 0;
 
-	if ((packet->flags & NR_PACKET_ENCODED) == 0) {
+	if ((packet->flags & RS_PACKET_ENCODED) == 0) {
 		int rcode;
 
 		rcode = nr_packet_encode(packet, original);
@@ -426,7 +426,7 @@ int nr_packet_sign(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 #ifdef PW_MESSAGE_AUTHENTICATOR
 		if (!original) {
 			nr_debug_error("Original packet is required to create the  Message-Authenticator");
-			return -NR_ERR_REQUEST_REQUIRED;
+			return -RSE_REQUEST_REQUIRED;
 		}
 #endif
 		
@@ -483,18 +483,18 @@ int nr_packet_sign(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 	 */
 	if (!((packet->code == PW_ACCESS_REQUEST) ||
 	      (packet->code == PW_STATUS_SERVER))) {
-		NR_MD5_CTX	ctx;
+		RS_MD5_CTX	ctx;
 
-		nr_MD5Init(&ctx);
-		nr_MD5Update(&ctx, packet->data, packet->length);
-		nr_MD5Update(&ctx, packet->secret, packet->sizeof_secret);
-		nr_MD5Final(packet->vector, &ctx);
+		RS_MD5Init(&ctx);
+		RS_MD5Update(&ctx, packet->data, packet->length);
+		RS_MD5Update(&ctx, packet->secret, packet->sizeof_secret);
+		RS_MD5Final(packet->vector, &ctx);
 	}
 
 	memcpy(packet->data + 4, packet->vector, sizeof(packet->vector));
 
 	packet->attempts = 0;
-	packet->flags |= NR_PACKET_SIGNED;
+	packet->flags |= RS_PACKET_SIGNED;
 
 	return 0;
 }
@@ -504,28 +504,28 @@ static int can_encode_packet(RADIUS_PACKET *packet,
 			     const RADIUS_PACKET *original)
 {
 	if ((packet->code == 0) ||
-	    (packet->code > NR_MAX_PACKET_CODE) ||
-	    (original && (original->code > NR_MAX_PACKET_CODE))) {
+	    (packet->code > RS_MAX_PACKET_CODE) ||
+	    (original && (original->code > RS_MAX_PACKET_CODE))) {
 		nr_debug_error("Cannot send unknown packet code");
-		return -NR_ERR_REQUEST_CODE_INVALID;
+		return -RSE_INVALID_REQUEST_CODE;
 	}
 
 	if (!nr_packet_codes[packet->code]) {
 		nr_debug_error("Cannot handle packet code %u",
 				   packet->code);
-		return -NR_ERR_REQUEST_CODE_INVALID;
+		return -RSE_INVALID_REQUEST_CODE;
 	}
 
 #ifdef NR_NO_MALLOC
 	if (!packet->data) {
 		nr_debug_error("No place to put packet");
-		return -NR_ERR_NO_PACKET_DATA;
+		return -RSE_NO_PACKET_DATA;
 	}
 #endif
 
 	if (packet->sizeof_data < 20) {
 		nr_debug_error("The buffer is too small to encode the packet");
-		return -NR_ERR_PACKET_TOO_SMALL;
+		return -RSE_PACKET_TOO_SMALL;
 	}
 
 	/*
@@ -540,14 +540,14 @@ static int can_encode_packet(RADIUS_PACKET *packet,
 		if ((allowed_responses[original->code] & mask) == 0) {
 			nr_debug_error("Cannot encode response %u to packet %u",
 					   packet->code, original->code);
-			return -NR_ERR_RESPONSE_CODE_INVALID;
+			return -RSE_INVALID_RESPONSE_CODE;
 		}
 		packet->id = original->id;
 
 	} else if (allowed_responses[packet->code] == 0) {
 		nr_debug_error("Cannot encode response %u without original",
 				   packet->code);
-		return -NR_ERR_REQUEST_REQUIRED;
+		return -RSE_REQUEST_REQUIRED;
 	}
 
 	return 0;
@@ -555,7 +555,7 @@ static int can_encode_packet(RADIUS_PACKET *packet,
 
 static void encode_header(RADIUS_PACKET *packet)
 {
-	if ((packet->flags & NR_PACKET_HEADER) != 0) return;
+	if ((packet->flags & RS_PACKET_HEADER) != 0) return;
 
 	memset(packet->data, 0, 20);
 	packet->data[0] = packet->code;
@@ -576,7 +576,7 @@ static void encode_header(RADIUS_PACKET *packet)
 
 	memcpy(packet->data + 4, packet->vector, sizeof(packet->vector));
 
-	packet->flags |= NR_PACKET_HEADER;
+	packet->flags |= RS_PACKET_HEADER;
 }
 
 int nr_packet_encode(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
@@ -589,7 +589,7 @@ int nr_packet_encode(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 	const VALUE_PAIR *vp;
 	uint8_t *data, *end;
 
-	if ((packet->flags & NR_PACKET_ENCODED) != 0) return 0;
+	if ((packet->flags & RS_PACKET_ENCODED) != 0) return 0;
 
 	rcode = can_encode_packet(packet, original);
 	if (rcode < 0) return rcode;
@@ -642,7 +642,7 @@ int nr_packet_encode(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 	packet->data[2] = (packet->length >> 8) & 0xff;
 	packet->data[3] = packet->length & 0xff;
 
-	packet->flags |= NR_PACKET_ENCODED;
+	packet->flags |= RS_PACKET_ENCODED;
 
 	return packet->length;
 }
@@ -696,7 +696,7 @@ int nr_packet_walk(RADIUS_PACKET *packet, void *ctx,
 	uint8_t *attr;
 	const uint8_t *end;
 
-	if (!packet || !callback) return -NR_ERR_INVALID_ARG;
+	if (!packet || !callback) return -RSE_INVAL;
 
 	rcode = nr_packet_ok(packet);
 	if (rcode < 0) return rcode;
@@ -760,7 +760,7 @@ int nr_packet_walk(RADIUS_PACKET *packet, void *ctx,
 				break;
 
 			default:
-				return -NR_ERR_INTERNAL_FAILURE;
+				return -RSE_INTERNAL;
 			}
 
 			switch (dv_length) {
@@ -774,7 +774,7 @@ int nr_packet_walk(RADIUS_PACKET *packet, void *ctx,
 				break;
 
 			default:
-				return -NR_ERR_INTERNAL_FAILURE;
+				return -RSE_INTERNAL;
 			}
 
 			rcode = do_callback(ctx, callback,
@@ -794,17 +794,15 @@ int nr_packet_init(RADIUS_PACKET *packet, const RADIUS_PACKET *original,
 {
 	int rcode;
 
-	if ((code < 0) || (code > NR_MAX_PACKET_CODE)) {
-		return -NR_ERR_REQUEST_CODE_INVALID;
+	if ((code < 0) || (code > RS_MAX_PACKET_CODE)) {
+		return -RSE_INVALID_REQUEST_CODE;
 	}
 
-	if (!data || (sizeof_data < 20)) return -NR_ERR_INVALID_ARG;
-
-	if (!secret || !*secret) return -NR_ERR_INVALID_ARG;
+	if (!data || (sizeof_data < 20)) return -RSE_INVAL;
 
 	memset(packet, 0, sizeof(*packet));
 	packet->secret = secret;
-	packet->sizeof_secret = strlen(secret);
+	packet->sizeof_secret = secret ? strlen(secret) : 0;
 	packet->code = code;
 	packet->id = 0;
 	packet->data = data;
@@ -832,7 +830,7 @@ static int pack_eap(RADIUS_PACKET *packet,
 	end = attr + packet->sizeof_data;
 	
 	while (left > 253) {
-		if ((attr + 255) > end) return -NR_ERR_ATTR_OVERFLOW;
+		if ((attr + 255) > end) return -RSE_ATTR_OVERFLOW;
 		
 		attr[0] = PW_EAP_MESSAGE;
 		attr[1] = 255;
@@ -842,7 +840,7 @@ static int pack_eap(RADIUS_PACKET *packet,
 		left -= 253;
 	}
 	
-	if ((attr + (2 + left)) > end) return -NR_ERR_ATTR_OVERFLOW;
+	if ((attr + (2 + left)) > end) return -RSE_ATTR_OVERFLOW;
 	
 	attr[0] = PW_EAP_MESSAGE;
 	attr[1] = 2 + left;
@@ -864,27 +862,27 @@ ssize_t nr_packet_attr_append(RADIUS_PACKET *packet,
 	const VALUE_PAIR *vp;
 
 	if (!packet || !da || !data) {
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	if (data_len == 0) {
-		if (da->type != NR_TYPE_STRING) return -NR_ERR_ATTR_TOO_SMALL;
+		if (da->type != RS_TYPE_STRING) return -RSE_ATTR_TOO_SMALL;
 
 		data_len = strlen(data);
 	}
 
-	packet->flags |= NR_PACKET_ENCODED; /* ignore any VPs */
+	packet->flags |= RS_PACKET_ENCODED; /* ignore any VPs */
 
 	attr = packet->data + packet->length;
 	end = attr + packet->sizeof_data;
 
 	if ((attr + 2 + data_len) > end) {
-		return -NR_ERR_ATTR_OVERFLOW;
+		return -RSE_ATTR_OVERFLOW;
 	}
 
 	if ((da->flags.length != 0) &&
 	    (data_len != da->flags.length)) {
-		return -NR_ERR_ATTR_VALUE_MALFORMED;
+		return -RSE_ATTR_VALUE_MALFORMED;
 	}
 
 #ifdef PW_EAP_MESSAGE
@@ -897,7 +895,7 @@ ssize_t nr_packet_attr_append(RADIUS_PACKET *packet,
 	}
 #endif
 
-	if (data_len > 253) return -NR_ERR_ATTR_TOO_LARGE;
+	if (data_len > 253) return -RSE_ATTR_TOO_LARGE;
 
 	vp = nr_vp_init(&my_vp, da);
 	rcode = nr_vp_set_data(&my_vp, data, data_len);

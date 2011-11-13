@@ -12,6 +12,7 @@
 #include <event2/bufferevent_ssl.h>
 #include <openssl/err.h>
 #endif
+#include <radius/client.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include "tcp.h"
@@ -35,26 +36,19 @@ _read_header (struct rs_packet *pkt)
   if (n == RS_HEADER_LEN)
     {
       pkt->flags |= rs_packet_hdr_read_flag;
-      pkt->rpkt->data_len = (pkt->hdr[2] << 8) + pkt->hdr[3];
-      if (pkt->rpkt->data_len < 20 || pkt->rpkt->data_len > 4096)
+      pkt->rpkt->length = (pkt->hdr[2] << 8) + pkt->hdr[3];
+      if (pkt->rpkt->length < 20 || pkt->rpkt->length > RS_MAX_PACKET_LEN)
 	{
 	  conn_close (&pkt->conn);
 	  return rs_err_conn_push (pkt->conn, RSE_INVALID_PKT,
 				   "invalid packet length: %d",
-				   pkt->rpkt->data_len);
-	}
-      pkt->rpkt->data = rs_malloc (pkt->conn->ctx, pkt->rpkt->data_len);
-      if (!pkt->rpkt->data)
-	{
-	  conn_close (&pkt->conn);
-	  return rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__,
-				      NULL);
+				   pkt->rpkt->length);
 	}
       memcpy (pkt->rpkt->data, pkt->hdr, RS_HEADER_LEN);
       bufferevent_setwatermark (pkt->conn->bev, EV_READ,
-				pkt->rpkt->data_len - RS_HEADER_LEN, 0);
+				pkt->rpkt->length - RS_HEADER_LEN, 0);
       rs_debug (("%s: packet header read, total pkt len=%d\n",
-		 __func__, pkt->rpkt->data_len));
+		 __func__, pkt->rpkt->length));
     }
   else if (n < 0)
     {
@@ -74,17 +68,18 @@ static int
 _read_packet (struct rs_packet *pkt)
 {
   size_t n = 0;
+  int err;
 
   rs_debug (("%s: trying to read %d octets of packet data\n", __func__,
-	     pkt->rpkt->data_len - RS_HEADER_LEN));
+	     pkt->rpkt->length - RS_HEADER_LEN));
 
   n = bufferevent_read (pkt->conn->bev,
 			pkt->rpkt->data + RS_HEADER_LEN,
-			pkt->rpkt->data_len - RS_HEADER_LEN);
+			pkt->rpkt->length - RS_HEADER_LEN);
 
   rs_debug (("%s: read %ld octets of packet data\n", __func__, n));
 
-  if (n == pkt->rpkt->data_len - RS_HEADER_LEN)
+  if (n == pkt->rpkt->length - RS_HEADER_LEN)
     {
       bufferevent_disable (pkt->conn->bev, EV_READ);
       rs_debug (("%s: complete packet read\n", __func__));
@@ -96,11 +91,12 @@ _read_packet (struct rs_packet *pkt)
 	 - invalid code field
 	 - attribute lengths >= 2
 	 - attribute sizes adding up correctly  */
-      if (!rad_packet_ok (pkt->rpkt, 0))
+      err = nr_packet_ok (pkt->rpkt);
+      if (err != RSE_OK)
 	{
 	  conn_close (&pkt->conn);
-	  return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
-				      "invalid packet: %s", fr_strerror ());
+	  return rs_err_conn_push_fl (pkt->conn, err, __FILE__, __LINE__,
+				      "invalid packet");
 	}
 
 #if defined (DEBUG)
@@ -123,7 +119,7 @@ _read_packet (struct rs_packet *pkt)
     rs_debug (("%s: buffer frozen when reading packet\n", __func__));
   else				/* Short packet.  */
     rs_debug (("%s: waiting for another %d octets\n", __func__,
-	       pkt->rpkt->data_len - RS_HEADER_LEN - n));
+	       pkt->rpkt->length - RS_HEADER_LEN - n));
 
   return 0;
 }

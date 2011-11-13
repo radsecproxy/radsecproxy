@@ -3,6 +3,9 @@
 
 /* See the file COPYING for licensing information.  */
 
+#ifndef _RADSEC_REQUEST_H_
+#define _RADSEC_REQUEST_H_ 1
+
 struct rs_request;
 
 #if defined (__cplusplus)
@@ -42,3 +45,5 @@ struct rs_packet *rs_request_get_reqmsg(const struct rs_request *req);
 #if defined (__cplusplus)
 }
 #endif
+
+#endif /* _RADSEC_REQUEST_H_ */

@@ -134,7 +134,7 @@ foreach $attr_val (sort {lc($attributes{$a}{'name'}) cmp lc($attributes{$b}{'nam
 print DICT "};\n\n";
 close DICT;
 
-open HDR, ">radius.h" or die "Failed creating radius.c: $!\n";
+open HDR, ">../include/radsec/radius.h" or die "Failed creating radius.c: $!\n";
 
 print HDR "/* Automatically generated file.  Do not edit */\n\n";
 
@@ -174,7 +174,7 @@ foreach $attr_val (sort {$a <=> $b} keys %attributes) {
     $name =~ tr/a-z/A-Z/;
     $name =~ tr/-/_/;
 
-    print HDR "#define NR_DA_$name (&nr_dict_attrs[$attributes{$attr_val}{'offset'}])\n";
+    print HDR "#define RS_DA_$name (&nr_dict_attrs[$attributes{$attr_val}{'offset'}])\n";
 }
 
 print HDR "/* Automatically generated file.  Do not edit */\n";

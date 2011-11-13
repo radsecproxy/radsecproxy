@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  \brief Functions which should be customized for your local system.
  */
 
-#include <networkradius-devel/client.h>
+#include "client.h"
 
 #include	<unistd.h>
 #include	<fcntl.h>

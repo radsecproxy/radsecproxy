@@ -6,6 +6,9 @@
 #endif
 
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include "err.h"

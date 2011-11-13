@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  \brief Attribute encoding and decoding routines.
  */
 
-#include <networkradius-devel/client.h>
+#include "client.h"
 
 /*
  *	Encodes the data portion of an attribute.
@@ -48,7 +48,7 @@ static ssize_t vp2data_any(const RADIUS_PACKET *packet,
 	uint8_t	array[4];
 	const VALUE_PAIR *vp = *pvp;
 
-#ifdef NR_TYPE_TLV
+#ifdef RS_TYPE_TLV
 	/*
 	 *	See if we need to encode a TLV.  The low portion of
 	 *	the attribute has already been placed into the packer.
@@ -73,41 +73,41 @@ static ssize_t vp2data_any(const RADIUS_PACKET *packet,
 	len = vp->length;
 
 	switch(vp->da->type) {
-	case NR_TYPE_IPV6PREFIX:
+	case RS_TYPE_IPV6PREFIX:
 		len = sizeof(vp->vp_ipv6prefix);
 		break;
 
-	case NR_TYPE_STRING:
-	case NR_TYPE_OCTETS:
-	case NR_TYPE_IFID:
-	case NR_TYPE_IPV6ADDR:
-#ifdef NR_TYPE_ABINARY
-	case NR_TYPE_ABINARY:
+	case RS_TYPE_STRING:
+	case RS_TYPE_OCTETS:
+	case RS_TYPE_IFID:
+	case RS_TYPE_IPV6ADDR:
+#ifdef RS_TYPE_ABINARY
+	case RS_TYPE_ABINARY:
 #endif
 		/* nothing more to do */
 		break;
 
-	case NR_TYPE_BYTE:
+	case RS_TYPE_BYTE:
 		len = 1;	/* just in case */
 		array[0] = vp->vp_integer & 0xff;
 		data = array;
 		break;
 
-	case NR_TYPE_SHORT:
+	case RS_TYPE_SHORT:
 		len = 2;	/* just in case */
 		array[0] = (vp->vp_integer >> 8) & 0xff;
 		array[1] = vp->vp_integer & 0xff;
 		data = array;
 		break;
 
-	case NR_TYPE_INTEGER:
+	case RS_TYPE_INTEGER:
 		len = 4;	/* just in case */
 		lvalue = htonl(vp->vp_integer);
 		memcpy(array, &lvalue, sizeof(lvalue));
 		data = array;
 		break;
 
-	case NR_TYPE_IPADDR:
+	case RS_TYPE_IPADDR:
 		data = (const uint8_t *) &vp->vp_ipaddr;
 		len = 4;	/* just in case */
 		break;
@@ -115,14 +115,14 @@ static ssize_t vp2data_any(const RADIUS_PACKET *packet,
 		/*
 		 *  There are no tagged date attributes.
 		 */
-	case NR_TYPE_DATE:
+	case RS_TYPE_DATE:
 		lvalue = htonl(vp->vp_date);
 		data = (const uint8_t *) &lvalue;
 		len = 4;	/* just in case */
 		break;
 
 #ifdef VENDORPEC_WIMAX
-	case NR_TYPE_SIGNED:
+	case RS_TYPE_SIGNED:
 	{
 		int32_t slvalue;
 
@@ -133,12 +133,12 @@ static ssize_t vp2data_any(const RADIUS_PACKET *packet,
 	}
 #endif
 
-#ifdef NR_TYPE_TLV
-	case NR_TYPE_TLV:
+#ifdef RS_TYPE_TLV
+	case RS_TYPE_TLV:
 		data = vp->vp_tlv;
 		if (!data) {
 			nr_debug_error("ERROR: Cannot encode NULL TLV");
-			return -NR_ERR_INVALID_ARG;
+			return -RSE_INVAL;
 		}
 		len = vp->length;
 		break;
@@ -146,7 +146,7 @@ static ssize_t vp2data_any(const RADIUS_PACKET *packet,
 
 	default:		/* unknown type: ignore it */
 		nr_debug_error("ERROR: Unknown attribute type %d", vp->da->type);
-		return -NR_ERR_ATTR_TYPE_UNKNOWN;
+		return -RSE_ATTR_TYPE_UNKNOWN;
 	}
 
 	/*
@@ -194,7 +194,7 @@ static ssize_t vp2data_any(const RADIUS_PACKET *packet,
         	default:
 			if (!original) {
 				nr_debug_error("ERROR: No request packet, cannot encrypt %s attribute in the vp.", vp->da->name);
-				return -NR_ERR_REQUEST_REQUIRED;
+				return -RSE_REQUEST_REQUIRED;
 			}
 
 			if (lvalue) ptr[0] = vp->tag;
@@ -230,11 +230,11 @@ static ssize_t vp2data_any(const RADIUS_PACKET *packet,
 
 	default:
 		if (vp->da->flags.has_tag && TAG_VALID(vp->tag)) {
-			if (vp->da->type == NR_TYPE_STRING) {
+			if (vp->da->type == RS_TYPE_STRING) {
 				if (len > ((ssize_t) (room - 1))) len = room - 1;
 				ptr[0] = vp->tag;
 				ptr++;
-			} else if (vp->da->type == NR_TYPE_INTEGER) {
+			} else if (vp->da->type == RS_TYPE_INTEGER) {
 				array[0] = vp->tag;
 			} /* else it can't be any other type */
 		}
@@ -300,7 +300,7 @@ static ssize_t vp2attr_vsa(const RADIUS_PACKET *packet,
 	dv = nr_dict_vendor_byvalue(vendor);
 	if (!dv ||
 	    (
-#ifdef NR_TYPE_TLV
+#ifdef RS_TYPE_TLV
 		    !(*pvp)->flags.is_tlv &&
 #endif
 		    (dv->type == 1) && (dv->length == 1))) {
@@ -308,7 +308,7 @@ static ssize_t vp2attr_vsa(const RADIUS_PACKET *packet,
 				   attribute, ptr, room);
 	}
 
-#ifdef NR_TYPE_TLV
+#ifdef RS_TYPE_TLV
 	if ((*pvp)->flags.is_tlv) {
 		return data2vp_tlvs(packet, original, 0, pvp,
 				    ptr, room);
@@ -319,7 +319,7 @@ static ssize_t vp2attr_vsa(const RADIUS_PACKET *packet,
 	default:
 		nr_debug_error("vp2attr_vsa: Internal sanity check failed,"
 				   " type %u", (unsigned) dv->type);
-		return -NR_ERR_INTERNAL_FAILURE;
+		return -RSE_INTERNAL;
 
 	case 4:
 		ptr[0] = 0;	/* attr must be 24-bit */
@@ -342,7 +342,7 @@ static ssize_t vp2attr_vsa(const RADIUS_PACKET *packet,
 	default:
 		nr_debug_error("vp2attr_vsa: Internal sanity check failed,"
 				   " length %u", (unsigned) dv->length);
-		return -NR_ERR_INTERNAL_FAILURE;
+		return -RSE_INTERNAL;
 
 	case 0:
 		break;
@@ -392,9 +392,9 @@ ssize_t nr_vp2vsa(const RADIUS_PACKET *packet, const RADIUS_PACKET *original,
 	}
 #endif
 
-	if (vp->da->vendor > NR_MAX_VENDOR) {
+	if (vp->da->vendor > RS_MAX_VENDOR) {
 		nr_debug_error("nr_vp2vsa: Invalid arguments");
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	/*
@@ -440,17 +440,17 @@ ssize_t nr_vp2rfc(const RADIUS_PACKET *packet,
 
 	if (vp->da->vendor != 0) {
 		nr_debug_error("nr_vp2rfc called with VSA");
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	if ((vp->da->attr == 0) || (vp->da->attr > 255)) {
 		nr_debug_error("nr_vp2rfc called with non-standard attribute %u", vp->da->attr);
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 #ifdef PW_CHARGEABLE_USER_IDENTITY
 	if ((vp->length == 0) &&
-	    (vp->da != NR_DA_CHARGEABLE_USER_IDENTITY)) {
+	    (vp->da != RS_DA_CHARGEABLE_USER_IDENTITY)) {
 		*pvp = vp->next;
 		return 0;
 	}
@@ -471,10 +471,10 @@ static ssize_t nr_chap2rfc(const RADIUS_PACKET *packet,
 {
 	ssize_t rcode;
 	const VALUE_PAIR *vp = *pvp;
-	NR_MD5_CTX	ctx;
-	uint8_t		buffer[MAX_STRING_LEN*2 + 1], *p;
+	RS_MD5_CTX	ctx;
+	uint8_t		buffer[RS_MAX_STRING_LEN*2 + 1], *p;
 	VALUE_PAIR chap = {
-		NR_DA_CHAP_PASSWORD,
+		RS_DA_CHAP_PASSWORD,
 		17,
 		0,
 		NULL,
@@ -485,9 +485,9 @@ static ssize_t nr_chap2rfc(const RADIUS_PACKET *packet,
 		},
 	};
 
-	if ((vp->da->vendor != 0) || (vp->da != NR_DA_CHAP_PASSWORD)) {
+	if ((vp->da->vendor != 0) || (vp->da != RS_DA_CHAP_PASSWORD)) {
 		nr_debug_error("nr_chap2rfc called with non-CHAP");
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	p = buffer;
@@ -505,9 +505,9 @@ static ssize_t nr_chap2rfc(const RADIUS_PACKET *packet,
 		p += sizeof(packet->vector);
 	}
 
-	nr_MD5Init(&ctx);
-	nr_MD5Update(&ctx, buffer, p - buffer);
-	nr_MD5Final(&chap.vp_octets[1], &ctx);
+	RS_MD5Init(&ctx);
+	RS_MD5Update(&ctx, buffer, p - buffer);
+	RS_MD5Final(&chap.vp_octets[1], &ctx);
 
 	chap.vp_octets[0] = buffer[0];
 	vp = &chap;
@@ -531,7 +531,7 @@ static ssize_t nr_chap2rfc(const RADIUS_PACKET *packet,
  *  instead use this one, which has the correct length and data.
  */
 static const VALUE_PAIR fake_ma = {
-	NR_DA_MESSAGE_AUTHENTICATOR,
+	RS_DA_MESSAGE_AUTHENTICATOR,
 	16,
 	0,
 	NULL,
@@ -557,7 +557,7 @@ ssize_t nr_vp2attr(const RADIUS_PACKET *packet, const RADIUS_PACKET *original,
 	 */
 	if (vp->da->vendor != 0) {
 #ifdef VENDORPEC_EXTENDED
-		if (vp->da->vendor > NR_MAX_VENDOR) {
+		if (vp->da->vendor > RS_MAX_VENDOR) {
 			return nr_vp2attr_extended(packet, original,
 						   pvp, start, room);
 						    
@@ -575,7 +575,7 @@ ssize_t nr_vp2attr(const RADIUS_PACKET *packet, const RADIUS_PACKET *original,
 		return nr_vp2vsa(packet, original, pvp, start, room);
 #else
 		nr_debug_error("VSAs are not supported");
-		return -NR_ERR_UNSUPPORTED;
+		return -RSE_UNSUPPORTED;
 #endif
 	}
 
@@ -593,7 +593,7 @@ ssize_t nr_vp2attr(const RADIUS_PACKET *packet, const RADIUS_PACKET *original,
 	 *	know how to calculate it, or what the correct values
 	 *	are.  So... create one for him.
 	 */
-	if (vp->da == NR_DA_MESSAGE_AUTHENTICATOR) {
+	if (vp->da == RS_DA_MESSAGE_AUTHENTICATOR) {
 		ssize_t rcode;
 
 		vp = &fake_ma;
@@ -610,7 +610,7 @@ ssize_t nr_vp2attr(const RADIUS_PACKET *packet, const RADIUS_PACKET *original,
 	 *	to calculate it, or what the correct values are.  To
 	 *	help, we calculate it for him.
 	 */
-	if (vp->da == NR_DA_CHAP_PASSWORD) {
+	if (vp->da == RS_DA_CHAP_PASSWORD) {
 		int encoded = 0;
 
 		/*
@@ -667,10 +667,10 @@ static ssize_t data2vp_raw(UNUSED const RADIUS_PACKET *packet,
 {
 	VALUE_PAIR *vp;
 
-	if (length > sizeof(vp->vp_octets)) return -NR_ERR_ATTR_OVERFLOW;
+	if (length > sizeof(vp->vp_octets)) return -RSE_ATTR_OVERFLOW;
 
 	vp = nr_vp_alloc_raw(attribute, vendor);
-	if (!vp) return -NR_ERR_NO_MEM;
+	if (!vp) return -RSE_NOMEM;
 	
 	memcpy(vp->vp_octets, data, length);
 	vp->length = length;
@@ -685,9 +685,9 @@ ssize_t nr_attr2vp_raw(const RADIUS_PACKET *packet,
 		       VALUE_PAIR **pvp)
 {
 
-	if (length < 2) return -NR_ERR_PACKET_TOO_SMALL;
-	if (data[1] < 2) return -NR_ERR_ATTR_TOO_SMALL;
-	if (data[1] > length) return -NR_ERR_ATTR_OVERFLOW;
+	if (length < 2) return -RSE_PACKET_TOO_SMALL;
+	if (data[1] < 2) return -RSE_ATTR_TOO_SMALL;
+	if (data[1] > length) return -RSE_ATTR_OVERFLOW;
 
 	return data2vp_raw(packet, original, data[0], 0,
 			   data + 2, data[1] - 2, pvp);
@@ -741,12 +741,12 @@ static ssize_t data2vp_any(const RADIUS_PACKET *packet,
 				   attribute, vendor, data, length, pvp);
 	}
 
-#ifdef NR_TYPE_TLV
+#ifdef RS_TYPE_TLV
 	/*
 	 *	TLVs are handled first.  They can't be tagged, and
 	 *	they can't be encrypted.
 	 */
-	if (da->da->type == NR_TYPE_TLV) {
+	if (da->da->type == RS_TYPE_TLV) {
 		return data2vp_tlvs(packet, original,
 				    attribute, vendor, nest,
 				    data, length, pvp);
@@ -761,7 +761,7 @@ static ssize_t data2vp_any(const RADIUS_PACKET *packet,
 	 *	out of memory.
 	 */
 	vp = nr_vp_alloc(da);
-	if (!vp) return -NR_ERR_NO_MEM;
+	if (!vp) return -RSE_NOMEM;
 
 	/*
 	 *	Handle tags.
@@ -778,8 +778,8 @@ static ssize_t data2vp_any(const RADIUS_PACKET *packet,
 			 */
 			vp->tag = data[0];
 
-			if ((vp->da->type == NR_TYPE_STRING) ||
-			    (vp->da->type == NR_TYPE_OCTETS)) {
+			if ((vp->da->type == RS_TYPE_STRING) ||
+			    (vp->da->type == RS_TYPE_OCTETS)) {
 				if (length == 0) goto raw;
 				data_offset = 1;
 			}
@@ -870,51 +870,51 @@ static ssize_t data2vp_any(const RADIUS_PACKET *packet,
 	}
 
 	switch (vp->da->type) {
-	case NR_TYPE_STRING:
-	case NR_TYPE_OCTETS:
-#ifdef NR_TYPE_ABINARY
-	case NR_TYPE_ABINARY:
+	case RS_TYPE_STRING:
+	case RS_TYPE_OCTETS:
+#ifdef RS_TYPE_ABINARY
+	case RS_TYPE_ABINARY:
 #endif
 		/* nothing more to do */
 		break;
 
-	case NR_TYPE_BYTE:
+	case RS_TYPE_BYTE:
 		vp->vp_integer = vp->vp_octets[0];
 		break;
 
 
-	case NR_TYPE_SHORT:
+	case RS_TYPE_SHORT:
 		vp->vp_integer = (vp->vp_octets[0] << 8) | vp->vp_octets[1];
 		break;
 
-	case NR_TYPE_INTEGER:
+	case RS_TYPE_INTEGER:
 		memcpy(&vp->vp_integer, vp->vp_octets, 4);
 		vp->vp_integer = ntohl(vp->vp_integer);
 
 		if (vp->da->flags.has_tag) vp->vp_integer &= 0x00ffffff;
 		break;
 
-	case NR_TYPE_DATE:
+	case RS_TYPE_DATE:
 		memcpy(&vp->vp_date, vp->vp_octets, 4);
 		vp->vp_date = ntohl(vp->vp_date);
 		break;
 
 
-	case NR_TYPE_IPADDR:
+	case RS_TYPE_IPADDR:
 		memcpy(&vp->vp_ipaddr, vp->vp_octets, 4);
 		break;
 
 		/*
 		 *	IPv6 interface ID is 8 octets long.
 		 */
-	case NR_TYPE_IFID:
+	case RS_TYPE_IFID:
 		/* vp->vp_ifid == vp->vp_octets */
 		break;
 
 		/*
 		 *	IPv6 addresses are 16 octets long
 		 */
-	case NR_TYPE_IPV6ADDR:
+	case RS_TYPE_IPV6ADDR:
 		/* vp->vp_ipv6addr == vp->vp_octets */
 		break;
 
@@ -927,7 +927,7 @@ static ssize_t data2vp_any(const RADIUS_PACKET *packet,
 		 *
 		 *	The prefix length can have value 0 to 128.
 		 */
-	case NR_TYPE_IPV6PREFIX:
+	case RS_TYPE_IPV6PREFIX:
 		if (vp->length < 2 || vp->length > 18) goto raw;
 		if (vp->vp_octets[1] > 128) goto raw;
 
@@ -942,7 +942,7 @@ static ssize_t data2vp_any(const RADIUS_PACKET *packet,
 		break;
 
 #ifdef VENDORPEC_WIMAX
-	case NR_TYPE_SIGNED:
+	case RS_TYPE_SIGNED:
 		if (vp->length != 4) goto raw;
 
 		/*
@@ -955,22 +955,22 @@ static ssize_t data2vp_any(const RADIUS_PACKET *packet,
 		break;
 #endif
 
-#ifdef NR_TYPE_TLV
-	case NR_TYPE_TLV:
+#ifdef RS_TYPE_TLV
+	case RS_TYPE_TLV:
 		nr_vp_free(&vp);
 		nr_debug_error("data2vp_any: Internal sanity check failed");
-		return -NR_ERR_ATTR_TYPE_UNKNOWN;
+		return -RSE_ATTR_TYPE_UNKNOWN;
 #endif
 
 #ifdef VENDORPEC_WIMAX
-	case NR_TYPE_COMBO_IP:
+	case RS_TYPE_COMBO_IP:
 		if (vp->length == 4) {
-			vp->da->type = NR_TYPE_IPADDR;
+			vp->da->type = RS_TYPE_IPADDR;
 			memcpy(&vp->vp_ipaddr, vp->vp_octets, 4);
 			break;
 
 		} else if (vp->length == 16) {
-			vp->da->type = NR_TYPE_IPV6ADDR;
+			vp->da->type = RS_TYPE_IPV6ADDR;
 			/* vp->vp_ipv6addr == vp->vp_octets */
 			break;
 
@@ -998,9 +998,9 @@ ssize_t nr_attr2vp_rfc(const RADIUS_PACKET *packet,
 {
 	ssize_t rcode;
 
-	if (length < 2) return -NR_ERR_PACKET_TOO_SMALL;
-	if (data[1] < 2) return -NR_ERR_ATTR_TOO_SMALL;
-	if (data[1] > length) return -NR_ERR_ATTR_OVERFLOW;
+	if (length < 2) return -RSE_PACKET_TOO_SMALL;
+	if (data[1] < 2) return -RSE_ATTR_TOO_SMALL;
+	if (data[1] > length) return -RSE_ATTR_OVERFLOW;
 	
 	rcode = data2vp_any(packet, original, 0,
 			    data[0], 0, data + 2, data[1] - 2, pvp);
@@ -1020,7 +1020,7 @@ int nr_tlv_ok(const uint8_t *data, size_t length,
 
 	if ((dv_length > 2) || (dv_type == 0) || (dv_type > 4)) {
 		nr_debug_error("nr_tlv_ok: Invalid arguments");
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	while (data < end) {
@@ -1028,7 +1028,7 @@ int nr_tlv_ok(const uint8_t *data, size_t length,
 
 		if ((data + dv_type + dv_length) > end) {
 			nr_debug_error("Attribute header overflow");
-			return -NR_ERR_ATTR_TOO_SMALL;
+			return -RSE_ATTR_TOO_SMALL;
 		}
 
 		switch (dv_type) {
@@ -1037,12 +1037,12 @@ int nr_tlv_ok(const uint8_t *data, size_t length,
 			    (data[2] == 0) && (data[3] == 0)) {
 			zero:
 				nr_debug_error("Invalid attribute 0");
-				return -NR_ERR_ATTR_INVALID;
+				return -RSE_ATTR_INVALID;
 			}
 
 			if (data[0] != 0) {
 				nr_debug_error("Invalid attribute > 2^24");
-				return -NR_ERR_ATTR_INVALID;
+				return -RSE_ATTR_INVALID;
 			}
 			break;
 
@@ -1056,7 +1056,7 @@ int nr_tlv_ok(const uint8_t *data, size_t length,
 
 		default:
 			nr_debug_error("Internal sanity check failed");
-			return -NR_ERR_INTERNAL_FAILURE;
+			return -RSE_INTERNAL;
 		}
 
 		switch (dv_length) {
@@ -1066,7 +1066,7 @@ int nr_tlv_ok(const uint8_t *data, size_t length,
 		case 2:
 			if (data[dv_type + 1] != 0) {
 				nr_debug_error("Attribute is longer than 256 octets");
-				return -NR_ERR_ATTR_TOO_LARGE;
+				return -RSE_ATTR_TOO_LARGE;
 			}
 			/* FALL-THROUGH */
 		case 1:
@@ -1076,17 +1076,17 @@ int nr_tlv_ok(const uint8_t *data, size_t length,
 
 		default:
 			nr_debug_error("Internal sanity check failed");
-			return -NR_ERR_INTERNAL_FAILURE;
+			return -RSE_INTERNAL;
 		}
 
 		if (attrlen < (dv_type + dv_length)) {
 			nr_debug_error("Attribute header has invalid length");
-			return -NR_ERR_PACKET_TOO_SMALL;
+			return -RSE_PACKET_TOO_SMALL;
 		}
 
 		if (attrlen > length) {
 			nr_debug_error("Attribute overflows container");
-			return -NR_ERR_ATTR_OVERFLOW;
+			return -RSE_ATTR_OVERFLOW;
 		}
 
 		data += attrlen;
@@ -1113,7 +1113,7 @@ static ssize_t attr2vp_vsa(const RADIUS_PACKET *packet,
 #ifndef NDEBUG
 	if (length <= (dv_type + dv_length)) {
 		nr_debug_error("attr2vp_vsa: Failure to call nr_tlv_ok");
-		return -NR_ERR_PACKET_TOO_SMALL;
+		return -RSE_PACKET_TOO_SMALL;
 	}
 #endif	
 
@@ -1136,7 +1136,7 @@ static ssize_t attr2vp_vsa(const RADIUS_PACKET *packet,
 
 	default:
 		nr_debug_error("attr2vp_vsa: Internal sanity check failed");
-		return -NR_ERR_INTERNAL_FAILURE;
+		return -RSE_INTERNAL;
 	}
 
 	switch (dv_length) {
@@ -1155,13 +1155,13 @@ static ssize_t attr2vp_vsa(const RADIUS_PACKET *packet,
 
 	default:
 		nr_debug_error("attr2vp_vsa: Internal sanity check failed");
-		return -NR_ERR_INTERNAL_FAILURE;
+		return -RSE_INTERNAL;
 	}
 
 #ifndef NDEBUG
 	if (attrlen <= (ssize_t) (dv_type + dv_length)) {
 		nr_debug_error("attr2vp_vsa: Failure to call nr_tlv_ok");
-		return -NR_ERR_PACKET_TOO_SMALL;
+		return -RSE_PACKET_TOO_SMALL;
 	}
 #endif
 
@@ -1177,7 +1177,7 @@ static ssize_t attr2vp_vsa(const RADIUS_PACKET *packet,
 		nr_vp_free(pvp);
 		nr_debug_error("attr2vp_vsa: Incomplete decode %d != %d",
 				   (int) my_len, (int) attrlen);
-		return -NR_ERR_INTERNAL_FAILURE;
+		return -RSE_INTERNAL;
 	}
 #endif
 
@@ -1198,13 +1198,13 @@ ssize_t nr_attr2vp_vsa(const RADIUS_PACKET *packet,
 	uint32_t lvalue;
 	const DICT_VENDOR *dv;
 
-	if (length < 2) return -NR_ERR_PACKET_TOO_SMALL;
-	if (data[1] < 2) return -NR_ERR_ATTR_TOO_SMALL;
-	if (data[1] > length) return -NR_ERR_ATTR_OVERFLOW;
+	if (length < 2) return -RSE_PACKET_TOO_SMALL;
+	if (data[1] < 2) return -RSE_ATTR_TOO_SMALL;
+	if (data[1] > length) return -RSE_ATTR_OVERFLOW;
 
 	if (data[0] != PW_VENDOR_SPECIFIC) {
 		nr_debug_error("nr_attr2vp_vsa: Invalid attribute");
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	/*
@@ -1256,7 +1256,7 @@ ssize_t nr_attr2vp_vsa(const RADIUS_PACKET *packet,
 	if (my_len != (data[1] - 6)) {
 		nr_vp_free(pvp);
 		nr_debug_error("nr_attr2vp_vsa: Incomplete decode");
-		return -NR_ERR_INTERNAL_FAILURE;
+		return -RSE_INTERNAL;
 	}
 #endif
 
@@ -1273,9 +1273,9 @@ ssize_t nr_attr2vp(const RADIUS_PACKET *packet,
 		    const uint8_t *data, size_t length,
 		    VALUE_PAIR **pvp)
 {
-	if (length < 2) return -NR_ERR_PACKET_TOO_SMALL;
-	if (data[1] < 2) return -NR_ERR_ATTR_TOO_SMALL;
-	if (data[1] > length) return -NR_ERR_ATTR_OVERFLOW;
+	if (length < 2) return -RSE_PACKET_TOO_SMALL;
+	if (data[1] < 2) return -RSE_ATTR_TOO_SMALL;
+	if (data[1] > length) return -RSE_ATTR_OVERFLOW;
 
 #ifndef WITHOUT_VSAS
 	/*
@@ -1307,18 +1307,18 @@ ssize_t nr_attr2data(const RADIUS_PACKET *packet, ssize_t start,
 	uint8_t *data, *attr;
 	const uint8_t *end;
 
-	if (!packet || !pdata || !plength) return -NR_ERR_INVALID_ARG;
+	if (!packet || !pdata || !plength) return -RSE_INVAL;
 
-	if (!packet->data) return -NR_ERR_INVALID_ARG;
-	if (packet->length < 20) return -NR_ERR_INVALID_ARG;
+	if (!packet->data) return -RSE_INVAL;
+	if (packet->length < 20) return -RSE_INVAL;
 
 	/*
 	 *	Too long or short, not good.
 	 */
 	if ((start < 0) ||
-	    ((start > 0) && (start < 20))) return -NR_ERR_INVALID_ARG;
+	    ((start > 0) && (start < 20))) return -RSE_INVAL;
 
-	if ((size_t) start >= (packet->length - 2)) return -NR_ERR_INVALID_ARG;
+	if ((size_t) start >= (packet->length - 2)) return -RSE_INVAL;
 
 	end = packet->data + packet->length;
 
@@ -1343,17 +1343,17 @@ ssize_t nr_attr2data(const RADIUS_PACKET *packet, ssize_t start,
 		 */
 		if ((attr + 2) > end) {
 			nr_debug_error("Attribute overflows packet");
-			return -NR_ERR_ATTR_OVERFLOW;
+			return -RSE_ATTR_OVERFLOW;
 		}
 
 		if (attr[1] < 2) {
 			nr_debug_error("Attribute length is too small");
-			return -NR_ERR_ATTR_TOO_SMALL;
+			return -RSE_ATTR_TOO_SMALL;
 		}
 
 		if ((attr + attr[1]) > end) {
 			nr_debug_error("Attribute length is too large");
-			return -NR_ERR_ATTR_TOO_LARGE;
+			return -RSE_ATTR_TOO_LARGE;
 		}
 #endif
 
@@ -1379,7 +1379,7 @@ ssize_t nr_attr2data(const RADIUS_PACKET *packet, ssize_t start,
 				dv = nr_dict_vendor_byvalue(vendor);
 				if (dv &&
 				    ((dv->type != 1) || (dv->length != 1))) {
-					return -NR_ERR_VENDOR_UNKNOWN;
+					return -RSE_VENDOR_UNKNOWN;
 				}
 			}
 

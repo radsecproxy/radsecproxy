@@ -12,7 +12,7 @@
 #include <libgen.h>
 #include <assert.h>
 
-#include <freeradius/libradius.h>
+#include <radius/client.h>
 #include <event2/event.h>
 #include <event2/util.h>
 #include <radsec/radsec.h>
@@ -39,14 +39,8 @@ rs_context_create (struct rs_context **ctx)
 #if defined (RS_ENABLE_TLS)
   ssl_init ();
 #endif
-#if defined (DEBUG)
-  fr_log_fp = stderr;
-  fr_debug_flag = 1;
-#endif
-  debug_init ("libradsec");	/* radsecproxy compat, FIXME: remove */
 
-  fr_randinit (&h->fr_randctx, 0);
-  fr_rand_seed (NULL, 0);
+  debug_init ("libradsec");	/* radsecproxy compat, FIXME: remove */
 
   if (ctx != NULL)
     *ctx = h;
@@ -67,9 +61,6 @@ rs_context_init_freeradius_dict (struct rs_context *ctx, const char *dict)
     if (ctx->config != NULL && ctx->config->dictionary)
       dict = ctx->config->dictionary;
 
-  if (dict == NULL)
-    dict = RS_FREERADIUS_DICT;
-
   dictlen = strlen (dict);
   dir = rs_calloc (ctx, 1, dictlen + 1);
   fn = rs_calloc (ctx, 1, dictlen + 1);
@@ -80,13 +71,6 @@ rs_context_init_freeradius_dict (struct rs_context *ctx, const char *dict)
     }
   strncpy (dir, dict, dictlen);
   strncpy (fn, dict, dictlen);
-
-  if (dict_init (dirname (dir), basename (fn)) < 0)
-    {
-      r = rs_err_ctx_push_fl (ctx, RSE_FR, __FILE__, __LINE__,
-			      "failing dict_init(\"%s\")", dict);
-      goto out;
-    }
 
  out:
   if (dir)

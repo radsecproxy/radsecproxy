@@ -3,7 +3,9 @@
 
 /* See the file COPYING for licensing information.  */
 
-#include <freeradius/libradius.h>
+#ifndef _RADSEC_RADSEC_IMPL_H_
+#define _RADSEC_RADSEC_IMPL_H_ 1
+
 #include <event2/util.h>
 #include <confuse.h>
 #if defined(RS_ENABLE_TLS)
@@ -69,7 +71,6 @@ struct rs_context {
     struct rs_config *config;
     struct rs_alloc_scheme alloc_scheme;
     struct rs_error *err;
-    fr_randctx fr_randctx;
 };
 
 struct rs_connection {
@@ -108,11 +109,13 @@ enum rs_packet_flags {
     rs_packet_sent_flag,
 };
 
+struct radius_packet;
+
 struct rs_packet {
     struct rs_connection *conn;
     unsigned int flags;
     uint8_t hdr[RS_HEADER_LEN];
-    RADIUS_PACKET *rpkt;	/* FreeRADIUS object.  */
+    struct radius_packet *rpkt;	/* FreeRADIUS object.  */
     struct rs_packet *next;	/* Used for UDP output queue.  */
 };
 
@@ -121,6 +124,10 @@ struct rs_error *rs_resolv (struct evutil_addrinfo **addr,
 			    rs_conn_type_t type,
 			    const char *hostname,
 			    const char *service);
+
+/** Return the internal packet associated with packet \a pkt.  */
+struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
+
 #if defined (__cplusplus)
 }
 #endif
@@ -136,6 +143,8 @@ struct rs_error *rs_resolv (struct evutil_addrinfo **addr,
     (h->alloc_scheme.realloc ? h->alloc_scheme.realloc : realloc)(ptr, size)
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
+
+#endif /* _RADSEC_RADSEC_IMPL_H_ */
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

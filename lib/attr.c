@@ -7,7 +7,7 @@
 #include <config.h>
 #endif
 
-#include <freeradius/libradius.h>
+#include <radius/client.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 

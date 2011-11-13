@@ -3,14 +3,14 @@
 
 /* See the file COPYING for licensing information.  */
 
-#include <unistd.h>
-#include <sys/time.h>
+#ifndef _RADSEC_RADSEC_H_
+#define _RADSEC_RADSEC_H_ 1
 
-#ifdef SYSCONFDIR
-#define RS_FREERADIUS_DICT SYSCONFDIR "/raddb/dictionary"
-#else  /* !SYSCONFDIR */
-#define RS_FREERADIUS_DICT "/usr/local/raddb/dictionary"
-#endif  /* !SYSCONFDIR */
+#include <unistd.h>
+#include <stdint.h>
+
+#include <arpa/inet.h>
+#include <sys/time.h>
 
 enum rs_error_code {
     RSE_OK = 0,
@@ -19,7 +19,7 @@ enum rs_error_code {
     RSE_INVALID_CTX = 3,
     RSE_INVALID_CONN = 4,
     RSE_CONN_TYPE_MISMATCH = 5,
-    RSE_FR = 6,			/* FreeRADIUS error.  */
+    RSE_FR = 6,
     RSE_BADADDR = 7,
     RSE_NOPEER = 8,
     RSE_EVENT = 9,		/* libevent error.  */
@@ -32,8 +32,31 @@ enum rs_error_code {
     RSE_TIMEOUT_CONN = 16,	/* Connection timeout.  */
     RSE_INVAL = 17,		/* Invalid argument.  */
     RSE_TIMEOUT_IO = 18,	/* I/O timeout.  */
-    RSE_TIMEOUT = 19,		/* High level timeout.  */
+    RSE_TIMEOUT= 19,		/* High level timeout.  */
     RSE_DISCO = 20,
+    RSE_INUSE = 21,
+    RSE_PACKET_TOO_SMALL = 22,
+    RSE_PACKET_TOO_LARGE = 23,
+    RSE_ATTR_OVERFLOW = 24,
+    RSE_ATTR_TOO_SMALL = 25,
+    RSE_ATTR_TOO_LARGE = 26,
+    RSE_ATTR_UNKNOWN = 27,
+    RSE_ATTR_BAD_NAME = 28,
+    RSE_ATTR_VALUE_MALFORMED = 29,
+    RSE_ATTR_INVALID = 30,
+    RSE_TOO_MANY_ATTRS = 31,
+    RSE_ATTR_TYPE_UNKNOWN = 32,
+    RSE_MSG_AUTH_LEN = 33,
+    RSE_MSG_AUTH_WRONG = 34,
+    RSE_REQUEST_REQUIRED = 35,
+    RSE_INVALID_REQUEST_CODE = 36,
+    RSE_AUTH_VECTOR_WRONG = 37,
+    RSE_INVALID_RESPONSE_CODE = 38,
+    RSE_INVALID_RESPONSE_ID = 39,
+    RSE_INVALID_RESPONSE_SRC = 40,
+    RSE_NO_PACKET_DATA = 41,
+    RSE_VENDOR_UNKNOWN = 42,
+    RSE_MAX = RSE_VENDOR_UNKNOWN
 };
 
 enum rs_conn_type {
@@ -45,6 +68,39 @@ enum rs_conn_type {
 };
 typedef unsigned int rs_conn_type_t;
 
+typedef enum rs_attr_type_t {
+    RS_TYPE_INVALID = 0,		/**< Invalid data type */
+    RS_TYPE_STRING,      		/**< printable-text */
+    RS_TYPE_INTEGER,     		/**< a 32-bit unsigned integer */
+    RS_TYPE_IPADDR,      		/**< an IPv4 address */
+    RS_TYPE_DATE,			/**< a 32-bit date, of seconds since January 1, 1970 */
+    RS_TYPE_OCTETS,			/**< a sequence of binary octets */
+    RS_TYPE_IFID,	     		/**< an Interface Id */
+    RS_TYPE_IPV6ADDR,			/**< an IPv6 address */
+    RS_TYPE_IPV6PREFIX,			/**< an IPv6 prefix */
+    RS_TYPE_BYTE,			/**< an 8-bit integer */
+    RS_TYPE_SHORT,			/**< a 16-bit integer */
+} rs_attr_type_t;
+
+#define	PW_ACCESS_REQUEST		1
+#define	PW_ACCESS_ACCEPT		2
+#define	PW_ACCESS_REJECT		3
+#define	PW_ACCOUNTING_REQUEST		4
+#define	PW_ACCOUNTING_RESPONSE		5
+#define	PW_ACCOUNTING_STATUS		6
+#define PW_PASSWORD_REQUEST		7
+#define PW_PASSWORD_ACK			8
+#define PW_PASSWORD_REJECT		9
+#define	PW_ACCOUNTING_MESSAGE		10
+#define PW_ACCESS_CHALLENGE		11
+#define PW_STATUS_SERVER		12
+#define PW_STATUS_CLIENT		13
+#define PW_DISCONNECT_REQUEST		40
+#define PW_DISCONNECT_ACK		41
+#define PW_DISCONNECT_NAK		42
+#define PW_COA_REQUEST			43
+#define PW_COA_ACK			44
+#define PW_COA_NAK			45
 
 #if defined (__cplusplus)
 extern "C" {
@@ -57,7 +113,8 @@ struct rs_packet;		/* radsec-impl.h */
 struct rs_conn;			/* radsec-impl.h */
 struct rs_error;		/* radsec-impl.h */
 struct rs_peer;			/* radsec-impl.h */
-struct radius_packet;		/* <freeradius/libradius.h> */
+struct radius_packet;		/* <radius/client.h> */
+struct value_pair;		/* <radius/client.h> */
 struct event_base;		/* <event2/event-internal.h> */
 
 typedef void *(*rs_calloc_fp) (size_t nmemb, size_t size);
@@ -87,6 +144,8 @@ struct rs_conn_callbacks {
     rs_conn_packet_sent_cb sent_cb;
 };
 
+typedef struct value_pair rs_avp;
+typedef const struct value_pair rs_const_avp;
 
 /* Function prototypes.  */
 
@@ -251,9 +310,6 @@ void rs_packet_destroy(struct rs_packet *pkt);
     rs_err_conn_pop.  */
 int rs_packet_send(struct rs_packet *pkt, void *user_data);
 
-/** Return the FreeRADIUS packet associated with packet \a pkt.  */
-struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
-
 /** Create a RADIUS authentication request packet associated with
     connection \a conn.  Optionally, User-Name and User-Password
     attributes are added to the packet using the data in \a user_name
@@ -262,6 +318,28 @@ int rs_packet_create_authn_request(struct rs_connection *conn,
 				   struct rs_packet **pkt,
 				   const char *user_name,
 				   const char *user_pw);
+
+/*** Append \a tail to packet \a pkt.  */
+int
+rs_packet_append_avp(struct rs_packet *pkt,
+		     unsigned int attribute, unsigned int vendor,
+		     const void *data, size_t data_len);
+
+/*** Get pointer to \a pkt attribute value pairs. */
+void
+rs_packet_avps(struct rs_packet *pkt, rs_avp ***vps);
+
+/*** Get RADIUS packet type of \a pkt. */
+unsigned int
+rs_packet_code(struct rs_packet *pkt);
+
+/*** Get RADIUS AVP from \a pkt. */
+rs_const_avp *
+rs_packet_find_avp(struct rs_packet *pkt, unsigned int attr, unsigned int vendor);
+
+/*** Set packet identifier in \a pkt; returns old identifier */
+int
+rs_packet_set_id (struct rs_packet *pkt, int id);
 
 /************/
 /* Config.  */
@@ -309,9 +387,153 @@ void rs_err_free(struct rs_error *err);
 char *rs_err_msg(struct rs_error *err);
 int rs_err_code(struct rs_error *err, int dofree_flag);
 
+/************/
+/* AVPs.    */
+/************/
+#define rs_avp_is_string(vp)	  (rs_avp_typeof(vp) == RS_TYPE_STRING)
+#define rs_avp_is_integer(vp)	  (rs_avp_typeof(vp) == RS_TYPE_INTEGER)
+#define rs_avp_is_ipaddr(vp)	  (rs_avp_typeof(vp) == RS_TYPE_IPADDR)
+#define rs_avp_is_date(vp)	  (rs_avp_typeof(vp) == RS_TYPE_DATE)
+#define rs_avp_is_octets(vp)	  (rs_avp_typeof(vp) == RS_TYPE_OCTETS)
+#define rs_avp_is_ifid(vp)	  (rs_avp_typeof(vp) == RS_TYPE_IFID)
+#define rs_avp_is_ipv6addr(vp)	  (rs_avp_typeof(vp) == RS_TYPE_IPV6ADDR)
+#define rs_avp_is_ipv6prefix(vp)  (rs_avp_typeof(vp) == RS_TYPE_IPV6PREFIX)
+#define rs_avp_is_byte(vp)	  (rs_avp_typeof(vp) == RS_TYPE_BYTE)
+#define rs_avp_is_short(vp)	  (rs_avp_typeof(vp) == RS_TYPE_SHORT)
+#define rs_avp_is_tlv(vp)	  (rs_avp_typeof(vp) == RS_TYPE_TLV)
+
+/**  The maximum length of a RADIUS attribute.
+ *
+ *  The RFCs require that a RADIUS attribute transport no more than
+ *  253 octets of data.  We add an extra byte for a trailing NUL, so
+ *  that the VALUE_PAIR::vp_strvalue field can be handled as a C
+ *  string.
+ */
+#define RS_MAX_STRING_LEN         254
+
+void
+rs_avp_free(rs_avp **vps);
+
+size_t
+rs_avp_length(rs_const_avp *vp);
+
+rs_attr_type_t
+rs_avp_typeof(rs_const_avp *vp);
+
+void
+rs_avp_attrid(rs_const_avp *vp, unsigned int *attr, unsigned int *vendor);
+
+
+void
+rs_avp_append(rs_avp **head, rs_avp *tail);
+
+rs_avp *
+rs_avp_find(rs_avp *vp, unsigned int attr, unsigned int vendor);
+
+rs_const_avp *
+rs_avp_find_const(rs_const_avp *vp, unsigned int attr, unsigned int vendor);
+
+rs_avp *
+rs_avp_alloc(unsigned int attr, unsigned int vendor);
+
+rs_avp *
+rs_avp_dup(rs_const_avp *vp);
+
+int
+rs_avp_delete(rs_avp **first, unsigned int attr, unsigned int vendor);
+
+rs_avp *
+rs_avp_next(rs_avp *avp);
+
+rs_const_avp *
+rs_avp_next_const(rs_const_avp *avp);
+
+const char *
+rs_avp_string_value(rs_const_avp *vp);
+
+int
+rs_avp_string_set(rs_avp *vp, const char *str);
+
+uint32_t
+rs_avp_integer_value(rs_const_avp *vp);
+
+int
+rs_avp_integer_set(rs_avp *vp, uint32_t val);
+
+uint32_t
+rs_avp_ipaddr_value(rs_const_avp *vp);
+
+int
+rs_avp_ipaddr_set(rs_avp *vp, struct in_addr in);
+
+time_t
+rs_avp_date_value(rs_const_avp *vp);
+
+int
+rs_avp_date_set(rs_avp *vp, time_t date);
+
+const unsigned char *
+rs_avp_octets_value_const_ptr(rs_const_avp *vp);
+
+unsigned char *
+rs_avp_octets_value_ptr(rs_avp *vp);
+
+int
+rs_avp_octets_value_byref(rs_avp *vp,
+			  unsigned char **p,
+			  size_t *len);
+
+int
+rs_avp_octets_value(rs_const_avp *vp,
+		    unsigned char *buf,
+		    size_t *len);
+
+int
+rs_avp_fragmented_value(rs_const_avp *vps,
+		        unsigned char *buf,
+		        size_t *len);
+
+int
+rs_avp_octets_set(rs_avp *vp,
+		  const unsigned char *buf,
+		  size_t len);
+
+int
+rs_avp_ifid_value(rs_const_avp *vp, uint8_t val[8]);
+
+int
+rs_avp_ifid_set(rs_avp *vp, const uint8_t val[8]);
+
+uint8_t
+rs_avp_byte_value(rs_const_avp *vp);
+
+int
+rs_avp_byte_set(rs_avp *vp, uint8_t val);
+
+uint16_t
+rs_avp_short_value(rs_const_avp *vp);
+
+int
+rs_avp_short_set(rs_avp *vp, uint16_t val);
+
+size_t
+rs_avp_display_value(rs_const_avp *vp,
+                     char *buffer,
+                     size_t buflen);
+
+int
+rs_attr_find(const char *name,
+             unsigned int *attr,
+             unsigned int *vendor);
+
+const char *
+rs_avp_name(rs_const_avp *vp);
+
 #if defined (__cplusplus)
 }
 #endif
+
+#endif /* _RADSEC_RADSEC_H_ */
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

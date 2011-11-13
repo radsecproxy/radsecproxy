@@ -25,7 +25,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include	<networkradius-devel/client.h>
+#include	"client.h"
 #include	<unistd.h>
 
 /** \file id.c
@@ -38,7 +38,7 @@ static int find_id(nr_server_t *s)
 	int i;
 	uint32_t lvalue;
 
-	if ((s->used < 0) || (s->used > 256)) return -NR_ERR_INTERNAL_FAILURE;
+	if ((s->used < 0) || (s->used > 256)) return -RSE_INTERNAL;
 
 	/*
 	 *	Ensure that the ID allocation is random.
@@ -59,7 +59,7 @@ int nr_server_id_alloc(nr_server_t *s, RADIUS_PACKET *packet)
 {
 	int new_id;
 
-	if (!s || !packet) return -NR_ERR_INVALID_ARG;
+	if (!s || !packet) return -RSE_INVAL;
 
 	new_id = find_id(s);
 	if (new_id < 0) return -new_id;
@@ -77,13 +77,13 @@ int nr_server_id_alloc(nr_server_t *s, RADIUS_PACKET *packet)
 
 int nr_server_id_free(nr_server_t *s, RADIUS_PACKET *packet)
 {
-	if (!s || !packet) return -NR_ERR_INVALID_ARG;
+	if (!s || !packet) return -RSE_INVAL;
 
 	if ((packet->id < 0) || (packet->id > 255) || !s->ids[packet->id]) {
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
-	if (s->ids[packet->id] != packet) return -NR_ERR_INTERNAL_FAILURE;
+	if (s->ids[packet->id] != packet) return -RSE_INTERNAL;
 
 	s->ids[packet->id] = NULL;
 	s->used--;
@@ -96,13 +96,13 @@ int nr_server_id_realloc(nr_server_t *s, RADIUS_PACKET *packet)
 {
 	int new_id;
 
-	if (!s || !packet) return -NR_ERR_INVALID_ARG;
+	if (!s || !packet) return -RSE_INVAL;
 
 	if ((packet->id < 0) || (packet->id > 255) || !s->ids[packet->id]) {
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
-	if (s->ids[packet->id] != packet) return -NR_ERR_INTERNAL_FAILURE;
+	if (s->ids[packet->id] != packet) return -RSE_INTERNAL;
 
 	new_id = find_id(s);
 	if (new_id < 0) return new_id;
@@ -118,8 +118,8 @@ int nr_server_id_realloc(nr_server_t *s, RADIUS_PACKET *packet)
 int nr_server_init(nr_server_t *s, int code, const char *secret)
 {
 	if (!s || !secret || !*secret ||
-	    (code == 0) || (code > NR_MAX_PACKET_CODE)) {
-		return -NR_ERR_INVALID_ARG;
+	    (code == 0) || (code > RS_MAX_PACKET_CODE)) {
+		return -RSE_INVAL;
 	}
 
 	memset(s, 0, sizeof(*s));
@@ -137,9 +137,9 @@ int nr_server_init(nr_server_t *s, int code, const char *secret)
 
 int nr_server_close(const nr_server_t *s)
 {
-	if (!s) return -NR_ERR_INVALID_ARG;
+	if (!s) return -RSE_INVAL;
 
-	if (s->used > 0) return -NR_ERR_IN_USE;
+	if (s->used > 0) return -RSE_INUSE;
 
 	if (s->sockfd >= 0) close(s->sockfd);
 
@@ -151,23 +151,23 @@ int nr_server_packet_alloc(const nr_server_t *s, RADIUS_PACKET **packet_p)
 	int rcode;
 	RADIUS_PACKET *packet;
 
-	if (!packet_p) return -NR_ERR_INVALID_ARG;
+	if (!packet_p) return -RSE_INVAL;
 
-	packet = malloc(sizeof(*packet) + NR_MAX_PACKET_LEN);
-	if (!packet) return -NR_ERR_NO_MEM;
+	packet = malloc(sizeof(*packet) + RS_MAX_PACKET_LEN);
+	if (!packet) return -RSE_NOMEM;
 
 	memset(packet, 0, sizeof(*packet));
 
 	if (!s) {
 		packet->data = (uint8_t *)(packet + 1);
-		packet->sizeof_data = NR_MAX_PACKET_LEN;
+		packet->sizeof_data = RS_MAX_PACKET_LEN;
 
 		*packet_p = packet;
 		return 0;
 	}
 
 	rcode = nr_packet_init(packet, NULL, s->secret, s->code,
-			       (uint8_t *)(packet + 1), NR_MAX_PACKET_LEN);
+			       (uint8_t *)(packet + 1), RS_MAX_PACKET_LEN);
 	if (rcode < 0) {
 		free(packet);
 		return rcode;

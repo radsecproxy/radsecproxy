@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  \brief Functions to manipulate C structure versions of RADIUS attributes.
  */
 
-#include <networkradius-devel/client.h>
+#include "client.h"
 
 void nr_vp_free(VALUE_PAIR **head)
 {
@@ -71,9 +71,7 @@ VALUE_PAIR *nr_vp_alloc(const DICT_ATTR *da)
 		return NULL;
 	}
 
-#ifndef NR_NO_MALLOC
 	vp = malloc(sizeof(*vp));
-#endif
 	if (!vp) {
 		nr_strerror_printf("Out of memory");
 		return NULL;
@@ -87,9 +85,7 @@ VALUE_PAIR *nr_vp_alloc_raw(unsigned int attr, unsigned int vendor)
 	VALUE_PAIR *vp = NULL;
 	DICT_ATTR *da;
 
-#ifndef NR_NO_MALLOC
 	vp = malloc(sizeof(*vp) + sizeof(*da) + 64);
-#endif
 	if (!vp) {
 		nr_strerror_printf("Out of memory");
 		return NULL;
@@ -112,24 +108,24 @@ int nr_vp_set_data(VALUE_PAIR *vp, const void *data, size_t sizeof_data)
 {
 	int rcode = 1;		/* OK */
 
-	if (!vp || !data || (sizeof_data == 0)) return -NR_ERR_INVALID_ARG;
+	if (!vp || !data || (sizeof_data == 0)) return -RSE_INVAL;
 
 	switch (vp->da->type) {
-	case NR_TYPE_BYTE:
+	case RS_TYPE_BYTE:
 		vp->vp_integer = *(const uint8_t *) data;
 		break;
 		
-	case NR_TYPE_SHORT:
+	case RS_TYPE_SHORT:
 		vp->vp_integer = *(const uint16_t *) data;
 		break;
 		
-	case NR_TYPE_INTEGER:
-	case NR_TYPE_DATE:
-	case NR_TYPE_IPADDR:
+	case RS_TYPE_INTEGER:
+	case RS_TYPE_DATE:
+	case RS_TYPE_IPADDR:
 		vp->vp_integer = *(const uint32_t *) data;
 		break;
 		
-	case NR_TYPE_STRING:
+	case RS_TYPE_STRING:
 		if (sizeof_data >= sizeof(vp->vp_strvalue)) {
 			sizeof_data = sizeof(vp->vp_strvalue) - 1;
 			rcode = 0; /* truncated */
@@ -140,7 +136,7 @@ int nr_vp_set_data(VALUE_PAIR *vp, const void *data, size_t sizeof_data)
 		vp->length = sizeof_data;
 		break;
 		
-	case NR_TYPE_OCTETS:
+	case RS_TYPE_OCTETS:
 		if (sizeof_data > sizeof(vp->vp_octets)) {
 			sizeof_data = sizeof(vp->vp_octets);
 			rcode = 0; /* truncated */
@@ -150,7 +146,7 @@ int nr_vp_set_data(VALUE_PAIR *vp, const void *data, size_t sizeof_data)
 		break;
 		
 	default:
-		return -NR_ERR_ATTR_TYPE_UNKNOWN;
+		return -RSE_ATTR_TYPE_UNKNOWN;
 	}
 
 	return rcode;

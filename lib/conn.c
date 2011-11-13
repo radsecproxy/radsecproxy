@@ -6,6 +6,8 @@
 #endif
 
 #include <string.h>
+#include <stdlib.h>
+#include <errno.h>
 #include <assert.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>

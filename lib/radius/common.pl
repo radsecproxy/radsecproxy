@@ -124,7 +124,7 @@ sub do_file()
 	    }
 
 	    $type =~ tr/a-z/A-Z/;
-	    $attributes{$index}{'type'} = "NR_TYPE_$type";
+	    $attributes{$index}{'type'} = "RS_TYPE_$type";
 
 	    $stuff =~ s/^\s*//;
 

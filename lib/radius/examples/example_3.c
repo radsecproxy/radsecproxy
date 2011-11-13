@@ -39,8 +39,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 static const char *secret = "testing123";
-static uint8_t request_buffer[NR_MAX_PACKET_LEN];
-static uint8_t response_buffer[NR_MAX_PACKET_LEN];
+static uint8_t request_buffer[RS_MAX_PACKET_LEN];
+static uint8_t response_buffer[RS_MAX_PACKET_LEN];
 static RADIUS_PACKET request, response;
 
 int main(int argc, const char *argv[])
@@ -61,12 +61,12 @@ int main(int argc, const char *argv[])
 	if (argc > 2) password = argv[2];
 
 	rcode = nr_packet_attr_append(&request, NULL,
-				      NR_DA_USER_NAME,
+				      RS_DA_USER_NAME,
 				      user, 0);
 	if (rcode < 0) goto error;
 	
 	rcode = nr_packet_attr_append(&request, NULL,
-				      NR_DA_USER_PASSWORD,
+				      RS_DA_USER_PASSWORD,
 				      password, 0);
 	if (rcode < 0) goto error;
 
@@ -84,12 +84,12 @@ int main(int argc, const char *argv[])
 	if (rcode < 0) goto error;
 
 	rcode = nr_packet_attr_append(&response, &request,
-				      NR_DA_REPLY_MESSAGE,
+				      RS_DA_REPLY_MESSAGE,
 				      "Success!", 0);
 	if (rcode < 0) goto error;
 
 	rcode = nr_packet_attr_append(&response, &request,
-				      NR_DA_TUNNEL_PASSWORD,
+				      RS_DA_TUNNEL_PASSWORD,
 				      password, 0);
 	if (rcode < 0) goto error;
 	rcode = nr_packet_sign(&response, &request);

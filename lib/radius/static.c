@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  \brief Dummy file to include auto-generating static dictionary mappings.
  */
 
-#include <networkradius-devel/client.h>
+#include "client.h"
 
 /*
  *	Include the dynamically generated dictionaries.

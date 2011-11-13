@@ -1,4 +1,3 @@
-.gitignore
 *.*~*
 TAGS
 lib/doc
@@ -14,5 +13,9 @@ config.status
 configure
 aclocal.m4
 *.lo
+*.la
 obs/
-
+Makefile.in
+Makefile
+stamp-h1
+libtool

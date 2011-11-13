@@ -6,6 +6,7 @@
 #endif
 
 #include <confuse.h>
+#include <stdlib.h>
 #include <string.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>

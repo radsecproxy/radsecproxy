@@ -25,7 +25,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <networkradius-devel/client.h>
+#include "client.h"
 #include <ctype.h>
 
 /** \file dict.c
@@ -56,7 +56,7 @@ const DICT_ATTR *nr_dict_attr_byvalue(unsigned int attr, unsigned int vendor)
 			return &nr_dict_attrs[half];
 		}
 
-		if ((vendor > nr_dict_attrs[half].vendor) &&
+		if ((vendor >= nr_dict_attrs[half].vendor) &&
 		    (attr > nr_dict_attrs[half].attr)) {
 			start = half + 1;
 		} else {
@@ -100,19 +100,19 @@ const DICT_ATTR *nr_dict_attr_byname(const char *name)
 int nr_dict_attr_2struct(DICT_ATTR *da, unsigned int attr, unsigned int vendor,
 			 char *buffer, size_t bufsize)
 {
-	if (!da || !buffer) return -NR_ERR_INVALID_ARG;
+	if (!da || !buffer) return -RSE_INVAL;
 
 	if (!vendor) {
-		if (attr > 256) return -NR_ERR_INVALID_ARG;
+		if (attr > 256) return -RSE_INVAL;
 
 	} else if (vendor > (1 << 24)) {
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	memset(da, 0, sizeof(*da));
 	da->attr = attr;
 	da->flags.unknown = 1;
-	da->type = NR_TYPE_OCTETS;
+	da->type = RS_TYPE_OCTETS;
 	da->vendor = vendor;
 
 	if (da->vendor) {

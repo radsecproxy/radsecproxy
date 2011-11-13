@@ -60,7 +60,7 @@ udp_poll (struct polldata *data)
   long timeout;
   fd_set rfds;
   ssize_t len;
-  uint8_t buf[4096];
+  uint8_t buf[RS_MAX_PACKET_LEN];
 
   FD_ZERO (&rfds);
   FD_SET (data->s, &rfds);

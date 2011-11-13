@@ -7,6 +7,7 @@
 #include <event2/event.h>
 #include <freeradius/libradius.h>
 #include <radsec/radsec.h>
+#include <radsec/radsec-impl.h>
 #include <radsec/request.h>
 #include "debug.h"		/* For rs_dump_packet().  */
 
@@ -73,7 +74,7 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
   if (resp)
     {
       rs_dump_packet (resp);
-      if (rs_packet_frpkt (resp)->code == PW_AUTHENTICATION_ACK)
+      if (rs_packet_frpkt (resp)->code == PW_ACCESS_ACCEPT)
 	printf ("Good auth.\n");
       else
 	printf ("Bad auth: %d\n", rs_packet_frpkt (resp)->code);

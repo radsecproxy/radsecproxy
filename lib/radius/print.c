@@ -29,9 +29,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  \brief Functions to print things.
  */
 
-#include <networkradius-devel/client.h>
+#include "client.h"
 #include <string.h>
-#ifdef NR_TYPE_IPV6ADDR
+#ifdef RS_TYPE_IPV6ADDR
 #include <arpa/inet.h>
 #endif
 
@@ -51,7 +51,7 @@ void nr_packet_print_hex(RADIUS_PACKET *packet)
 		printf("%02x", packet->data[i]);
 	}
 	printf("\n");
-	if ((packet->flags & NR_PACKET_SIGNED) == 0) printf("\t\tWARNING: nr_packet_sign() was not called!\n");
+	if ((packet->flags & RS_PACKET_SIGNED) == 0) printf("\t\tWARNING: nr_packet_sign() was not called!\n");
 
 	if (packet->length > 20) {
 		int total;
@@ -106,21 +106,21 @@ size_t nr_vp_snprintf_value(char *buffer, size_t buflen, const VALUE_PAIR *vp)
 	char *p = buffer;
 
 	switch (vp->da->type) {
-	case NR_TYPE_STRING:
+	case RS_TYPE_STRING:
 		/*
 		 *	FIXME: escape backslash && quotes!
 		 */
-		len = snprintf(p, buflen, "\"%s\"", vp->vp_strvalue);
+		len = snprintf(p, buflen, "%s", vp->vp_strvalue);
 		break;
 
-	case NR_TYPE_DATE:
-	case NR_TYPE_INTEGER:
-	case NR_TYPE_SHORT:
-	case NR_TYPE_BYTE:
+	case RS_TYPE_DATE:
+	case RS_TYPE_INTEGER:
+	case RS_TYPE_SHORT:
+	case RS_TYPE_BYTE:
 		len = snprintf(p, buflen, "%u", vp->vp_integer);
 		break;
 
-	case NR_TYPE_IPADDR:
+	case RS_TYPE_IPADDR:
 		len = snprintf(p, buflen, "%u.%u.%u.%u",
 			       (vp->vp_ipaddr >> 24) & 0xff,
 			       (vp->vp_ipaddr >> 16) & 0xff,
@@ -128,16 +128,16 @@ size_t nr_vp_snprintf_value(char *buffer, size_t buflen, const VALUE_PAIR *vp)
 			       vp->vp_ipaddr & 0xff);
 		break;
 
-#ifdef NR_TYPE_IPV6ADDR
-	case NR_TYPE_IPV6ADDR:
+#ifdef RS_TYPE_IPV6ADDR
+	case RS_TYPE_IPV6ADDR:
 		if (!inet_ntop(AF_INET6, &vp->vp_ipv6addr, buffer, buflen)) {
-			return -NR_ERR_SYSTEM;
+			return -RSE_SYSTEM;
 		}
 		break;
 #endif
 
-#ifdef NR_TYPE_IFID
-	case NR_TYPE_IFID:
+#ifdef RS_TYPE_IFID
+	case RS_TYPE_IFID:
 		len = snprintf(p, buflen, "%02x%02x%02x%02x%02x%02x%02x%02x",
 			       vp->vp_ifid[0], vp->vp_ifid[1],
 			       vp->vp_ifid[2], vp->vp_ifid[3],
@@ -146,7 +146,7 @@ size_t nr_vp_snprintf_value(char *buffer, size_t buflen, const VALUE_PAIR *vp)
 		break;
 #endif
 
-	case NR_TYPE_OCTETS:
+	case RS_TYPE_OCTETS:
 		len = snprintf(p, buflen, "0x");
 		if (len >= buflen) return 0;
 
@@ -224,42 +224,3 @@ void nr_strerror_printf(const char *fmt, ...)
 }
 /** \endcond */
 
-const char *nr_strerror(int error)
-{
-	if (error == 0) return nr_strerror_buffer;
-
-	if (error < 0) error = -error;
-
-	switch (error) {
-	default: return "Unknown error";
-	case NR_ERR_SYSTEM: return strerror(errno);
-
-	case NR_ERR_INVALID_ARG: return "Invalid argument";
-	case NR_ERR_PACKET_TOO_SMALL: return "Packet is too small";
-	case NR_ERR_PACKET_TOO_LARGE: return "Packet is too large";
-	case NR_ERR_ATTR_OVERFLOW: return "Attribute overflows packet";
-	case NR_ERR_ATTR_TOO_SMALL: return "Attribute is too small";
-	case NR_ERR_ATTR_TOO_LARGE: return "Attribute is too large";
-	case NR_ERR_ATTR_UNKNOWN: return "Unknown attribute";
-	case NR_ERR_ATTR_BAD_NAME: return "Invalid name for attribute";
-	case NR_ERR_ATTR_VALUE_MALFORMED: return "Invalid value for attribute";
-	case NR_ERR_ATTR_INVALID: return "Invalid attribute";
-	case NR_ERR_TOO_MANY_ATTRS: return "Too many attributes in the packet";
-	case NR_ERR_ATTR_TYPE_UNKNOWN: return "Attribute type unknown";
-	case NR_ERR_MSG_AUTH_LEN: return "Invalid Message-Authenticator";
-	case NR_ERR_MSG_AUTH_WRONG: return "Incorrect Message-Authenticator";
-	case NR_ERR_REQUEST_REQUIRED: return "Request is required";
-	case NR_ERR_REQUEST_CODE_INVALID: return "Invalid request code";
-	case NR_ERR_AUTH_VECTOR_WRONG: return "Incorrect Request Authenticator";
-	case NR_ERR_RESPONSE_CODE_INVALID: return "Response code is unsupported";
-	case NR_ERR_RESPONSE_ID_INVALID: return "Response ID is invalid";
-	case NR_ERR_RESPONSE_SRC_INVALID: return "Response from the wrong src ip/port";
-	case NR_ERR_NO_PACKET_DATA: return "Cannot encode the packet";
-	case NR_ERR_VENDOR_UNKNOWN: return "Vendor is unknown";
-	case NR_ERR_INTERNAL_FAILURE: return "Internal failure";
-	case NR_ERR_UNSUPPORTED: return "Unsupported feature";
-	case NR_ERR_NO_MEM: return "Out of memory";
-	case NR_ERR_IN_USE: return "Resource is in use";
-		
-	}
-}

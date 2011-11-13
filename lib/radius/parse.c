@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  \brief Routines to parse strings into internal data structures
  */
 
-#include <networkradius-devel/client.h>
+#include "client.h"
 #include <arpa/inet.h>
 
 ssize_t nr_vp_sscanf_value(VALUE_PAIR *vp, const char *value)
@@ -37,43 +37,43 @@ ssize_t nr_vp_sscanf_value(VALUE_PAIR *vp, const char *value)
 	char *end;
 
 	switch (vp->da->type) {
-	case NR_TYPE_STRING:
+	case RS_TYPE_STRING:
 		strlcpy(vp->vp_strvalue, value, sizeof(vp->vp_strvalue));
 		vp->length = strlen(vp->vp_strvalue);
 		return vp->length;
 
-	case NR_TYPE_DATE:
-	case NR_TYPE_INTEGER:
+	case RS_TYPE_DATE:
+	case RS_TYPE_INTEGER:
 		vp->vp_integer = strtoul(value, &end, 10);
 		if ((value == end) || (*end != '\0')) {
 			nr_debug_error("Invalid value");
-			return -NR_ERR_ATTR_VALUE_MALFORMED;
+			return -RSE_ATTR_VALUE_MALFORMED;
 		}
 		return (end - value);
 
-	case NR_TYPE_IPADDR:
+	case RS_TYPE_IPADDR:
 		if (inet_pton(AF_INET, value, &vp->vp_ipaddr) < 0) {
-			return -NR_ERR_SYSTEM;
+			return -RSE_NOSYS;
 		}
 		return strlen(value);
 		
-#ifdef NR_TYPE_IPV6ADDR
-	case NR_TYPE_IPV6ADDR:
+#ifdef RS_TYPE_IPV6ADDR
+	case RS_TYPE_IPV6ADDR:
 		if (inet_pton(AF_INET6, value, &vp-vp>ipv6addr) < 0) {
-			return -NR_ERR_SYSTEM;
+			return -RSE_NOSYS;
 		}
 		return strlen(value);
 #endif
 
-#ifdef NR_TYPE_IFID
-	case NR_TYPE_IFID:
+#ifdef RS_TYPE_IFID
+	case RS_TYPE_IFID:
 	{
 		int i, array[8];
 
 		if (sscanf(value, "%02x%02x%02x%02x%02x%02x%02x%02x",
 			   &array[0], &array[1], &array[2], &array[3],
 			   &array[4], &array[5], &array[6], &array[7]) != 8) {
-			return -NR_ERR_SYSTEM;
+			return -RSE_SYSTEM;
 		}
 
 		for (i = 0; i < 8; i++) vp->vp_ifid[i] = array[i] & 0xff;
@@ -84,7 +84,7 @@ ssize_t nr_vp_sscanf_value(VALUE_PAIR *vp, const char *value)
 
 	default:
 		nr_debug_error("Invalid type");
-		return -NR_ERR_ATTR_TYPE_UNKNOWN;
+		return -RSE_ATTR_TYPE_UNKNOWN;
 	}
 
 	return 0;
@@ -99,7 +99,7 @@ int nr_vp_sscanf(const char *string, VALUE_PAIR **pvp)
 	VALUE_PAIR *vp;
 	char buffer[256];
 
-	if (!string || !pvp) return -NR_ERR_INVALID_ARG;
+	if (!string || !pvp) return -RSE_INVAL;
 
 	p = string;
 	q = buffer;
@@ -110,26 +110,26 @@ int nr_vp_sscanf(const char *string, VALUE_PAIR **pvp)
 
 	if (q == buffer) {
 		nr_debug_error("No Attribute name");
-		return -NR_ERR_ATTR_BAD_NAME;
+		return -RSE_ATTR_BAD_NAME;
 	}
 
 	da = nr_dict_attr_byname(buffer);
 	if (!da) {
 		nr_debug_error("Unknown attribute \"%s\"", buffer);
-		return -NR_ERR_ATTR_UNKNOWN;
+		return -RSE_ATTR_UNKNOWN;
 	}
 
 	while (*p == ' ') p++;
 	if (*p != '=') {
 		nr_debug_error("Unexpected text after attribute name");
-		return -NR_ERR_ATTR_BAD_NAME;
+		return -RSE_ATTR_BAD_NAME;
 	}
 
 	p++;
 	while (*p == ' ') p++;
 
 	vp = nr_vp_alloc(da);
-	if (!vp) return -NR_ERR_NO_MEM;
+	if (!vp) return -RSE_NOMEM;
 
 	rcode = nr_vp_sscanf_value(vp, p);
 	if (rcode < 0) {

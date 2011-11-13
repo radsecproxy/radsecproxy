@@ -36,7 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /** \cond PRIVATE */
 
-#include	<networkradius-devel/client.h>
+#include	"client.h"
 
 
 ssize_t nr_password_encrypt(uint8_t *output, size_t outlen,
@@ -45,35 +45,35 @@ ssize_t nr_password_encrypt(uint8_t *output, size_t outlen,
 {
 	size_t i, j, len;
 	uint8_t digest[16];
-	NR_MD5_CTX ctx, secret_ctx;
+	RS_MD5_CTX ctx, secret_ctx;
 
 	if (!output || (outlen < 16) || !input || (inlen == 0) ||
 	    !secret || !vector) {
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	len = inlen;
-	if (len > 128) return -NR_ERR_ATTR_OVERFLOW;
+	if (len > 128) return -RSE_ATTR_OVERFLOW;
 
 	len = (len + 0x0f) & ~0x0f; /* round up to 16 byte boundary */
 
-	if (outlen < len) return -NR_ERR_ATTR_OVERFLOW;
+	if (outlen < len) return -RSE_ATTR_OVERFLOW;
 
 	memcpy(output, input, len);
 	memset(output + len, 0, 128 - len);
 
-	nr_MD5Init(&secret_ctx);
-	nr_MD5Update(&secret_ctx, (const uint8_t *) secret, strlen(secret));
+	RS_MD5Init(&secret_ctx);
+	RS_MD5Update(&secret_ctx, (const uint8_t *) secret, strlen(secret));
 
 	for (j = 0; j < len; j += 16) {
 		ctx = secret_ctx;
 
 		if (j == 0) {
-			nr_MD5Update(&ctx, vector, 16);
-			nr_MD5Final(digest, &ctx);
+			RS_MD5Update(&ctx, vector, 16);
+			RS_MD5Final(digest, &ctx);
 		} else {
-			nr_MD5Update(&ctx, &output[j - 16], 16);
-			nr_MD5Final(digest, &ctx);
+			RS_MD5Update(&ctx, &output[j - 16], 16);
+			RS_MD5Final(digest, &ctx);
 		}
 
 		for (i = 0; i < 16; i++) {
@@ -90,16 +90,16 @@ ssize_t nr_tunnelpw_encrypt(uint8_t *output, size_t outlen,
 			    const char *secret, const uint8_t *vector)
 {
 	size_t i, j, len;
-	NR_MD5_CTX ctx, secret_ctx;
+	RS_MD5_CTX ctx, secret_ctx;
 	uint8_t digest[16];
 
 	if (!output || (outlen < 18) || !input || (inlen == 0) ||
 	    !secret || !vector) {
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	len = ((inlen + 1) + 0x0f) & ~0x0f;
-	if (len > 251) return -NR_ERR_ATTR_OVERFLOW;
+	if (len > 251) return -RSE_ATTR_OVERFLOW;
 
 	output[0] = (nr_rand() & 0xff) | 0x80;
 	output[1] = nr_rand() & 0xff;
@@ -108,19 +108,19 @@ ssize_t nr_tunnelpw_encrypt(uint8_t *output, size_t outlen,
 	memcpy(output + 3, input, inlen);
 	memset(output + 3 + inlen, 0, len - inlen - 1);
 
-	nr_MD5Init(&secret_ctx);
-	nr_MD5Update(&secret_ctx, (const uint8_t *) secret, strlen(secret));
+	RS_MD5Init(&secret_ctx);
+	RS_MD5Update(&secret_ctx, (const uint8_t *) secret, strlen(secret));
 
 	for (j = 0; j < len; j += 16) {
 		ctx = secret_ctx;
 
 		if (j == 0) {
-			nr_MD5Update(&ctx, vector, 16);
-			nr_MD5Update(&ctx, output, 2);
-			nr_MD5Final(digest, &ctx);
+			RS_MD5Update(&ctx, vector, 16);
+			RS_MD5Update(&ctx, output, 2);
+			RS_MD5Final(digest, &ctx);
 		} else {
-			nr_MD5Update(&ctx, &output[j + 2 - 16], 16);
-			nr_MD5Final(digest, &ctx);
+			RS_MD5Update(&ctx, &output[j + 2 - 16], 16);
+			RS_MD5Final(digest, &ctx);
 		}
 
 		for (i = 0; i < 16; i++) {
@@ -136,12 +136,12 @@ ssize_t nr_tunnelpw_decrypt(uint8_t *output, size_t outlen,
 			    const char *secret, const uint8_t *vector)
 {
 	size_t i, j, len, encoded_len;
-	NR_MD5_CTX ctx, secret_ctx;
+	RS_MD5_CTX ctx, secret_ctx;
 	uint8_t digest[16];
 
 	if (!output || (outlen < 1) || !input || (inlen < 2) ||
 	    !secret || !vector) {
-		return -NR_ERR_INVALID_ARG;
+		return -RSE_INVAL;
 	}
 
 	if (inlen <= 3) {
@@ -151,20 +151,20 @@ ssize_t nr_tunnelpw_decrypt(uint8_t *output, size_t outlen,
 
 	len = inlen - 2;
 
-	if (outlen < (len - 1)) return -NR_ERR_ATTR_OVERFLOW;
+	if (outlen < (len - 1)) return -RSE_ATTR_OVERFLOW;
 
-	nr_MD5Init(&secret_ctx);
-	nr_MD5Update(&secret_ctx, (const uint8_t *) secret, strlen(secret));
+	RS_MD5Init(&secret_ctx);
+	RS_MD5Update(&secret_ctx, (const uint8_t *) secret, strlen(secret));
 
 	ctx = secret_ctx;
 
-	nr_MD5Update(&ctx, vector, 16); /* MD5(secret + vector + salt) */
-	nr_MD5Update(&ctx, input, 2);
-	nr_MD5Final(digest, &ctx);
+	RS_MD5Update(&ctx, vector, 16); /* MD5(secret + vector + salt) */
+	RS_MD5Update(&ctx, input, 2);
+	RS_MD5Final(digest, &ctx);
 
 	encoded_len = input[2] ^ digest[0];
 	if (encoded_len >= len) {
-		return -NR_ERR_ATTR_TOO_LARGE;
+		return -RSE_ATTR_TOO_LARGE;
 	}
 
 	for (i = 0; i < 15; i++) {
@@ -174,8 +174,8 @@ ssize_t nr_tunnelpw_decrypt(uint8_t *output, size_t outlen,
 	for (j = 16; j < len; j += 16) {
 		ctx = secret_ctx;
 
-		nr_MD5Update(&ctx, input + j - 16 + 2, 16);
-		nr_MD5Final(digest, &ctx);
+		RS_MD5Update(&ctx, input + j - 16 + 2, 16);
+		RS_MD5Final(digest, &ctx);
 
 		for (i = 0; i < 16; i++) {
 			output[i + j - 1] = input[i + j + 2] ^ digest[i];
@@ -198,12 +198,12 @@ nr_hmac_md5(const uint8_t *data, size_t data_len,
         uint8_t k_ipad[64];
         uint8_t k_opad[64];
         uint8_t tk[16];
-        NR_MD5_CTX ctx;
+        RS_MD5_CTX ctx;
 
         if (key_len > 64) {
-                nr_MD5Init(&ctx);
-                nr_MD5Update(&ctx, key, key_len);
-                nr_MD5Final(tk, &ctx);
+                RS_MD5Init(&ctx);
+                RS_MD5Update(&ctx, key, key_len);
+                RS_MD5Final(tk, &ctx);
 
                 key = tk;
                 key_len = 16;
@@ -219,15 +219,15 @@ nr_hmac_md5(const uint8_t *data, size_t data_len,
                 k_opad[i] ^= 0x5c;
         }
 
-        nr_MD5Init(&ctx); 
-        nr_MD5Update(&ctx, k_ipad, sizeof(k_ipad));
-        nr_MD5Update(&ctx, data, data_len);
-        nr_MD5Final(digest, &ctx);
+        RS_MD5Init(&ctx); 
+        RS_MD5Update(&ctx, k_ipad, sizeof(k_ipad));
+        RS_MD5Update(&ctx, data, data_len);
+        RS_MD5Final(digest, &ctx);
 
-        nr_MD5Init(&ctx);
-        nr_MD5Update(&ctx, k_opad, sizeof(k_opad));
-        nr_MD5Update(&ctx, digest, 16);
-        nr_MD5Final(digest, &ctx);
+        RS_MD5Init(&ctx);
+        RS_MD5Update(&ctx, k_opad, sizeof(k_opad));
+        RS_MD5Update(&ctx, digest, 16);
+        RS_MD5Final(digest, &ctx);
 }
 
 /** \endcond */

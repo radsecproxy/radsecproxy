@@ -29,6 +29,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  \brief Main header file.
  */
 
+#ifndef _RADIUS_CLIENT_H_
+#define _RADIUS_CLIENT_H_ 1
+
 /*
  *  System-specific header files.
  */
@@ -42,10 +45,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netinet/in.h>
 #include <sys/time.h>
 
+#include <radsec/radsec.h>
+
 /*
  *  Definitions of attributes.
  */
-#include <networkradius-devel/radius.h>
+#include <radsec/radius.h>
 
 /** \defgroup build Build Helpers
  *
@@ -135,38 +140,38 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #ifdef WITHOUT_OPENSSL
-#ifndef NR_MD5_CTX
-#error NR_MD5_CTX must be defined
+#ifndef RS_MD5_CTX
+#error RS_MD5_CTX must be defined
 #endif
-#ifndef nr_MD5Init
+#ifndef RS_MD5Init
 #error n_rMD5Init must be defined
 #endif
-#ifndef nr_MD5Update
-#error nr_MD5Updyae must be defined
+#ifndef RS_MD5Update
+#error RS_MD5Updyae must be defined
 #endif
-#ifndef nr_MD5Final
-#error nr_MD5Final must be defined
+#ifndef RS_MD5Final
+#error RS_MD5Final must be defined
 #endif
-#ifndef nr_MD5Transform
-#error nr_MD5Transform must be defined
+#ifndef RS_MD5Transform
+#error RS_MD5Transform must be defined
 #endif
 
 #else  /* WITHOUT_OPENSSL */
 
 #include <openssl/md5.h>
 /** Define for compile-time selection of the MD5 functions.  Defaults to using the OpenSSL functions.  \ingroup custom */
-#define NR_MD5_CTX	MD5_CTX
+#define RS_MD5_CTX	MD5_CTX
 /** Define for compile-time selection of the MD5 functions.  Defaults to using the OpenSSL functions. \ingroup custom */
-#define nr_MD5Init	MD5_Init
+#define RS_MD5Init	MD5_Init
 /** Define for compile-time selection of the MD5 functions.  Defaults to using the OpenSSL functions. \ingroup custom */
-#define nr_MD5Update	MD5_Update
+#define RS_MD5Update	MD5_Update
 /** Define for compile-time selection of the MD5 functions.  Defaults to using the OpenSSL functions. \ingroup custom */
-#define nr_MD5Final	MD5_Final
+#define RS_MD5Final	MD5_Final
 /** Define for compile-time selection of the MD5 functions.  Defaults to using the OpenSSL functions. \ingroup custom */
-#define nr_MD5Transform MD5_Transform
+#define RS_MD5Transform MD5_Transform
 #endif
 
-#ifndef NR_MAX_PACKET_LEN
+#ifndef RS_MAX_PACKET_LEN
 /** The maximum size of a packet that the library will send or receive.  \ingroup custom
  *
  *  The RFC requirement is to handle at least 4K packets.  However, if
@@ -176,144 +181,39 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  Be warned that any packets larger than this value will be ignored
  *  and silently discarded.
  */
-#define NR_MAX_PACKET_LEN (4096)
+#define RS_MAX_PACKET_LEN (4096)
 #endif
 
-#ifndef NR_MAX_ATTRIBUTES
+#ifndef RS_MAX_ATTRIBUTES
 /** The maximum number of attributes that the library will allow in a packet.  \ingroup custom
  *
- *  Packets which contain more than ::NR_MAX_ATTRIBUTES will generate
+ *  Packets which contain more than ::RS_MAX_ATTRIBUTES will generate
  *  an error.  This value is configurable because there may be a need
  *  to accept a large mumber of attributes.
  *
  *  This value is ignored when packets are sent.  The library will
  *  send as many attributes as it is told to send.
  */
-#define NR_MAX_ATTRIBUTES (200)
+#define RS_MAX_ATTRIBUTES (200)
 #endif
 
-#undef NR_MAX_PACKET_CODE
+#undef RS_MAX_PACKET_CODE
 /** The maximum RADIUS_PACKET::code which we can accept. \ingroup dict
  *
  *  \attention This should not be changed, as it is used by other
  *  structures such as ::nr_packet_codes.
  */
-#define NR_MAX_PACKET_CODE PW_COA_NAK
+#define RS_MAX_PACKET_CODE PW_COA_NAK
 
 /**  The maximum vendor number which is permitted. \ingroup dict
  *
  *  The RFCs require that the Vendor Id or Private Enterprise Number
  *  be encoded as 32 bits, with the upper 8 bits being zero.
  */
-#define NR_MAX_VENDOR		(1 << 24)
-
-/**  The maximum length of a RADIUS attribute.
- *
- *  The RFCs require that a RADIUS attribute transport no more than
- *  253 octets of data.  We add an extra byte for a trailing NUL, so
- *  that the VALUE_PAIR::vp_strvalue field can be handled as a C
- *  string.
- */
-#define MAX_STRING_LEN		(254)
+#define RS_MAX_VENDOR		(1 << 24)
 
 /** Data Type Definitions. \ingroup dict
  */
-typedef enum nr_attr_type_t {
-  NR_TYPE_INVALID = 0,		/**< Invalid data type */
-  NR_TYPE_STRING,      		/**< printable-text */
-  NR_TYPE_INTEGER,     		/**< a 32-bit unsigned integer */
-  NR_TYPE_IPADDR,      		/**< an IPv4 address */
-  NR_TYPE_DATE,			/**< a 32-bit date, of seconds since January 1, 1970 */
-  NR_TYPE_OCTETS,   		 /**< a sequence of binary octets */
-  NR_TYPE_IFID,	     		/**< an Interface Id */
-  NR_TYPE_IPV6ADDR,		/**< an IPv6 address */
-  NR_TYPE_IPV6PREFIX,		/**< an IPv6 prefix */
-  NR_TYPE_BYTE,			/**< an 8-bit integer */
-  NR_TYPE_SHORT,		/**< a 16-bit integer */
-} nr_attr_type_t;
-
-#define	PW_ACCESS_REQUEST		1
-#define	PW_ACCESS_ACCEPT		2
-#define	PW_ACCESS_REJECT		3
-#define	PW_ACCOUNTING_REQUEST		4
-#define	PW_ACCOUNTING_RESPONSE		5
-#define	PW_ACCOUNTING_STATUS		6
-#define PW_PASSWORD_REQUEST		7
-#define PW_PASSWORD_ACK			8
-#define PW_PASSWORD_REJECT		9
-#define	PW_ACCOUNTING_MESSAGE		10
-#define PW_ACCESS_CHALLENGE		11
-#define PW_STATUS_SERVER		12
-#define PW_STATUS_CLIENT		13
-#define PW_DISCONNECT_REQUEST		40
-#define PW_DISCONNECT_ACK		41
-#define PW_DISCONNECT_NAK		42
-#define PW_COA_REQUEST			43
-#define PW_COA_ACK			44
-#define PW_COA_NAK			45
-
-/** Error codes \ingroup error
- *
- *  The numerical value of these definitions may change from version
- *  to version of the library.
- */
-typedef enum nr_error_t {
-	/** Invalid argument */
-	NR_ERR_INVALID_ARG = 1,
-	/** Insufficient data to decode the packet */
-	NR_ERR_PACKET_TOO_SMALL,
-	/** The packet header says it is larger than the received data */
-	NR_ERR_PACKET_TOO_LARGE,
-	/** the attribute overflows the packet */
-	NR_ERR_ATTR_OVERFLOW,
-	/** the attribute header "length" field is too small */
-	NR_ERR_ATTR_TOO_SMALL,
-	/** the attribute is more than 256 octets long */
-	NR_ERR_ATTR_TOO_LARGE,
-	/** the attribute is unknown */
-	NR_ERR_ATTR_UNKNOWN,
-	/** the attribute name is improperly formatted */
-	NR_ERR_ATTR_BAD_NAME,
-	/** the attribute value could not be parsed */
-	NR_ERR_ATTR_VALUE_MALFORMED,
-	/** the attribute "type" is invalid */
-	NR_ERR_ATTR_INVALID,
-	/** the packet has too many attributes */
-	NR_ERR_TOO_MANY_ATTRS,
-	/** the attribute has an unsupported data type */
-	NR_ERR_ATTR_TYPE_UNKNOWN,
-	/** the Message-Authenticator has the wrong length */
-	NR_ERR_MSG_AUTH_LEN,
-	/** the Message-Authenticator is wrong */
-	NR_ERR_MSG_AUTH_WRONG,
-	/** we need a request packet to calculate something in the response */
-	NR_ERR_REQUEST_REQUIRED,
-	/** the request code is unsupported */
-	NR_ERR_REQUEST_CODE_INVALID,
-	/** the Authentication Vector is wrong */
-	NR_ERR_AUTH_VECTOR_WRONG,
-	/** the response code is unsupported */
-	NR_ERR_RESPONSE_CODE_INVALID,
-	/** the response ID field is invalid */
-	NR_ERR_RESPONSE_ID_INVALID,
-	/** the response is not from the correct source IP/port */
-	NR_ERR_RESPONSE_SRC_INVALID,
-	/** Look at "errno" for the error */
-	NR_ERR_SYSTEM,
-	/** We cannot encode the packet because of invalid arguments */
-	NR_ERR_NO_PACKET_DATA,
-	/** the vendor is unknown */
-	NR_ERR_VENDOR_UNKNOWN,
-	/** an internal sanity check failed */
-	NR_ERR_INTERNAL_FAILURE,
-	/** the caller requested an unsupported featuer */
-	NR_ERR_UNSUPPORTED,
-	/** we were unable to allocate memory */
-	NR_ERR_NO_MEM,
-	/** Resource is in use */
-	NR_ERR_IN_USE,
-} nr_error_t;
-
 #define TAG_VALID(x)          ((x) < 0x20)
 
 /** The attribute is not encrypted. */
@@ -335,7 +235,7 @@ typedef enum nr_error_t {
 typedef struct attr_flags {
 	unsigned int		has_tag : 1; /**< Attribute has an RFC 2868 tag */
 	unsigned int		unknown : 1; /**< Attribute is unknown */
-#ifdef NR_TYPE_TLV
+#ifdef RS_TYPE_TLV
 	unsigned int		has_tlv : 1; /* has sub attributes */
 	unsigned int		is_tlv : 1; /* is a sub attribute */
 #endif
@@ -358,7 +258,7 @@ typedef struct attr_flags {
  */
 typedef struct nr_dict_attr {
 	unsigned int		attr;		/**< Attribute number  */
-	nr_attr_type_t	      	type;		/**< Data type */
+	rs_attr_type_t	      	type;		/**< Data type */
 	unsigned int		vendor;		/**< Vendor-Id number  */
         ATTR_FLAGS              flags;
 	const char		*name;		/**< Printable name  */
@@ -392,21 +292,21 @@ typedef struct nr_dict_vendor {
  *
  */
 typedef union value_pair_data {
-	char			strvalue[MAX_STRING_LEN]; /* +1 for NUL */
+	char			strvalue[RS_MAX_STRING_LEN]; /* +1 for NUL */
 	uint8_t			octets[253];
 	struct in_addr		ipaddr;
 	struct in6_addr		ipv6addr;
 	uint32_t		date;
 	uint32_t		integer;
-#ifdef NR_TYPE_SIGNED
+#ifdef RS_TYPE_SIGNED
 	int32_t			sinteger;
 #endif
-#ifdef NR_TYPE_ABINARY
+#ifdef RS_TYPE_ABINARY
 	uint8_t			filter[32];
 #endif
 	uint8_t			ifid[8]; /* struct? */
 	uint8_t			ipv6prefix[18]; /* struct? */
-#ifdef NR_TYPE_TLV
+#ifdef RS_TYPE_TLV
 	uint8_t			*tlv;
 #endif
 } VALUE_PAIR_DATA;
@@ -432,23 +332,23 @@ typedef struct value_pair {
 #define vp_ipaddr     data.ipaddr.s_addr
 #define vp_date       data.integer
 #define vp_integer    data.integer
-#ifdef NR_TYPE_ABINARY
+#ifdef RS_TYPE_ABINARY
 #define vp_filter     data.filter
 #endif
-#ifdef NR_TYPE_ETHER
+#ifdef RS_TYPE_ETHER
 #define vp_ether      data.ether
 #endif
-#ifdef NR_TYPE_SIGNED
+#ifdef RS_TYPE_SIGNED
 #define vp_signed     data.sinteger
 #endif
-#ifdef NR_TYPE_TLV
+#ifdef RS_TYPE_TLV
 #define vp_tlv	      data.tlv
 #endif
 
-#ifdef NR_TYPE_TLV
-#define NR_ATTR_MAX_TLV (4)
-extern const int nr_attr_shift[NR_ATTR_MAX_TLV];
-extern const int nr_attr_mask[NR_ATTR_MAX_TLV];
+#ifdef RS_TYPE_TLV
+#define RS_ATTR_MAX_TLV (4)
+extern const int nr_attr_shift[RS_ATTR_MAX_TLV];
+extern const int nr_attr_mask[RS_ATTR_MAX_TLV];
 extern const unsigned int nr_attr_max_tlv;
 #endif
 
@@ -474,12 +374,12 @@ typedef struct radius_packet {
 	VALUE_PAIR		*vps;	/**< linked list of ::VALUE_PAIR */
 } RADIUS_PACKET;
 
-#define NR_PACKET_ENCODED  (1 << 0)
-#define NR_PACKET_HEADER   (1 << 1)
-#define NR_PACKET_SIGNED   (1 << 2)
-#define NR_PACKET_OK	   (1 << 3)
-#define NR_PACKET_VERIFIED (1 << 4)
-#define NR_PACKET_DECODED  (1 << 5)
+#define RS_PACKET_ENCODED  (1 << 0)
+#define RS_PACKET_HEADER   (1 << 1)
+#define RS_PACKET_SIGNED   (1 << 2)
+#define RS_PACKET_OK	   (1 << 3)
+#define RS_PACKET_VERIFIED (1 << 4)
+#define RS_PACKET_DECODED  (1 << 5)
 
 
 /** Track packets sent to a server. \ingroup id
@@ -634,7 +534,7 @@ extern VALUE_PAIR *nr_vps_find(VALUE_PAIR *head,
  *  packet.
  *
  *  \attention There is usually no need to call this function.  Use
- *  the NR_DA_* definitions instead.
+ *  the RS_DA_* definitions instead.
  *
  * @param[in] attr    Value of the attribute
  * @param[in] vendor  Value of the vendor
@@ -773,7 +673,7 @@ extern const DICT_ATTR const *nr_dict_attr_names[];
  *  application.  Packet codes which are not handled by the library
  *  have NULL for their names.
  */
-extern const char *nr_packet_codes[NR_MAX_PACKET_CODE + 1];
+extern const char *nr_packet_codes[RS_MAX_PACKET_CODE + 1];
 
 /** Verifies that a packet is "well formed".  \ingroup packet
  *
@@ -1406,3 +1306,5 @@ extern ssize_t nr_vp_sscanf_value(VALUE_PAIR *vp, const char *value);
  */
 # define BLANK_FORMAT ""
 #endif
+
+#endif /* _RADIUS_CLIENT_H_ */
