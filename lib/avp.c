@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <libgen.h>
 #include <assert.h>
 
 #include <radsec/radsec.h>
