@@ -166,20 +166,6 @@ int rs_context_create(struct rs_context **ctx);
     all other libradsec objects have been freed.  */
 void rs_context_destroy(struct rs_context *ctx);
 
-/** Initialize FreeRADIUS dictionary needed for creating packets.
-
-    \a ctx Context.
-
-    \a dict Optional string with full path to FreeRADIUS dictionary.
-    If \a dict is NULL the path to the dictionary file is taken from
-    the "dictionary" configuration directive.  Note that the
-    configuration file must be read prior to using this option (see \a
-    rs_context_read_config).
-
-    \return RSE_OK (0) on success, RSE_NOMEM on memory allocation
-    error and RSE_FR on FreeRADIUS error.  */
-int rs_context_init_freeradius_dict(struct rs_context *ctx, const char *dict);
-
 /** Set allocation scheme to use.  \a scheme is the allocation scheme
     to use, see \a rs_alloc_scheme.  \return On success, RSE_OK (0) is
     returned.  On error, !0 is returned and a struct \a rs_error is

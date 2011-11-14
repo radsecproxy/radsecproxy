@@ -31,8 +31,6 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
   {
     struct rs_peer *server;
 
-    if (rs_context_init_freeradius_dict (h, "/usr/share/freeradius/dictionary"))
-      goto cleanup;
     if (rs_conn_create (h, &conn, NULL))
       goto cleanup;
     rs_conn_set_type (conn, RS_CONN_TYPE_UDP);
@@ -47,8 +45,6 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
   }
 #else  /* defined (USE_CONFIG_FILE) */
   if (rs_context_read_config (h, av1))
-    goto cleanup;
-  if (rs_context_init_freeradius_dict (h, NULL))
     goto cleanup;
   if (rs_conn_create (h, &conn, av2))
     goto cleanup;

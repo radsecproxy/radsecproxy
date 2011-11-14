@@ -48,38 +48,6 @@ rs_context_create (struct rs_context **ctx)
   return RSE_OK;
 }
 
-/** Initialize freeradius dictionary.  */
-int
-rs_context_init_freeradius_dict (struct rs_context *ctx, const char *dict)
-{
-  int r = RSE_OK;
-  size_t dictlen;
-  char *dir = NULL;
-  char *fn = NULL;
-
-  if (dict == NULL)
-    if (ctx->config != NULL && ctx->config->dictionary)
-      dict = ctx->config->dictionary;
-
-  dictlen = strlen (dict);
-  dir = rs_calloc (ctx, 1, dictlen + 1);
-  fn = rs_calloc (ctx, 1, dictlen + 1);
-  if (dir == NULL || fn == NULL)
-    {
-      r = rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
-      goto out;
-    }
-  strncpy (dir, dict, dictlen);
-  strncpy (fn, dict, dictlen);
-
- out:
-  if (dir)
-    rs_free (ctx, dir);
-  if (fn)
-    rs_free (ctx, fn);
-  return r;
-}
-
 struct rs_error *
 rs_resolv (struct evutil_addrinfo **addr,
 	   rs_conn_type_t type,
