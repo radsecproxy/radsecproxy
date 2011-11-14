@@ -38,4 +38,4 @@ endif
 
 libradsec_la_LIBADD = radius/libradsec-radius.la
 libradsec_la_LDFLAGS = -version-info 0:0:0 -export-symbols radsec.sym
-libradsec_la_CFLAGS = $(AM_CFLAGS) -Werror # -DDEBUG -DDEBUG_LEVENT 
+libradsec_la_CFLAGS = $(AM_CFLAGS) -DHAVE_CONFIG_H -Werror # -DDEBUG -DDEBUG_LEVENT 

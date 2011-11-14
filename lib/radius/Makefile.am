@@ -12,13 +12,13 @@ libradsec_radius_la_SOURCES = \
 	custom.c \
 	dict.c \
 	id.c \
-	packet.c \
 	parse.c \
 	print.c \
+	radpkt.c \
 	static.c \
 	valuepair.c
 
-libradsec_radius_la_CFLAGS = $(AM_CFLAGS)
+libradsec_radius_la_CFLAGS = $(AM_CFLAGS) -DHAVE_CONFIG_H
 
 DICTIONARIES = \
 	share/dictionary.txt \

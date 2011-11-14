@@ -6,11 +6,21 @@
 #ifndef _RADSEC_RADSEC_H_
 #define _RADSEC_RADSEC_H_ 1
 
-#include <unistd.h>
-#include <stdint.h>
-
-#include <arpa/inet.h>
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+#ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
+#endif
+#ifdef HAVE_ARPA_INET_H
+#include <arpa/inet.h>
+#endif
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+#ifdef HAVE_STDINT_H
+#include <stdint.h>
+#endif
 
 enum rs_error_code {
     RSE_OK = 0,

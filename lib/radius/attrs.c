@@ -836,7 +836,7 @@ static ssize_t data2vp_any(const RADIUS_PACKET *packet,
 #endif
 
 
-#ifdef FLAG_ENCRYPT_ASCEND_SECRET:
+#ifdef FLAG_ENCRYPT_ASCEND_SECRET
 		/*
 		 *  Ascend-Send-Secret
 		 *  Ascend-Receive-Secret

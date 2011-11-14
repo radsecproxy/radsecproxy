@@ -35,17 +35,13 @@ void nr_vp_free(VALUE_PAIR **head)
 {
 	VALUE_PAIR	*next, *vp;
 
-	if (!head || !*head) return;
-
-	vp = *head;
-	do {
-		if (vp) next = vp->next;
+	for (vp = *head; vp != NULL; vp = next) {
+		next = vp->next;
 		if (vp->da->flags.encrypt) {
 			memset(vp, 0, sizeof(vp));
 		}
 		free(vp);
-		vp = next;
-	} while (next);
+	}
 
 	*head = NULL;
 }

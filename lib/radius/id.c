@@ -26,7 +26,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include	"client.h"
+
+#ifdef HAVE_UNISTD_H
 #include	<unistd.h>
+#endif
 
 /** \file id.c
  *  \brief Handling of ID allocation / freeing
@@ -141,7 +144,7 @@ int nr_server_close(const nr_server_t *s)
 
 	if (s->used > 0) return -RSE_INUSE;
 
-	if (s->sockfd >= 0) close(s->sockfd);
+	if (s->sockfd >= 0) evutil_closesocket(s->sockfd);
 
 	return 0;
 }

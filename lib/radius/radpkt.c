@@ -249,7 +249,7 @@ static int packet_auth_ok(const RADIUS_PACKET *original,
 
 	RS_MD5Init(&ctx);
 	RS_MD5Update(&ctx, data, length);
-	RS_MD5Update(&ctx, original->secret, original->sizeof_secret);
+	RS_MD5Update(&ctx, (const unsigned char *)original->secret, original->sizeof_secret);
 	RS_MD5Final(calc_digest, &ctx);
 
 	memcpy(data + 4, packet_vector, sizeof(packet_vector));
@@ -313,7 +313,7 @@ int nr_packet_verify(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 		}
 
 		if ((memcmp(&packet->src, &original->dst, sizeof(packet->src)) != 0) &&
-		    (evutil_sockaddr_cmp(&(packet->src), &(original->dst)) != 0)) {
+		    (evutil_sockaddr_cmp((struct sockaddr *)&packet->src, (struct sockaddr *)&original->dst, 1) != 0)) {
 			nr_debug_error("Ignoring response from wrong IP/port");
 			return -RSE_INVALID_RESPONSE_SRC;
 		}
@@ -487,7 +487,7 @@ int nr_packet_sign(RADIUS_PACKET *packet, const RADIUS_PACKET *original)
 
 		RS_MD5Init(&ctx);
 		RS_MD5Update(&ctx, packet->data, packet->length);
-		RS_MD5Update(&ctx, packet->secret, packet->sizeof_secret);
+		RS_MD5Update(&ctx, (const unsigned char *)packet->secret, packet->sizeof_secret);
 		RS_MD5Final(packet->vector, &ctx);
 	}
 

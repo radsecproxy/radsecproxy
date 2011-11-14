@@ -30,7 +30,8 @@ AM_CONDITIONAL([RS_ENABLE_TLS], [test "${enable_tls+set}" = set])
 
 # Checks for header files.
 AC_CHECK_HEADERS(
-    [netdb.h netinet/in.h stdint.h stdlib.h string.h sys/socket.h unistd.h])
+    [sys/time.h time.h netdb.h netinet/in.h stdint.h stdlib.h strings.h string.h \
+     sys/socket.h unistd.h syslog.h sys/select.h fcntl.h arpa/inet.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_SIZE_T

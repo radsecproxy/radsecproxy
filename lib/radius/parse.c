@@ -30,18 +30,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "client.h"
+
+#ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
+#endif
 
 ssize_t nr_vp_sscanf_value(VALUE_PAIR *vp, const char *value)
 {
 	char *end;
 
 	switch (vp->da->type) {
-	case RS_TYPE_STRING:
-		strlcpy(vp->vp_strvalue, value, sizeof(vp->vp_strvalue));
-		vp->length = strlen(vp->vp_strvalue);
-		return vp->length;
+	case RS_TYPE_STRING: {
+		size_t len = strlen(value);
 
+		if (len >= RS_MAX_STRING_LEN)
+			return -RSE_ATTR_TOO_LARGE;
+
+		memcpy(vp->vp_strvalue, value, len + 1);
+		return (vp->length = len);
+	}
 	case RS_TYPE_DATE:
 	case RS_TYPE_INTEGER:
 		vp->vp_integer = strtoul(value, &end, 10);

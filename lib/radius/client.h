@@ -35,21 +35,31 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*
  *  System-specific header files.
  */
+#include <config.h>
 #include <errno.h>
 #include <stdio.h>
+#ifdef HAVE_STDINT_H
 #include <stdint.h>
+#endif
+#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
+#endif
+#ifdef HAVE_STRING_H
 #include <string.h>
+#endif
 #include <stdarg.h>
+#ifdef HAVE_NETDB_H
 #include <netdb.h>
+#endif
+#ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
+#endif
+#ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
+#endif
 
 #include <radsec/radsec.h>
-
-/*
- *  Definitions of attributes.
- */
+#include <radsec/radsec-impl.h>
 #include <radsec/radius.h>
 
 /** \defgroup build Build Helpers
