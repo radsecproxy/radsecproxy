@@ -54,7 +54,7 @@ rs_avp_name (rs_const_avp *vp)
 void
 rs_avp_append (rs_avp **head, rs_avp *tail)
 {
-  return nr_vps_append (head, tail);
+  nr_vps_append (head, tail);
 }
 
 rs_avp *
