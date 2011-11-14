@@ -25,14 +25,19 @@ rs_avp_free (rs_avp **vps)
 size_t
 rs_avp_length (rs_const_avp *vp)
 {
-  assert (vp != NULL);
+  if (vp == NULL)
+    return 0;
+
   return vp->length;
 }
 
 rs_attr_type_t
 rs_avp_typeof (rs_const_avp *vp)
 {
-  return vp ? vp->da->type : RS_TYPE_INVALID;
+  if (vp == NULL)
+    return RS_TYPE_INVALID;
+
+  return vp->da->type;
 }
 
 void
@@ -40,6 +45,8 @@ rs_avp_attrid (rs_const_avp *vp,
 	       unsigned int *attr,
 	       unsigned int *vendor)
 {
+  assert (vp != NULL);
+
   *attr = vp->da->attr;
   *vendor = vp->da->vendor;
 }
@@ -47,7 +54,7 @@ rs_avp_attrid (rs_const_avp *vp,
 const char *
 rs_avp_name (rs_const_avp *vp)
 {
-  return vp ? vp->da->name : NULL;
+  return (vp != NULL) ? vp->da->name : NULL;
 }
 
 void
@@ -127,15 +134,15 @@ rs_avp_dup (rs_const_avp *vp)
 }
 
 rs_avp *
-rs_avp_next (rs_avp *avp)
+rs_avp_next (rs_avp *vp)
 {
-  return avp ? avp->next : NULL;
+  return (vp != NULL) ? vp->next : NULL;
 }
 
 rs_const_avp *
-rs_avp_next_const (rs_const_avp *avp)
+rs_avp_next_const (rs_const_avp *vp)
 {
-  return avp ? avp->next : NULL;
+  return (vp != NULL) ? vp->next : NULL;
 }
 
 int
