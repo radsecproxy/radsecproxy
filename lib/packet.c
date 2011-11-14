@@ -197,13 +197,6 @@ rs_packet_create_authn_request (struct rs_connection *conn,
   return RSE_OK;
 }
 
-struct radius_packet *
-rs_packet_frpkt (struct rs_packet *pkt)
-{
-  assert (pkt);
-  return pkt->rpkt;
-}
-
 void
 rs_packet_destroy (struct rs_packet *pkt)
 {

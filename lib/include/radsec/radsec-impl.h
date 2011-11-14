@@ -125,9 +125,6 @@ struct rs_error *rs_resolv (struct evutil_addrinfo **addr,
 			    const char *hostname,
 			    const char *service);
 
-/** Return the internal packet associated with packet \a pkt.  */
-struct radius_packet *rs_packet_frpkt(struct rs_packet *pkt);
-
 #if defined (__cplusplus)
 }
 #endif

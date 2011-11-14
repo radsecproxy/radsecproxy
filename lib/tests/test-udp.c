@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <cgreen/cgreen.h>
-#include <freeradius/libradius.h>
 #include "radsec/radsec.h"
 #include "radsec/request.h"
 #include "udp.h"
@@ -19,7 +18,7 @@ authenticate (struct rs_connection *conn, const char *user, const char *pw)
   rs_request_add_reqpkt (req, msg);
   assert_true (rs_request_send (req, &resp) == 0);
   //printf ("%s\n", rs_err_msg (rs_err_conn_pop (conn), 1));
-  assert_true (rs_packet_frpkt (resp)->code == PW_ACCESS_ACCEPT);
+  assert_true (rs_packet_code(resp) == PW_ACCESS_ACCEPT);
 
   rs_request_destroy (req);
 }

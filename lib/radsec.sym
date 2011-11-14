@@ -69,7 +69,6 @@ rs_packet_code
 rs_packet_create
 rs_packet_create_authn_request
 rs_packet_destroy
-rs_packet_frpkt
 rs_packet_send
 rs_peer_create
 rs_peer_set_address
