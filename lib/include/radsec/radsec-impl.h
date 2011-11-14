@@ -62,7 +62,6 @@ struct rs_realm {
 
 /** Top configuration object.  */
 struct rs_config {
-    char *dictionary;
     struct rs_realm *realms;
     cfg_t *cfg;
 };

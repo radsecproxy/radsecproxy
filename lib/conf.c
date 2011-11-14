@@ -15,7 +15,6 @@
 
 #if 0
   # common config options
-  dictionary = STRING
 
   # common realm config options
   realm NAME {
@@ -69,7 +68,6 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
     };
   cfg_opt_t opts[] =
     {
-      CFG_STR ("dictionary", NULL, CFGF_NONE),
       CFG_SEC ("realm", realm_opts, CFGF_TITLE | CFGF_MULTI),
       CFG_END ()
     };
@@ -98,7 +96,6 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
   if (config == NULL)
     return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
   ctx->config = config;
-  config->dictionary = cfg_getstr (cfg, "dictionary");
 
   for (i = 0; i < cfg_size (cfg, "realm"); i++)
     {
