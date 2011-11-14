@@ -239,12 +239,9 @@ typedef struct attr_flags {
 	unsigned int		has_tlv : 1; /* has sub attributes */
 	unsigned int		is_tlv : 1; /* is a sub attribute */
 #endif
-#ifdef VENDOR_EXTENDED
 	unsigned int		extended : 1; /* extended attribute */
 	unsigned int		extended_flags : 1; /* with flag */
 	unsigned int		evs : 1;	    /* extended VSA */
-#endif
-
 	uint8_t		        encrypt;      /**< Attribute encryption method */
 	uint8_t			length;	      /**< The expected length of the attribute */
 } ATTR_FLAGS;

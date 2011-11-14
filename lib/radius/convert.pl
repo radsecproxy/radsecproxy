@@ -69,18 +69,34 @@ if (scalar keys %vendor > 0) {
     print DICT "const DICT_VENDOR nr_dict_vendors[] = {\n";
     foreach $v (sort keys %vendor) {
 	print DICT "  { \n";
-	print DICT "    .name = \"", $v, "\", \n";
-	print DICT "    .vendor = ", $vendor{$v}{'pec'}, ", \n";
-	print DICT "    .type = ", $vendor{$v}{'type'}, ",\n";
-	print DICT "    .length = ", $vendor{$v}{'length'}, ",\n";
+	print DICT "    " . $vendor{$v}{'pec'} . ", \n";
+	print DICT "    " . $vendor{$v}{'type'} . ",\n";
+	print DICT "    " . $vendor{$v}{'length'} . ",\n";
+	print DICT "    \"" . $v, "\"\n";
 	print DICT "  },\n";
     }
-    print DICT "\n  { .name = NULL, }\n";
+    print DICT "  { \n";
+    print DICT "    0,\n";
+    print DICT "    0,\n";
+    print DICT "    0,\n";
+    print DICT "    NULL\n";
+    print DICT "  },\n";
     print DICT "};\n\n";
 }
 
 # needed for later.
 $vendor{""}{'pec'} = 0;
+
+sub printAttrFlag
+{
+    my $tmp = $attributes{$attr_val}{'flags'}{$_[0]};
+
+    if (!$tmp) {
+	$tmp = 0;
+    }
+
+    print DICT $tmp . ", ";
+}
 
 #
 #  Print DICT out the attributes sorted by number.
@@ -92,24 +108,23 @@ foreach $attr_val (sort {$a <=> $b} keys %attributes) {
     print DICT "  { /* $offset */ \n";
 
     if (defined $attributes{$attr_val}{'raw'}) {
-	print DICT "    .name = NULL, \n";
+	print DICT "    0\n",
     } else {
-	print DICT "    .name = \"", $attributes{$attr_val}{'name'}, "\", \n";
-	if ($attributes{$attr_val}{'vendor'}) {
-	    print DICT "    .vendor = ", $attributes{$attr_val}{'vendor'}, ", \n";
-	}
-
-	print DICT "    .attr = ", $attributes{$attr_val}{'value'}, ", \n";
-	print DICT "    .type = ", $attributes{$attr_val}{'type'}, ", \n";
-	
-	if ($attributes{$attr_val}{'flags'}) {
-	    print DICT "    .flags = {\n";
-	    foreach $flag (keys %{$attributes{$attr_val}{'flags'}}) {
-		print DICT "      .$flag = $attributes{$attr_val}{'flags'}{$flag},\n";
-	    }
-	    print DICT "    },\n";
-	}
-
+	print DICT "    ", $attributes{$attr_val}{'value'}, ", \n";
+	print DICT "    ", $attributes{$attr_val}{'type'}, ", \n";
+	print DICT "    ", $attributes{$attr_val}{'vendor'}, ", \n";
+	print DICT "    { ";
+	&printAttrFlag('has_tag');
+	&printAttrFlag('unknown');
+#	&printAttrFlag('has_tlv');
+#	&printAttrFlag('is_tlv');
+	&printAttrFlag('extended');
+	&printAttrFlag('extended_flags');
+	&printAttrFlag('evs');
+	&printAttrFlag('encrypt');
+	&printAttrFlag('length');
+	print DICT "},\n";
+	print DICT "    \"", $attributes{$attr_val}{'name'}, "\", \n";
 	$num_names++;
     }
 
