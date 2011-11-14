@@ -407,121 +407,170 @@ int rs_err_code(struct rs_error *err, int dofree_flag);
  */
 #define RS_MAX_STRING_LEN         254
 
+/** Free the AVP list \a vps */
 void
 rs_avp_free(rs_avp **vps);
 
+/** Return the length of AVP \a vp in bytes */
 size_t
 rs_avp_length(rs_const_avp *vp);
 
+/** Return the type of \a vp */
 rs_attr_type_t
 rs_avp_typeof(rs_const_avp *vp);
 
+/** Retrieve the attribute and vendor ID of \a vp */
 void
 rs_avp_attrid(rs_const_avp *vp, unsigned int *attr, unsigned int *vendor);
 
-
+/** Add \a vp to the list pointed to by \a head */
 void
-rs_avp_append(rs_avp **head, rs_avp *tail);
+rs_avp_append(rs_avp **head, rs_avp *vp);
 
+/** Find an AVP in \a vp that matches \a attr and \a vendor */
 rs_avp *
 rs_avp_find(rs_avp *vp, unsigned int attr, unsigned int vendor);
 
+/** Find an AVP in \a vp that matches \a attr and \a vendor */
 rs_const_avp *
 rs_avp_find_const(rs_const_avp *vp, unsigned int attr, unsigned int vendor);
 
+/** Alloc a new AVP for \a attr and \a vendor */
 rs_avp *
 rs_avp_alloc(unsigned int attr, unsigned int vendor);
 
+/** Duplicate existing AVP \a vp */
 rs_avp *
 rs_avp_dup(rs_const_avp *vp);
 
+/** Remove matching AVP from list \a vps */
 int
-rs_avp_delete(rs_avp **first, unsigned int attr, unsigned int vendor);
+rs_avp_delete(rs_avp **vps, unsigned int attr, unsigned int vendor);
 
+/** Return next AVP in list */
 rs_avp *
-rs_avp_next(rs_avp *avp);
+rs_avp_next(rs_avp *vp);
 
+/** Return next AVP in list */
 rs_const_avp *
 rs_avp_next_const(rs_const_avp *avp);
 
+/** Return string value of \a vp */
 const char *
 rs_avp_string_value(rs_const_avp *vp);
 
+/** Set AVP \a vp to string \a str */
 int
 rs_avp_string_set(rs_avp *vp, const char *str);
 
+/** Return integer value of \a vp */
 uint32_t
 rs_avp_integer_value(rs_const_avp *vp);
 
+/** Set AVP \a vp to integer \a val */
 int
 rs_avp_integer_set(rs_avp *vp, uint32_t val);
 
+/** Return IPv4 value of \a vp */
 uint32_t
 rs_avp_ipaddr_value(rs_const_avp *vp);
 
+/** Set AVP \a vp to IPv4 address \a in */
 int
 rs_avp_ipaddr_set(rs_avp *vp, struct in_addr in);
 
+/** Return POSIX time value of \a vp */
 time_t
 rs_avp_date_value(rs_const_avp *vp);
 
+/** Set AVP \a vp to POSIX time \a date */
 int
 rs_avp_date_set(rs_avp *vp, time_t date);
 
+/** Return constant pointer to octets in \a vp */
 const unsigned char *
 rs_avp_octets_value_const_ptr(rs_const_avp *vp);
 
+/** Return pointer to octets in \a vp */
 unsigned char *
 rs_avp_octets_value_ptr(rs_avp *vp);
 
+/** Retrieve octet pointer \a p and length \a len from \a vp */
 int
 rs_avp_octets_value_byref(rs_avp *vp,
 			  unsigned char **p,
 			  size_t *len);
 
+/** Copy octets from \a vp into \a buf and \a len */
 int
 rs_avp_octets_value(rs_const_avp *vp,
 		    unsigned char *buf,
 		    size_t *len);
 
+/**
+ * Copy octets possibly fragmented across multiple VPs
+ * into \a buf and \a len
+ */
 int
 rs_avp_fragmented_value(rs_const_avp *vps,
 		        unsigned char *buf,
 		        size_t *len);
 
+/** Copy \a len octets in \a buf to AVP \a vp */
 int
 rs_avp_octets_set(rs_avp *vp,
 		  const unsigned char *buf,
 		  size_t len);
 
+/** Return IFID value of \a vp */
 int
 rs_avp_ifid_value(rs_const_avp *vp, uint8_t val[8]);
 
 int
 rs_avp_ifid_set(rs_avp *vp, const uint8_t val[8]);
 
+/** Return byte value of \a vp */
 uint8_t
 rs_avp_byte_value(rs_const_avp *vp);
 
+/** Set AVP \a vp to byte \a val */
 int
 rs_avp_byte_set(rs_avp *vp, uint8_t val);
 
+/** Return short value of \a vp */
 uint16_t
 rs_avp_short_value(rs_const_avp *vp);
 
+/** Set AVP \a vp to short integer \a val */
 int
 rs_avp_short_set(rs_avp *vp, uint16_t val);
 
+/** Display possibly \a canonical attribute name into \a buffer */
+int
+rs_attr_display_name (unsigned int attr,
+                      unsigned int vendor,
+                      char *buffer,
+                      size_t bufsize,
+                      int canonical);
+
+/** Display AVP \a vp into \a buffer */
 size_t
 rs_avp_display_value(rs_const_avp *vp,
                      char *buffer,
                      size_t buflen);
 
 int
+rs_attr_parse_name (const char *name,
+		    unsigned int *attr,
+		    unsigned int *vendor);
+
+/** Lookup attribute \a name */
+int
 rs_attr_find(const char *name,
              unsigned int *attr,
              unsigned int *vendor);
 
+/** Return dictionary name for AVP \a vp */
 const char *
 rs_avp_name(rs_const_avp *vp);
 

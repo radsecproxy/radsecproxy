@@ -22,6 +22,7 @@ libradsec_radius_la_CFLAGS = $(AM_CFLAGS) -DHAVE_CONFIG_H
 
 DICTIONARIES = \
 	share/dictionary.txt \
+	share/dictionary.juniper \
 	share/dictionary.microsoft \
 	share/dictionary.ukerna
 

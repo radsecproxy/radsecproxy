@@ -447,6 +447,79 @@ rs_attr_find (const char *name,
   return RSE_OK;
 }
 
+int
+rs_attr_display_name (unsigned int attr,
+                      unsigned int vendor,
+                      char *buffer,
+                      size_t bufsize,
+                      int canonical)
+{
+  const DICT_ATTR *da = NULL;
+  DICT_ATTR da2;
+  int err;
+
+  if (!canonical) {
+    da = nr_dict_attr_byvalue (attr, vendor);
+  }
+  if (da == NULL) {
+    err = nr_dict_attr_2struct(&da2, attr, vendor,
+                               buffer, bufsize);
+    if (err < 0)
+      return -err;
+  } else {
+    snprintf(buffer, bufsize, "%s", da->name);
+  }
+
+  return RSE_OK;
+}
+
+int
+rs_attr_parse_name (const char *name,
+		    unsigned int *attr,
+		    unsigned int *vendor)
+{
+  const DICT_ATTR *da;
+
+  if (strncmp(name, "Attr-", 5) == 0) {
+    char *s = (char *)&name[5];
+    unsigned int tmp;
+
+    tmp = strtoul(s, &s, 10);
+    if (*s == '.') {
+      s++;
+
+      switch (tmp) {
+      case PW_VENDOR_SPECIFIC:
+	*vendor = strtoul(s, &s, 10);
+	if (*s != '.')
+	  return RSE_ATTR_BAD_NAME;
+
+	s++;
+
+	*attr = strtoul(s, &s, 10);
+	if (*s != '\0')
+	  return RSE_ATTR_BAD_NAME;
+
+	break;
+      default:
+	return RSE_ATTR_BAD_NAME;
+      }
+    } else {
+      *attr = tmp;
+      *vendor = 0;
+    }
+  } else {
+    da = nr_dict_attr_byname (name);
+    if (da == NULL)
+      return RSE_ATTR_UNKNOWN;
+
+    *attr = da->attr;
+    *vendor = da->vendor;
+  }
+
+  return RSE_OK;
+}
+
 size_t
 rs_avp_display_value (rs_const_avp *vp,
                       char *buffer,
@@ -454,3 +527,4 @@ rs_avp_display_value (rs_const_avp *vp,
 {
   return nr_vp_snprintf_value (buffer, buflen, vp);
 }
+

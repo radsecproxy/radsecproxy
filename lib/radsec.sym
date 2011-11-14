@@ -1,4 +1,6 @@
+rs_attr_display_name
 rs_attr_find
+rs_attr_parse_name
 rs_avp_alloc
 rs_avp_append
 rs_avp_attrid
