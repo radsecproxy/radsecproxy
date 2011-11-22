@@ -55,6 +55,7 @@ enum rsp_fticks_mac_type {
 
 struct options {
     char *logdestination;
+    char *ftickssyslogfacility;
     char *ttlattr;
     uint32_t ttlattrtype[2];
     uint8_t addttl;

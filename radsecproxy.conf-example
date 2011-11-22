@@ -57,6 +57,13 @@
 #FTicksReporting None
 #FTicksMAC Static
 
+# You can optionally specify FTicksSyslogFacility to use a dedicated 
+# syslog facility for F-Ticks messages. This allows easy filtering 
+# of F-Ticks messages.
+# Please note that FTicksSyslogFacility cannot specify a file (file:///...)
+#FTicksSyslogFacility	log_local1
+#FTicksSyslogFacility	x-syslog:///log_local1 
+
 # There is an option for doing some simple loop prevention.  Note that
 # the LoopPrevention directive can be used in server blocks too,
 # overriding what's set here in the basic settings.

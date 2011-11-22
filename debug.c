@@ -28,7 +28,16 @@ static uint8_t debug_level = DBG_INFO;
 static char *debug_filepath = NULL;
 static FILE *debug_file = NULL;
 static int debug_syslogfacility = 0;
+#if defined(WANT_FTICKS)
+static int fticks_syslogfacility = 0;
+#endif
 static uint8_t debug_timestamp = 0;
+static const char *facstrings[] = { "LOG_DAEMON", "LOG_MAIL", "LOG_USER", "LOG_LOCAL0",
+	"LOG_LOCAL1", "LOG_LOCAL2", "LOG_LOCAL3", "LOG_LOCAL4",
+	"LOG_LOCAL5", "LOG_LOCAL6", "LOG_LOCAL7", NULL };
+static const int facvals[] = { LOG_DAEMON, LOG_MAIL, LOG_USER, LOG_LOCAL0,
+	LOG_LOCAL1, LOG_LOCAL2, LOG_LOCAL3, LOG_LOCAL4,
+	LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7 };
 
 void debug_init(char *ident) {
     debug_file = stderr;
@@ -64,13 +73,34 @@ uint8_t debug_get_level() {
     return debug_level;
 }
 
+#if defined(WANT_FTICKS)
+int debug_set_ftickssyslogfacility(char *dest) {
+    int i;
+    if (!strncasecmp(dest, "x-syslog://", 11)) {
+	dest += 11;
+	if (*dest == '/')
+	    dest++;
+    }
+    if (*dest) {
+    	for (i = 0; facstrings[i]; i++)
+	    if (!strcasecmp(dest, facstrings[i]))
+	        break;
+        if (!facstrings[i]) {
+    	    debug(DBG_ERR, "Unknown syslog facility %s for F-Ticks, assuming default", dest);
+	    fticks_syslogfacility = 0;
+    	} else
+	    fticks_syslogfacility = facvals[i];
+    } else {
+	fticks_syslogfacility = 0;
+    }
+    if (fticks_syslogfacility && !debug_syslogfacility) {
+	openlog(debug_ident, LOG_PID, fticks_syslogfacility);
+    }	
+    return 1;
+}
+#endif
+
 int debug_set_destination(char *dest) {
-    static const char *facstrings[] = { "LOG_DAEMON", "LOG_MAIL", "LOG_USER", "LOG_LOCAL0",
-					"LOG_LOCAL1", "LOG_LOCAL2", "LOG_LOCAL3", "LOG_LOCAL4",
-					"LOG_LOCAL5", "LOG_LOCAL6", "LOG_LOCAL7", NULL };
-    static const int facvals[] = { LOG_DAEMON, LOG_MAIL, LOG_USER, LOG_LOCAL0,
-				   LOG_LOCAL1, LOG_LOCAL2, LOG_LOCAL3, LOG_LOCAL4,
-				   LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7 };
     extern int errno;
     int i;
 
@@ -213,6 +243,24 @@ void debugerrnox(int err, uint8_t level, char *format, ...) {
     exit(err);
 }
 
+#if defined(WANT_FTICKS)
+void fticks_debug(const char *format, ...) {
+    int priority;
+    va_list ap;
+    va_start(ap, format);
+    if (!debug_syslogfacility && !fticks_syslogfacility)
+    	debug_logit(0xff, format, ap);
+    else {
+    	if (fticks_syslogfacility) {
+    	    priority = LOG_DEBUG|fticks_syslogfacility;
+    	} else {
+    	    priority = LOG_DEBUG;
+    	}
+    	vsyslog(priority, format, ap);
+    	va_end(ap);
+    }
+}
+#endif
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
 /* End: */

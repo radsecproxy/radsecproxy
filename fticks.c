@@ -152,7 +152,7 @@ fticks_log(const struct options *options,
 	    }
 	}
     }
-    debug(0xff,
+    fticks_debug(
 	  "F-TICKS/eduroam/1.0#REALM=%s#VISCOUNTRY=%s#%sCSI=%s#RESULT=%s#",
 	  realm,
 	  client->conf->fticks_viscountry,
