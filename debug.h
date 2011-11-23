@@ -17,6 +17,9 @@
 #define DBG_WARN 64
 #define DBG_ERR 128
 
+#define DEBUG_LOG 0
+#define FTICKS_LOG 1
+
 void debug_init(char *ident);
 void debug_set_level(uint8_t level);
 void debug_timestamp_on();
@@ -25,8 +28,7 @@ void debug(uint8_t level, char *format, ...);
 void debugx(int status, uint8_t level, char *format, ...);
 void debugerrno(int err, uint8_t level, char *format, ...);
 void debugerrnox(int err, uint8_t level, char *format, ...);
-int debug_set_destination(char *dest);
-int debug_set_ftickssyslogfacility(char *dest);
+int debug_set_destination(char *dest, int l);
 void debug_reopen_log();
 #if defined(WANT_FTICKS)
 void fticks_debug(const char *format, ...);

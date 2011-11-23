@@ -243,6 +243,23 @@ blocktype name {
       </varlistentry>
 
       <varlistentry>
+        <term><literal>FTicksSyslogFacility</literal></term>
+        <listitem>
+	  <para>
+	    The FTicksSyslogFacility option is used to specify 
+	    a dedicated syslog facility for F-Ticks messages.
+	    This allows easy filtering of F-Ticks messages.
+	    By default, if FTicksSyslogFacility is not given,
+	    F-Ticks messages are written to the LogDestination. 
+	  </para>
+	  <para>
+	    Note that FTicksSyslogFacility value specifying a file 
+	    (via file:/// prefix) is ignored.
+	  </para>
+	</listitem>
+      </varlistentry>
+
+      <varlistentry>
         <term><literal>ListenUDP</literal></term>
         <listitem>
 	  <para>

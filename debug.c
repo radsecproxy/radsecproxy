@@ -32,12 +32,6 @@ static int debug_syslogfacility = 0;
 static int fticks_syslogfacility = 0;
 #endif
 static uint8_t debug_timestamp = 0;
-static const char *facstrings[] = { "LOG_DAEMON", "LOG_MAIL", "LOG_USER", "LOG_LOCAL0",
-	"LOG_LOCAL1", "LOG_LOCAL2", "LOG_LOCAL3", "LOG_LOCAL4",
-	"LOG_LOCAL5", "LOG_LOCAL6", "LOG_LOCAL7", NULL };
-static const int facvals[] = { LOG_DAEMON, LOG_MAIL, LOG_USER, LOG_LOCAL0,
-	LOG_LOCAL1, LOG_LOCAL2, LOG_LOCAL3, LOG_LOCAL4,
-	LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7 };
 
 void debug_init(char *ident) {
     debug_file = stderr;
@@ -73,62 +67,56 @@ uint8_t debug_get_level() {
     return debug_level;
 }
 
-#if defined(WANT_FTICKS)
-int debug_set_ftickssyslogfacility(char *dest) {
-    int i;
-    if (!strncasecmp(dest, "x-syslog://", 11)) {
-	dest += 11;
-	if (*dest == '/')
-	    dest++;
-    }
-    if (*dest) {
-    	for (i = 0; facstrings[i]; i++)
-	    if (!strcasecmp(dest, facstrings[i]))
-	        break;
-        if (!facstrings[i]) {
-    	    debug(DBG_ERR, "Unknown syslog facility %s for F-Ticks, assuming default", dest);
-	    fticks_syslogfacility = 0;
-    	} else
-	    fticks_syslogfacility = facvals[i];
-    } else {
-	fticks_syslogfacility = 0;
-    }
-    if (fticks_syslogfacility && !debug_syslogfacility) {
-	openlog(debug_ident, LOG_PID, fticks_syslogfacility);
-    }	
-    return 1;
-}
-#endif
-
-int debug_set_destination(char *dest) {
+int debug_set_destination(char *dest, int l) {
+    static const char *facstrings[] = { "LOG_DAEMON", "LOG_MAIL", "LOG_USER", "LOG_LOCAL0",
+	"LOG_LOCAL1", "LOG_LOCAL2", "LOG_LOCAL3", "LOG_LOCAL4",
+	"LOG_LOCAL5", "LOG_LOCAL6", "LOG_LOCAL7", NULL };
+    static const int facvals[] = { LOG_DAEMON, LOG_MAIL, LOG_USER, LOG_LOCAL0,
+	LOG_LOCAL1, LOG_LOCAL2, LOG_LOCAL3, LOG_LOCAL4,
+	LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7 };
     extern int errno;
     int i;
 
     if (!strncasecmp(dest, "file:///", 8)) {
-	debug_filepath = stringcopy(dest + 7, 0);
-	debug_file = fopen(debug_filepath, "a");
-	if (!debug_file) {
-	    debug_file = stderr;
-	    debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
-		   debug_filepath, strerror(errno));
+	if (l!=1) {
+	    debug_filepath = stringcopy(dest + 7, 0);
+	    debug_file = fopen(debug_filepath, "a");
+	    if (!debug_file) {
+	        debug_file = stderr;
+	        debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
+	    	   debug_filepath, strerror(errno));
+	    }
+	    setvbuf(debug_file, NULL, _IONBF, 0);
 	}
-	setvbuf(debug_file, NULL, _IONBF, 0);
 	return 1;
     }
-    if (!strncasecmp(dest, "x-syslog://", 11)) {
-	dest += 11;
-	if (*dest == '/')
-	    dest++;
+    if (!strncasecmp(dest, "x-syslog://", 11) || (l==1)) {
+	if (!strncasecmp(dest, "x-syslog://", 11) || ((l==1)  && strncasecmp(dest, "x-syslog://", 11)))  {
+		dest += 11;
+		if (*dest == '/')
+	    	  dest++;
+	}
 	if (*dest) {
 	    for (i = 0; facstrings[i]; i++)
 		if (!strcasecmp(dest, facstrings[i]))
 		    break;
 	    if (!facstrings[i])
 		debugx(1, DBG_ERR, "Unknown syslog facility %s", dest);
-	    debug_syslogfacility = facvals[i];
-	} else
-	    debug_syslogfacility = LOG_DAEMON;
-	openlog(debug_ident, LOG_PID, debug_syslogfacility);
+	    if (l==1)
+		fticks_syslogfacility = facvals[i];
+	    else
+		debug_syslogfacility = facvals[i];
+	} else {
+		if (l==1)
+		   fticks_syslogfacility = 0;
+		else
+	    	   debug_syslogfacility = LOG_DAEMON;
+    	}
+	if (l==1) {
+ 	   if (fticks_syslogfacility && !debug_syslogfacility) 
+		openlog(debug_ident, LOG_PID, fticks_syslogfacility);
+	} else 
+		openlog(debug_ident, LOG_PID, debug_syslogfacility);
 	return 1;
     }
     debug(DBG_ERR, "Unknown log destination, exiting %s", dest);

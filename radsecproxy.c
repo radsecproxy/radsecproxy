@@ -3241,15 +3241,12 @@ int radsecproxy_main(int argc, char **argv) {
     else if (options.loglevel)
 	debug_set_level(options.loglevel);
     if (!foreground) {
-	debug_set_destination(options.logdestination ? options.logdestination : "x-syslog:///");
+	debug_set_destination(options.logdestination ? options.logdestination : "x-syslog:///", DEBUG_LOG);
 #if defined(WANT_FTICKS)
     	if (options.ftickssyslogfacility) {
-        	debug(DBG_WARN, "FTicksSyslogFacility is %s ", options.ftickssyslogfacility);
-		debug_set_ftickssyslogfacility(options.ftickssyslogfacility);
+		debug_set_destination(options.ftickssyslogfacility, FTICKS_LOG);
 		free(options.ftickssyslogfacility);
-    	} else {
-    	    debug(DBG_INFO, "FTicksSyslogFacility not set");
-    	}
+    	} 
 #endif
     }
     free(options.logdestination);
