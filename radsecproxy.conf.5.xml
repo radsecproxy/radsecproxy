@@ -253,6 +253,7 @@ blocktype name {
 	    F-Ticks messages are written to the LogDestination. 
 	  </para>
 	  <para>
+	    For F-Ticks messages always LOG_DEBUG level is used.
 	    Note that FTicksSyslogFacility value specifying a file 
 	    (via file:/// prefix) is ignored.
 	  </para>
