@@ -91,7 +91,7 @@ int debug_set_destination(char *dest, int l) {
 	return 1;
     }
     if (!strncasecmp(dest, "x-syslog://", 11) || (l==1)) {
-	if (!strncasecmp(dest, "x-syslog://", 11) || ((l==1)  && strncasecmp(dest, "x-syslog://", 11)))  {
+	if (!strncasecmp(dest, "x-syslog://", 11) || ((l==1)  && !strncasecmp(dest, "x-syslog://", 11)))  {
 		dest += 11;
 		if (*dest == '/')
 	    	  dest++;
