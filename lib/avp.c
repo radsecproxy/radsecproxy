@@ -106,7 +106,10 @@ rs_avp_dup (rs_const_avp *vp)
 {
   rs_avp *vp2;
 
-  vp2 = nr_vp_alloc (vp->da);
+  if (vp->da->flags.unknown)
+    vp2 = nr_vp_alloc_raw (vp->da->attr, vp->da->vendor);
+  else
+    vp2 = nr_vp_alloc (vp->da);
   if (vp2 == NULL)
     return NULL;
 
