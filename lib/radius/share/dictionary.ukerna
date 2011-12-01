@@ -15,5 +15,6 @@ ATTRIBUTE	GSS-Acceptor-Service-Specific	130	string
 ATTRIBUTE	GSS-Acceptor-Realm-Name		131	string
 ATTRIBUTE	SAML-AAA-Assertion		132	string
 ATTRIBUTE	MS-Windows-Auth-Data		133     octets
+ATTRIBUTE	MS-Windows-Group-Sid		134     string
 
 END-VENDOR UKERNA
