@@ -67,7 +67,7 @@ uint8_t debug_get_level() {
     return debug_level;
 }
 
-int debug_set_destination(char *dest, int l) {
+int debug_set_destination(char *dest, int log_type) {
     static const char *facstrings[] = { "LOG_DAEMON", "LOG_MAIL", "LOG_USER", "LOG_LOCAL0",
 	"LOG_LOCAL1", "LOG_LOCAL2", "LOG_LOCAL3", "LOG_LOCAL4",
 	"LOG_LOCAL5", "LOG_LOCAL6", "LOG_LOCAL7", NULL };
@@ -78,7 +78,7 @@ int debug_set_destination(char *dest, int l) {
     int i;
 
     if (!strncasecmp(dest, "file:///", 8)) {
-	if (l!=1) {
+	if (log_type!=FTICKS_LOG) {
 	    debug_filepath = stringcopy(dest + 7, 0);
 	    debug_file = fopen(debug_filepath, "a");
 	    if (!debug_file) {
@@ -87,11 +87,13 @@ int debug_set_destination(char *dest, int l) {
 	    	   debug_filepath, strerror(errno));
 	    }
 	    setvbuf(debug_file, NULL, _IONBF, 0);
+	} else {
+	    debug(DBG_WARN, "FTicksSyslogFacility starting with file:/// not permitted, assuming default F-Ticks destination");
 	}
 	return 1;
     }
-    if (!strncasecmp(dest, "x-syslog://", 11) || (l==1)) {
-	if (!strncasecmp(dest, "x-syslog://", 11) || ((l==1)  && !strncasecmp(dest, "x-syslog://", 11)))  {
+    if (!strncasecmp(dest, "x-syslog://", 11) || (log_type==FTICKS_LOG)) {
+	if (!strncasecmp(dest, "x-syslog://", 11)) {
 		dest += 11;
 		if (*dest == '/')
 	    	  dest++;
@@ -102,19 +104,20 @@ int debug_set_destination(char *dest, int l) {
 		    break;
 	    if (!facstrings[i])
 		debugx(1, DBG_ERR, "Unknown syslog facility %s", dest);
-	    if (l==1)
+	    if (log_type==FTICKS_LOG)
 		fticks_syslogfacility = facvals[i];
 	    else
 		debug_syslogfacility = facvals[i];
 	} else {
-		if (l==1)
+		if (log_type==FTICKS_LOG)
 		   fticks_syslogfacility = 0;
 		else
 	    	   debug_syslogfacility = LOG_DAEMON;
     	}
-	if (l==1) {
- 	   if (fticks_syslogfacility && !debug_syslogfacility) 
-		openlog(debug_ident, LOG_PID, fticks_syslogfacility);
+	if (log_type==FTICKS_LOG) {
+		if (fticks_syslogfacility && !debug_syslogfacility) {
+		    openlog(debug_ident, LOG_PID, fticks_syslogfacility);
+		}
 	} else 
 		openlog(debug_ident, LOG_PID, debug_syslogfacility);
 	return 1;
@@ -239,11 +242,7 @@ void fticks_debug(const char *format, ...) {
     if (!debug_syslogfacility && !fticks_syslogfacility)
     	debug_logit(0xff, format, ap);
     else {
-    	if (fticks_syslogfacility) {
-    	    priority = LOG_DEBUG|fticks_syslogfacility;
-    	} else {
-    	    priority = LOG_DEBUG;
-    	}
+    	priority = LOG_DEBUG|fticks_syslogfacility;
     	vsyslog(priority, format, ap);
     	va_end(ap);
     }
