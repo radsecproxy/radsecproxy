@@ -104,22 +104,21 @@ int debug_set_destination(char *dest, int log_type) {
 		    break;
 	    if (!facstrings[i])
 		debugx(1, DBG_ERR, "Unknown syslog facility %s", dest);
+#if defined(WANT_FTICKS)
 	    if (log_type==FTICKS_LOG)
 		fticks_syslogfacility = facvals[i];
-	    else
+#endif
+	    if (log_type!=FTICKS_LOG)
 		debug_syslogfacility = facvals[i];
 	} else {
+#if defined(WANT_FTICKS)
 		if (log_type==FTICKS_LOG)
 		   fticks_syslogfacility = 0;
-		else
+#endif
+		if (log_type!=FTICKS_LOG)
 	    	   debug_syslogfacility = LOG_DAEMON;
     	}
-	if (log_type==FTICKS_LOG) {
-		if (fticks_syslogfacility && !debug_syslogfacility) {
-		    openlog(debug_ident, LOG_PID, fticks_syslogfacility);
-		}
-	} else 
-		openlog(debug_ident, LOG_PID, debug_syslogfacility);
+	openlog(debug_ident, LOG_PID, debug_syslogfacility);
 	return 1;
     }
     debug(DBG_ERR, "Unknown log destination, exiting %s", dest);

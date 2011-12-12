@@ -1668,7 +1668,7 @@ void replyh(struct server *server, unsigned char *buf) {
     }
 
 #if defined(WANT_FTICKS)
-    if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject) 
+    if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)
 	if (options.fticks_reporting && from->conf->fticks_viscountry != NULL)
 	    fticks_log(&options, from, msg, rqout);
 #endif
@@ -3082,7 +3082,7 @@ void getmainconfig(const char *configfile) {
 #endif
 	    "Rewrite", CONF_CBK, confrewrite_cb, NULL,
 #if defined(WANT_FTICKS)
-	    "FTicksSyslogFacility", CONF_STR, &options.ftickssyslogfacility, 
+	    "FTicksSyslogFacility", CONF_STR, &options.ftickssyslogfacility,
 	    "FTicksReporting", CONF_STR, &fticks_reporting_str,
 	    "FTicksMAC", CONF_STR, &fticks_mac_str,
 	    "FTicksKey", CONF_STR, &fticks_key_str,
@@ -3241,12 +3241,14 @@ int radsecproxy_main(int argc, char **argv) {
     else if (options.loglevel)
 	debug_set_level(options.loglevel);
     if (!foreground) {
-	debug_set_destination(options.logdestination ? options.logdestination : "x-syslog:///", DEBUG_LOG);
+	debug_set_destination(options.logdestination
+                              ? options.logdestination
+                              : "x-syslog:///", DEBUG_LOG);
 #if defined(WANT_FTICKS)
     	if (options.ftickssyslogfacility) {
-		debug_set_destination(options.ftickssyslogfacility, FTICKS_LOG);
-		free(options.ftickssyslogfacility);
-    	} 
+            debug_set_destination(options.ftickssyslogfacility, FTICKS_LOG);
+            free(options.ftickssyslogfacility);
+    	}
 #endif
     }
     free(options.logdestination);
