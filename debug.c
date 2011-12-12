@@ -68,35 +68,38 @@ uint8_t debug_get_level() {
 }
 
 int debug_set_destination(char *dest, int log_type) {
-    static const char *facstrings[] = { "LOG_DAEMON", "LOG_MAIL", "LOG_USER", "LOG_LOCAL0",
+    static const char *facstrings[] = {
+        "LOG_DAEMON", "LOG_MAIL", "LOG_USER", "LOG_LOCAL0",
 	"LOG_LOCAL1", "LOG_LOCAL2", "LOG_LOCAL3", "LOG_LOCAL4",
 	"LOG_LOCAL5", "LOG_LOCAL6", "LOG_LOCAL7", NULL };
-    static const int facvals[] = { LOG_DAEMON, LOG_MAIL, LOG_USER, LOG_LOCAL0,
+    static const int facvals[] = {
+        LOG_DAEMON, LOG_MAIL, LOG_USER, LOG_LOCAL0,
 	LOG_LOCAL1, LOG_LOCAL2, LOG_LOCAL3, LOG_LOCAL4,
 	LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7 };
     extern int errno;
     int i;
 
     if (!strncasecmp(dest, "file:///", 8)) {
-	if (log_type!=FTICKS_LOG) {
+	if (log_type != FTICKS_LOG) {
 	    debug_filepath = stringcopy(dest + 7, 0);
 	    debug_file = fopen(debug_filepath, "a");
 	    if (!debug_file) {
 	        debug_file = stderr;
 	        debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
-	    	   debug_filepath, strerror(errno));
+                       debug_filepath, strerror(errno));
 	    }
 	    setvbuf(debug_file, NULL, _IONBF, 0);
 	} else {
-	    debug(DBG_WARN, "FTicksSyslogFacility starting with file:/// not permitted, assuming default F-Ticks destination");
+	    debug(DBG_WARN, "FTicksSyslogFacility starting with file:/// not "
+                  "permitted, assuming default F-Ticks destination");
 	}
 	return 1;
     }
-    if (!strncasecmp(dest, "x-syslog://", 11) || (log_type==FTICKS_LOG)) {
+    if (!strncasecmp(dest, "x-syslog://", 11) || log_type == FTICKS_LOG) {
 	if (!strncasecmp(dest, "x-syslog://", 11)) {
-		dest += 11;
-		if (*dest == '/')
-	    	  dest++;
+            dest += 11;
+            if (*dest == '/')
+                dest++;
 	}
 	if (*dest) {
 	    for (i = 0; facstrings[i]; i++)
@@ -104,22 +107,23 @@ int debug_set_destination(char *dest, int log_type) {
 		    break;
 	    if (!facstrings[i])
 		debugx(1, DBG_ERR, "Unknown syslog facility %s", dest);
-	    if (log_type==FTICKS_LOG)
+	    if (log_type == FTICKS_LOG)
 		fticks_syslogfacility = facvals[i];
 	    else
 		debug_syslogfacility = facvals[i];
 	} else {
-		if (log_type==FTICKS_LOG)
-		   fticks_syslogfacility = 0;
-		else
-	    	   debug_syslogfacility = LOG_DAEMON;
+            if (log_type == FTICKS_LOG)
+                fticks_syslogfacility = 0;
+            else
+                debug_syslogfacility = LOG_DAEMON;
     	}
-	if (log_type==FTICKS_LOG) {
-		if (fticks_syslogfacility && !debug_syslogfacility) {
-		    openlog(debug_ident, LOG_PID, fticks_syslogfacility);
-		}
-	} else 
-		openlog(debug_ident, LOG_PID, debug_syslogfacility);
+	if (log_type == FTICKS_LOG) {
+            if (fticks_syslogfacility && !debug_syslogfacility) {
+                openlog(debug_ident, LOG_PID, fticks_syslogfacility);
+            }
+	} else {
+            openlog(debug_ident, LOG_PID, debug_syslogfacility);
+        }
 	return 1;
     }
     debug(DBG_ERR, "Unknown log destination, exiting %s", dest);
@@ -242,7 +246,7 @@ void fticks_debug(const char *format, ...) {
     if (!debug_syslogfacility && !fticks_syslogfacility)
     	debug_logit(0xff, format, ap);
     else {
-    	priority = LOG_DEBUG|fticks_syslogfacility;
+    	priority = LOG_DEBUG | fticks_syslogfacility;
     	vsyslog(priority, format, ap);
     	va_end(ap);
     }
