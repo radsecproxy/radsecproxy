@@ -1,11 +1,11 @@
-check_PROGRAMS =
+AUTOMAKE_OPTIONS = foreign
 
 if WANT_FTICKS
-check_PROGRAMS += t_fticks
+fticks_programs = t_fticks
 endif
 
+check_PROGRAMS = $(fticks_programs)
 AM_CFLAGS = -g -Wall -Werror @TARGET_CFLAGS@
-AM_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
 LDADD = $(top_builddir)/librsp.a @SSL_LIBS@
 
 TESTS = $(check_PROGRAMS)
