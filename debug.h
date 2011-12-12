@@ -28,7 +28,7 @@ void debug(uint8_t level, char *format, ...);
 void debugx(int status, uint8_t level, char *format, ...);
 void debugerrno(int err, uint8_t level, char *format, ...);
 void debugerrnox(int err, uint8_t level, char *format, ...);
-int debug_set_destination(char *dest, int l);
+int debug_set_destination(char *dest, int log_type);
 void debug_reopen_log();
 #if defined(WANT_FTICKS)
 void fticks_debug(const char *format, ...);
