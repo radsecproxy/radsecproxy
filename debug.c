@@ -80,7 +80,7 @@ int debug_set_destination(char *dest, int log_type) {
     int i;
 
     if (!strncasecmp(dest, "file:///", 8)) {
-	if (log_type != FTICKS_LOG) {
+	if (log_type != LOG_TYPE_FTICKS) {
 	    debug_filepath = stringcopy(dest + 7, 0);
 	    debug_file = fopen(debug_filepath, "a");
 	    if (!debug_file) {
@@ -95,7 +95,7 @@ int debug_set_destination(char *dest, int log_type) {
 	}
 	return 1;
     }
-    if (!strncasecmp(dest, "x-syslog://", 11) || log_type == FTICKS_LOG) {
+    if (!strncasecmp(dest, "x-syslog://", 11) || log_type == LOG_TYPE_FTICKS) {
 	if (!strncasecmp(dest, "x-syslog://", 11)) {
             dest += 11;
             if (*dest == '/')
@@ -107,14 +107,14 @@ int debug_set_destination(char *dest, int log_type) {
 		    break;
 	    if (!facstrings[i])
 		debugx(1, DBG_ERR, "Unknown syslog facility %s", dest);
-	    if (log_type != FTICKS_LOG)
+	    if (log_type != LOG_TYPE_FTICKS)
 		debug_syslogfacility = facvals[i];
 #if defined(WANT_FTICKS)
-            else if (log_type == FTICKS_LOG)
+            else if (log_type == LOG_TYPE_FTICKS)
 		fticks_syslogfacility = facvals[i];
 #endif
 	} else {
-            if (log_type != FTICKS_LOG)
+            if (log_type != LOG_TYPE_FTICKS)
                 debug_syslogfacility = LOG_DAEMON;
 #if defined(WANT_FTICKS)
             else if (log_type == FTICKS_LOG)

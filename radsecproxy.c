@@ -3243,10 +3243,11 @@ int radsecproxy_main(int argc, char **argv) {
     if (!foreground) {
 	debug_set_destination(options.logdestination
                               ? options.logdestination
-                              : "x-syslog:///", DEBUG_LOG);
+                              : "x-syslog:///", LOG_TYPE_DEBUG);
 #if defined(WANT_FTICKS)
     	if (options.ftickssyslogfacility) {
-            debug_set_destination(options.ftickssyslogfacility, FTICKS_LOG);
+            debug_set_destination(options.ftickssyslogfacility,
+                                  LOG_TYPE_FTICKS);
             free(options.ftickssyslogfacility);
     	}
 #endif

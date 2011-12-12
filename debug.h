@@ -17,8 +17,8 @@
 #define DBG_WARN 64
 #define DBG_ERR 128
 
-#define DEBUG_LOG 0
-#define FTICKS_LOG 1
+#define LOG_TYPE_DEBUG 0
+#define LOG_TYPE_FTICKS 1
 
 void debug_init(char *ident);
 void debug_set_level(uint8_t level);
