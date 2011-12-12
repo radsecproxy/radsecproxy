@@ -246,16 +246,17 @@ blocktype name {
         <term><literal>FTicksSyslogFacility</literal></term>
         <listitem>
 	  <para>
-	    The FTicksSyslogFacility option is used to specify 
-	    a dedicated syslog facility for F-Ticks messages.
-	    This allows easy filtering of F-Ticks messages.
-	    By default, if FTicksSyslogFacility is not given,
-	    F-Ticks messages are written to the LogDestination. 
+	    The FTicksSyslogFacility option is used to specify a
+	    dedicated syslog facility for F-Ticks messages.  This
+	    allows for easier filtering of F-Ticks messages.  If no
+	    FTicksSyslogFacility option is given, F-Ticks messages are
+	    written to what the LogDestination option specifies.
 	  </para>
 	  <para>
-	    For F-Ticks messages always LOG_DEBUG level is used.
-	    Note that FTicksSyslogFacility value specifying a file 
-	    (via file:/// prefix) is ignored.
+	    F-Ticks messages are always logged using the log level
+	    LOG_DEBUG.  Note that specifying a file in
+	    FTicksSyslogFacility (using the file:/// prefix) is
+	    not supported.
 	  </para>
 	</listitem>
       </varlistentry>
