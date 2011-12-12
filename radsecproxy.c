@@ -2716,7 +2716,9 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-	conf->tlsconf = conf->tls ? tlsgettls(conf->tls, NULL) : tlsgettls("defaultclient", "default");
+	conf->tlsconf = conf->tls
+            ? tlsgettls(conf->tls, NULL)
+            : tlsgettls("defaultClient", "default");
 	if (!conf->tlsconf)
 	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
 	if (conf->matchcertattr && !addmatchcertattr(conf))
@@ -2741,7 +2743,9 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	conf->confrewritein = rewriteinalias;
     else
 	free(rewriteinalias);
-    conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultclient", "default");
+    conf->rewritein = conf->confrewritein
+        ? getrewrite(conf->confrewritein, NULL)
+        : getrewrite("defaultClient", "default");
     if (conf->confrewriteout)
 	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
 
@@ -2776,7 +2780,9 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-    	conf->tlsconf = conf->tls ? tlsgettls(conf->tls, NULL) : tlsgettls("defaultserver", "default");
+    	conf->tlsconf = conf->tls
+            ? tlsgettls(conf->tls, NULL)
+            : tlsgettls("defaultServer", "default");
 	if (!conf->tlsconf) {
 	    debug(DBG_ERR, "error in block %s, no tls context defined", block);
 	    return 0;
@@ -2801,7 +2807,9 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     if (conf->retrycount == 255)
 	conf->retrycount = conf->pdef->retrycountdefault;
 
-    conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL) : getrewrite("defaultserver", "default");
+    conf->rewritein = conf->confrewritein
+        ? getrewrite(conf->confrewritein, NULL)
+        : getrewrite("defaultServer", "default");
     if (conf->confrewriteout)
 	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
 
