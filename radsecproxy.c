@@ -3082,10 +3082,10 @@ void getmainconfig(const char *configfile) {
 #endif
 	    "Rewrite", CONF_CBK, confrewrite_cb, NULL,
 #if defined(WANT_FTICKS)
-	    "FTicksSyslogFacility", CONF_STR, &options.ftickssyslogfacility,
 	    "FTicksReporting", CONF_STR, &fticks_reporting_str,
 	    "FTicksMAC", CONF_STR, &fticks_mac_str,
 	    "FTicksKey", CONF_STR, &fticks_key_str,
+	    "FTicksSyslogFacility", CONF_STR, &options.ftickssyslogfacility,
 #endif
 	    NULL
 	    ))
