@@ -3093,6 +3093,7 @@ void getmainconfig(const char *configfile) {
 	    "FTicksReporting", CONF_STR, &fticks_reporting_str,
 	    "FTicksMAC", CONF_STR, &fticks_mac_str,
 	    "FTicksKey", CONF_STR, &fticks_key_str,
+	    "FTicksSyslogFacility", CONF_STR, &options.ftickssyslogfacility,
 #endif
 	    NULL
 	    ))
@@ -3247,8 +3248,18 @@ int radsecproxy_main(int argc, char **argv) {
 	options.loglevel = loglevel;
     else if (options.loglevel)
 	debug_set_level(options.loglevel);
-    if (!foreground)
-	debug_set_destination(options.logdestination ? options.logdestination : "x-syslog:///");
+    if (!foreground) {
+	debug_set_destination(options.logdestination
+                              ? options.logdestination
+                              : "x-syslog:///", LOG_TYPE_DEBUG);
+#if defined(WANT_FTICKS)
+    	if (options.ftickssyslogfacility) {
+            debug_set_destination(options.ftickssyslogfacility,
+                                  LOG_TYPE_FTICKS);
+            free(options.ftickssyslogfacility);
+    	}
+#endif
+    }
     free(options.logdestination);
 
     if (!list_first(clconfs))
