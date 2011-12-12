@@ -117,7 +117,7 @@ int debug_set_destination(char *dest, int log_type) {
             if (log_type != LOG_TYPE_FTICKS)
                 debug_syslogfacility = LOG_DAEMON;
 #if defined(WANT_FTICKS)
-            else if (log_type == FTICKS_LOG)
+            else if (log_type == LOG_TYPE_FTICKS)
                 fticks_syslogfacility = 0;
 #endif
     	}
