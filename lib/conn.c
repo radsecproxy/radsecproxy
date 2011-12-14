@@ -252,7 +252,7 @@ rs_conn_receive_packet (struct rs_connection *conn,
 				    "event_add: %s",
 				    evutil_gai_strerror (err));
 
-      /* Activae retransmission timer.  */
+      /* Activate retransmission timer.  */
       conn_activate_timeout (pkt->conn);
     }
 
