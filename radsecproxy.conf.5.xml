@@ -480,9 +480,9 @@ blocktype name {
       <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
       <literal>duplicateInterval</literal>, <literal>AddTTL</literal>,
-      <literal>fticksVISCOUNTRY</literal>, <literal>rewrite</literal>,
-      <literal>rewriteIn</literal>, <literal>rewriteOut</literal>, and
-      <literal>rewriteAttribute</literal>.
+      <literal>fticksVISCOUNTRY</literal>, <literal>fticksVISINST</literal>,
+      <literal>rewrite</literal>, <literal>rewriteIn</literal>, 
+      <literal>rewriteOut</literal>, and <literal>rewriteAttribute</literal>.
 
       We already discussed the <literal>host</literal> option. The
       value of <literal>type</literal> must be one of
@@ -542,6 +542,11 @@ blocktype name {
       The <literal>fticksVISCOUNTRY</literal> option configures
       clients eligible to F-Ticks logging as defined by the
       <literal>FTicksReporting</literal> basic option.
+    </para>
+    <para>
+      The <literal>fticksVISINST</literal> option overwrites
+      the default <literal>VISINST</literal> value taken from the client
+      block name.
     </para>
     <para>
       The <literal>rewrite</literal> option is deprecated. Use

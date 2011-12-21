@@ -107,8 +107,13 @@ fticks_log(const struct options *options,
 
     memset(visinst, 0, sizeof(visinst));
     if (options->fticks_reporting == RSP_FTICKS_REPORTING_FULL) {
-	snprintf((char *) visinst, sizeof(visinst), "VISINST=%s#",
+        if (client->conf->fticks_visinst != NULL ) {
+	    snprintf((char *) visinst, sizeof(visinst), "VISINST=%s#",
+		 client->conf->fticks_visinst);
+        } else {
+	    snprintf((char *) visinst, sizeof(visinst), "VISINST=%s#",
 		 client->conf->name);
+        }
     }
 
     memset(macout, 0, sizeof(macout));
