@@ -2690,6 +2690,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "rewriteattribute", CONF_STR, &conf->confrewriteusername,
 #if defined(WANT_FTICKS)
 	    "fticksVISCOUNTRY", CONF_STR, &conf->fticks_viscountry,
+	    "fticksVISINST", CONF_STR, &conf->fticks_visinst,
 #endif
 	    NULL
 	    ))

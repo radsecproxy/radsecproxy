@@ -131,6 +131,7 @@ struct clsrvconf {
     struct list *clients;
     struct server *servers;
     char *fticks_viscountry;
+    char *fticks_visinst;
 };
 
 #include "tlscommon.h"
