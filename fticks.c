@@ -109,10 +109,10 @@ fticks_log(const struct options *options,
     if (options->fticks_reporting == RSP_FTICKS_REPORTING_FULL) {
         if (client->conf->fticks_visinst != NULL ) {
 	    snprintf((char *) visinst, sizeof(visinst), "VISINST=%s#",
-		 client->conf->fticks_visinst);
+                     client->conf->fticks_visinst);
         } else {
 	    snprintf((char *) visinst, sizeof(visinst), "VISINST=%s#",
-		 client->conf->name);
+                     client->conf->name);
         }
     }
 
