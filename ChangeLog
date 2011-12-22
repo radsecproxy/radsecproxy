@@ -1,4 +1,9 @@
-2011-12-12 1.6-dev
+2011-12-22 1.6-dev
+	New features:
+	- Improved F-Ticks logging options.  F-Ticks can now be sent to a
+	separate syslog facility and the VISINST label can now be
+	configured explicitly.
+
 	Bug fixes:
 	- Stop the autoconfery from warning about defining variables
 	conditionally and unconditionally.
