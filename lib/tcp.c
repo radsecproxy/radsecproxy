@@ -158,17 +158,21 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
 {
   struct rs_packet *pkt = (struct rs_packet *) user_data;
   struct rs_connection *conn = NULL;
-  struct rs_peer *p = NULL;
   int sockerr = 0;
 #if defined (RS_ENABLE_TLS)
   unsigned long tlserr = 0;
 #endif
+#if defined (DEBUG)
+  struct rs_peer *p = NULL;
+#endif
 
   assert (pkt);
   assert (pkt->conn);
-  assert (pkt->conn->active_peer);
   conn = pkt->conn;
+#if defined (DEBUG)
+  assert (pkt->conn->active_peer);
   p = conn->active_peer;
+#endif
 
   conn->is_connecting = 0;
   if (events & BEV_EVENT_CONNECTED)
