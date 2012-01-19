@@ -15,7 +15,8 @@
 #define USER_PW "password"
 
 struct rs_error *
-blocking_client (const char *av1, const char *av2, int use_request_object_flag)
+blocking_client (const char *config_fn, const char *configuration,
+                 int use_request_object_flag)
 {
   struct rs_context *h = NULL;
   struct rs_connection *conn = NULL;
@@ -45,11 +46,11 @@ blocking_client (const char *av1, const char *av2, int use_request_object_flag)
       goto cleanup;
   }
 #else  /* defined (USE_CONFIG_FILE) */
-  if (rs_context_read_config (h, av1))
+  if (rs_context_read_config (h, config_fn))
     goto cleanup;
   if (rs_context_init_freeradius_dict (h, NULL))
     goto cleanup;
-  if (rs_conn_create (h, &conn, av2))
+  if (rs_conn_create (h, &conn, configuration))
     goto cleanup;
 #endif	/* defined (USE_CONFIG_FILE) */
 
