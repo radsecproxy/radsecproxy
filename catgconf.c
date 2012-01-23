@@ -5,16 +5,17 @@
 #include "debug.h"
 #include "gconfig.h"
 
-void listconfig(struct gconffile **cf, char *block, int compact) {
+int listconfig(struct gconffile **cf, char *block, int compact) {
     char *opt = NULL, *val = NULL;
     int conftype;
 
     for (;;) {
 	free(opt);
 	free(val);
-	getconfigline(cf, block, &opt, &val, &conftype);
-	if (!opt)
-	    return;
+	if (!getconfigline(cf, block, &opt, &val, &conftype))
+            return -1;
+        if (!opt)
+            return 0;           /* Success.  */
 
 	if (conftype == CONF_STR && !strcasecmp(opt, "include")) {
 	    if (!pushgconfpaths(cf, val))
@@ -31,13 +32,17 @@ void listconfig(struct gconffile **cf, char *block, int compact) {
 	    break;
 	case CONF_CBK:
 	    printf("%s %s {%s", opt, val, compact ? "" : "\n");
-	    listconfig(cf, val, compact);
+	    if (listconfig(cf, val, compact))
+                return -1;
 	    printf("}\n");
 	    break;
 	default:
 	    printf("Unsupported config type\n");
+            return -1;
 	}
     }
+
+    return 0;                   /* Success.  */
 }
 
 int main(int argc, char **argv) {
@@ -60,8 +65,7 @@ int main(int argc, char **argv) {
         goto usage;
 
     cfs = openconfigfile(argv[optind]);
-    listconfig(&cfs, NULL, compact);
-    return 0;
+    return listconfig(&cfs, NULL, compact);
 
 usage:
     debug(DBG_ERR, "Usage:\n%s [ -c ] configfile", argv[0]);
