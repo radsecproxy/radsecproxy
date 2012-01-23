@@ -134,7 +134,7 @@ tls default {
 #	modifyAttribute 1:/^(.*)@local$/\1@example.com/
 # }
 
-client 2001:db8::1 {
+client [2001:db8::1] {
 	type	tls
 	secret	verysecret
 # we could specify tls here, e.g.
@@ -180,7 +180,7 @@ realm	eduroam.cc {
 #	accountingServer 127.0.0.1
 }
 
-server 2001:db8::1 {
+server [2001:db8::1] {
 	type	TLS
 	port	2283
 # secret is optional for TLS
