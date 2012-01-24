@@ -125,11 +125,11 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	  config->realms = r;
 	}
       cfg_realm = cfg_getnsec (cfg, "realm", i);
-      /* We use a copy of the return value of cfg_title() since it's const.  */
       s = cfg_title (cfg_realm);
       if (s == NULL)
 	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
 				   "missing realm name");
+      /* We use a copy of the return value of cfg_title() since it's const.  */
       r->name = strdup (s);
       if (r->name == NULL)
 	return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
