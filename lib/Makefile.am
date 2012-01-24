@@ -1,6 +1,22 @@
 AUTOMAKE_OPTIONS = foreign
 ACLOCAL_AMFLAGS = -I m4
 
+# Shared library interface version, i.e. -version-info to Libtool,
+# expressed as three integers CURRENT:REVISION:AGE.
+
+# CURRENT is the version number of the current interface.  Increment
+# 	  CURRENT when the library interface changes.
+
+# REVISION is the version number of the _implementation_ of the
+#          CURRENT interface.  Set REVISION to 0 when CURRENT changes,
+#          else increment.
+
+# AGE is the number of interfaces this library implements, i.e. how
+#     many versions before CURRENT that are supported.  Increment AGE
+#     when the library interface is _extended_.  Set AGE to 0 when the
+#     library interface is _changed_.
+
+
 SUBDIRS = . examples include 
 
 INCLUDES = -I$(srcdir)/include
