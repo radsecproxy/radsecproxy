@@ -7,6 +7,7 @@
 
 #include <confuse.h>
 #include <string.h>
+#include <assert.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include "peer.h"
@@ -25,6 +26,9 @@
       #cacertpath = STRING
       certfile = STRING
       certkeyfile = STRING
+      psk = STRING		# Transport pre-shared key.
+      pskid = STRING
+      pskex = "PSK"|"DHE_PSK"|"RSA_PSK"
   }
 
   # client specific realm config options
@@ -32,7 +36,7 @@
       server {
           hostname = STRING
 	  service = STRING
-	  secret = STRING
+          secret = STRING       # RADIUS secret
       }
   }
 #endif
@@ -63,6 +67,9 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       /*CFG_STR ("cacertpath", NULL, CFGF_NONE),*/
       CFG_STR ("certfile", NULL, CFGF_NONE),
       CFG_STR ("certkeyfile", NULL, CFGF_NONE),
+      CFG_STR ("psk", NULL, CFGF_NONE),
+      CFG_STR ("pskid", NULL, CFGF_NONE),
+      CFG_STR ("pskex", "PSK", CFGF_NONE),
       CFG_SEC ("server", server_opts, CFGF_MULTI),
       CFG_END ()
     };
@@ -103,6 +110,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
     {
       struct rs_realm *r = NULL;
       const char *typestr;
+      char *psk;
 
       r = rs_calloc (ctx, 1, sizeof(*r));
       if (r == NULL)
@@ -145,6 +153,37 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       /*r->cacertpath = cfg_getstr (cfg_realm, "cacertpath");*/
       r->certfile = cfg_getstr (cfg_realm, "certfile");
       r->certkeyfile = cfg_getstr (cfg_realm, "certkeyfile");
+
+      psk = cfg_getstr (cfg_realm, "psk");
+      if (psk)
+        {
+          char *kex = cfg_getstr (cfg_realm, "pskex");
+          rs_cred_type_t type = RS_CRED_NONE;
+          struct rs_credentials *cred = NULL;
+          assert (kex != NULL);
+
+          if (!strcmp (kex, "PSK"))
+            type = RS_CRED_TLS_PSK;
+          else
+            {
+              /* TODO: push a warning, using a separate warn stack or
+                 onto the ordinary error stack?  */
+              /* rs_err_ctx_push (ctx, FIXME, "%s: unsupported PSK key exchange"
+                 " algorithm -- PSK not used", kex);*/
+            }
+
+          if (type != RS_CRED_NONE)
+            {
+              cred = rs_calloc (ctx, 1, sizeof (*cred));
+              if (cred == NULL)
+                return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__,
+                                           NULL);
+              cred->type = type;
+              cred->identity = cfg_getstr (cfg_realm, "pskid");
+              cred->secret = psk;
+              r->transport_cred = cred;
+            }
+        }
 
       /* Add peers, one per server stanza.  */
       for (j = 0; j < cfg_size (cfg_realm, "server"); j++)

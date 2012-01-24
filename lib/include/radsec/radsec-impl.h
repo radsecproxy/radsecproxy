@@ -16,7 +16,10 @@
 /* Data types.  */
 enum rs_cred_type {
     RS_CRED_NONE = 0,
-    RS_CRED_TLS_PSK_RSA,	/* RFC 4279.  */
+    /* TLS pre-shared keys, RFC 4279.  */
+    RS_CRED_TLS_PSK,
+    /* RS_CRED_TLS_DH_PSK, */
+    /* RS_CRED_TLS_RSA_PSK, */
 };
 typedef unsigned int rs_cred_type_t;
 
@@ -40,7 +43,7 @@ struct rs_peer {
     struct rs_connection *conn;
     struct rs_realm *realm;
     struct evutil_addrinfo *addr;
-    char *secret;
+    char *secret;               /* RADIUS secret.  */
     struct rs_peer *next;
 };
 
@@ -54,6 +57,7 @@ struct rs_realm {
     char *cacertpath;
     char *certfile;
     char *certkeyfile;
+    struct rs_credentials *transport_cred;
     struct rs_peer *peers;
     struct rs_realm *next;
 };
@@ -77,7 +81,6 @@ struct rs_connection {
     struct rs_realm *realm;	/* Owned by ctx.  */
     struct event_base *evb;	/* Event base.  */
     struct event *tev;		/* Timeout event.  */
-    struct rs_credentials transport_credentials;
     struct rs_conn_callbacks callbacks;
     void *user_data;
     struct rs_peer *peers;
