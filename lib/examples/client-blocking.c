@@ -98,6 +98,13 @@ blocking_client (const char *config_fn, const char *configuration,
   return err;
 }
 
+void
+usage (int argc, char *argv[])
+{
+  fprintf (stderr, "usage: %s: [-r] config-file config-name\n", argv[0]);
+  exit (1);
+}
+
 int
 main (int argc, char *argv[])
 {
@@ -110,6 +117,8 @@ main (int argc, char *argv[])
       argc--;
       argv++;
     }
+  if (argc < 3)
+    usage (argc, argv);
   err = blocking_client (argv[1], argv[2], use_request_object_flag);
   if (err)
     {
