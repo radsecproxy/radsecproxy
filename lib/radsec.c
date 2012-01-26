@@ -156,6 +156,7 @@ rs_context_destroy (struct rs_context *ctx)
 	      rs_free (ctx, tmp);
 	    }
 	  free (r->name);
+          rs_free (ctx, r->transport_cred);
 	  r = r->next;
 	  rs_free (ctx, tmp);
 	}
