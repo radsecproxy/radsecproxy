@@ -34,6 +34,7 @@ enum rs_error_code {
     RSE_TIMEOUT_IO = 18,	/* I/O timeout.  */
     RSE_TIMEOUT = 19,		/* High level timeout.  */
     RSE_DISCO = 20,
+    RSE_CRED = 21,              /* Credentials.  */
 };
 
 enum rs_conn_type {

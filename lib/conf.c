@@ -26,7 +26,8 @@
       #cacertpath = STRING
       certfile = STRING
       certkeyfile = STRING
-      psk = STRING		# Transport pre-shared key.
+      pskstr = STRING	# Transport pre-shared key, ASCII (UTF-8?) string form.
+      pskhexstr = STRING # Transport pre-shared key, hexadecimal string form.
       pskid = STRING
       pskex = "PSK"|"DHE_PSK"|"RSA_PSK"
   }
@@ -67,7 +68,8 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       /*CFG_STR ("cacertpath", NULL, CFGF_NONE),*/
       CFG_STR ("certfile", NULL, CFGF_NONE),
       CFG_STR ("certkeyfile", NULL, CFGF_NONE),
-      CFG_STR ("psk", NULL, CFGF_NONE),
+      CFG_STR ("pskstr", NULL, CFGF_NONE),
+      CFG_STR ("pskhexstr", NULL, CFGF_NONE),
       CFG_STR ("pskid", NULL, CFGF_NONE),
       CFG_STR ("pskex", "PSK", CFGF_NONE),
       CFG_SEC ("server", server_opts, CFGF_MULTI),
@@ -110,7 +112,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
     {
       struct rs_realm *r = NULL;
       const char *typestr;
-      char *psk;
+      char *pskstr = NULL, *pskhexstr = NULL;
 
       r = rs_calloc (ctx, 1, sizeof(*r));
       if (r == NULL)
@@ -154,8 +156,9 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       r->certfile = cfg_getstr (cfg_realm, "certfile");
       r->certkeyfile = cfg_getstr (cfg_realm, "certkeyfile");
 
-      psk = cfg_getstr (cfg_realm, "psk");
-      if (psk)
+      pskstr = cfg_getstr (cfg_realm, "pskstr");
+      pskhexstr = cfg_getstr (cfg_realm, "pskhexstr");
+      if (pskstr || pskhexstr)
         {
           char *kex = cfg_getstr (cfg_realm, "pskex");
           rs_cred_type_t type = RS_CRED_NONE;
@@ -180,7 +183,19 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
                                            NULL);
               cred->type = type;
               cred->identity = cfg_getstr (cfg_realm, "pskid");
-              cred->secret = psk;
+              if (pskhexstr)
+                {
+                  cred->secret_encoding = RS_KEY_ENCODING_ASCII_HEX;
+                  cred->secret = pskhexstr;
+                  if (pskstr)
+                    ;      /* TODO: warn that we're ignoring pskstr */
+                }
+              else
+                {
+                  cred->secret_encoding = RS_KEY_ENCODING_UTF8;
+                  cred->secret = pskstr;
+                }
+
               r->transport_cred = cred;
             }
         }

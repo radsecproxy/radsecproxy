@@ -23,6 +23,12 @@ enum rs_cred_type {
 };
 typedef unsigned int rs_cred_type_t;
 
+enum rs_key_encoding {
+    RS_KEY_ENCODING_UTF8 = 1,
+    RS_KEY_ENCODING_ASCII_HEX = 2,
+};
+typedef unsigned int rs_key_encoding_t;
+
 #if defined (__cplusplus)
 extern "C" {
 #endif
@@ -31,6 +37,8 @@ struct rs_credentials {
     enum rs_cred_type type;
     char *identity;
     char *secret;
+    enum rs_key_encoding secret_encoding;
+    unsigned int secret_len;
 };
 
 struct rs_error {
