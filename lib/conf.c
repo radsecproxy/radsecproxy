@@ -26,8 +26,8 @@
       #cacertpath = STRING
       certfile = STRING
       certkeyfile = STRING
-      pskstr = STRING	# Transport pre-shared key, ASCII (UTF-8?) string form.
-      pskhexstr = STRING # Transport pre-shared key, hexadecimal string form.
+      pskstr = STRING	# Transport pre-shared key, UTF-8 form.
+      pskhexstr = STRING # Transport pre-shared key, ASCII hex form.
       pskid = STRING
       pskex = "PSK"|"DHE_PSK"|"RSA_PSK"
   }
