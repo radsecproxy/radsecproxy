@@ -633,8 +633,7 @@ blocktype name {
       <literal>AddTTL</literal>, <literal>rewrite</literal>,
       <literal>rewriteIn</literal>, <literal>rewriteOut</literal>,
       <literal>statusServer</literal>, <literal>retryCount</literal>,
-      <literal>retryInterval</literal>,
-      <literal>dynamicLookupCommand</literal> and
+      <literal>retryInterval</literal> and
       <literal>LoopPrevention</literal>.
     </para>
     <para>
@@ -667,12 +666,6 @@ blocktype name {
       times the proxy should retry sending a request and how long it
       should wait between each retry. The defaults are 2 retries and
       an interval of 5s.
-    </para>
-    <para>
-      The option <literal>dynamicLookupCommand</literal> can be used
-      to specify a command that should be executed to dynamically
-      configure and use a server.  The use of this feature will be
-      documented separately/later.
     </para>
     <para>
       Using the <literal>LoopPrevention</literal> option here

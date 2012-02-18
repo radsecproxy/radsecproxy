@@ -1,6 +1,7 @@
 radsecproxy documentation for developers
 
 1. Overall design
+=================
 
 At startup client and server configurations are read. Two lists
 are created, called clconfs and srvconfs. Both contain clsrvconf
@@ -35,7 +36,9 @@ xxxserverrd, where xxx is the transport name. The server reader
 is responsible for creating a server writer thread that takes care
 of sending RADIUS replies to a client.
 
+
 2. RADIUS message processing
+============================
 
 In 1 we described the threads used and the high level operations.
 We will now describe how RADIUS messages are processed and flow
@@ -277,3 +280,63 @@ addresses after initial startup.
 Can be defined it extra initialisation is needed for the transport.
 
 };
+
+
+3. Dynamic servers
+==================
+
+A server block can contain the 'dynamicLookupCommand' option, naming
+an executable file which will be executed (fork, exec) with the realm
+of the user being authenticated as its only argument.  The output from
+the program (read from stdout) is used as configuration text and
+parsed as if it was read from a configuration file.
+
+[XXX describe what happens when config is read -- set in
+createsubrealmservers() if the server block has the
+'dynamicLookupCommand' option]
+
+[XXX describe what happens when a packet is handled -- findserver()
+creating a realm object]
+
+Dynamic freeing of resources
+----------------------------
+
+At the end of clientwr(), if server->dynamiclookuparg != NULL, the
+removeserversubrealms(list, server) function is called and normally
+so is freeclsrvconf(server).
+
+removeserversubrealms() traverses the list of realms (taking a lock on
+each realm) and calls _internal_removeserversubrealms(subrealm,
+server) on each subrealm.  If the list of subrealms is empty after
+this, it's being destroyed.
+
+The _internal_removeserversubrealms(realm list, SERVER) function
+traverses the list of realms and for each realm:
+
+  - increase the refcount on the realm
+
+  - take the lock on the realm
+
+  - for srv in realm->srvconfs: if srv == SERVER: decrease ref on realm
+
+  - free all servers in realm->srvconfs matching SERVER
+    (list_removedata() TODO: is this function correct?)
+
+  - same thing for realm->accsrvconfs as for srvconfs
+
+  - if none of the realm->srvconfs nor the realm->accsrvonfs has a
+    dynamiclookupcommand:
+
+    - for each srv in realm->srvconfs: free srv and decrease ref on realm
+
+    - destroy realm->srvconfs
+
+    - same thing for realm->accsrvconfs as for srvconfs
+
+    - release the realm lock
+
+    - decrease the refcount on the realm
+
+freeclsrvconf() performs 15 calls to free() and also invokes
+freegconfmstr(), freehostports(), regfree() and
+pthread_mutex_destroy().
