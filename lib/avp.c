@@ -1,4 +1,4 @@
-/* Copyright 2011 PADL Software Pty Ltd. All rights reserved.
+/* Copyright 2011 JANET(UK). All rights reserved.
    See the file COPYING for licensing information.  */
 
 #if defined HAVE_CONFIG_H
