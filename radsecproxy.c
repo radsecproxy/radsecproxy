@@ -2758,7 +2758,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (!addhostport(&conf->hostports, conf->hostsrc, conf->pdef->portdefault, 1) ||
 	!resolvehostports(conf->hostports, conf->pdef->socktype))
-	debugx(1, DBG_ERR, "resolve failed, exiting");
+	debugx(1, DBG_ERR, "%s: resolve failed, exiting", __func__);
 
     if (!conf->secret) {
 	if (!conf->pdef->secretdefault)
@@ -2820,7 +2820,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     }
 
     if (!conf->dynamiclookupcommand && !resolvehostports(conf->hostports, conf->pdef->socktype)) {
-	debug(DBG_ERR, "resolve failed, exiting");
+	debug(DBG_ERR, "%s: resolve failed", __func__);
 	return 0;
     }
     return 1;
