@@ -2944,7 +2944,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (resconf || !conf->dynamiclookupcommand) {
 	if (!compileserverconfig(conf, block))
-	    goto errexit;
+            return 0; /* Don't goto errexit and free resconf -- it's
+                       * not ours to free.  */
     }
 
     if (!conf->secret) {
