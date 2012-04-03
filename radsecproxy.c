@@ -64,6 +64,7 @@
 #include <libgen.h>
 #include <pthread.h>
 #include <errno.h>
+#include <assert.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
@@ -1306,6 +1307,8 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
 	server = (struct clsrvconf *)entry->data;
 	if (!server->servers)
 	    return server;
+        if (server->servers->dynfailing)
+            continue;
 	if (!first)
 	    first = server;
 	if (!server->servers->connectionok && !server->servers->dynstartup)
@@ -1344,11 +1347,15 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
 	    pthread_mutex_unlock(&(*realm)->mutex);
 	    freerealm(*realm);
 	    *realm = subrealm;
+            debug(DBG_DBG, "added realm: %s", (*realm)->name);
 	    srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
+            debug(DBG_DBG, "found conf for new realm: %s", srvconf->name);
 	}
     }
-    if (srvconf)
+    if (srvconf) {
+        debug(DBG_DBG, "found matching conf: %s", srvconf->name);
 	server = srvconf->servers;
+    }
 
 exit:
     free(id);
@@ -1751,18 +1758,25 @@ void *clientwr(void *arg) {
 
     conf = server->conf;
 
+#define ZZZ 60
+
     if (server->dynamiclookuparg && !dynamicconfig(server)) {
 	dynconffail = 1;
 	server->dynstartup = 0;
-	sleep(900);
+	server->dynfailing = 1;
+	debug(DBG_WARN, "%s: dynamicconfig(%s) failed, sleeping %ds",
+              __func__, server->conf->name, ZZZ);
+	sleep(ZZZ);
 	goto errexit;
     }
 
+    /* FIXME: Is resolving not always done by compileserverconfig(),
+     * either as part of static configuration setup or by
+     * dynamicconfig() above?  */
     if (!resolvehostports(conf->hostports, conf->pdef->socktype)) {
-	debug(DBG_WARN, "clientwr: resolve failed");
-	server->dynstartup = 0;
-	sleep(900);
-	goto errexit;
+        debug(DBG_WARN, "%s: resolve failed, sleeping %ds", __func__, ZZZ);
+        sleep(ZZZ);
+        goto errexit;
     }
 
     memset(&timeout, 0, sizeof(struct timespec));
@@ -1775,8 +1789,11 @@ void *clientwr(void *arg) {
     if (conf->pdef->connecter) {
 	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
 	    if (server->dynamiclookuparg) {
-		server->dynstartup = 0;
-		sleep(900);
+                server->dynstartup = 0;
+		server->dynfailing = 1;
+                debug(DBG_WARN, "%s: connect failed, sleeping %ds",
+                      __func__, ZZZ);
+		sleep(ZZZ);
 	    }
 	    goto errexit;
 	}
@@ -2173,10 +2190,17 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
 		debug(DBG_ERR, "malloc failed");
 		continue;
 	    }
+            debug(DBG_DBG, "%s: copying config %s", __func__, conf->name);
 	    *srvconf = *conf;
+            /* Shallow copy -- sharing all the pointers.  addserver()
+             * will take care of servers (which btw has to be NUL) but
+             * the rest of them are shared with the config found in
+             * the srvconfs list.  */
 	    if (addserver(srvconf)) {
 		srvconf->servers->dynamiclookuparg = stringcopy(realm->name, 0);
 		srvconf->servers->dynstartup = 1;
+                debug(DBG_DBG, "%s: new client writer for %s",
+                      __func__, srvconf->servers->conf->name);
 		if (pthread_create(&clientth, NULL, clientwr, (void *)(srvconf->servers))) {
 		    debugerrno(errno, DBG_ERR, "pthread_create failed");
 		    freeserver(srvconf->servers, 1);
@@ -2544,6 +2568,9 @@ int setttlattr(struct options *opts, char *defaultattr) {
 }
 
 void freeclsrvconf(struct clsrvconf *conf) {
+    assert(conf);
+    assert(conf->name);
+    debug(DBG_DBG, "%s: freeing %p (%s)", __func__, conf, conf->name);
     free(conf->name);
     if (conf->hostsrc)
 	freegconfmstr(conf->hostsrc);

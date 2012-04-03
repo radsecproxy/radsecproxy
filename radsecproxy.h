@@ -160,6 +160,7 @@ struct server {
     uint8_t connectionok;
     uint8_t lostrqs;
     uint8_t dynstartup;
+    uint8_t dynfailing;
     char *dynamiclookuparg;
     int nextid;
     struct timeval lastrcv;
