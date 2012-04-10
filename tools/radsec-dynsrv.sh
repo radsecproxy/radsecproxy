@@ -48,4 +48,4 @@ if test -n "${SERVERS}" ; then
         exit 0
 fi
 
-exit 0
+exit 10				# No server found.

@@ -2297,14 +2297,9 @@ int dynamicconfig(struct server *server) {
     }
 
     if (status) {
-	if (WEXITSTATUS(status) == 10) {
-	    debug(DBG_INFO, "dynamicconfig: command signals empty config");
-	}
-	else {
-	    debug(DBG_INFO, "dynamicconfig: command exited with status %d",
-		  WEXITSTATUS(status));
-	    goto errexit;
-	}
+        debug(DBG_INFO, "dynamicconfig: command exited with status %d",
+              WEXITSTATUS(status));
+        goto errexit;
     }
 
     if (ok)
