@@ -18,6 +18,10 @@
 	conditionally and unconditionally.
 	- Honour configure option --sysconfdir.  (RADSECPROXY-31)
 	- Other bugs.  (RADSECPROXY-26, -28, -34, -35, -39)
+	- Don't crash on failing DynamicLookupCommand scripts.
+	- When a DynamicLookupCommand script is failing, fall back to
+	other server(s) in the realm.  The timeout depends on the kind of
+	failure.
 
 2011-10-08 1.5
 	New features:
