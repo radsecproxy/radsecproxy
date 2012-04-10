@@ -2646,7 +2646,10 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	!mergeconfstring(&dst->matchcertattr, &src->matchcertattr) ||
 	!mergeconfstring(&dst->confrewritein, &src->confrewritein) ||
 	!mergeconfstring(&dst->confrewriteout, &src->confrewriteout) ||
-	!mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand))
+	!mergeconfstring(&dst->confrewriteusername, &src->confrewriteusername) ||
+	!mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand) ||
+	!mergeconfstring(&dst->fticks_viscountry, &src->fticks_viscountry) ||
+	!mergeconfstring(&dst->fticks_visinst, &src->fticks_visinst))
 	return 0;
     if (src->pdef)
 	dst->pdef = src->pdef;
