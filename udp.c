@@ -24,6 +24,7 @@
 #include <arpa/inet.h>
 #include <regex.h>
 #include <pthread.h>
+#include <assert.h>
 #include "radsecproxy.h"
 #include "hostport.h"
 
@@ -317,6 +318,7 @@ void addclientudp(struct client *client) {
 }
 
 void addserverextraudp(struct clsrvconf *conf) {
+    assert(list_first(conf->hostports) != NULL);
     switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
     case AF_INET:
 	if (client4_sock < 0) {
