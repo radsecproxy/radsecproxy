@@ -126,6 +126,17 @@ blocktype name {
     </para>
     <variablelist>
       <varlistentry>
+        <term><literal>PidFile</literal></term>
+        <listitem>
+	  <para>
+            The PidFile option specifies the name of a file to which
+            the process id (PID) will be written.  This is overridden
+            by the <option>-i</option> command line option.  There is
+            no default value for the PidFile option.
+	  </para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
         <term><literal>LogLevel</literal></term>
         <listitem>
 	  <para>

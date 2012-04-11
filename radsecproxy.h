@@ -54,6 +54,7 @@ enum rsp_fticks_mac_type {
 };
 
 struct options {
+    char *pidfile;
     char *logdestination;
     char *ftickssyslogfacility;
     char *ttlattr;

@@ -3082,6 +3082,7 @@ void getmainconfig(const char *configfile) {
 	    "ListenDTLS", CONF_MSTR, &listenargs[RAD_DTLS],
 	    "SourceDTLS", CONF_STR, &sourcearg[RAD_DTLS],
 #endif
+            "PidFile", CONF_STR, &options.pidfile,
 	    "TTLAttribute", CONF_STR, &options.ttlattr,
 	    "addTTL", CONF_LINT, &addttl,
 	    "LogLevel", CONF_LINT, &loglevel,
@@ -3280,6 +3281,8 @@ int radsecproxy_main(int argc, char **argv) {
 
     debug_timestamp_on();
     debug(DBG_INFO, "radsecproxy revision %s starting", PACKAGE_VERSION);
+    if (!pidfile)
+        pidfile = options.pidfile;
     if (pidfile && !createpidfile(pidfile))
 	debugx(1, DBG_ERR, "failed to create pidfile %s: %s", pidfile, strerror(errno));
 
