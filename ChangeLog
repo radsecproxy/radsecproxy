@@ -12,6 +12,9 @@
 	configured explicitly.  This was implemented by Maja
 	Gorecka-Wolniewicz and Paweł Gołaszewski.  (RADSECPROXY-29)
 	- Add config option PidFile.  (RADSECPROXY-32)
+	- Preliminary support for DynamicLookupCommand.  It's for TLS
+	servers only at this point.  Also, beware of risks for memory
+	leaks.
 
 	Bug fixes:
 	- Stop the autoconfery from warning about defining variables
