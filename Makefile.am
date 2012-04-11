@@ -43,6 +43,7 @@ radsecproxy_conf_SOURCES = \
 	util.c util.h
 
 ####################
+AM_CPPFLAGS = -DSYSCONFDIR=\"$(sysconfdir)\"
 AM_CFLAGS = \
 	-g -Wall -Werror -fno-strict-aliasing @SSL_CFLAGS@ @TARGET_CFLAGS@
 

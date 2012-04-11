@@ -18,7 +18,7 @@
 
 #define DEBUG_LEVEL 2
 
-#define CONFIG_MAIN "/etc/radsecproxy.conf"
+#define CONFIG_MAIN SYSCONFDIR"/radsecproxy.conf"
 
 /* MAX_REQUESTS must be 256 due to Radius' 8 bit ID field */
 #define MAX_REQUESTS 256
