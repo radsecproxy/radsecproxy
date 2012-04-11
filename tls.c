@@ -43,7 +43,7 @@ void tlssetsrcres();
 
 static const struct protodefs protodefs = {
     "tls",
-    "mysecret", /* secretdefault */
+    "radsec", /* secretdefault */
     SOCK_STREAM, /* socktype */
     "2083", /* portdefault */
     0, /* retrycountdefault */
