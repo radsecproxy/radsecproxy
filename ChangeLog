@@ -1,18 +1,24 @@
 2011-04-11 1.6-dev
 	Incompatible changes:
 	- The default shared secret for TLS and DTLS connections change
-	from "mysecret" to "radsec" as per draft-ietf-radext-radsec-12.txt
+	from "mysecret" to "radsec" as per draft-ietf-radext-radsec-12
 	section 2.3 (4).  Please make sure to specify a secret in both
 	client and server blocks to avoid unwanted surprises.
+	(RADSECPROXY-19)
 
 	New features:
 	- Improved F-Ticks logging options.  F-Ticks can now be sent to a
 	separate syslog facility and the VISINST label can now be
-	configured explicitly.
+	configured explicitly.  This was implemented by Maja
+	Gorecka-Wolniewicz and Paweł Gołaszewski.  (RADSECPROXY-29)
+	- Add config option PidFile.  (RADSECPROXY-32)
 
 	Bug fixes:
 	- Stop the autoconfery from warning about defining variables
 	conditionally and unconditionally.
+	- Honour configure option --sysconfdir.  (RADSECPROXY-31)
+	- Other minor bugs.  (RADSECPROXY-35, RADSECPROXY-34,
+	RADSECPROXY-28, RADSECPROXY-26)
 
 2011-10-08 1.5
 	New features:
