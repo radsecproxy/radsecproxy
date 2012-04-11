@@ -298,6 +298,9 @@ createsubrealmservers() if the server block has the
 [XXX describe what happens when a packet is handled -- findserver()
 creating a realm object]
 
+[XXX describe the non-staticness of TLS connections to dynamically
+resolved servers -- tlsclientrd and IDLE_TIMEOUT]
+
 Dynamic freeing of resources
 ----------------------------
 
