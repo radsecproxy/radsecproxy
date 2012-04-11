@@ -28,6 +28,7 @@
 #include <openssl/err.h>
 #include "hash.h"
 #include "radsecproxy.h"
+#include "common.h"
 
 #ifdef RADPROT_DTLS
 #include "debug.h"
@@ -40,7 +41,7 @@ void *udpdtlsserverrd(void *arg);
 int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
 void *dtlsclientrd(void *arg);
 int clientradputdtls(struct server *server, unsigned char *rad);
-void addserverextradtls(struct clsrvconf *conf);
+int addserverextradtls(const struct clsrvconf *conf);
 void dtlssetsrcres();
 void initextradtls();
 
@@ -665,27 +666,8 @@ void *dtlsclientrd(void *arg) {
     return NULL;
 }
 
-void addserverextradtls(struct clsrvconf *conf) {
-    switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
-    case AF_INET:
-	if (client4_sock < 0) {
-	    client4_sock = bindtoaddr(srcres, AF_INET, 0, 1);
-	    if (client4_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
-	}
-	conf->servers->sock = client4_sock;
-	break;
-    case AF_INET6:
-	if (client6_sock < 0) {
-	    client6_sock = bindtoaddr(srcres, AF_INET6, 0, 1);
-	    if (client6_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
-	}
-	conf->servers->sock = client6_sock;
-	break;
-    default:
-	debugx(1, DBG_ERR, "addserver: unsupported address family");
-    }
+int addserverextradtls(const struct clsrvconf *conf) {
+    return addserverextra(conf, &client4_sock, &client6_sock, srcres);
 }
 
 void initextradtls() {

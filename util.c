@@ -114,7 +114,7 @@ char *addr2string(struct sockaddr *addr) {
    RADIUS packet to be discarded on first attempt (due to Path MTU discovery).
 */
 
-void disable_DF_bit(int socket, struct addrinfo *res) {
+void disable_DF_bit(int socket, const struct addrinfo *res) {
     if ((res->ai_family == AF_INET) && (res->ai_socktype == SOCK_DGRAM)) {
 #if defined(IP_MTU_DISCOVER) && defined(IP_PMTUDISC_DONT)
         /*
@@ -132,11 +132,11 @@ void disable_DF_bit(int socket, struct addrinfo *res) {
     }
 }
 
-int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
+int bindtoaddr(const struct addrinfo *addrinfo, int family, int reuse, int v6only) {
     int s, on = 1;
-    struct addrinfo *res;
+    const struct addrinfo *res = addrinfo;
 
-    for (res = addrinfo; res; res = res->ai_next) {
+    for (; res; res = res->ai_next) {
 	if (family != AF_UNSPEC && family != res->ai_family)
 	    continue;
 	s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);

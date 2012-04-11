@@ -212,7 +212,7 @@ struct protodefs {
     void *(*clientconnreader)(void*);
     int (*clientradput)(struct server *, unsigned char *);
     void (*addclient)(struct client *);
-    void (*addserverextra)(struct clsrvconf *);
+    int (*addserverextra)(const struct clsrvconf *conf);
     void (*setsrcres)();
     void (*initextra)();
 };

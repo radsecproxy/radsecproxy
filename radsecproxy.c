@@ -360,7 +360,8 @@ int addserver(struct clsrvconf *conf) {
 
     conf->servers->sock = -1;
     if (conf->pdef->addserverextra)
-	conf->pdef->addserverextra(conf);
+	if (!conf->pdef->addserverextra(conf))
+            return 0;
 
     conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct rqout));
     if (!conf->servers->requests) {
@@ -2822,10 +2823,9 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	return 0;
     }
 
-    if (!conf->dynamiclookupcommand && !resolvehostports(conf->hostports, conf->pdef->socktype)) {
-	debug(DBG_ERR, "%s: resolve failed", __func__);
-	return 0;
-    }
+    if (!conf->dynamiclookupcommand && !resolvehostports(conf->hostports, conf->pdef->socktype))
+	debug(DBG_WARN, "%s: resolve failed", __func__);
+
     return 1;
 }
 
@@ -3295,7 +3295,7 @@ int radsecproxy_main(int argc, char **argv) {
 	if (srvconf->dynamiclookupcommand)
 	    continue;
 	if (!addserver(srvconf))
-	    debugx(1, DBG_ERR, "failed to add server");
+	    debug(DBG_WARN, "failed to add at least one server");
 	if (pthread_create(&srvconf->servers->clientth, NULL, clientwr,
 			   (void *)(srvconf->servers)))
 	    debugx(1, DBG_ERR, "pthread_create failed");

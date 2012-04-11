@@ -15,8 +15,8 @@ struct sockaddr *addr_copy(struct sockaddr *in);
 void port_set(struct sockaddr *sa, uint16_t port);
 
 void printfchars(char *prefixfmt, char *prefix, char *charfmt, char *chars, int len);
-void disable_DF_bit(int socket, struct addrinfo *res);
-int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only);
+void disable_DF_bit(int socket, const struct addrinfo *res);
+int bindtoaddr(const struct addrinfo *addrinfo, int family, int reuse, int v6only);
 int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout);
 
 
