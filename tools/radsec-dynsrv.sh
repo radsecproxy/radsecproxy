@@ -1,4 +1,4 @@
-#! /bin/bash
+#! /bin/sh
 
 # Example script!
 # This script looks up radsec srv records in DNS for the one
