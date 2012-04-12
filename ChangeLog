@@ -17,8 +17,7 @@
 	- Stop the autoconfery from warning about defining variables
 	conditionally and unconditionally.
 	- Honour configure option --sysconfdir.  (RADSECPROXY-31)
-	- Other minor bugs.  (RADSECPROXY-35, RADSECPROXY-34,
-	RADSECPROXY-28, RADSECPROXY-26)
+	- Other bugs.  (RADSECPROXY-26, -28, -34, -35)
 
 2011-10-08 1.5
 	New features:
