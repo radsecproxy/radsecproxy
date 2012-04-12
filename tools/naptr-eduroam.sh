@@ -8,7 +8,7 @@
 # For host command this is column 5, for dig it is column 1.
 
 usage() {
-    /bin/echo "Usage: ${0} <realm>"
+    echo "Usage: ${0} <realm>"
     exit 1
 }
 
@@ -22,7 +22,7 @@ dig_it_srv() {
     ${DIGCMD} +short srv $SRV_HOST | sort -n -k1 |
     while read line; do
 	set $line ; PORT=$3 ; HOST=$4
-	/bin/echo -e "\thost ${HOST%.}:${PORT}"
+	echo -e "\thost ${HOST%.}:${PORT}"
     done
 }
 
@@ -41,7 +41,7 @@ host_it_srv() {
     ${HOSTCMD} -t srv $SRV_HOST | sort -n -k5 |
     while read line; do
 	set $line ; PORT=$7 ; HOST=$8 
-	/bin/echo -e "\thost ${HOST%.}:${PORT}"
+	echo -e "\thost ${HOST%.}:${PORT}"
     done
 }
 
@@ -61,12 +61,12 @@ if [ -x "${DIGCMD}" ]; then
 elif [ -x "${HOSTCMD}" ]; then
     SERVERS=$(host_it_naptr)
 else
-    /bin/echo "${0} requires either \"dig\" or \"host\" command."
+    echo "${0} requires either \"dig\" or \"host\" command."
     exit 1
 fi
 
 if [ -n "${SERVERS}" ]; then
-    /bin/echo -e "server dynamic_radsec.${REALM} {\n${SERVERS}\n\ttype TLS\n}"
+    echo -e "server dynamic_radsec.${REALM} {\n${SERVERS}\n\ttype TLS\n}"
     exit 0
 fi
 
