@@ -1,3 +1,12 @@
+/*
+ * Copyright (C) 2008 Stig Venaas <venaas@uninett.no>
+ * Copyright (C) 2010,2011,2012 NORDUnet A/S
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
