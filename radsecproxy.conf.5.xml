@@ -644,7 +644,6 @@ blocktype name {
       <literal>AddTTL</literal>, <literal>rewrite</literal>,
       <literal>rewriteIn</literal>, <literal>rewriteOut</literal>,
       <literal>statusServer</literal>, <literal>retryCount</literal>,
-      <literal>dynamicLookupCommand</literal> and
       <literal>retryInterval</literal> and
       <literal>LoopPrevention</literal>.
     </para>
@@ -678,21 +677,6 @@ blocktype name {
       times the proxy should retry sending a request and how long it
       should wait between each retry. The defaults are 2 retries and
       an interval of 5s.
-    </para>
-    <para>
-      The option <literal>dynamicLookupCommand</literal> can be used
-      to specify a command that should be executed to dynamically
-      configure a server.  The executable file should be given with
-      full path and will be invoked with the name of the realm as its
-      first and only argument.  It should either print a valid
-      <literal>server</literal> option on stdout and exit with a code
-      of 0 or print nothing and exit with a non-zero exit code.  An
-      example of a shell script resolving the DNS NAPTR records for
-      the realm and then the SRV records for each NAPTR matching
-      'x-eduroam:radius.tls' is provided in
-      <literal>tools/naptr-eduroam.sh</literal>.  This option was
-      added in radsecproxy-1.3 but tends to crash radsecproxy versions
-      earlier than 1.6.
     </para>
     <para>
       Using the <literal>LoopPrevention</literal> option here
