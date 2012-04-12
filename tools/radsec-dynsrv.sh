@@ -19,7 +19,7 @@ DIGCMD=$(command -v digaaa)
 HOSTCMD=$(command -v host)
 
 dig_it() {
-   ${DIGCMD} +short srv _radsec._tcp.${REALM} | sort -k1 |
+   ${DIGCMD} +short srv _radsec._tcp.${REALM} | sort -n -k1 |
    while read line ; do
       set $line ; PORT=$3 ; HOST=$4 
       echo -e "\thost ${HOST%.}:${PORT}"
@@ -27,7 +27,7 @@ dig_it() {
 }
 
 host_it() {
-   ${HOSTCMD} -t srv _radsec._tcp.${REALM} | sort -k5 | 
+   ${HOSTCMD} -t srv _radsec._tcp.${REALM} | sort -n -k5 |
    while read line ; do
       set $line ; PORT=$7 ; HOST=$8 
       echo -e "\thost ${HOST%.}:${PORT}"

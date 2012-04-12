@@ -19,7 +19,7 @@ DIGCMD=$(command -v dig)
 HOSTCMD=$(command -v host)
 
 dig_it_srv() {
-    ${DIGCMD} +short srv $SRV_HOST | sort -k1 |
+    ${DIGCMD} +short srv $SRV_HOST | sort -n -k1 |
     while read line; do
 	set $line ; PORT=$3 ; HOST=$4
 	/bin/echo -e "\thost ${HOST%.}:${PORT}"
@@ -27,7 +27,7 @@ dig_it_srv() {
 }
 
 dig_it_naptr() {
-    ${DIGCMD} +short naptr ${REALM} | grep x-eduroam:radius.tls | sort -k1 |
+    ${DIGCMD} +short naptr ${REALM} | grep x-eduroam:radius.tls | sort -n -k1 |
     while read line; do
 	set $line ; TYPE=$3 ; HOST=$6
 	if [ "$TYPE" = "\"s\"" ]; then
@@ -38,7 +38,7 @@ dig_it_naptr() {
 }
 
 host_it_srv() {
-    ${HOSTCMD} -t srv $SRV_HOST | sort -k5 | 
+    ${HOSTCMD} -t srv $SRV_HOST | sort -n -k5 |
     while read line; do
 	set $line ; PORT=$7 ; HOST=$8 
 	/bin/echo -e "\thost ${HOST%.}:${PORT}"
@@ -46,7 +46,7 @@ host_it_srv() {
 }
 
 host_it_naptr() {
-    ${HOSTCMD} -t naptr ${REALM} | grep x-eduroam:radius.tls | sort -k5 | 
+    ${HOSTCMD} -t naptr ${REALM} | grep x-eduroam:radius.tls | sort -n -k5 |
     while read line; do
 	set $line ; TYPE=$7 ; HOST=${10}
 	if [ "$TYPE" = "\"s\"" ]; then
