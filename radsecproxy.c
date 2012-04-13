@@ -2684,13 +2684,19 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     return 1;
 }
 
-int config_hostaf(const char *block, int ipv4only, int ipv6only, int *af) {
+/** Set *AF according to IPV4ONLY and IPV6ONLY:
+    - If both are set, the function fails.
+    - If exactly one is set, *AF is set accordingly.
+    - If none is set, *AF is not affected.
+    Return 0 on success and !0 on failure.
+    In the case of an error, *AF is not affected.  */
+int config_hostaf(const char *desc, int ipv4only, int ipv6only, int *af) {
+    assert(af != NULL);
     if (ipv4only && ipv6only) {
 	debug(DBG_ERR, "error in block %s, at most one of IPv4Only and "
-              "IPv6Only can be enabled", block);
+              "IPv6Only can be enabled", desc);
         return -1;
     }
-    *af = AF_UNSPEC;
     if (ipv4only)
         *af = AF_INET;
     if (ipv6only)
@@ -2769,6 +2775,9 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 #endif
 
+    conf->hostaf = AF_UNSPEC;
+    if (config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf))
+        debugx(1, DBG_ERR, "config error: ^");
     if (config_hostaf(block, ipv4only, ipv6only, &conf->hostaf))
         debugx(1, DBG_ERR, "error in block %s: ^", block);
 
@@ -2947,6 +2956,9 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     free(conftype);
     conftype = NULL;
 
+    conf->hostaf = AF_UNSPEC;
+    if (config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf))
+        debugx(1, DBG_ERR, "config error: ^");
     if (config_hostaf(block, ipv4only, ipv6only, &conf->hostaf))
         goto errexit;
 
@@ -3151,6 +3163,8 @@ void getmainconfig(const char *configfile) {
 	    "FTicksKey", CONF_STR, &fticks_key_str,
 	    "FTicksSyslogFacility", CONF_STR, &options.ftickssyslogfacility,
 #endif
+            "IPv4Only", CONF_BLN, &options.ipv4only,
+            "IPv6Only", CONF_BLN, &options.ipv6only,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");

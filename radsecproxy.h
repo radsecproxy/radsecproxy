@@ -65,6 +65,8 @@ struct options {
     enum rsp_fticks_reporting_type fticks_reporting;
     enum rsp_fticks_mac_type fticks_mac;
     uint8_t *fticks_key;
+    uint8_t ipv4only;
+    uint8_t ipv6only;
 };
 
 struct commonprotoopts {
