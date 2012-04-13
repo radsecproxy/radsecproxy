@@ -99,7 +99,9 @@ struct dtlsservernewparams {
 
 void dtlssetsrcres() {
     if (!srcres)
-	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
+	srcres =
+            resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,
+                                   AF_UNSPEC, NULL, protodefs.socktype);
 }
 
 int udp2bio(int s, struct gqueue *q, int cnt) {

@@ -132,12 +132,12 @@ errexit:
     return NULL;
 }
 
-int resolvehostport(struct hostportres *hp, int socktype, uint8_t passive) {
+int resolvehostport(struct hostportres *hp, int af, int socktype, uint8_t passive) {
     struct addrinfo hints, *res;
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_socktype = socktype;
-    hints.ai_family = AF_UNSPEC;
+    hints.ai_family = af;
     if (passive)
 	hints.ai_flags = AI_PASSIVE;
 
@@ -172,6 +172,7 @@ int resolvehostport(struct hostportres *hp, int socktype, uint8_t passive) {
 	    }
 	}
     }
+    debug(DBG_DBG, "%s: %s -> %s", __func__, hp->host, addr2string(hp->addrinfo->ai_addr));
     return 1;
 
 errexit:
@@ -213,22 +214,22 @@ void freehostports(struct list *hostports) {
     list_destroy(hostports);
 }
 
-int resolvehostports(struct list *hostports, int socktype) {
+int resolvehostports(struct list *hostports, int af, int socktype) {
     struct list_node *entry;
     struct hostportres *hp;
 
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
 	hp = (struct hostportres *)entry->data;
-	if (!hp->addrinfo && !resolvehostport(hp, socktype, 0))
+	if (!hp->addrinfo && !resolvehostport(hp, af, socktype, 0))
 	    return 0;
     }
     return 1;
 }
 
-struct addrinfo *resolvepassiveaddrinfo(char *hostport, char *default_port, int socktype) {
+struct addrinfo *resolvepassiveaddrinfo(char *hostport, int af, char *default_port, int socktype) {
     struct addrinfo *ai = NULL;
     struct hostportres *hp = newhostport(hostport, default_port, 0);
-    if (hp && resolvehostport(hp, socktype, 1)) {
+    if (hp && resolvehostport(hp, af, socktype, 1)) {
 	ai = hp->addrinfo;
 	hp->addrinfo = NULL;
     }

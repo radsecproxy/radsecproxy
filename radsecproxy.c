@@ -1773,7 +1773,7 @@ void *clientwr(void *arg) {
     /* FIXME: Is resolving not always done by compileserverconfig(),
      * either as part of static configuration setup or by
      * dynamicconfig() above?  */
-    if (!resolvehostports(conf->hostports, conf->pdef->socktype)) {
+    if (!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype)) {
         debug(DBG_WARN, "%s: resolve failed, sleeping %ds", __func__, ZZZ);
         sleep(ZZZ);
         goto errexit;
@@ -1926,7 +1926,7 @@ void createlistener(uint8_t type, char *arg) {
     int s = -1, on = 1, *sp = NULL;
     struct hostportres *hp = newhostport(arg, protodefs[type]->portdefault, 0);
 
-    if (!hp || !resolvehostport(hp, protodefs[type]->socktype, 1))
+    if (!hp || !resolvehostport(hp, AF_UNSPEC, protodefs[type]->socktype, 1))
 	debugx(1, DBG_ERR, "createlistener: failed to resolve %s", arg);
 
     for (res = hp->addrinfo; res; res = res->ai_next) {
@@ -2684,10 +2684,25 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     return 1;
 }
 
+int config_hostaf(const char *block, int ipv4only, int ipv6only, int *af) {
+    if (ipv4only && ipv6only) {
+	debug(DBG_ERR, "error in block %s, at most one of IPv4Only and "
+              "IPv6Only can be enabled", block);
+        return -1;
+    }
+    *af = AF_UNSPEC;
+    if (ipv4only)
+        *af = AF_INET;
+    if (ipv6only)
+        *af = AF_INET6;
+    return 0;
+}
+
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf;
     char *conftype = NULL, *rewriteinalias = NULL;
     long int dupinterval = LONG_MIN, addttl = LONG_MIN;
+    uint8_t ipv4only, ipv6only;
 
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -2701,6 +2716,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    cf, block,
 	    "type", CONF_STR, &conftype,
 	    "host", CONF_MSTR, &conf->hostsrc,
+            "IPv4Only", CONF_BLN, &ipv4only,
+            "IPv6Only", CONF_BLN, &ipv6only,
 	    "secret", CONF_STR, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 	    "tls", CONF_STR, &conf->tls,
@@ -2752,6 +2769,9 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 #endif
 
+    if (config_hostaf(block, ipv4only, ipv6only, &conf->hostaf))
+        debugx(1, DBG_ERR, "error in block %s: ^", block);
+
     if (dupinterval != LONG_MIN) {
 	if (dupinterval < 0 || dupinterval > 255)
 	    debugx(1, DBG_ERR, "error in block %s, value of option DuplicateInterval is %d, must be 0-255", block, dupinterval);
@@ -2782,7 +2802,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 
     if (!addhostport(&conf->hostports, conf->hostsrc, conf->pdef->portdefault, 1) ||
-	!resolvehostports(conf->hostports, conf->pdef->socktype))
+	!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype))
 	debugx(1, DBG_ERR, "%s: resolve failed, exiting", __func__);
 
     if (!conf->secret) {
@@ -2844,7 +2864,9 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	return 0;
     }
 
-    if (!conf->dynamiclookupcommand && !resolvehostports(conf->hostports, conf->pdef->socktype)) {
+    if (!conf->dynamiclookupcommand &&
+        !resolvehostports(conf->hostports, conf->hostaf,
+                          conf->pdef->socktype)) {
 	debug(DBG_ERR, "%s: resolve failed", __func__);
 	return 0;
     }
@@ -2855,6 +2877,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     struct clsrvconf *conf, *resconf;
     char *conftype = NULL, *rewriteinalias = NULL;
     long int retryinterval = LONG_MIN, retrycount = LONG_MIN, addttl = LONG_MIN;
+    uint8_t ipv4only, ipv6only;
 
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
@@ -2875,6 +2898,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (!getgenericconfig(cf, block,
 			  "type", CONF_STR, &conftype,
 			  "host", CONF_MSTR, &conf->hostsrc,
+                          "IPv4Only", CONF_BLN, &ipv4only,
+                          "IPv6Only", CONF_BLN, &ipv6only,
 			  "port", CONF_STR, &conf->portsrc,
 			  "secret", CONF_STR, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
@@ -2921,6 +2946,9 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
     free(conftype);
     conftype = NULL;
+
+    if (config_hostaf(block, ipv4only, ipv6only, &conf->hostaf))
+        goto errexit;
 
     conf->pdef = protodefs[conf->type];
 

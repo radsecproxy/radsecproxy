@@ -86,7 +86,9 @@ static char **getlistenerargs() {
 
 void udpsetsrcres() {
     if (!srcres)
-	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
+	srcres =
+            resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,
+                                   AF_UNSPEC, NULL, protodefs.socktype);
 }
 
 void removeudpclientfromreplyq(struct client *c) {

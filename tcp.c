@@ -78,7 +78,9 @@ static char **getlistenerargs() {
 
 void tcpsetsrcres() {
     if (!srcres)
-	srcres = resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL, NULL, protodefs.socktype);
+	srcres =
+            resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,
+                                   AF_UNSPEC, NULL, protodefs.socktype);
 }
 
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {
