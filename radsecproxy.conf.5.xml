@@ -23,7 +23,7 @@
       When the proxy server starts, it will first check the command
       line arguments, and then read the configuration file. Normally
       radsecproxy will read the configuration file
-      <filename>/etc/radsecproxy.conf</filename>. The command line
+      <filename>/usr/local/etc/radsecproxy.conf</filename>. The command line
       <option>-c</option> option can be used to instead read an
       alternate file (see
       <citerefentry>
@@ -103,7 +103,7 @@ blocktype name {
       shell globbing to specify multiple files, e.g.:
       <blockquote>
         <para>
-	  include /etc/radsecproxy.conf.d/*.conf
+	  include /usr/local/etc/radsecproxy.conf.d/*.conf
         </para>
       </blockquote>
       The files are sorted alphabetically. Included files are read in
