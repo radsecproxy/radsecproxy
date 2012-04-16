@@ -17,12 +17,13 @@ test -n "${1}" || usage
 REALM="${1}"
 DIGCMD=$(command -v digaaa)
 HOSTCMD=$(command -v host)
+PRINTCMD=$(command -v printf)
 
 dig_it() {
    ${DIGCMD} +short srv _radsec._tcp.${REALM} | sort -n -k1 |
    while read line ; do
       set $line ; PORT=$3 ; HOST=$4 
-      echo -e "\thost ${HOST%.}:${PORT}"
+      $PRINTCMD "\thost ${HOST%.}:${PORT}\n"
    done
 }
 
@@ -30,7 +31,7 @@ host_it() {
    ${HOSTCMD} -t srv _radsec._tcp.${REALM} | sort -n -k5 |
    while read line ; do
       set $line ; PORT=$7 ; HOST=$8 
-      echo -e "\thost ${HOST%.}:${PORT}"
+      $PRINTCMD "\thost ${HOST%.}:${PORT}\n"
    done
 }
 
@@ -44,7 +45,7 @@ else
 fi
 
 if test -n "${SERVERS}" ; then
-        echo -e "server dynamic_radsec.${REALM} {\n${SERVERS}\n\ttype TLS\n}"
+        $PRINTCMD "server dynamic_radsec.${REALM} {\n${SERVERS}\n\ttype TLS\n}\n"
         exit 0
 fi
 
