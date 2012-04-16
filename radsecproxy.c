@@ -1758,7 +1758,7 @@ void *clientwr(void *arg) {
 
     conf = server->conf;
 
-#define ZZZ 60
+#define ZZZ 900
 
     if (server->dynamiclookuparg && !dynamicconfig(server)) {
 	dynconffail = 1;
