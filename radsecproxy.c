@@ -2708,7 +2708,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     struct clsrvconf *conf;
     char *conftype = NULL, *rewriteinalias = NULL;
     long int dupinterval = LONG_MIN, addttl = LONG_MIN;
-    uint8_t ipv4only, ipv6only;
+    uint8_t ipv4only = 0, ipv6only = 0;
 
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -2886,7 +2886,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     struct clsrvconf *conf, *resconf;
     char *conftype = NULL, *rewriteinalias = NULL;
     long int retryinterval = LONG_MIN, retrycount = LONG_MIN, addttl = LONG_MIN;
-    uint8_t ipv4only, ipv6only;
+    uint8_t ipv4only = 0, ipv6only = 0;
 
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
