@@ -414,6 +414,23 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
+        <term><literal>IPv4Only and IPv6Only</literal></term>
+        <listitem>
+	  <para>
+            These can be set to <literal>on</literal> or
+            <literal>off</literal> with <literal>off</literal> being
+            the default.  At most one of <literal>IPv4Only</literal>
+            and <literal>IPv6Only</literal> can be enabled.  Enabling
+            <literal>IPv4Only</literal> or <literal>IPv6Only</literal>
+            makes radsecproxy resolve DNS names to the corresponding
+            address family only, and not the other.  This is done for
+            both clients and servers.  Note that this can be
+            overridden in <literal>client</literal> and
+            <literal>server</literal> blocks, see below.
+	  </para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
         <term><literal>Include</literal></term>
         <listitem>
 	  <para>
@@ -454,8 +471,11 @@ blocktype name {
       that client. The name of the client block must (with one
       exception, see below) be either the IP address (IPv4 or IPv6) of
       the client, an IP prefix (IPv4 or IPv6) on the form
-      IpAddress/PrefixLength, or a domain name (FQDN). Note that
-      literal IPv6 addresses must be enclosed in brackets.
+      IpAddress/PrefixLength, or a domain name (FQDN).  The way an
+      FQDN is resolved into an IP address may be influenced by the use
+      of the <literal>IPv4Only</literal> and
+      <literal>IPv6Only</literal> options.  Note that literal IPv6
+      addresses must be enclosed in brackets.
     </para>
     <para>
       If a domain name is specified, then this will be resolved
@@ -486,17 +506,26 @@ blocktype name {
     </para>
     <para>
       The allowed options in a client block are
-      <literal>host</literal>, <literal>type</literal>,
+      <literal>host</literal>, <literal>IPv4Only</literal>,
+      <literal>IPv6Only</literal>, <literal>type</literal>,
       <literal>secret</literal>, <literal>tls</literal>,
       <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
       <literal>duplicateInterval</literal>, <literal>AddTTL</literal>,
-      <literal>fticksVISCOUNTRY</literal>, <literal>fticksVISINST</literal>,
-      <literal>rewrite</literal>, <literal>rewriteIn</literal>, 
-      <literal>rewriteOut</literal>, and <literal>rewriteAttribute</literal>.
+      <literal>fticksVISCOUNTRY</literal>,
+      <literal>fticksVISINST</literal>, <literal>rewrite</literal>,
+      <literal>rewriteIn</literal>, <literal>rewriteOut</literal>, and
+      <literal>rewriteAttribute</literal>.
 
-      We already discussed the <literal>host</literal> option. The
-      value of <literal>type</literal> must be one of
+      We already discussed the <literal>host</literal> option.  To
+      specify how radsecproxy should resolve a <literal>host</literal>
+      given as a DNS name, the <literal>IPv4Only</literal> or the
+      <literal>IPv6Only</literal> can be set to <literal>on</literal>.
+      At most one of these options can be enabled.  Enabling
+      <literal>IPv4Only</literal> or <literal>IPv6Only</literal> here
+      overrides any basic settings set at the top level.
+
+      The value of <literal>type</literal> must be one of
       <literal>udp</literal>, <literal>tcp</literal>,
       <literal>tls</literal> or <literal>dtls</literal>. The value of
       <literal>secret</literal> is the shared RADIUS key used with
@@ -612,9 +641,11 @@ blocktype name {
       after startup. If the domain name resolves to multiple
       addresses, then for UDP/DTLS the first address is used. For
       TCP/TLS, the proxy will loop through the addresses until it can
-      connect to one of them. In the case of TLS/DTLS, the name of the
-      server must match the FQDN or IP address in the server
-      certificate.
+      connect to one of them. The way an FQDN is resolved into an IP
+      address may be influenced by the use of the
+      <literal>IPv4Only</literal> and <literal>IPv6Only</literal>
+      options. In the case of TLS/DTLS, the name of the server must
+      match the FQDN or IP address in the server certificate.
     </para>
     <para>
       Alternatively one may use the <literal>host</literal> option
@@ -638,6 +669,7 @@ blocktype name {
     <para>
       The allowed options in a server block are
       <literal>host</literal>, <literal>port</literal>,
+      <literal>IPv4Only</literal>, <literal>IPv6Only</literal>,
       <literal>type</literal>, <literal>secret</literal>,
       <literal>tls</literal>, <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
@@ -649,11 +681,19 @@ blocktype name {
       <literal>LoopPrevention</literal>.
     </para>
     <para>
-      We already discussed the <literal>host</literal> option. The
-      <literal>port</literal> option allows you to specify which port
-      number the server uses. The usage of <literal>type</literal>,
-      <literal>secret</literal>, <literal>tls</literal>,
-      <literal>certificateNameCheck</literal>,
+
+      We already discussed the <literal>host</literal> option.  To
+      specify how radsecproxy should resolve a <literal>host</literal>
+      given as a DNS name, the <literal>IPv4Only</literal> or the
+      <literal>IPv6Only</literal> can be set to <literal>on</literal>.
+      At most one of these options can be enabled.  Enabling
+      <literal>IPv4Only</literal> or <literal>IPv6Only</literal> here
+      overrides any basic settings set at the top level.
+
+      The <literal>port</literal> option allows you to specify which
+      port number the server uses. The usage of
+      <literal>type</literal>, <literal>secret</literal>,
+      <literal>tls</literal>, <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
       <literal>AddTTL</literal>, <literal>rewrite</literal>,
       <literal>rewriteIn</literal> and <literal>rewriteOut</literal>
