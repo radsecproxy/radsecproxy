@@ -123,7 +123,7 @@ rs_tls_init (struct rs_connection *conn)
   tlsconf = _get_tlsconf (conn, conn->active_peer->realm);
   if (!tlsconf)
     return -1;
-  ssl_ctx = tlsgetctx (RADPROT_TLS, tlsconf);
+  ssl_ctx = tlsgetctx (RAD_TLS, tlsconf);
   if (!ssl_ctx)
     {
       for (sslerr = ERR_get_error (); sslerr; sslerr = ERR_get_error ())

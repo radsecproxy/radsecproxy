@@ -22,12 +22,12 @@ AC_CHECK_LIB([freeradius-radius], [rad_alloc],,
 
 # Enable-knobs.
 AH_TEMPLATE([RS_ENABLE_TLS], [TLS (RadSec) enabled])
-AH_TEMPLATE([RADPROT_TLS], [])
+AH_TEMPLATE([RADPROT_TLS], [])  dnl Legacy.
 AC_ARG_ENABLE([tls], AS_HELP_STRING([--enable-tls], [enable TLS (RadSec)]),
     [AC_CHECK_LIB([event_openssl], [bufferevent_openssl_socket_new],,
          AC_MSG_ERROR([required library event_openssl not found]))
      AC_DEFINE([RS_ENABLE_TLS])
-     AC_DEFINE([RADPROT_TLS])])
+     AC_DEFINE([RADPROT_TLS])]) dnl Legacy.
 AM_CONDITIONAL([RS_ENABLE_TLS], [test "${enable_tls+set}" = set])
 
 # Checks for header files.
