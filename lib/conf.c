@@ -42,7 +42,7 @@
   }
 #endif
 
-/* FIXME: Leaking memory in error cases?  */
+/* FIXME: Leaking memory in error cases.  */
 int
 rs_context_read_config(struct rs_context *ctx, const char *config_file)
 {
@@ -146,8 +146,9 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       else if (strcmp (typestr, "DTLS") == 0)
 	r->type = RS_CONN_TYPE_DTLS;
       else
-	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
-				   "invalid connection type: %s", typestr);
+	return rs_err_ctx_push (ctx, RSE_CONFIG,
+                                "%s: invalid connection type: %s",
+                                r->name, typestr);
       r->timeout = cfg_getint (cfg_realm, "timeout");
       r->retries = cfg_getint (cfg_realm, "retries");
 
@@ -160,6 +161,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       pskhexstr = cfg_getstr (cfg_realm, "pskhexstr");
       if (pskstr || pskhexstr)
         {
+#if defined RS_ENABLE_TLS_PSK
           char *kex = cfg_getstr (cfg_realm, "pskex");
           rs_cred_type_t type = RS_CRED_NONE;
           struct rs_credentials *cred = NULL;
@@ -169,10 +171,9 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
             type = RS_CRED_TLS_PSK;
           else
             {
-              /* TODO: push a warning, using a separate warn stack or
-                 onto the ordinary error stack?  */
-              /* rs_err_ctx_push (ctx, FIXME, "%s: unsupported PSK key exchange"
-                 " algorithm -- PSK not used", kex);*/
+              /* TODO: push a warning on the error stack:*/
+              /*rs_err_ctx_push (ctx, RSE_WARN, "%s: unsupported PSK key exchange"
+                               " algorithm -- PSK not used", kex);*/
             }
 
           if (type != RS_CRED_NONE)
@@ -198,7 +199,22 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 
               r->transport_cred = cred;
             }
+#else  /* !RS_ENABLE_TLS_PSK */
+          /* TODO: push a warning on the error stack: */
+          /* rs_err_ctx_push (ctx, RSE_WARN, "libradsec wasn't configured with "
+                           "support for TLS preshared keys, ignoring pskstr "
+                           "and pskhexstr");*/
+#endif  /* RS_ENABLE_TLS_PSK */
         }
+
+      /* For TLS and DTLS realms, validate that we either have (i) CA
+         cert file or path or (ii) PSK.  */
+      if ((r->type == RS_CONN_TYPE_TLS || r->type == RS_CONN_TYPE_DTLS)
+          && (r->cacertfile == NULL && r->cacertpath == NULL)
+          && r->transport_cred == NULL)
+        return rs_err_ctx_push (ctx, RSE_CONFIG,
+                                "%s: missing both CA file/path and PSK",
+                                r->name);
 
       /* Add peers, one per server stanza.  */
       for (j = 0; j < cfg_size (cfg_realm, "server"); j++)

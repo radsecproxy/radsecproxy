@@ -42,6 +42,7 @@ _get_tlsconf (struct rs_connection *conn, const struct rs_realm *realm)
   return c;
 }
 
+#if defined RS_ENABLE_TLS_PSK
 static unsigned int
 psk_client_cb (SSL *ssl,
                const char *hint,
@@ -107,6 +108,7 @@ psk_client_cb (SSL *ssl,
 
   return cred->secret_len;
 }
+#endif  /* RS_ENABLE_TLS_PSK */
 
 int
 rs_tls_init (struct rs_connection *conn)
@@ -140,11 +142,14 @@ rs_tls_init (struct rs_connection *conn)
       return -1;
     }
 
+#if defined RS_ENABLE_TLS_PSK
   if (conn->active_peer->realm->transport_cred != NULL)
     {
       SSL_set_psk_client_callback (ssl, psk_client_cb);
       SSL_set_ex_data (ssl, 0, conn);
     }
+#endif  /* RS_ENABLE_TLS_PSK */
+
   conn->tls_ctx = ssl_ctx;
   conn->tls_ssl = ssl;
   rs_free (ctx, tlsconf);

@@ -21,6 +21,7 @@ AC_CHECK_LIB([freeradius-radius], [rad_alloc],,
     AC_MSG_ERROR([required library libfreeradius-radius not found]))
 
 # Enable-knobs.
+## Enable TLS (RadSec).
 AH_TEMPLATE([RS_ENABLE_TLS], [TLS (RadSec) enabled])
 AH_TEMPLATE([RADPROT_TLS], [])  dnl Legacy.
 AC_ARG_ENABLE([tls], AS_HELP_STRING([--enable-tls], [enable TLS (RadSec)]),
@@ -29,6 +30,13 @@ AC_ARG_ENABLE([tls], AS_HELP_STRING([--enable-tls], [enable TLS (RadSec)]),
      AC_DEFINE([RS_ENABLE_TLS])
      AC_DEFINE([RADPROT_TLS])]) dnl Legacy.
 AM_CONDITIONAL([RS_ENABLE_TLS], [test "${enable_tls+set}" = set])
+## Enable TLS-PSK (preshared keys).
+AH_TEMPLATE([RS_ENABLE_TLS_PSK], [TLS-PSK (TLS preshared keys) enabled])
+AC_ARG_ENABLE([tls-psk], AS_HELP_STRING([--enable-tls-psk], [enable TLS-PSK (TLS preshared keys)]),
+    [AC_CHECK_LIB([ssl], [SSL_set_psk_client_callback],,
+         AC_MSG_ERROR([required library openssl with SSL_set_psk_client_callback() not found]))
+     AC_DEFINE([RS_ENABLE_TLS_PSK])])
+AM_CONDITIONAL([RS_ENABLE_TLS_PSK], [test "${enable_tls_psk+set}" = set])
 
 # Checks for header files.
 AC_CHECK_HEADERS(

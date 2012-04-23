@@ -271,14 +271,15 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 	}
     }
 
-    if (!tlsaddcacrl(ctx, conf)) {
-	if (conf->vpm) {
-	    X509_VERIFY_PARAM_free(conf->vpm);
-	    conf->vpm = NULL;
-	}
-	SSL_CTX_free(ctx);
-	return NULL;
-    }
+    if (conf->cacertfile != NULL || conf->cacertpath != NULL)
+        if (!tlsaddcacrl(ctx, conf)) {
+            if (conf->vpm) {
+                X509_VERIFY_PARAM_free(conf->vpm);
+                conf->vpm = NULL;
+            }
+            SSL_CTX_free(ctx);
+            return NULL;
+        }
 
     debug(DBG_DBG, "tlscreatectx: created TLS context %s", conf->name);
     return ctx;
