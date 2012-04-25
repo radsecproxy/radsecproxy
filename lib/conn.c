@@ -222,7 +222,7 @@ rs_conn_receive_packet (struct rs_connection *conn,
 
   assert (conn);
   assert (conn->realm);
-  assert (!conn_user_dispatch_p (conn)); /* Dispatching mode only.  */
+  assert (!conn_user_dispatch_p (conn)); /* Blocking mode only.  */
 
   if (rs_packet_create (conn, &pkt))
     return -1;
