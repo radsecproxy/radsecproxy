@@ -85,8 +85,8 @@ packet_do_send (struct rs_packet *pkt)
   {
     char host[80], serv[80];
 
-    getnameinfo (pkt->conn->active_peer->addr->ai_addr,
-		 pkt->conn->active_peer->addr->ai_addrlen,
+    getnameinfo (pkt->conn->active_peer->addr_cache->ai_addr,
+		 pkt->conn->active_peer->addr_cache->ai_addrlen,
 		 host, sizeof(host), serv, sizeof(serv),
 		 0 /* NI_NUMERICHOST|NI_NUMERICSERV*/);
     rs_debug (("%s: about to send this to %s:%s:\n", __func__, host, serv));

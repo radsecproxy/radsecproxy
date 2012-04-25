@@ -50,8 +50,10 @@ struct rs_error {
 struct rs_peer {
     struct rs_connection *conn;
     struct rs_realm *realm;
-    struct evutil_addrinfo *addr;
+    char *hostname;
+    char *service;
     char *secret;               /* RADIUS secret.  */
+    struct evutil_addrinfo *addr_cache;
     struct rs_peer *next;
 };
 
@@ -127,11 +129,6 @@ struct rs_packet {
     struct rs_packet *next;	/* Used for UDP output queue.  */
 };
 
-/* Nonpublic functions (in radsec.c -- FIXME: move?).  */
-struct rs_error *rs_resolv (struct evutil_addrinfo **addr,
-			    rs_conn_type_t type,
-			    const char *hostname,
-			    const char *service);
 #if defined (__cplusplus)
 }
 #endif

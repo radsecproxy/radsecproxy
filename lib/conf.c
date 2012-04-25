@@ -226,10 +226,8 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	  p->realm = r;
 
 	  cfg_server = cfg_getnsec (cfg_realm, "server", j);
-	  /* FIXME: Handle resolve errors, possibly by postponing name
-	     resolution.  */
-	  rs_resolv (&p->addr, r->type, cfg_getstr (cfg_server, "hostname"),
-		     cfg_getstr (cfg_server, "service"));
+	  p->hostname = cfg_getstr (cfg_server, "hostname");
+          p->service = cfg_getstr (cfg_server, "service");
 	  p->secret = cfg_getstr (cfg_server, "secret");
 	}
     }

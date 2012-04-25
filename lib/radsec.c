@@ -97,10 +97,10 @@ rs_context_init_freeradius_dict (struct rs_context *ctx, const char *dict)
 }
 
 struct rs_error *
-rs_resolv (struct evutil_addrinfo **addr,
-	   rs_conn_type_t type,
-	   const char *hostname,
-	   const char *service)
+rs_resolve (struct evutil_addrinfo **addr,
+            rs_conn_type_t type,
+            const char *hostname,
+            const char *service)
 {
   int err;
   struct evutil_addrinfo hints, *res = NULL;
@@ -150,8 +150,11 @@ rs_context_destroy (struct rs_context *ctx)
 	  for (p = r->peers; p; )
 	    {
 	      struct rs_peer *tmp = p;
-	      if (p->addr)
-		evutil_freeaddrinfo (p->addr);
+	      if (p->addr_cache)
+                {
+                  evutil_freeaddrinfo (p->addr_cache);
+                  p->addr_cache = NULL;
+                }
 	      p = p->next;
 	      rs_free (ctx, tmp);
 	    }
