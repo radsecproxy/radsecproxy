@@ -269,7 +269,10 @@ rs_conn_receive_packet (struct rs_connection *conn,
       || (req_msg
 	  && packet_verify_response (pkt->conn, pkt, req_msg) != RSE_OK))
     {
-      assert (rs_err_conn_peek_code (pkt->conn));
+      if (rs_err_conn_peek_code (pkt->conn) == RSE_OK)
+        /* No packet and no error on the stack _should_ mean that the
+           server hung up on us.  */
+        rs_err_conn_push (pkt->conn, RSE_DISCO, "no response");
       return rs_err_conn_peek_code (conn);
     }
 
