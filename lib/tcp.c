@@ -189,7 +189,7 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
     {
       rs_debug (("%s: %p times out on %s\n", __func__, p,
 		 (events & BEV_EVENT_READING) ? "read" : "write"));
-      rs_err_conn_push_fl (pkt->conn, RSE_TIMEOUT_IO, __FILE__, __LINE__, NULL);
+      rs_err_conn_push_fl (conn, RSE_TIMEOUT_IO, __FILE__, __LINE__, NULL);
     }
   else if (events & BEV_EVENT_ERROR)
     {
@@ -197,13 +197,13 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
       if (sockerr == 0)	/* FIXME: True that errno == 0 means closed? */
 	{
 	  event_on_disconnect (conn);
-	  rs_err_conn_push_fl (pkt->conn, RSE_DISCO, __FILE__, __LINE__, NULL);
+	  rs_err_conn_push_fl (conn, RSE_DISCO, __FILE__, __LINE__, NULL);
 	}
       else
 	{
 	  rs_debug (("%s: %d: %d (%s)\n", __func__, conn->fd, sockerr,
 		     evutil_socket_error_to_string (sockerr)));
-	  rs_err_conn_push_fl (pkt->conn, RSE_SOCKERR, __FILE__, __LINE__,
+	  rs_err_conn_push_fl (conn, RSE_SOCKERR, __FILE__, __LINE__,
 			       "%d: %d (%s)", conn->fd, sockerr,
 			       evutil_socket_error_to_string (sockerr));
 	}
@@ -216,7 +216,7 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
 	    {
 	      rs_debug (("%s: openssl error: %s\n", __func__,
 			 ERR_error_string (tlserr, NULL)));
-	      rs_err_conn_push_fl (pkt->conn, RSE_SSLERR, __FILE__, __LINE__,
+	      rs_err_conn_push_fl (conn, RSE_SSLERR, __FILE__, __LINE__,
 				   ERR_error_string (tlserr, NULL));
 	    }
 	}
