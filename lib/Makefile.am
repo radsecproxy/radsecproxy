@@ -37,7 +37,8 @@ libradsec_la_SOURCES = \
 	request.c \
 	send.c \
 	tcp.c \
-	udp.c
+	udp.c \
+	util.c
 
 libradsec_la_SOURCES += \
 	rsp_debug.c \
@@ -52,4 +53,4 @@ libradsec_la_SOURCES += \
 endif
 
 libradsec_la_LDFLAGS = -version-info 0:0:0 -export-symbols radsec.sym
-libradsec_la_CFLAGS = $(AM_CFLAGS) -Werror # -DDEBUG -DDEBUG_LEVENT 
+libradsec_la_CFLAGS = $(AM_CFLAGS) -DDEBUG -DDEBUG_LEVENT 
