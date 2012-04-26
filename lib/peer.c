@@ -66,14 +66,14 @@ rs_peer_create (struct rs_connection *conn, struct rs_peer **peer_out)
 
 int
 rs_peer_set_address (struct rs_peer *peer, const char *hostname,
-		       const char *service)
+                     const char *service)
 {
   struct rs_error *err;
 
   assert (peer);
   assert (peer->realm);
 
-  err = rs_resolv (&peer->addr, peer->realm->type, hostname, service);
+  err = rs_resolve (&peer->addr, peer->realm->type, hostname, service);
   if (err)
     return err_conn_push_err (peer->conn, err);
   return RSE_OK;
