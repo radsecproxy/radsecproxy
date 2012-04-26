@@ -11,6 +11,7 @@
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include "peer.h"
+#include "util.h"
 #include "debug.h"
 
 #if 0
@@ -132,9 +133,9 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	return rs_err_ctx_push_fl (ctx, RSE_CONFIG, __FILE__, __LINE__,
 				   "missing realm name");
       /* We use a copy of the return value of cfg_title() since it's const.  */
-      r->name = strdup (s);
+      r->name = rs_strdup (ctx, s);
       if (r->name == NULL)
-	return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
+	return RSE_NOMEM;
 
       typestr = cfg_getstr (cfg_realm, "type");
       if (strcmp (typestr, "UDP") == 0)
