@@ -236,10 +236,22 @@ event_on_disconnect (struct rs_connection *conn)
     conn->callbacks.disconnected_cb (conn->user_data);
 }
 
-void
+/** Internal connect event returning 0 on success or -1 on error.  */
+int
 event_on_connect (struct rs_connection *conn, struct rs_packet *pkt)
 {
   assert (!conn->is_connecting);
+
+#if defined (RS_ENABLE_TLS)
+  if (conn->realm->type == RS_CONN_TYPE_TLS
+      || conn->realm->type == RS_CONN_TYPE_DTLS)
+    if (tls_verify_cert (conn) != RSE_OK)
+      {
+        rs_debug (("%s: server cert verification failed\n", __func__));
+        return -1;
+      }
+#endif	/* RS_ENABLE_TLS */
+
   conn->is_connected = 1;
   rs_debug (("%s: %p connected\n", __func__, conn->active_peer));
 
@@ -248,6 +260,8 @@ event_on_connect (struct rs_connection *conn, struct rs_packet *pkt)
 
   if (pkt)
     packet_do_send (pkt);
+
+  return 0;
 }
 
 int

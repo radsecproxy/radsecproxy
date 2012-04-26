@@ -179,7 +179,11 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
     {
       if (conn->tev)
 	evtimer_del (conn->tev); /* Cancel connect timer.  */
-      event_on_connect (conn, pkt);
+      if (event_on_connect (conn, pkt))
+        {
+          event_on_disconnect (conn);
+          event_loopbreak (conn);
+        }
     }
   else if (events & BEV_EVENT_EOF)
     {
