@@ -164,6 +164,9 @@ struct server {
     uint8_t lostrqs;
     uint8_t dynstartup;
     uint8_t dynfailing;
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+    uint8_t in_use;
+#endif
     char *dynamiclookuparg;
     int nextid;
     struct timeval lastrcv;

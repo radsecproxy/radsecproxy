@@ -327,8 +327,13 @@ void freeserver(struct server *server, uint8_t destroymutex) {
     if (server->rbios)
 	freebios(server->rbios);
     free(server->dynamiclookuparg);
-    if (server->ssl)
-	SSL_free(server->ssl);
+    if (server->ssl) {
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+        if (server->sock >= 0)
+            close(server->sock);
+#endif
+        SSL_free(server->ssl);
+    }
     if (destroymutex) {
 	pthread_mutex_destroy(&server->lock);
 	pthread_cond_destroy(&server->newrq_cond);
@@ -768,7 +773,12 @@ int hasdynamicserver(struct list *srvconfs) {
     struct list_node *entry;
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry))
-	if (((struct clsrvconf *)entry->data)->dynamiclookupcommand)
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+        if (((struct clsrvconf *)entry->data)->dynamiclookupcommand
+            || ((struct clsrvconf *)entry->data)->servers->in_use)
+#else
+        if (((struct clsrvconf *)entry->data)->dynamiclookupcommand)
+#endif
 	    return 1;
     return 0;
 }
@@ -1764,12 +1774,17 @@ void *clientwr(void *arg) {
 	dynconffail = 1;
 	server->dynstartup = 0;
 	server->dynfailing = 1;
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+	pthread_mutex_unlock(&server->lock);
+#endif
 	debug(DBG_WARN, "%s: dynamicconfig(%s) failed, sleeping %ds",
               __func__, server->conf->name, ZZZ);
 	sleep(ZZZ);
 	goto errexit;
     }
-
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+    pthread_mutex_unlock(&server->lock);
+#endif
     /* FIXME: Is resolving not always done by compileserverconfig(),
      * either as part of static configuration setup or by
      * dynamicconfig() above?  */
@@ -1798,6 +1813,9 @@ void *clientwr(void *arg) {
 	    goto errexit;
 	}
 	server->connectionok = 1;
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+	server->in_use = 1;
+#endif
 	if (pthread_create(&clientrdth, NULL, conf->pdef->clientconnreader, (void *)server)) {
 	    debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
 	    goto errexit;
@@ -1907,6 +1925,9 @@ void *clientwr(void *arg) {
 	}
     }
 errexit:
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+    server->in_use = 0;
+#endif
     conf->servers = NULL;
     if (server->dynamiclookuparg) {
 	removeserversubrealms(realms, conf);
@@ -2201,12 +2222,28 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
 		srvconf->servers->dynstartup = 1;
                 debug(DBG_DBG, "%s: new client writer for %s",
                       __func__, srvconf->servers->conf->name);
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+        	pthread_mutex_lock(&srvconf->servers->lock);
+#endif
 		if (pthread_create(&clientth, NULL, clientwr, (void *)(srvconf->servers))) {
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+                    pthread_mutex_unlock(&srvconf->servers->lock);
+#endif
 		    debugerrno(errno, DBG_ERR, "pthread_create failed");
 		    freeserver(srvconf->servers, 1);
 		    srvconf->servers = NULL;
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+		    conf = srvconf;
+		    continue;
+#endif
 		} else
 		    pthread_detach(clientth);
+
+#if defined ENABLE_EXPERIMENTAL_DYNDISC
+                /* If clientwr() could not find a NAPTR we have to
+                 * wait for dynfailing=1 what is set in clientwr().  */
+                pthread_mutex_lock(&srvconf->servers->lock);
+#endif
 	    }
 	    conf = srvconf;
 	}
