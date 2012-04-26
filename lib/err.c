@@ -33,6 +33,8 @@ static const char *_errtxt[] = {
   "I/O timeout",		/* 18 RSE_TIMEOUT_IO */
   "timeout",			/* 19 RSE_TIMEOUT */
   "peer disconnected",		/* 20 RSE_DISCO */
+  "invalid credentials",        /* 21 RSE_CRED */
+  "certificate validation error", /* 22 RSE_CERT */
 };
 #define ERRTXT_SIZE (sizeof(_errtxt) / sizeof(*_errtxt))
 
