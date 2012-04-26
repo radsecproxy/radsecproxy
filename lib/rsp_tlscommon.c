@@ -11,7 +11,6 @@
 #endif
 
 #include <sys/types.h>
-#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -353,7 +352,7 @@ X509 *verifytlscert(SSL *ssl) {
     return cert;
 }
 
-static int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
+int subjectaltnameaddr(X509 *cert, int family, const struct in6_addr *addr) {
     int loc, i, l, n, r = 0;
     char *v;
     X509_EXTENSION *ex;
@@ -389,7 +388,7 @@ static int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
     return r;
 }
 
-static int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *regex) {
+int subjectaltnameregexp(X509 *cert, int type, const char *exact,  const regex_t *regex) {
     int loc, i, l, n, r = 0;
     char *s, *v;
     X509_EXTENSION *ex;
@@ -442,7 +441,7 @@ static int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *reg
     return r;
 }
 
-static int cnregexp(X509 *cert, char *exact, regex_t *regex) {
+int cnregexp(X509 *cert, const char *exact, const regex_t *regex) {
     int loc, l;
     char *v, *s;
     X509_NAME *nm;
@@ -544,118 +543,6 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     }
     return 1;
 }
-
-#if 0
-int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    struct tls *conf;
-    long int expiry = LONG_MIN;
-
-    debug(DBG_DBG, "conftls_cb called for %s", block);
-
-    conf = malloc(sizeof(struct tls));
-    if (!conf) {
-	debug(DBG_ERR, "conftls_cb: malloc failed");
-	return 0;
-    }
-    memset(conf, 0, sizeof(struct tls));
-
-    if (!getgenericconfig(cf, block,
-			  "CACertificateFile", CONF_STR, &conf->cacertfile,
-			  "CACertificatePath", CONF_STR, &conf->cacertpath,
-			  "CertificateFile", CONF_STR, &conf->certfile,
-			  "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
-			  "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
-			  "CacheExpiry", CONF_LINT, &expiry,
-			  "CRLCheck", CONF_BLN, &conf->crlcheck,
-			  "PolicyOID", CONF_MSTR, &conf->policyoids,
-			  NULL
-	    )) {
-	debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
-	goto errexit;
-    }
-    if (!conf->certfile || !conf->certkeyfile) {
-	debug(DBG_ERR, "conftls_cb: TLSCertificateFile and TLSCertificateKeyFile must be specified in block %s", val);
-	goto errexit;
-    }
-    if (!conf->cacertfile && !conf->cacertpath) {
-	debug(DBG_ERR, "conftls_cb: CA Certificate file or path need to be specified in block %s", val);
-	goto errexit;
-    }
-    if (expiry != LONG_MIN) {
-	if (expiry < 0) {
-	    debug(DBG_ERR, "error in block %s, value of option CacheExpiry is %ld, may not be negative", val, expiry);
-	    goto errexit;
-	}
-	conf->cacheexpiry = expiry;
-    }
-
-    conf->name = stringcopy(val, 0);
-    if (!conf->name) {
-	debug(DBG_ERR, "conftls_cb: malloc failed");
-	goto errexit;
-    }
-
-    if (!tlsconfs)
-	tlsconfs = hash_create();
-    if (!hash_insert(tlsconfs, val, strlen(val), conf)) {
-	debug(DBG_ERR, "conftls_cb: malloc failed");
-	goto errexit;
-    }
-    if (!tlsgetctx(RAD_TLS, conf))
-	debug(DBG_ERR, "conftls_cb: error creating ctx for TLS block %s", val);
-    debug(DBG_DBG, "conftls_cb: added TLS block %s", val);
-    return 1;
-
-errexit:
-    free(conf->cacertfile);
-    free(conf->cacertpath);
-    free(conf->certfile);
-    free(conf->certkeyfile);
-    free(conf->certkeypwd);
-    freegconfmstr(conf->policyoids);
-    free(conf);
-    return 0;
-}
-#endif
-
-int addmatchcertattr(struct clsrvconf *conf) {
-    char *v;
-    regex_t **r;
-
-    if (!strncasecmp(conf->matchcertattr, "CN:/", 4)) {
-	r = &conf->certcnregex;
-	v = conf->matchcertattr + 4;
-    } else if (!strncasecmp(conf->matchcertattr, "SubjectAltName:URI:/", 20)) {
-	r = &conf->certuriregex;
-	v = conf->matchcertattr + 20;
-    } else
-	return 0;
-    if (!*v)
-	return 0;
-    /* regexp, remove optional trailing / if present */
-    if (v[strlen(v) - 1] == '/')
-	v[strlen(v) - 1] = '\0';
-    if (!*v)
-	return 0;
-
-    *r = malloc(sizeof(regex_t));
-    if (!*r) {
-	debug(DBG_ERR, "malloc failed");
-	return 0;
-    }
-    if (regcomp(*r, v, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
-	free(*r);
-	*r = NULL;
-	debug(DBG_ERR, "failed to compile regular expression %s", v);
-	return 0;
-    }
-    return 1;
-}
-#else
-/* Just to makes file non-empty, should rather avoid compiling this file when not needed */
-static void tlsdummy() {
-}
-#endif
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

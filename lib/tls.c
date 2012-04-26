@@ -9,6 +9,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/bn.h>
+#include <openssl/x509v3.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 
@@ -154,4 +155,81 @@ rs_tls_init (struct rs_connection *conn)
   conn->tls_ssl = ssl;
   rs_free (ctx, tlsconf);
   return RSE_OK;
+}
+
+/* draft-ietf-radext-radsec-11.txt
+
+       *  Certificate validation MUST include the verification rules as
+          per [RFC5280].
+
+       *  Implementations SHOULD indicate their acceptable Certification
+          Authorities as per section 7.4.4 (server side) and x.y.z
+          ["Trusted CA Indication"] (client side) of [RFC5246] (see
+          Section 3.2)
+
+       *  Implementations SHOULD allow to configure a list of acceptable
+          certificates, identified via certificate fingerprint.  When a
+          fingerprint configured, the fingerprint is prepended with an
+          ASCII label identifying the hash function followed by a colon.
+          Implementations MUST support SHA-1 as the hash algorithm and
+          use the ASCII label "sha-1" to identify the SHA-1 algorithm.
+          The length of a SHA-1 hash is 20 bytes and the length of the
+          corresponding fingerprint string is 65 characters.  An example
+          certificate fingerprint is: sha-
+          1:E1:2D:53:2B:7C:6B:8A:29:A2:76:C8:64:36:0B:08:4B:7A:F1:9E:9D
+
+       *  Peer validation always includes a check on whether the locally
+          configured expected DNS name or IP address of the server that
+          is contacted matches its presented certificate.  DNS names and
+          IP addresses can be contained in the Common Name (CN) or
+          subjectAltName entries.  For verification, only one of these
+          entries is to be considered.  The following precedence
+          applies: for DNS name validation, subjectAltName:DNS has
+          precedence over CN; for IP address validation, subjectAltName:
+          iPAddr has precedence over CN.
+
+       *  Implementations SHOULD allow to configure a set of acceptable
+          values for subjectAltName:URI.
+ */
+int
+tls_verify_cert (struct rs_connection *conn)
+{
+  int err = 0;
+  int success = 0;
+  X509 *peer_cert = NULL;
+  struct in6_addr addr;
+  const char *hostname = NULL;
+
+  assert (conn->active_peer->conn == conn);
+  assert (conn->active_peer->hostname != NULL);
+  hostname = conn->active_peer->hostname;
+
+  /* verifytlscert() performs basic verification as described by
+     OpenSSL VERIFY(1), i.e. verification of the certificate chain.  */
+  peer_cert = verifytlscert (conn->tls_ssl);
+  if (peer_cert == NULL)
+    {
+      err = rs_err_conn_push (conn, RSE_SSLERR,
+                              "basic certificate validation failed");
+      goto out;
+    }
+
+  if (inet_pton(AF_INET, hostname, &addr))
+    success = (subjectaltnameaddr (peer_cert, AF_INET, &addr) == 1);
+  else if (inet_pton(AF_INET6, hostname, &addr))
+    success = (subjectaltnameaddr (peer_cert, AF_INET6, &addr) == 1);
+  else
+    success = (subjectaltnameregexp (peer_cert, GEN_DNS, hostname, NULL) == 1);
+
+  if (!success)
+    success = (cnregexp(peer_cert, hostname, NULL) == 1);
+
+  if (!success)
+    err = rs_err_conn_push (conn, RSE_CERT, "server certificate doesn't "
+                            "match configured hostname \"%s\"", hostname);
+
+ out:
+  if (peer_cert != NULL)
+    X509_free (peer_cert);
+  return err;
 }

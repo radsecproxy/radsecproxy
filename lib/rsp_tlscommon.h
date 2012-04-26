@@ -34,9 +34,10 @@ void ssl_init();
 struct tls *tlsgettls(char *alt1, char *alt2);
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
 X509 *verifytlscert(SSL *ssl);
+int subjectaltnameaddr(X509 *cert, int family, const struct in6_addr *addr);
+int subjectaltnameregexp(X509 *cert, int type, const char *exact,  const regex_t *regex);
+int cnregexp(X509 *cert, const char *exact, const regex_t *regex);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);
-int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
-int addmatchcertattr(struct clsrvconf *conf);
 #endif
 
 #if defined (__cplusplus)
