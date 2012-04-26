@@ -1,4 +1,4 @@
-2011-04-17 1.6-rc0
+2011-04-26 1.6-rc0
 	Incompatible changes:
 	- The default shared secret for TLS and DTLS connections change
 	from "mysecret" to "radsec" as per draft-ietf-radext-radsec-12
@@ -19,7 +19,10 @@
 	- New config option PidFile.  (RADSECPROXY-32)
 	- Preliminary support for DynamicLookupCommand added.  It's for
 	TLS servers only at this point.  Also, beware of risks for memory
-	leaks.
+	leaks.  In addition to this, for extra adventurous users, there's
+	a new configure option --enable-experimental-dyndisc which enables
+	even more new code for handling of dynamic discovery of TLS
+	servers.
 	- Address family (IPv4 or IPv6) can now be specified for clients
 	and servers.  (RADSECPROXY-37)
 

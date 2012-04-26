@@ -100,6 +100,22 @@ if test "x$dtls" = "xyes" ; then
   TARGET_CFLAGS="$TARGET_CFLAGS -DRADPROT_DTLS"
 fi
  
+AC_ARG_ENABLE(
+  experimental_dyndisc,
+  AC_HELP_STRING([--enable-experimental-dyndisc],
+                 [enable experimental code for dynamic discovery [default=no]]),
+  [case $enableval in
+     yes|no) ;;
+     *) AC_MSG_ERROR([bad value $enableval for --enable-experimental-dyndisc, need yes or no]) ;;
+     esac],
+  [enable_experimental_dyndisc=no])
+if test "$enable_experimental_dyndisc" = "yes"; then
+  AC_DEFINE([ENABLE_EXPERIMENTAL_DYNDISC], [1])
+fi
+AM_CONDITIONAL(ENABLE_EXPERIMENTAL_DYNDISC,
+               test "$enable_experimental_dyndisc" = "yes")
+
+
 AC_ARG_VAR([DOCBOOK2X_MAN], [docbook2x-man])
 AC_CHECK_PROG([DOCBOOK2X_MAN], [docbook2x-man], [yes])
 AM_CONDITIONAL(HAVE_DOCBOOK2X_MAN, test "$DOCBOOK2X_MAN" = "yes")
