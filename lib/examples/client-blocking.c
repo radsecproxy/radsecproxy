@@ -4,10 +4,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <event2/event.h>
 #include <freeradius/libradius.h>
 #include <radsec/radsec.h>
 #include <radsec/request.h>
+#include "err.h"
 #include "debug.h"		/* For rs_dump_packet().  */
 
 #define SECRET "sikrit"
@@ -25,7 +27,11 @@ blocking_client (const char *config_fn, const char *configuration,
   struct rs_error *err = NULL;
 
   if (rs_context_create (&h))
-    return NULL;
+    {
+      err = err_create (RSE_INTERNAL, NULL, 0, "unable to create context");
+      assert (err != NULL);
+      return err;
+    }
 
 #if !defined (USE_CONFIG_FILE)
   {
