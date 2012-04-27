@@ -1,0 +1,10 @@
+# a sample vendor-specific dictionary
+
+VENDOR example	   65535
+
+BEGIN-VENDOR example
+ATTRIBUTE Example-Integer	1 integer
+ATTRIBUTE Example-String	2 string
+ATTRIBUTE Example-IP-Address	3 ipaddr
+
+END-VENDOR example

@@ -18,7 +18,6 @@ examples/client -r examples/client.conf blocking-tls; echo $?
   - Application runs its own event loop, using fd's for select and
     performs I/O using the libradsec send/receive calls
     (a.k.a. on-your-own mode)
-- Fully reentrant (FIXME: issues with libfreeradius-radius?)
 - User chooses allocation regime
 
 Note that as of 0.0.2.dev libradsec suffers from way too much focus on
@@ -32,8 +31,6 @@ failing certificate validation (TLS).
 * Dependencies
 Details apply to Ubuntu 10.10.
 
-- libfreeradius-radius (2.1.9+dfsg-1ubuntu1)
-  sudo apt-get install libfreeradius-dev libfreeradius2
 - libconfuse (2.7-1)
   sudo apt-get install libconfuse-dev libconfuse0
 - libevent from source (release-2.0.10-stable)

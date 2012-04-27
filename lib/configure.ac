@@ -17,8 +17,6 @@ AC_CHECK_LIB([confuse], [cfg_init],,
     AC_MSG_ERROR([required library libconfuse not found]))
 AC_CHECK_LIB([event_core], [event_get_version],,
     AC_MSG_ERROR([required library libevent_core not found]))
-AC_CHECK_LIB([freeradius-radius], [rad_alloc],,
-    AC_MSG_ERROR([required library libfreeradius-radius not found]))
 
 # Enable-knobs.
 ## Enable TLS (RadSec).
@@ -40,7 +38,8 @@ AM_CONDITIONAL([RS_ENABLE_TLS_PSK], [test "${enable_tls_psk+set}" = set])
 
 # Checks for header files.
 AC_CHECK_HEADERS(
-    [netdb.h netinet/in.h stdint.h stdlib.h string.h sys/socket.h unistd.h])
+    [sys/time.h time.h netdb.h netinet/in.h stdint.h stdlib.h strings.h string.h \
+     sys/socket.h unistd.h syslog.h sys/select.h fcntl.h arpa/inet.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_SIZE_T
@@ -51,6 +50,7 @@ AC_TYPE_UINT8_T
 AC_CHECK_FUNCS([memset socket strdup strerror strrchr])
 
 AC_CONFIG_FILES([Makefile
+		 radius/Makefile
 		 include/Makefile
                  examples/Makefile
                  tests/Makefile])

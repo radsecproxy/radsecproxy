@@ -6,6 +6,7 @@
 #endif
 
 #include <assert.h>
+#include <radius/client.h>
 #include <event2/bufferevent.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
@@ -24,6 +25,8 @@ packet_verify_response (struct rs_connection *conn,
 			struct rs_packet *response,
 			struct rs_packet *request)
 {
+  int err;
+
   assert (conn);
   assert (conn->active_peer);
   assert (conn->active_peer->secret);
@@ -32,20 +35,27 @@ packet_verify_response (struct rs_connection *conn,
   assert (request);
   assert (request->rpkt);
 
+  response->rpkt->secret = conn->active_peer->secret;
+  response->rpkt->sizeof_secret = strlen (conn->active_peer->secret);
+
   /* Verify header and message authenticator.  */
-  if (rad_verify (response->rpkt, request->rpkt, conn->active_peer->secret))
+  err = nr_packet_verify (response->rpkt, request->rpkt);
+  if (err)
     {
-      conn_close (&conn);
-      return rs_err_conn_push_fl (conn, RSE_FR, __FILE__, __LINE__,
-				  "rad_verify: %s", fr_strerror ());
+      if (conn->is_connected)
+	rs_conn_disconnect(conn);
+      return rs_err_conn_push_fl (conn, -err, __FILE__, __LINE__,
+				  "nr_packet_verify");
     }
 
   /* Decode and decrypt.  */
-  if (rad_decode (response->rpkt, request->rpkt, conn->active_peer->secret))
+  err = nr_packet_decode (response->rpkt, request->rpkt);
+  if (err)
     {
-      conn_close (&conn);
-      return rs_err_conn_push_fl (conn, RSE_FR, __FILE__, __LINE__,
-				  "rad_decode: %s", fr_strerror ());
+      if (conn->is_connected)
+	rs_conn_disconnect(conn);
+      return rs_err_conn_push_fl (conn, -err, __FILE__, __LINE__,
+				  "nr_packet_decode");
     }
 
   return RSE_OK;
@@ -57,7 +67,7 @@ packet_verify_response (struct rs_connection *conn,
 int
 packet_do_send (struct rs_packet *pkt)
 {
-  VALUE_PAIR *vp = NULL;
+  int err;
 
   assert (pkt);
   assert (pkt->conn);
@@ -65,22 +75,19 @@ packet_do_send (struct rs_packet *pkt)
   assert (pkt->conn->active_peer->secret);
   assert (pkt->rpkt);
 
-  /* Add a Message-Authenticator, RFC 2869, if not already present.  */
-  /* FIXME: Make Message-Authenticator optional?  */
-  vp = paircreate (PW_MESSAGE_AUTHENTICATOR, PW_TYPE_OCTETS);
-  if (!vp)
-    return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
-				"paircreate: %s", fr_strerror ());
-  pairreplace (&pkt->rpkt->vps, vp);
+  pkt->rpkt->secret = pkt->conn->active_peer->secret;
+  pkt->rpkt->sizeof_secret = strlen (pkt->rpkt->secret);
 
   /* Encode message.  */
-  if (rad_encode (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
-    return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
-				"rad_encode: %s", fr_strerror ());
+  err = nr_packet_encode (pkt->rpkt, NULL);
+  if (err < 0)
+    return rs_err_conn_push_fl (pkt->conn, -err, __FILE__, __LINE__,
+				"nr_packet_encode");
   /* Sign message.  */
-  if (rad_sign (pkt->rpkt, NULL, pkt->conn->active_peer->secret))
-    return rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
-				"rad_sign: %s", fr_strerror ());
+  err = nr_packet_sign (pkt->rpkt, NULL);
+  if (err < 0)
+    return rs_err_conn_push_fl (pkt->conn, -err, __FILE__, __LINE__,
+				"nr_packet_sign");
 #if defined (DEBUG)
   {
     char host[80], serv[80];
@@ -98,7 +105,7 @@ packet_do_send (struct rs_packet *pkt)
   if (pkt->conn->bev)		/* TCP.  */
     {
       int err = bufferevent_write (pkt->conn->bev, pkt->rpkt->data,
-				   pkt->rpkt->data_len);
+				   pkt->rpkt->length);
       if (err < 0)
 	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_write: %s",
@@ -122,21 +129,36 @@ rs_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
 {
   struct rs_packet *p;
   RADIUS_PACKET *rpkt;
+  int err;
 
   *pkt_out = NULL;
 
-  rpkt = rad_alloc (1);
-  if (!rpkt)
+  rpkt = rs_malloc (conn->ctx, sizeof(*rpkt) + RS_MAX_PACKET_LEN);
+  if (rpkt == NULL)
     return rs_err_conn_push (conn, RSE_NOMEM, __func__);
-  rpkt->id = conn->nextid++;
 
-  p = (struct rs_packet *) malloc (sizeof (struct rs_packet));
-  if (!p)
+  /*
+   * This doesn't make sense; the packet identifier is constant for
+   * an entire conversation. A separate API should be provided to
+   * allow the application to set the packet ID, or a conversation
+   * object should group related packets together.
+   */
+#if 0
+  rpkt->id = conn->nextid++
+#endif
+
+  err = nr_packet_init (rpkt, NULL, NULL,
+		        PW_ACCESS_REQUEST,
+		        rpkt + 1, RS_MAX_PACKET_LEN);
+  if (err < 0)
+    return rs_err_conn_push (conn, -err, __func__);
+
+  p = (struct rs_packet *) rs_calloc (conn->ctx, 1, sizeof (*p));
+  if (p == NULL)
     {
-      rad_free (&rpkt);
+      rs_free (conn->ctx, rpkt);
       return rs_err_conn_push (conn, RSE_NOMEM, __func__);
     }
-  memset (p, 0, sizeof (struct rs_packet));
   p->conn = conn;
   p->rpkt = rpkt;
 
@@ -150,39 +172,29 @@ rs_packet_create_authn_request (struct rs_connection *conn,
 				const char *user_name, const char *user_pw)
 {
   struct rs_packet *pkt;
-  VALUE_PAIR *vp = NULL;
+  int err;
 
   if (rs_packet_create (conn, pkt_out))
     return -1;
+
   pkt = *pkt_out;
-  pkt->rpkt->code = PW_AUTHENTICATION_REQUEST;
+  pkt->rpkt->code = PW_ACCESS_REQUEST;
 
   if (user_name)
     {
-      vp = pairmake ("User-Name", user_name, T_OP_EQ);
-      if (vp == NULL)
-	return rs_err_conn_push_fl (conn, RSE_FR, __FILE__, __LINE__,
-				    "pairmake: %s", fr_strerror ());
-      pairadd (&pkt->rpkt->vps, vp);
+      err = rs_packet_append_avp (pkt, PW_USER_NAME, 0, user_name, 0);
+      if (err)
+	return err;
     }
 
   if (user_pw)
     {
-      vp = pairmake ("User-Password", user_pw, T_OP_EQ);
-      if (vp == NULL)
-	return rs_err_conn_push_fl (conn, RSE_FR, __FILE__, __LINE__,
-				    "pairmake: %s", fr_strerror ());
-      pairadd (&pkt->rpkt->vps, vp);
+      err = rs_packet_append_avp (pkt, PW_USER_PASSWORD, 0, user_pw, 0);
+      if (err)
+	return err;
     }
 
   return RSE_OK;
-}
-
-struct radius_packet *
-rs_packet_frpkt (struct rs_packet *pkt)
-{
-  assert (pkt);
-  return pkt->rpkt;
 }
 
 void
@@ -192,6 +204,59 @@ rs_packet_destroy (struct rs_packet *pkt)
   assert (pkt->conn);
   assert (pkt->conn->ctx);
 
-  rad_free (&pkt->rpkt); /* Note: This frees the VALUE_PAIR's too.  */
+  rs_avp_free (&pkt->rpkt->vps);
+  rs_free (pkt->conn->ctx, pkt->rpkt);
   rs_free (pkt->conn->ctx, pkt);
+}
+
+int
+rs_packet_append_avp (struct rs_packet *pkt, 
+                      unsigned int attr, unsigned int vendor,
+                      const void *data, size_t data_len)
+{
+  const DICT_ATTR *da;
+  int err;
+
+  assert (pkt);
+
+  da = nr_dict_attr_byvalue (attr, vendor);
+  if (da == NULL)
+    return RSE_ATTR_TYPE_UNKNOWN;
+
+  err = nr_packet_attr_append (pkt->rpkt, NULL, da, data, data_len);
+  if (err < 0)
+    return rs_err_conn_push (pkt->conn, -err, __func__);
+
+  return RSE_OK;
+}
+
+void
+rs_packet_avps (struct rs_packet *pkt, rs_avp ***vps)
+{
+  assert (pkt);
+  *vps = &pkt->rpkt->vps;
+}
+
+unsigned int
+rs_packet_code (struct rs_packet *pkt)
+{
+  assert (pkt);
+  return pkt->rpkt->code;
+}
+
+rs_const_avp *
+rs_packet_find_avp (struct rs_packet *pkt, unsigned int attr, unsigned int vendor)
+{
+  assert (pkt);
+  return rs_avp_find_const (pkt->rpkt->vps, attr, vendor);
+}
+
+int
+rs_packet_set_id (struct rs_packet *pkt, int id)
+{
+  int old = pkt->rpkt->id;
+
+  pkt->rpkt->id = id;
+
+  return old;
 }

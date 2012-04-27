@@ -14,7 +14,7 @@
 #include <radsec/radsec-impl.h>
 #include <radsec/request.h>
 #include <radsec/request-impl.h>
-#include <freeradius/libradius.h>
+#include <radius/client.h>
 #include "debug.h"
 #include "conn.h"
 #include "tcp.h"
@@ -82,7 +82,7 @@ rs_request_destroy (struct rs_request *request)
 static void
 _rand_rt (struct timeval *res, uint32_t rtprev, uint32_t factor)
 {
-  uint32_t ms = rtprev * (fr_rand () % factor);
+  uint32_t ms = rtprev * (nr_rand () % factor);
   res->tv_sec = rtprev + ms / 1000;
   res->tv_usec = (ms % 1000) * 1000;
 }

@@ -1,5 +1,8 @@
 /* See the file COPYING for licensing information.  */
 
+#ifndef _RADSEC_REQUEST_IMPL_H_
+#define _RADSEC_REQUEST_IMPL_H_ 1
+
 #if defined (__cplusplus)
 extern "C" {
 #endif
@@ -16,3 +19,5 @@ struct rs_request
 #if defined (__cplusplus)
 }
 #endif
+
+#endif /* _RADSEC_REQUEST_IMPL_H_ */

@@ -7,7 +7,7 @@
 
 #include <stdio.h>
 #include <assert.h>
-#include <freeradius/libradius.h>
+#include <radius/client.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include "debug.h"
@@ -21,10 +21,10 @@ rs_dump_packet (const struct rs_packet *pkt)
     return;
   p = pkt->rpkt;
 
-  fprintf (stderr, "\tCode: %u, Identifier: %u, Lenght: %u\n",
+  fprintf (stderr, "\tCode: %u, Identifier: %u, Lenght: %zu\n",
 	   p->code,
 	   p->id,
-	   p->data_len);
+	   p->sizeof_data);
   fflush (stderr);
 }
 

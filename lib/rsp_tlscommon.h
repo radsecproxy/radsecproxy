@@ -6,6 +6,7 @@
  * copyright notice and this permission notice appear in all copies.
  */
 
+#include <netinet/in.h>
 #include <openssl/ssl.h>
 
 #if defined (__cplusplus)

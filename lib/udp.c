@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <event2/event.h>
+#include <radius/client.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include "debug.h"
@@ -27,7 +28,7 @@ _send (struct rs_connection *conn, int fd)
   assert (pkt->rpkt->data);
 
   /* Send.  */
-  r = compat_send (fd, pkt->rpkt->data, pkt->rpkt->data_len, 0);
+  r = compat_send (fd, pkt->rpkt->data, pkt->rpkt->length, 0);
   if (r == -1)
     {
       int sockerr = evutil_socket_geterror (pkt->conn->fd);
@@ -37,7 +38,7 @@ _send (struct rs_connection *conn, int fd)
 				    evutil_socket_error_to_string (sockerr));
     }
 
-  assert (r == pkt->rpkt->data_len);
+  assert (r == pkt->rpkt->length);
   /* Unlink the packet.  */
   conn->out_queue = pkt->next;
 
@@ -63,6 +64,8 @@ _send (struct rs_connection *conn, int fd)
 static void
 _evcb (evutil_socket_t fd, short what, void *user_data)
 {
+  int err;
+
   rs_debug (("%s: fd=%d what =", __func__, fd));
   if (what & EV_TIMEOUT) rs_debug ((" TIMEOUT"));
   if (what & EV_READ) rs_debug ((" READ"));
@@ -78,14 +81,9 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 
       assert (pkt);
       assert (pkt->conn);
+      assert (pkt->rpkt->data);
 
-      pkt->rpkt->data = rs_malloc (pkt->conn->ctx, 4096);
-      if (pkt->rpkt->data == NULL)
-	{
-	  rs_err_conn_push_fl (pkt->conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
-	  return;
-	}
-      r = compat_recv (fd, pkt->rpkt->data, 4096, MSG_TRUNC);
+      r = compat_recv (fd, pkt->rpkt->data, RS_MAX_PACKET_LEN, MSG_TRUNC);
       if (r == -1)
 	{
 	  int sockerr = evutil_socket_geterror (pkt->conn->fd);
@@ -105,18 +103,19 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 	  return;
 	}
       event_del (pkt->conn->tev);
-      if (r < 20 || r > 4096)	/* Short or long packet.  */
+      if (r < 20 || r > RS_MAX_PACKET_LEN)	/* Short or long packet.  */
 	{
 	  rs_err_conn_push (pkt->conn, RSE_INVALID_PKT,
 			    "invalid packet length: %d",
-			    pkt->rpkt->data_len);
+			    pkt->rpkt->length);
 	  return;
 	}
-      pkt->rpkt->data_len = (pkt->rpkt->data[2] << 8) + pkt->rpkt->data[3];
-      if (!rad_packet_ok (pkt->rpkt, 0))
+      pkt->rpkt->length = (pkt->rpkt->data[2] << 8) + pkt->rpkt->data[3];
+      err = nr_packet_ok (pkt->rpkt);
+      if (err)
 	{
-	  rs_err_conn_push_fl (pkt->conn, RSE_FR, __FILE__, __LINE__,
-			       "invalid packet: %s", fr_strerror ());
+	  rs_err_conn_push_fl (pkt->conn, err, __FILE__, __LINE__,
+			       "invalid packet");
 	  return;
 	}
       /* Hand over message to user.  This changes ownership of pkt.
