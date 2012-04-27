@@ -2243,6 +2243,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
                 /* If clientwr() could not find a NAPTR we have to
                  * wait for dynfailing=1 what is set in clientwr().  */
                 pthread_mutex_lock(&srvconf->servers->lock);
+                pthread_mutex_unlock(&srvconf->servers->lock);
 #endif
 	    }
 	    conf = srvconf;
