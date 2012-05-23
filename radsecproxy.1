@@ -5,7 +5,7 @@ radsecproxy - a generic RADIUS proxy that provides both RADIUS UDP and TCP/TLS (
 
 .SH "SYNOPSIS"
 .HP 12
-radsecproxy [-c configfile] [-d debuglevel] [-f] [-i pidfile] [-p] [-v]
+radsecproxy [\-c configfile] [\-d debuglevel] [\-f] [\-i pidfile] [\-p] [\-v]
 .sp
 
 .SH "DESCRIPTION"
@@ -34,7 +34,7 @@ where some RADIUS nodes use only IPv4 and some only IPv6.
 
 .SH "OPTIONS"
 .TP
-.B -f
+.B \-f
 .sp
 \fIRun in foreground\fR
 .sp
@@ -42,7 +42,7 @@ By specifying this option, the proxy will run in foreground mode. That
 is, it won't detach. Also all logging will be done to stderr.
 
 .TP
-.B -d <debug level>
+.B \-d <debug level>
 .sp
 \fIDebug level\fR
 .sp
@@ -51,7 +51,7 @@ This specifies the debug level. It must be set to 1, 2, 3, 4 or 5, where
 logs errors, warnings and a few informational messages.
 
 .TP
-.B -p
+.B \-p
 .sp
 \fIPretend\fR
 .sp
@@ -62,7 +62,7 @@ may be used to verify configuration files, and can be done while another
 instance is running.
 
 .TP
-.B -v
+.B \-v
 .sp
 \fIPrint version\fR
 .sp
@@ -70,7 +70,7 @@ When this option is specified, the proxy will simply print version
 information and exit.
 
 .TP
-.B -c <config file path>
+.B \-c <config file path>
 .sp
 \fIConfig file path\fR
 .sp
@@ -78,7 +78,7 @@ This option allows you to specify which config file to use. This is useful
 if you want to use a config file that is not in any of the default locations.
 
 .TP
-.B -i <pid file path>
+.B \-i <pid file path>
 .sp
 \fIPID file path\fR
 .sp
