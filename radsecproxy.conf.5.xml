@@ -950,7 +950,7 @@ blocktype name {
       <literal>defaultClient</literal> and
       <literal>defaultServer</literal>. Note that these defaults are
       only used for rewrite on input. No rewriting is done on output
-      unless explicitly specifed using the
+      unless explicitly specified using the
       <literal>rewriteOut</literal> option.
     </para>
     <para>
