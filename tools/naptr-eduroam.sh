@@ -31,7 +31,7 @@ dig_it_naptr() {
     ${DIGCMD} +short naptr ${REALM} | grep x-eduroam:radius.tls | sort -n -k1 |
     while read line; do
 	set $line ; TYPE=$3 ; HOST=$6
-	if [ "$TYPE" = "\"s\"" ]; then
+	if [ "$TYPE" = "\"s\"" -o "$TYPE" = "\"S\"" ]; then
 	    SRV_HOST=${HOST%.}
 	    dig_it_srv
 	fi
@@ -50,7 +50,7 @@ host_it_naptr() {
     ${HOSTCMD} -t naptr ${REALM} | grep x-eduroam:radius.tls | sort -n -k5 |
     while read line; do
 	set $line ; TYPE=$7 ; HOST=${10}
-	if [ "$TYPE" = "\"s\"" ]; then
+	if [ "$TYPE" = "\"s\"" -o "$TYPE" = "\"S\"" ]; then
 	    SRV_HOST=${HOST%.}
 	    host_it_srv
 	fi
