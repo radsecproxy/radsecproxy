@@ -385,6 +385,7 @@ void *tlsservernew(void *arg) {
     SSL_CTX *ctx = NULL;
     unsigned long error;
     struct client *client;
+    struct tls *accepted_tls = NULL;
 
     s = *(int *)arg;
     if (getpeername(s, (struct sockaddr *)&from, &fromlen)) {
@@ -412,22 +413,23 @@ void *tlsservernew(void *arg) {
 	cert = verifytlscert(ssl);
 	if (!cert)
 	    goto exit;
+        accepted_tls = conf->tlsconf;
     }
 
     while (conf) {
-	if (verifyconfcert(cert, conf)) {
-	    X509_free(cert);
-	    client = addclient(conf, 1);
-	    if (client) {
-		client->ssl = ssl;
-		client->addr = addr_copy((struct sockaddr *)&from);
-		tlsserverrd(client);
-		removeclient(client);
-	    } else
-		debug(DBG_WARN, "tlsservernew: failed to create new client instance");
-	    goto exit;
-	}
-	conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
+        if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf)) {
+            X509_free(cert);
+            client = addclient(conf, 1);
+            if (client) {
+                client->ssl = ssl;
+                client->addr = addr_copy((struct sockaddr *)&from);
+                tlsserverrd(client);
+                removeclient(client);
+            } else
+                debug(DBG_WARN, "tlsservernew: failed to create new client instance");
+            goto exit;
+        }
+        conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
     }
     debug(DBG_WARN, "tlsservernew: ignoring request, no matching TLS client");
     if (cert)

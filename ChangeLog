@@ -1,3 +1,13 @@
+2012-09-14 1.6.1-dev
+	Bug fixes (security):
+	- When verifying clients, don't consider config blocks with CA
+	settings ('tls') which differ from the one used for verifying the
+	certificate chain. Reported by Ralf Paffrath. (RADSECPROXY-43)
+
+	Bug fixes:
+	- Make naptr-eduroam.sh check NAPTR type case insensitively.
+	  Fix from Adam Osuchowski.
+
 2012-04-27 1.6
 	Incompatible changes:
 	- The default shared secret for TLS and DTLS connections change
