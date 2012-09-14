@@ -544,6 +544,15 @@ blocktype name {
       <literal>default</literal>. If the specified TLS block name does
       not exist, or the option is not specified and none of the
       defaults exist, the proxy will exit with an error.
+
+      NOTE: All versions of radsecproxy up to and including 1.6
+      erroneously verify client certificate chains using the CA in the
+      very first matching client block regardless of which block is
+      used for the final decision. This was changed in version 1.6.1
+      so that a client block with a different <literal>tls</literal>
+      option than the first matching client block is no longer
+      considered for verification of clients.
+
     </para>
     <para>
       For a TLS/DTLS client, the option
