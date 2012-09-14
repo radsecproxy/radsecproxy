@@ -1,6 +1,7 @@
-/* Copyright (C) 2011 NORDUnet A/S
- * See LICENSE for information about licensing.
- */
+/* Copyright (c) 2006-2009, Stig Venaas, UNINETT AS.
+ * Copyright (c) 2010, UNINETT AS, NORDUnet A/S.
+ * Copyright (c) 2010-2012, NORDUnet A/S. */
+/* See LICENSE for licensing information. */
 
 #include <stdint.h>
 #include <stddef.h>
