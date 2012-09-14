@@ -1,3 +1,7 @@
+/* Copyright (c) 2006-2010, UNINETT AS
+ * Copyright (c) 2010-2012, NORDUnet A/S */
+/* See LICENSE for licensing information. */
+
 #define CONF_STR 1
 #define CONF_CBK 2
 #define CONF_MSTR 3

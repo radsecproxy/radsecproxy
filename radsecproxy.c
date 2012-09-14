@@ -1,19 +1,6 @@
-/*
- * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
- * Copyright (C) 2010,2011,2012 NORDUnet A/S
- *
- * Permission to use, copy, modify, and distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- */
-
-/* Code contributions from:
- *
- * Arne Schwabe <schwabe at uni-paderborn.de>
- * Maja Wolniewicz <mgw@umk.pl>
- * Simon Leinen <simon.leinen@switch.ch>
- * Stefan Winter <stefan.winter@restena.lu>
- */
+/* Copyright (c) 2006-2010, UNINETT AS
+ * Copyright (c) 2010-2012, NORDUnet A/S */
+/* See LICENSE for licensing information. */
 
 /* For UDP there is one server instance consisting of udpserverrd and udpserverth
  *              rd is responsible for init and launching wr

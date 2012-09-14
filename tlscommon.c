@@ -1,11 +1,6 @@
-/*
- * Copyright (C) 2006-2009 Stig Venaas <venaas@uninett.no>
- * Copyright (C) 2010,2011 NORDUnet A/S
- *
- * Permission to use, copy, modify, and distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- */
+/* Copyright (c) 2006-2010, UNINETT AS
+ * Copyright (c) 2010-2012, NORDUnet A/S */
+/* See LICENSE for licensing information. */
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 #include <signal.h>
