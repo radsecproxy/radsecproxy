@@ -1,4 +1,4 @@
-2012-09-14 1.6.1-dev
+2012-09-14 1.6.1
 	Bug fixes (security):
 	- When verifying clients, don't consider config blocks with CA
 	settings ('tls') which differ from the one used for verifying the
