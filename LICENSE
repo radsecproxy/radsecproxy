@@ -1,5 +1,4 @@
 Copyright (c) 2006-2010, UNINETT AS.
-Copyright (c) 2010, UNINETT AS, NORDUnet A/S.
 Copyright (c) 2010-2012, NORDUnet A/S.
 
 The radsecproxy source code is subject to two licenses, you may pick
@@ -27,7 +26,6 @@ Alternatively the radsecproxy source code is subject to the terms of the
 below BSD style license.
 
 * Copyright (c) 2006-2010, UNINETT AS.
-* Copyright (c) 2010, UNINETT AS, NORDUnet A/S.
 * Copyright (c) 2010-2012, NORDUnet A/S.
 * All rights reserved.
 *
