@@ -2,14 +2,6 @@
  * Copyright (c) 2010-2012, NORDUnet A/S. */
 /* See LICENSE for licensing information. */
 
-/* Code contributions from:
- *
- * Arne Schwabe <schwabe at uni-paderborn.de>
- * Maja Wolniewicz <mgw@umk.pl>
- * Simon Leinen <simon.leinen@switch.ch>
- * Stefan Winter <stefan.winter@restena.lu>
- */
-
 /* For UDP there is one server instance consisting of udpserverrd and udpserverth
  *              rd is responsible for init and launching wr
  * For TLS there is a server instance that launches tlsserverrd for each TLS peer

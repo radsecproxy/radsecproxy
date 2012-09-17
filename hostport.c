@@ -2,11 +2,6 @@
  * Copyright (c) 2010-2012, NORDUnet A/S. */
 /* See LICENSE for licensing information. */
 
-/* Code contributions from:
- *
- * Simon Leinen <simon.leinen@switch.ch>
- */
-
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>

@@ -2,11 +2,6 @@
  * Copyright (c) 2010-2012, NORDUnet A/S. */
 /* See LICENSE for licensing information. */
 
-/* Code contributions from:
- *
- * Stefan Winter <stefan.winter@restena.lu>
- */
-
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
