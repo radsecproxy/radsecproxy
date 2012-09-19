@@ -9,10 +9,10 @@ VENDOR	UKERNA				25622
 
 BEGIN-VENDOR UKERNA
 
-ATTRIBUTE	GSS-Acceptor-Service-Name	128	string
-ATTRIBUTE	GSS-Acceptor-Host-Name		129	string
-ATTRIBUTE	GSS-Acceptor-Service-Specific	130	string
-ATTRIBUTE	GSS-Acceptor-Realm-Name		131	string
+ATTRIBUTE	GSS-Acceptor-Service-Name-VS	128	string
+ATTRIBUTE	GSS-Acceptor-Host-Name-VS		129	string
+ATTRIBUTE	GSS-Acceptor-Service-Specific-VS	130	string
+ATTRIBUTE	GSS-Acceptor-Realm-Name-VS		131	string
 ATTRIBUTE	SAML-AAA-Assertion		132	string
 ATTRIBUTE	MS-Windows-Auth-Data		133     octets
 ATTRIBUTE	MS-Windows-Group-Sid		134     string

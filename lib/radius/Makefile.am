@@ -24,7 +24,10 @@ DICTIONARIES = \
 	share/dictionary.txt \
 	share/dictionary.juniper \
 	share/dictionary.microsoft \
-	share/dictionary.ukerna
+	share/dictionary.ukerna \
+	share/dictionary.abfab.ietf
+
+EXTRA_DIST = $(DICTIONARIES)
 
 $(top_srcdir)/include/radsec/radius.h dictionaries.c: ${DICTIONARIES} convert.pl common.pl
 	$(srcdir)/convert.pl ${DICTIONARIES}
