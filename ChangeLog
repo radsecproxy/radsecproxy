@@ -2,7 +2,8 @@
 	Bug fixes (security):
 	- When verifying clients, don't consider config blocks with CA
 	settings ('tls') which differ from the one used for verifying the
-	certificate chain. Reported by Ralf Paffrath. (RADSECPROXY-43)
+	certificate chain. Reported by Ralf Paffrath. (RADSECPROXY-43,
+	CVE-2012-4523).
 
 	Bug fixes:
 	- Make naptr-eduroam.sh check NAPTR type case insensitively.
