@@ -1,3 +1,9 @@
+2012-10-22 1.6.2-dev
+	Bug fixes (security):
+	- Fix the issue with verification of clients when using multiple
+	'tls' config blocks (RADSECPROXY-43) for DTLS too. Reported by
+	Raphael Geisser.
+
 2012-09-14 1.6.1
 	Bug fixes (security):
 	- When verifying clients, don't consider config blocks with CA

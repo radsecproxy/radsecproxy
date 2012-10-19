@@ -354,6 +354,7 @@ void *dtlsservernew(void *arg) {
     X509 *cert = NULL;
     SSL_CTX *ctx = NULL;
     uint8_t delay = 60;
+    struct tls *accepted_tls = NULL;
 
     debug(DBG_DBG, "dtlsservernew: starting");
     conf = find_clconf(handle, (struct sockaddr *)&params->addr, NULL);
@@ -367,10 +368,11 @@ void *dtlsservernew(void *arg) {
 	cert = verifytlscert(ssl);
         if (!cert)
             goto exit;
+        accepted_tls = conf->tlsconf;
     }
 
     while (conf) {
-	if (verifyconfcert(cert, conf)) {
+	if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf)) {
 	    X509_free(cert);
 	    client = addclient(conf, 1);
 	    if (client) {
