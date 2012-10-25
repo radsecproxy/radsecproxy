@@ -2,14 +2,14 @@
 "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
 <refentry>
   <refentryinfo>
-    <date>2012-10-22</date>
+    <date>2012-10-25</date>
   </refentryinfo>
   <refmeta>
     <refentrytitle>
       <application>radsecproxy.conf</application>
     </refentrytitle>
     <manvolnum>5</manvolnum>
-    <refmiscinfo>radsecproxy 1.6.2-dev</refmiscinfo>
+    <refmiscinfo>radsecproxy 1.6.2</refmiscinfo>
   </refmeta>
   <refnamediv>
     <refname>
