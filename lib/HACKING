@@ -24,8 +24,8 @@ Note that as of 0.0.2.dev libradsec suffers from way too much focus on
 the behaviour of a blocking client and is totally useless as a server.
 Not only does it lack most of the functions needed for writing a
 server but it also contains at least one architectural mishap which
-kills the server idea.  A connection timeout (TCP) or a retransmit
-timeout (UDP) will result in the event loop being broken.  The same is
+kills the server idea -- a connection timeout (TCP) or a retransmit
+timeout (UDP) will result in the event loop being broken.  The same
 thing will happen if there's an error on a TCP connection, f.ex. a
 failing certificate validation (TLS).
 * Dependencies
