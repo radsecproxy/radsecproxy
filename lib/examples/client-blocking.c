@@ -125,7 +125,7 @@ main (int argc, char *argv[])
   err = blocking_client (argv[1], argv[2], use_request_object_flag);
   if (err)
     {
-      fprintf (stderr, "%s\n", rs_err_msg (err));
+      fprintf (stderr, "error: %s: %d\n", rs_err_msg (err), rs_err_code (err, 0));
       return rs_err_code (err, 1);
     }
   return 0;
