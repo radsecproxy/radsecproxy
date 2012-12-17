@@ -25,12 +25,13 @@ blocking_client (const char *config_fn, const char *configuration,
   struct rs_request *request = NULL;
   struct rs_packet *req = NULL, *resp = NULL;
   struct rs_error *err = NULL;
+  int r;
 
-  if (rs_context_create (&h))
+  r = rs_context_create (&h);
+  if (r)
     {
-      err = err_create (RSE_INTERNAL, NULL, 0, "unable to create context");
-      assert (err != NULL);
-      return err;
+      assert(r == RSE_NOMEM);
+      assert (!"out of RAM -- unable to create libradsec context");
     }
 
 #if !defined (USE_CONFIG_FILE)
