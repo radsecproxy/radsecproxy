@@ -213,7 +213,7 @@ rs_packet_destroy (struct rs_packet *pkt)
 }
 
 int
-rs_packet_append_avp (struct rs_packet *pkt, 
+rs_packet_append_avp (struct rs_packet *pkt,
                       unsigned int attr, unsigned int vendor,
                       const void *data, size_t data_len)
 {
