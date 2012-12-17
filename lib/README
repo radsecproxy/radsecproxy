@@ -30,7 +30,7 @@ variable LDFLAGS at configure time like so:
 
 The parts of the library which has been tested has been so on Linux
 (Ubuntu 10.10) with libfreeradius2 (2.1.9+dfsg-1ubuntu1), libconfuse0
-(2.7-1) and libevent-2.0.10-stable (http://monkey.org/~provos/).
+(2.7-1) and libevent-2.0.10-stable (http://libevent.org/).
 
 The file HACKING contains more detailed info on the state of the
 various parts of the library.
