@@ -51,7 +51,8 @@ int
 rs_request_create_authn (struct rs_connection *conn,
 			 struct rs_request **req_out,
 			 const char *user_name,
-			 const char *user_pw)
+			 const char *user_pw,
+                         const char *secret)
 {
   struct rs_request *req = NULL;
   assert (req_out);
@@ -59,7 +60,7 @@ rs_request_create_authn (struct rs_connection *conn,
   if (rs_request_create (conn, &req))
     return -1;
 
-  if (rs_packet_create_authn_request (conn, &req->req_msg, user_name, user_pw))
+  if (rs_packet_create_authn_request (conn, &req->req_msg, user_name, user_pw, secret))
     return -1;
 
   if (req_out)

@@ -59,14 +59,14 @@ blocking_client (const char *config_fn, const char *configuration,
 
   if (use_request_object_flag)
     {
-      if (rs_request_create_authn (conn, &request, USER_NAME, USER_PW))
+      if (rs_request_create_authn (conn, &request, USER_NAME, USER_PW, SECRET))
 	goto cleanup;
       if (rs_request_send (request, &resp))
 	goto cleanup;
     }
   else
     {
-      if (rs_packet_create_authn_request (conn, &req, USER_NAME, USER_PW))
+      if (rs_packet_create_authn_request (conn, &req, USER_NAME, USER_PW, SECRET))
 	goto cleanup;
       if (rs_packet_send (req, NULL))
 	goto cleanup;
