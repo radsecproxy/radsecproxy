@@ -13,7 +13,6 @@ Users of this library may choose which of these suits them best.
 
 
 libradsec depends on 
-- libradius from the FreeRADIUS freeradius-server
 - libevent2
 - libconfuse
 - openssl (if configured with --enable-tls)
@@ -26,7 +25,7 @@ To compile the library and the examples, do something like
 If any of the libraries are not found, try setting environment
 variable LDFLAGS at configure time like so:
 
- LDFLAGS="-L/usr/lib/freeradius -L/usr/local/lib" ./configure --enable-tls
+ LDFLAGS="-L/usr/local/lib" ./configure --enable-tls
 
 
 The parts of the library which has been tested has been so on Linux
