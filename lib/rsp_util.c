@@ -1,10 +1,5 @@
-/*
- * Copyright (C) 2006-2008 Stig Venaas <venaas@uninett.no>
- *
- * Permission to use, copy, modify, and distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- */
+/* Copyright (c) 2007-2009, UNINETT AS */
+/* See COPYING for licensing information. */
 
 /* Code contributions from:
  *

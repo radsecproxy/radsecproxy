@@ -1,3 +1,6 @@
+/* Copyright (c) 2007-2009, UNINETT AS */
+/* See COPYING for licensing information. */
+
 #include <sys/socket.h>
 #include <netdb.h>
 

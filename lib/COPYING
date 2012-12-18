@@ -1,13 +1,5 @@
-The libradsec source code is subject to two licenses, you may pick the
-one that best suits your needs.
-
-The libradsec source code is subject to the terms of the GNU General
-Public License Version 2 or later (GPL).
-
-Alternatively the libradsec source code is subject to the terms of the
-below BSD style license.
-
-* Copyright (c) 2006-2010, UNINETT AS
+* Copyright (c) 2007-2010, UNINETT AS
+* Copyright (c) 2011, JANET(UK)
 * Copyright (c) 2010-2011, NORDUnet A/S
 * All rights reserved.
 * 
@@ -23,12 +15,12 @@ below BSD style license.
 *       disclaimer in the documentation and/or other materials provided
 *       with the distribution.
 * 
-*    3. Neither the name of the UNINETT AS or the NORDUnet A/S, nor the
-*       names of the contributors may be used to endorse or promote
-*       products derived from this software without specific prior
-*       written permission.
+*    3. Neither the name of NORDUnet A/S nor the names of the
+*       contributors may be used to endorse or promote products
+*       derived from this software without specific prior written
+*       permission.
 * 
-* THIS SOFTWARE IS PROVIDED BY UNINETT AS AND NORDUNET A/S ``AS IS'' AND
+* THIS SOFTWARE IS PROVIDED BY NORDUNET A/S ``AS IS'' AND
 * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
 * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NORDUNET A/S OR CONTRIBUTORS
