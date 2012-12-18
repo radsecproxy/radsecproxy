@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #endif
 #include <stdarg.h>
+#include <sys/types.h>
 #ifdef HAVE_NETDB_H
 #include <netdb.h>
 #endif

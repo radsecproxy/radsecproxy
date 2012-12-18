@@ -5,6 +5,7 @@
 #include <config.h>
 #endif
 
+#include <sys/types.h>
 #include <stdio.h>
 #include <assert.h>
 #include <radius/client.h>
