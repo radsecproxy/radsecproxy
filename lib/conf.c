@@ -19,7 +19,7 @@
   # common config options
 
   # common realm config options
-  realm NAME {
+  realm STRING {
       type = "UDP"|"TCP"|"TLS"|"DTLS"
       timeout = INT
       retries = INT
@@ -34,7 +34,7 @@
   }
 
   # client specific realm config options
-  realm NAME {
+  realm STRING {
       server {
           hostname = STRING
 	  service = STRING
