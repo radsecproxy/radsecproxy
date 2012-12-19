@@ -28,6 +28,10 @@ AC_ARG_ENABLE([tls], AS_HELP_STRING([--enable-tls], [enable TLS (RadSec)]),
      AC_DEFINE([RS_ENABLE_TLS])
      AC_DEFINE([RADPROT_TLS])]) dnl Legacy.
 AM_CONDITIONAL([RS_ENABLE_TLS], [test "${enable_tls+set}" = set])
+### Define WITHOUT_OPENSSL for radius/client.h.
+if test -z "$enable_tls"; then
+    CPPFLAGS="$CPPFLAGS -DWITHOUT_OPENSSL"
+fi
 ## Enable TLS-PSK (preshared keys).
 AH_TEMPLATE([RS_ENABLE_TLS_PSK], [TLS-PSK (TLS preshared keys) enabled])
 AC_ARG_ENABLE([tls-psk], AS_HELP_STRING([--enable-tls-psk], [enable TLS-PSK (TLS preshared keys)]),
