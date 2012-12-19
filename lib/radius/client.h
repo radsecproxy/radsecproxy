@@ -155,10 +155,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #error RS_MD5_CTX must be defined
 #endif
 #ifndef RS_MD5Init
-#error n_rMD5Init must be defined
+#error RS_MD5Init must be defined
 #endif
 #ifndef RS_MD5Update
-#error RS_MD5Updyae must be defined
+#error RS_MD5Update must be defined
 #endif
 #ifndef RS_MD5Final
 #error RS_MD5Final must be defined
