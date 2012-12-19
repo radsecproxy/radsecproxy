@@ -1,5 +1,5 @@
 /* Copyright 2011 JANET(UK). All rights reserved.
-   See the file COPYING for licensing information.  */
+   See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>

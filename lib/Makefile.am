@@ -53,6 +53,8 @@ libradsec_la_SOURCES += \
 	rsp_tlscommon.c
 endif
 
+EXTRA_DIST = HACKING LICENSE
+
 libradsec_la_LIBADD = radius/libradsec-radius.la
 libradsec_la_LDFLAGS = -version-info 0:0:0 -export-symbols radsec.sym
 libradsec_la_CFLAGS = $(AM_CFLAGS) -DHAVE_CONFIG_H -Werror # -DDEBUG -DDEBUG_LEVENT 

@@ -1,5 +1,5 @@
 /* Copyright 2012 NORDUnet A/S. All rights reserved.
-   See the file COPYING for licensing information.  */
+   See LICENSE for licensing information.  */
 
 #include <string.h>
 #include <radsec/radsec.h>

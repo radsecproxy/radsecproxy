@@ -1,7 +1,7 @@
 /** @file libradsec-impl.h
     @brief Libraray internal header file for libradsec.  */
 
-/* See the file COPYING for licensing information.  */
+/* See LICENSE for licensing information.  */
 
 #ifndef _RADSEC_RADSEC_IMPL_H_
 #define _RADSEC_RADSEC_IMPL_H_ 1

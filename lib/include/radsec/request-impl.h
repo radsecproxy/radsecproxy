@@ -1,4 +1,4 @@
-/* See the file COPYING for licensing information.  */
+/* See LICENSE for licensing information.  */
 
 #ifndef _RADSEC_REQUEST_IMPL_H_
 #define _RADSEC_REQUEST_IMPL_H_ 1

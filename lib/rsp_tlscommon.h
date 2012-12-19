@@ -1,5 +1,5 @@
 /* Copyright (c) 2007-2009, UNINETT AS */
-/* See COPYING for licensing information. */
+/* See LICENSE for licensing information. */
 
 #include <netinet/in.h>
 #include <openssl/ssl.h>

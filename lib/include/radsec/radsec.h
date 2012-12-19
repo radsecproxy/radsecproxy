@@ -1,7 +1,7 @@
 /** \file radsec.h
     \brief Public interface for libradsec.  */
 
-/* See the file COPYING for licensing information.  */
+/* See LICENSE for licensing information.  */
 
 #ifndef _RADSEC_RADSEC_H_
 #define _RADSEC_RADSEC_H_ 1

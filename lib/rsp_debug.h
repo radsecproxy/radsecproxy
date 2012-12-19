@@ -1,6 +1,6 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2010-2011, NORDUnet A/S */
-/* See COPYING for licensing information. */
+/* See LICENSE for licensing information. */
 
 #ifndef SYS_SOLARIS9
 #include <stdint.h>

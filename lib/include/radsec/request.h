@@ -1,7 +1,7 @@
 /** \file request.h
     \brief Public interface for libradsec request's.  */
 
-/* See the file COPYING for licensing information.  */
+/* See LICENSE for licensing information.  */
 
 #ifndef _RADSEC_REQUEST_H_
 #define _RADSEC_REQUEST_H_ 1

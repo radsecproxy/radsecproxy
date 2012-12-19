@@ -1,5 +1,5 @@
 /* Copyright 2010 NORDUnet A/S. All rights reserved.
-   See the file COPYING for licensing information.  */
+   See LICENSE for licensing information.  */
 
 #if defined (__cplusplus)
 extern "C" {

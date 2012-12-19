@@ -1,5 +1,5 @@
 /* Copyright (c) 2008, UNINETT AS */
-/* See COPYING for licensing information. */
+/* See LICENSE for licensing information. */
 
 #ifndef SYS_SOLARIS9
 #include <stdint.h>
