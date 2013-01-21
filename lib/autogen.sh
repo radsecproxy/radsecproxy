@@ -1,4 +1,8 @@
 #! /bin/sh
+
+[ -d m4 ] || mkdir m4
+[ -d build-aux ] || mkdir build-aux
+
 if [ -x "`which autoreconf 2>/dev/null`" ] ; then
    exec autoreconf -ivf
 fi

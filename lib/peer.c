@@ -1,11 +1,14 @@
 /* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
-   See the file COPYING for licensing information.  */
+   See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include "err.h"

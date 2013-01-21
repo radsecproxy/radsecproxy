@@ -1,5 +1,5 @@
 /* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
-   See the file COPYING for licensing information.  */
+   See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -214,15 +214,15 @@ tls_verify_cert (struct rs_connection *conn)
       goto out;
     }
 
-  if (inet_pton(AF_INET, hostname, &addr))
+  if (inet_pton (AF_INET, hostname, &addr))
     success = (subjectaltnameaddr (peer_cert, AF_INET, &addr) == 1);
-  else if (inet_pton(AF_INET6, hostname, &addr))
+  else if (inet_pton (AF_INET6, hostname, &addr))
     success = (subjectaltnameaddr (peer_cert, AF_INET6, &addr) == 1);
   else
     success = (subjectaltnameregexp (peer_cert, GEN_DNS, hostname, NULL) == 1);
 
   if (!success)
-    success = (cnregexp(peer_cert, hostname, NULL) == 1);
+    success = (cnregexp (peer_cert, hostname, NULL) == 1);
 
   if (!success)
     err = rs_err_conn_push (conn, RSE_CERT, "server certificate doesn't "

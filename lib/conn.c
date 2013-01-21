@@ -1,11 +1,13 @@
 /* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
-   See the file COPYING for licensing information.  */
+   See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include <string.h>
+#include <stdlib.h>
+#include <errno.h>
 #include <assert.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>

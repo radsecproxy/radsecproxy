@@ -1,5 +1,5 @@
 /* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
-   See the file COPYING for licensing information.  */
+   See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -14,7 +14,7 @@
 #include <radsec/radsec-impl.h>
 #include <radsec/request.h>
 #include <radsec/request-impl.h>
-#include <freeradius/libradius.h>
+#include <radius/client.h>
 #include "debug.h"
 #include "conn.h"
 #include "tcp.h"
@@ -51,7 +51,8 @@ int
 rs_request_create_authn (struct rs_connection *conn,
 			 struct rs_request **req_out,
 			 const char *user_name,
-			 const char *user_pw)
+			 const char *user_pw,
+                         const char *secret)
 {
   struct rs_request *req = NULL;
   assert (req_out);
@@ -59,7 +60,7 @@ rs_request_create_authn (struct rs_connection *conn,
   if (rs_request_create (conn, &req))
     return -1;
 
-  if (rs_packet_create_authn_request (conn, &req->req_msg, user_name, user_pw))
+  if (rs_packet_create_authn_request (conn, &req->req_msg, user_name, user_pw, secret))
     return -1;
 
   if (req_out)
@@ -82,7 +83,7 @@ rs_request_destroy (struct rs_request *request)
 static void
 _rand_rt (struct timeval *res, uint32_t rtprev, uint32_t factor)
 {
-  uint32_t ms = rtprev * (fr_rand () % factor);
+  uint32_t ms = rtprev * (nr_rand () % factor);
   res->tv_sec = rtprev + ms / 1000;
   res->tv_usec = (ms % 1000) * 1000;
 }

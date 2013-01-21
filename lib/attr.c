@@ -1,5 +1,5 @@
 /* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
-   See the file COPYING for licensing information.  */
+   See LICENSE for licensing information.  */
 
 /* NOTE: This file is not in use at the moment (libradsec-0.0.1).  */
 
@@ -7,7 +7,7 @@
 #include <config.h>
 #endif
 
-#include <freeradius/libradius.h>
+#include <radius/client.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 
