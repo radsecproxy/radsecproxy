@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
-#include "rsp_list.h"
-#include "rsp_hash.h"
+#include "list.h"
+#include "hash.h"
 
 /* allocates and initialises hash structure; returns NULL if malloc fails */
 struct hash *hash_create() {

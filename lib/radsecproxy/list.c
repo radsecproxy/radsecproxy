@@ -7,7 +7,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "rsp_list.h"
+#include "list.h"
 
 /* allocates and initialises list structure; returns NULL if malloc fails */
 struct list *list_create() {

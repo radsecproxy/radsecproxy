@@ -14,8 +14,8 @@
 #include <radsec/radsec-impl.h>
 
 #include <regex.h>
-#include "rsp_list.h"
-#include "../radsecproxy.h"
+#include "radsecproxy/list.h"
+#include "radsecproxy/radsecproxy.h"
 
 static struct tls *
 _get_tlsconf (struct rs_connection *conn, const struct rs_realm *realm)

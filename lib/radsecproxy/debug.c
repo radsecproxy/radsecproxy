@@ -15,8 +15,8 @@
 #include <syslog.h>
 #include <errno.h>
 #include <assert.h>
-#include "rsp_debug.h"
-#include "rsp_util.h"
+#include "debug.h"
+#include "util.h"
 
 static char *debug_ident = NULL;
 static uint8_t debug_level = DBG_INFO;

@@ -19,11 +19,11 @@
 #include <radsec/radsec-impl.h>
 #include "err.h"
 #include "debug.h"
-#include "rsp_debug.h"
+#include "radsecproxy/debug.h"
 #if defined (RS_ENABLE_TLS)
 #include <regex.h>
-#include "rsp_list.h"
-#include "../radsecproxy.h"
+#include "radsecproxy/list.h"
+#include "radsecproxy/radsecproxy.h"
 #endif
 
 /* Public functions.  */

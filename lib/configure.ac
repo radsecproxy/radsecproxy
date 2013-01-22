@@ -54,6 +54,7 @@ AC_TYPE_UINT8_T
 AC_CHECK_FUNCS([memset socket strdup strerror strrchr])
 
 AC_CONFIG_FILES([Makefile
+                 radsecproxy/Makefile
 		 radius/Makefile
 		 include/Makefile
                  examples/Makefile

@@ -17,7 +17,7 @@ ACLOCAL_AMFLAGS = -I m4
 #     library interface is _changed_.
 
 
-SUBDIRS = radius . include examples
+SUBDIRS = radius radsecproxy . include examples
 
 INCLUDES = -I$(srcdir)/include
 AM_CFLAGS = -Wall -g
@@ -41,20 +41,13 @@ libradsec_la_SOURCES = \
 	udp.c \
 	util.c
 
-libradsec_la_SOURCES += \
-	rsp_debug.c \
-	rsp_hash.c \
-	rsp_list.c \
-	rsp_util.c
-
 if RS_ENABLE_TLS
 libradsec_la_SOURCES += \
-	tls.c \
-	rsp_tlscommon.c
+	tls.c
 endif
 
 EXTRA_DIST = HACKING LICENSE
 
-libradsec_la_LIBADD = radius/libradsec-radius.la
+libradsec_la_LIBADD = radsecproxy/libradsec-radsecproxy.la radius/libradsec-radius.la
 libradsec_la_LDFLAGS = -version-info 0:0:0 -export-symbols radsec.sym
 libradsec_la_CFLAGS = $(AM_CFLAGS) -DHAVE_CONFIG_H -Werror # -DDEBUG -DDEBUG_LEVENT 
