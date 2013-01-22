@@ -151,25 +151,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #ifdef WITHOUT_OPENSSL
-#ifndef RS_MD5_CTX
-#error RS_MD5_CTX must be defined
-#endif
-#ifndef RS_MD5Init
-#error RS_MD5Init must be defined
-#endif
-#ifndef RS_MD5Update
-#error RS_MD5Update must be defined
-#endif
-#ifndef RS_MD5Final
-#error RS_MD5Final must be defined
-#endif
-#ifndef RS_MD5Transform
-#error RS_MD5Transform must be defined
-#endif
-
-#else  /* WITHOUT_OPENSSL */
-
+#include "md5.h"
+#else
 #include <openssl/md5.h>
+#endif
+
 /** Define for compile-time selection of the MD5 functions.  Defaults to using the OpenSSL functions.  \ingroup custom */
 #define RS_MD5_CTX	MD5_CTX
 /** Define for compile-time selection of the MD5 functions.  Defaults to using the OpenSSL functions. \ingroup custom */
@@ -178,9 +164,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define RS_MD5Update	MD5_Update
 /** Define for compile-time selection of the MD5 functions.  Defaults to using the OpenSSL functions. \ingroup custom */
 #define RS_MD5Final	MD5_Final
-/** Define for compile-time selection of the MD5 functions.  Defaults to using the OpenSSL functions. \ingroup custom */
-#define RS_MD5Transform MD5_Transform
-#endif
+
 
 #ifndef RS_MAX_PACKET_LEN
 /** The maximum size of a packet that the library will send or receive.  \ingroup custom

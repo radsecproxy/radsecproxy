@@ -42,8 +42,9 @@ libradsec_la_SOURCES = \
 	util.c
 
 if RS_ENABLE_TLS
-libradsec_la_SOURCES += \
-	tls.c
+libradsec_la_SOURCES += tls.c
+else
+libradsec_la_SOURCES += md5.c
 endif
 
 EXTRA_DIST = HACKING LICENSE
