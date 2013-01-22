@@ -1,13 +1,9 @@
-/* RADIUS client doing blocking i/o.  */
+/* RADIUS/RadSec client doing blocking i/o.  */
 
 #include <stdio.h>
-#include <string.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <event2/event.h>
 #include <radsec/radsec.h>
-#include <radsec/radsec-impl.h>
 #include <radsec/request.h>
 #include "err.h"
 #include "debug.h"		/* For rs_dump_packet().  */
