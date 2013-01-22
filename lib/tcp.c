@@ -25,8 +25,7 @@
 #include <event2/buffer.h>
 #endif
 
-/* Read one RADIUS packet header.  Return !0 on error.  A return value
-   of 0 means that we need more data.  */
+/** Read one RADIUS packet header. Return !0 on error. */
 static int
 _read_header (struct rs_packet *pkt)
 {
@@ -64,6 +63,13 @@ _read_header (struct rs_packet *pkt)
   return 0;
 }
 
+/** Read a message, check that it's valid RADIUS and hand it off to
+    registered user callback.
+
+    The packet is read from the bufferevent associated with \a pkt and
+    the data is stored in \a pkt->rpkt.
+
+    Return 0 on success and !0 on failure. */
 static int
 _read_packet (struct rs_packet *pkt)
 {
@@ -141,8 +147,14 @@ tcp_read_cb (struct bufferevent *bev, void *user_data)
   assert (pkt->rpkt);
 
   pkt->rpkt->sockfd = pkt->conn->fd;
-  pkt->rpkt->vps = NULL;
+  pkt->rpkt->vps = NULL;        /* FIXME: can this be done when initializing pkt? */
 
+  /* Read a message header if not already read, return if that
+     fails. Read a message and have it dispatched to the user
+     registered callback.
+
+     Room for improvement: Peek inside buffer (evbuffer_copyout()) to
+     avoid the extra copying. */
   if ((pkt->flags & rs_packet_hdr_read_flag) == 0)
     if (_read_header (pkt))
       return;			/* Error.  */
