@@ -14,7 +14,6 @@ configure
 aclocal.m4
 *.lo
 *.la
-obs/
 Makefile.in
 Makefile
 stamp-h1

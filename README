@@ -1,35 +1,6 @@
-This is unreleased radsecproxy 2.0-alpha.
+This is not radsecproxy, it's libradsec (see lib/) sharing the
+radsecproxy repository.
 
-radsecproxy is a generic RADIUS proxy that supports both UDP and TLS
-(RadSec) RADIUS transports.  There is also experimental support for
-TCP and DTLS.
+For radsecproxy, see branch 'master'.
 
-It should build on most Linux and BSD platforms by simply typing
-"./configure && make".  It is possible to specify which RADIUS
-transport the build should support.  Without any special options to
-configure, all transports supported by the system will be enabled.
-See the output from "configure --help" for how to change this.
-
-Known build issues:
-- Older BSD's (like NetBSD 4.x) need newer OpenSSL in order to support
-  DTLS.  Workaround: ./configure --disable-dtls.
-- FreeBSD 6.x needs newer OpenSSL to build at all.
-
-To use radsecproxy you need to create a config file which normally is
-called "/etc/radsecproxy.conf".  You can also specify the location
-with the "-c" command line option (see below).  For further
-instructions, please see the enclosed example file and the
-documentation at
-http://software.uninett.no/radsecproxy/?page=documentation
-
-There are five options that may be specified on the command line:
-"-c configfile" to specify a non-default config file path.
-"-d loglevel" to set a loglevel of 1, 2, 3, 4 and 5 where 5 is the
-              most detailed.
-"-f" to run the proxy in the foreground with logging to stderr.
-     Without "-f" the default is to detach as a daemon and log to
-     syslog.
-"-v" just prints version information and exits.
-"-p" (pretend) makes the proxy go through the configuration files as
-     normal, but stops before creating any sockets or doing any
-     serious work.  This is useful for validating config files.
+The repository ca be found at http://git.nordu.net/?p=radsecproxy.git;a=summary .
