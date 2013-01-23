@@ -10,15 +10,32 @@ make
 examples/client -r examples/client.conf blocking-tls; echo $?
 
 * Design of the API
-- There are three usage modes
-  - Application use the send and receive calls (blocking mode)
-  - Application registers callbacks and runs the libevent dispatch
-    loop (a.k.a. user dispatch mode)
+- There are three usage modes:
+
+  - Application uses blocking send and receive calls (blocking
+    mode). This is typically fine for a simple client.
+
+  - Application registers callbacks with libradsec and runs the
+    libevent dispatch loop (a.k.a. user dispatch mode). This would
+    probably how to implement a server or a proxy.
+
   - Application runs its own event loop, using fd's for select and
-    performs I/O using the libradsec send/receive calls
-    (a.k.a. on-your-own mode)
-- Fully reentrant
-- User chooses allocation regime
+    performs I/O using libradsec send/receive functions
+    (a.k.a. on-your-own mode). Might be useful for an application
+    which already has an event loop that wants to add RadSec
+    functionality.
+
+- Apart from configuration and error handling, an application
+  shouldn't need to handle TCP and UDP connections
+  differently. Similarly, the use of TLS/DTLS or not shouldn't
+  influence the libradsec calls made by the application.
+
+- Configuration is done either by using the API or by pointing at a
+  configuration file which is parsed by libradsec.
+
+- Fully reentrant.
+
+- Application chooses allocation regime.
 
 Note that as of 0.0.2.dev libradsec suffers from way too much focus on
 the behaviour of a blocking client and is totally useless as a server.
@@ -56,6 +73,7 @@ Details (within parentheses) apply to Debian Wheezy.
 - [client] server failover
 - [DTLS] support
 - [server] support
+- dispatch mode and on-your-own mode
 
 * Found a bug?
 Please report it. That is how we improve the quality of the code.

@@ -1,4 +1,4 @@
-/* RADIUS/RadSec client doing blocking i/o.  */
+/* RADIUS/RadSec client using libradsec in blocking mode. */
 
 #include <stdio.h>
 #include <stdlib.h>
