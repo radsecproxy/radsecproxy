@@ -241,9 +241,11 @@ struct rs_realm *
 rs_conf_find_realm(struct rs_context *ctx, const char *name)
 {
   struct rs_realm *r;
+  assert (ctx);
 
-  for (r = ctx->config->realms; r; r = r->next)
-    if (strcmp (r->name, name) == 0)
+  if (ctx->config)
+    for (r = ctx->config->realms; r; r = r->next)
+      if (strcmp (r->name, name) == 0)
 	return r;
 
   return NULL;
