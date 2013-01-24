@@ -41,6 +41,7 @@ rs_conn_create
 rs_conn_del_callbacks
 rs_conn_destroy
 rs_conn_disconnect
+rs_conn_dispatch
 rs_conn_fd
 rs_conn_get_callbacks
 rs_conn_get_current_peer

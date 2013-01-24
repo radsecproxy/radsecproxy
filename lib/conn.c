@@ -193,7 +193,23 @@ rs_conn_get_current_peer (struct rs_connection *conn,
   return rs_err_conn_push_fl (conn, RSE_NOSYS, __FILE__, __LINE__, NULL);
 }
 
-int rs_conn_fd (struct rs_connection *conn)
+int
+rs_conn_dispatch(struct rs_connection *conn)
+{
+  assert (conn);
+  return event_base_loop (conn->evb, EVLOOP_ONCE);
+}
+
+#if 0
+struct event_base
+*rs_conn_get_evb(const struct rs_connection *conn)
+{
+  assert (conn);
+  return conn->evb;
+}
+#endif
+
+int rs_conn_get_fd (struct rs_connection *conn)
 {
   assert (conn);
   assert (conn->active_peer);

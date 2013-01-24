@@ -203,8 +203,9 @@ int rs_context_read_config(struct rs_context *ctx, const char *config_file);
     packet is associated with a connection when it's created (\a
     rs_packet_create) or received (\a rs_conn_receive_packet).
 
-    If \a config is not NULL it should be the name of a configuration
-    found in the config file read in using \a rs_context_read_config.
+    If \a config is not NULL it should be the name of a realm found in
+    a config file that has already been read using \a rs_context_read_config.
+
     \return On success, RSE_OK (0) is returned.  On error, !0 is
     returned and a struct \a rs_error is pushed on the error stack for
     the context.  The error can be accessed using \a
@@ -271,9 +272,21 @@ int rs_conn_receive_packet(struct rs_connection *conn,
 			   struct rs_packet *request,
 			   struct rs_packet **pkt_out);
 
+/** Run the dispatcher for the event base associated with \a conn. A
+ * wrapper around event_base_dispatch() for not having to hand out the
+ * event base. */
+int rs_conn_dispatch(struct rs_connection *conn);
+
+#if 0
+/** Get the event base associated with connection \a conn.
+ * \return struct event_base*. */
+struct event_base *rs_conn_get_evb(const struct rs_connection *conn);
+#endif
+
+#define rs_conn_fd rs_conn_get_fd /* Old name. */
 /** Get the file descriptor associated with connection \a conn.
  * \return File descriptor.  */
-int rs_conn_fd(struct rs_connection *conn);
+int rs_conn_get_fd(struct rs_connection *conn);
 
 /** Set the timeout value for connection \a conn.  */
 void rs_conn_set_timeout(struct rs_connection *conn, struct timeval *tv);
