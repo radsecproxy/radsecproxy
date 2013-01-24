@@ -61,6 +61,21 @@ conn_activate_timeout (struct rs_connection *conn)
   return RSE_OK;
 }
 
+int
+conn_type_tls (const struct rs_connection *conn)
+{
+  return conn->realm->type == RS_CONN_TYPE_TLS
+    || conn->realm->type == RS_CONN_TYPE_DTLS;
+}
+
+int
+conn_cred_psk (const struct rs_connection *conn)
+{
+  return conn->realm->transport_cred &&
+    conn->realm->transport_cred->type == RS_CRED_TLS_PSK;
+}
+
+
 /* Public functions. */
 int
 rs_conn_create (struct rs_context *ctx,
