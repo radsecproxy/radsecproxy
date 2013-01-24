@@ -16,6 +16,9 @@ libradsec depends on
 - openssl (if configured with --enable-tls)
 
 
+For changes between releases, see the CHANGES file.
+
+
 To compile the library and the examples, do something like
 
  sh autogen.sh && ./configure && make
