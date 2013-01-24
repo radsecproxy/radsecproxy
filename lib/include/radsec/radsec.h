@@ -118,10 +118,15 @@ typedef enum rs_attr_type_t {
 extern "C" {
 #endif
 
+#define rs_packet rs_message
+#define rs_conn_packet_received_cb rs_conn_message_received_cb
+#define rs_conn_packet_sent_cb rs_conn_message_sent_cb
+#define rs_conn_receive_packet rs_conn_receive_message
+
 /* Data types.  */
 struct rs_context;		/* radsec-impl.h */
 struct rs_connection;		/* radsec-impl.h */
-struct rs_packet;		/* radsec-impl.h */
+struct rs_message;		/* radsec-impl.h */
 struct rs_conn;			/* radsec-impl.h */
 struct rs_error;		/* radsec-impl.h */
 struct rs_peer;			/* radsec-impl.h */
@@ -142,18 +147,18 @@ struct rs_alloc_scheme {
 
 typedef void (*rs_conn_connected_cb) (void *user_data /* FIXME: peer? */ );
 typedef void (*rs_conn_disconnected_cb) (void *user_data /* FIXME: reason? */ );
-typedef void (*rs_conn_packet_received_cb) (struct rs_packet *packet,
-					    void *user_data);
-typedef void (*rs_conn_packet_sent_cb) (void *user_data);
+typedef void (*rs_conn_message_received_cb) (struct rs_message *message,
+                                             void *user_data);
+typedef void (*rs_conn_message_sent_cb) (void *user_data);
 struct rs_conn_callbacks {
     /** Callback invoked when the connection has been established.  */
     rs_conn_connected_cb connected_cb;
     /** Callback invoked when the connection has been torn down.  */
     rs_conn_disconnected_cb disconnected_cb;
-    /** Callback invoked when a packet was received.  */
-    rs_conn_packet_received_cb received_cb;
-    /** Callback invoked when a packet was successfully sent.  */
-    rs_conn_packet_sent_cb sent_cb;
+    /** Callback invoked when a message was received.  */
+    rs_conn_packet_message_cb received_cb;
+    /** Callback invoked when a message was successfully sent.  */
+    rs_conn_message_sent_cb sent_cb;
 };
 
 typedef struct value_pair rs_avp;
@@ -199,12 +204,14 @@ int rs_context_read_config(struct rs_context *ctx, const char *config_file);
 /** Create a connection.  \a conn is the address of a pointer to an \a
     rs_connection, the output.  Free the connection using \a
     rs_conn_destroy.  Note that a connection must not be freed before
-    all packets associated with the connection have been freed.  A
-    packet is associated with a connection when it's created (\a
-    rs_packet_create) or received (\a rs_conn_receive_packet).
+    all messages associated with the connection have been freed.  A
+    message is associated with a connection when it's created
+    (\a rs_message_create) or received (\a rs_conn_receive_message).
 
-    If \a config is not NULL it should be the name of a configuration
-    found in the config file read in using \a rs_context_read_config.
+    If \a config is not NULL it should be the name of a realm found in
+    a config file that has already been read using \a
+    rs_context_read_config.
+
     \return On success, RSE_OK (0) is returned.  On error, !0 is
     returned and a struct \a rs_error is pushed on the error stack for
     the context.  The error can be accessed using \a
@@ -223,10 +230,10 @@ int rs_conn_add_listener(struct rs_connection *conn,
 int rs_conn_disconnect (struct rs_connection *conn);
 
 /** Disconnect and free memory allocated for connection \a conn.  Note
-    that a connection must not be freed before all packets associated
-    with the connection have been freed.  A packet is associated with
-    a connection when it's created (\a rs_packet_create) or received
-    (\a rs_conn_receive_packet).  \return RSE_OK (0) on success, !0 *
+    that a connection must not be freed before all messages associated
+    with the connection have been freed.  A message is associated with
+    a connection when it's created (\a rs_message_create) or received
+    (\a rs_conn_receive_message).  \return RSE_OK (0) on success, !0 *
     on error.  On error, errno is set appropriately. */
 int rs_conn_destroy(struct rs_connection *conn);
 
@@ -261,15 +268,15 @@ int rs_conn_get_current_peer(struct rs_connection *conn,
 
     If \a req_msg is not NULL, a successfully received RADIUS message
     is verified against it.  If \a pkt_out is not NULL it will upon
-    return contain a pointer to an \a rs_packet containing the new
+    return contain a pointer to an \a rs_message containing the new
     message.
 
     \return On error or if the connect (TCP only) or read times out,
     \a pkt_out will not be changed and one or more errors are pushed
     on \a conn (available through \a rs_err_conn_pop).  */
-int rs_conn_receive_packet(struct rs_connection *conn,
-			   struct rs_packet *request,
-			   struct rs_packet **pkt_out);
+int rs_conn_receive_message(struct rs_connection *conn,
+                            struct rs_message *request,
+                            struct rs_message **pkt_out);
 
 /** Get the file descriptor associated with connection \a conn.
  * \return File descriptor.  */
