@@ -34,7 +34,7 @@ _read_header (struct rs_packet *pkt)
   n = bufferevent_read (pkt->conn->bev, pkt->hdr, RS_HEADER_LEN);
   if (n == RS_HEADER_LEN)
     {
-      pkt->flags |= rs_packet_hdr_read_flag;
+      pkt->flags |= RS_PACKET_HEADER_READ;
       pkt->rpkt->length = (pkt->hdr[2] << 8) + pkt->hdr[3];
       if (pkt->rpkt->length < 20 || pkt->rpkt->length > RS_MAX_PACKET_LEN)
 	{
@@ -89,7 +89,7 @@ _read_packet (struct rs_packet *pkt)
     {
       bufferevent_disable (pkt->conn->bev, EV_READ);
       rs_debug (("%s: complete packet read\n", __func__));
-      pkt->flags &= ~rs_packet_hdr_read_flag;
+      pkt->flags &= ~RS_PACKET_HEADER_READ;
       memset (pkt->hdr, 0, sizeof(*pkt->hdr));
 
       /* Checks done by rad_packet_ok:
@@ -155,7 +155,7 @@ tcp_read_cb (struct bufferevent *bev, void *user_data)
 
      Room for improvement: Peek inside buffer (evbuffer_copyout()) to
      avoid the extra copying. */
-  if ((pkt->flags & rs_packet_hdr_read_flag) == 0)
+  if ((pkt->flags & RS_PACKET_HEADER_READ) == 0)
     if (_read_header (pkt))
       return;			/* Error.  */
   _read_packet (pkt);

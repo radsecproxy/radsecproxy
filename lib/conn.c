@@ -207,7 +207,7 @@ _rcb (struct rs_packet *packet, void *user_data)
   assert (pkt);
   assert (pkt->conn);
 
-  pkt->flags |= rs_packet_received_flag;
+  pkt->flags |= RS_PACKET_RECEIVED;
   if (pkt->conn->bev)
     bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
   else
@@ -234,7 +234,7 @@ rs_conn_receive_packet (struct rs_connection *conn,
 
   conn->callbacks.received_cb = _rcb;
   conn->user_data = pkt;
-  pkt->flags &= ~rs_packet_received_flag;
+  pkt->flags &= ~RS_PACKET_RECEIVED;
 
   if (conn->bev)		/* TCP.  */
     {
@@ -267,7 +267,7 @@ rs_conn_receive_packet (struct rs_connection *conn,
 				evutil_gai_strerror (err));
   rs_debug (("%s: event loop done\n", __func__));
 
-  if ((pkt->flags & rs_packet_received_flag) == 0
+  if ((pkt->flags & RS_PACKET_RECEIVED) == 0
       || (req_msg
 	  && packet_verify_response (pkt->conn, pkt, req_msg) != RSE_OK))
     {
