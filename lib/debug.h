@@ -12,8 +12,8 @@
 extern "C" {
 #endif
 
-struct rs_packet;
-void rs_dump_packet (const struct rs_packet *pkt);
+struct rs_message;
+void rs_dump_message (const struct rs_message *pkt);
 int _rs_debug (const char *fmt, ...);
 
 #if defined (DEBUG)

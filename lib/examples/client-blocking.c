@@ -6,7 +6,7 @@
 #include <radsec/radsec.h>
 #include <radsec/request.h>
 #include "err.h"
-#include "debug.h"		/* For rs_dump_packet().  */
+#include "debug.h"		/* For rs_dump_message().  */
 
 #define SECRET "sikrit"
 #define USER_NAME "molgan@PROJECT-MOONSHOT.ORG"
@@ -19,7 +19,7 @@ blocking_client (const char *config_fn, const char *configuration,
   struct rs_context *h = NULL;
   struct rs_connection *conn = NULL;
   struct rs_request *request = NULL;
-  struct rs_packet *req = NULL, *resp = NULL;
+  struct rs_message *req = NULL, *resp = NULL;
   struct rs_error *err = NULL;
   int r;
 
@@ -62,21 +62,21 @@ blocking_client (const char *config_fn, const char *configuration,
     }
   else
     {
-      if (rs_packet_create_authn_request (conn, &req, USER_NAME, USER_PW, SECRET))
+      if (rs_message_create_authn_request (conn, &req, USER_NAME, USER_PW, SECRET))
 	goto cleanup;
-      if (rs_packet_send (req, NULL))
+      if (rs_message_send (req, NULL))
 	goto cleanup;
-      if (rs_conn_receive_packet (conn, req, &resp))
+      if (rs_conn_receive_message (conn, req, &resp))
 	goto cleanup;
     }
 
   if (resp)
     {
-      rs_dump_packet (resp);
-      if (rs_packet_code (resp) == PW_ACCESS_ACCEPT)
+      rs_dump_message (resp);
+      if (rs_message_code (resp) == PW_ACCESS_ACCEPT)
 	printf ("Good auth.\n");
       else
-	printf ("Bad auth: %d\n", rs_packet_code (resp));
+	printf ("Bad auth: %d\n", rs_message_code (resp));
     }
   else
     fprintf (stderr, "%s: no response\n", __func__);
@@ -86,7 +86,7 @@ blocking_client (const char *config_fn, const char *configuration,
   if (err == RSE_OK)
     err = rs_err_conn_pop (conn);
   if (resp)
-    rs_packet_destroy (resp);
+    rs_message_destroy (resp);
   if (request)
     rs_request_destroy (request);
   if (conn)

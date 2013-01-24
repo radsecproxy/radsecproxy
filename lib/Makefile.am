@@ -32,7 +32,7 @@ libradsec_la_SOURCES = \
 	debug.c \
 	err.c \
 	event.c \
-	packet.c \
+	message.c \
 	peer.c \
 	radsec.c \
 	request.c \

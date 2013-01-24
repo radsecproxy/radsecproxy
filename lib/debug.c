@@ -14,13 +14,13 @@
 #include "debug.h"
 
 void
-rs_dump_packet (const struct rs_packet *pkt)
+rs_dump_message (const struct rs_message *msg)
 {
   const RADIUS_PACKET *p = NULL;
 
-  if (!pkt || !pkt->rpkt)
+  if (!msg || !msg->rpkt)
     return;
-  p = pkt->rpkt;
+  p = msg->rpkt;
 
   fprintf (stderr, "\tCode: %u, Identifier: %u, Lenght: %zu\n",
 	   p->code,

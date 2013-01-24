@@ -16,7 +16,7 @@
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 #include "tcp.h"
-#include "packet.h"
+#include "message.h"
 #include "conn.h"
 #include "debug.h"
 #include "event.h"
@@ -25,29 +25,29 @@
 #include <event2/buffer.h>
 #endif
 
-/** Read one RADIUS packet header. Return !0 on error. */
+/** Read one RADIUS message header. Return !0 on error. */
 static int
-_read_header (struct rs_packet *pkt)
+_read_header (struct rs_message *msg)
 {
   size_t n = 0;
 
-  n = bufferevent_read (pkt->conn->bev, pkt->hdr, RS_HEADER_LEN);
+  n = bufferevent_read (msg->conn->bev, msg->hdr, RS_HEADER_LEN);
   if (n == RS_HEADER_LEN)
     {
-      pkt->flags |= RS_PACKET_HEADER_READ;
-      pkt->rpkt->length = (pkt->hdr[2] << 8) + pkt->hdr[3];
-      if (pkt->rpkt->length < 20 || pkt->rpkt->length > RS_MAX_PACKET_LEN)
+      msg->flags |= RS_MESSAGE_HEADER_READ;
+      msg->rpkt->length = (msg->hdr[2] << 8) + msg->hdr[3];
+      if (msg->rpkt->length < 20 || msg->rpkt->length > RS_MAX_PACKET_LEN)
 	{
-	  conn_close (&pkt->conn);
-	  return rs_err_conn_push (pkt->conn, RSE_INVALID_PKT,
-				   "invalid packet length: %d",
-				   pkt->rpkt->length);
+	  conn_close (&msg->conn);
+	  return rs_err_conn_push (msg->conn, RSE_INVALID_MSG,
+				   "invalid message length: %d",
+				   msg->rpkt->length);
 	}
-      memcpy (pkt->rpkt->data, pkt->hdr, RS_HEADER_LEN);
-      bufferevent_setwatermark (pkt->conn->bev, EV_READ,
-				pkt->rpkt->length - RS_HEADER_LEN, 0);
-      rs_debug (("%s: packet header read, total pkt len=%d\n",
-		 __func__, pkt->rpkt->length));
+      memcpy (msg->rpkt->data, msg->hdr, RS_HEADER_LEN);
+      bufferevent_setwatermark (msg->conn->bev, EV_READ,
+				msg->rpkt->length - RS_HEADER_LEN, 0);
+      rs_debug (("%s: message header read, total msg len=%d\n",
+		 __func__, msg->rpkt->length));
     }
   else if (n < 0)
     {
@@ -55,8 +55,8 @@ _read_header (struct rs_packet *pkt)
     }
   else	    /* Error: libevent gave us less than the low watermark. */
     {
-      conn_close (&pkt->conn);
-      return rs_err_conn_push_fl (pkt->conn, RSE_INTERNAL, __FILE__, __LINE__,
+      conn_close (&msg->conn);
+      return rs_err_conn_push_fl (msg->conn, RSE_INTERNAL, __FILE__, __LINE__,
 				  "got %d octets reading header", n);
     }
 
@@ -66,66 +66,66 @@ _read_header (struct rs_packet *pkt)
 /** Read a message, check that it's valid RADIUS and hand it off to
     registered user callback.
 
-    The packet is read from the bufferevent associated with \a pkt and
-    the data is stored in \a pkt->rpkt.
+    The message is read from the bufferevent associated with \a msg and
+    the data is stored in \a msg->rpkt.
 
     Return 0 on success and !0 on failure. */
 static int
-_read_packet (struct rs_packet *pkt)
+_read_message (struct rs_message *msg)
 {
   size_t n = 0;
   int err;
 
-  rs_debug (("%s: trying to read %d octets of packet data\n", __func__,
-	     pkt->rpkt->length - RS_HEADER_LEN));
+  rs_debug (("%s: trying to read %d octets of message data\n", __func__,
+	     msg->rpkt->length - RS_HEADER_LEN));
 
-  n = bufferevent_read (pkt->conn->bev,
-			pkt->rpkt->data + RS_HEADER_LEN,
-			pkt->rpkt->length - RS_HEADER_LEN);
+  n = bufferevent_read (msg->conn->bev,
+			msg->rpkt->data + RS_HEADER_LEN,
+			msg->rpkt->length - RS_HEADER_LEN);
 
-  rs_debug (("%s: read %ld octets of packet data\n", __func__, n));
+  rs_debug (("%s: read %ld octets of message data\n", __func__, n));
 
-  if (n == pkt->rpkt->length - RS_HEADER_LEN)
+  if (n == msg->rpkt->length - RS_HEADER_LEN)
     {
-      bufferevent_disable (pkt->conn->bev, EV_READ);
-      rs_debug (("%s: complete packet read\n", __func__));
-      pkt->flags &= ~RS_PACKET_HEADER_READ;
-      memset (pkt->hdr, 0, sizeof(*pkt->hdr));
+      bufferevent_disable (msg->conn->bev, EV_READ);
+      rs_debug (("%s: complete message read\n", __func__));
+      msg->flags &= ~RS_MESSAGE_HEADER_READ;
+      memset (msg->hdr, 0, sizeof(*msg->hdr));
 
-      /* Checks done by rad_packet_ok:
+      /* Checks done by nr_packet_ok:
 	 - lenghts (FIXME: checks really ok for tcp?)
 	 - invalid code field
 	 - attribute lengths >= 2
 	 - attribute sizes adding up correctly  */
-      err = nr_packet_ok (pkt->rpkt);
+      err = nr_packet_ok (msg->rpkt);
       if (err != RSE_OK)
 	{
-	  conn_close (&pkt->conn);
-	  return rs_err_conn_push_fl (pkt->conn, err, __FILE__, __LINE__,
-				      "invalid packet");
+	  conn_close (&msg->conn);
+	  return rs_err_conn_push_fl (msg->conn, err, __FILE__, __LINE__,
+				      "invalid message");
 	}
 
 #if defined (DEBUG)
       /* Find out what happens if there's data left in the buffer.  */
       {
 	size_t rest = 0;
-	rest = evbuffer_get_length (bufferevent_get_input (pkt->conn->bev));
+	rest = evbuffer_get_length (bufferevent_get_input (msg->conn->bev));
 	if (rest)
 	  rs_debug (("%s: returning with %d octets left in buffer\n", __func__,
 		     rest));
       }
 #endif
 
-      /* Hand over message to user.  This changes ownership of pkt.
+      /* Hand over message to user.  This changes ownership of msg.
 	 Don't touch it afterwards -- it might have been freed.  */
-      if (pkt->conn->callbacks.received_cb)
-	pkt->conn->callbacks.received_cb (pkt, pkt->conn->user_data);
+      if (msg->conn->callbacks.received_cb)
+	msg->conn->callbacks.received_cb (msg, msg->conn->user_data);
     }
   else if (n < 0)		/* Buffer frozen.  */
-    rs_debug (("%s: buffer frozen when reading packet\n", __func__));
-  else				/* Short packet.  */
+    rs_debug (("%s: buffer frozen when reading message\n", __func__));
+  else				/* Short message.  */
     rs_debug (("%s: waiting for another %d octets\n", __func__,
-	       pkt->rpkt->length - RS_HEADER_LEN - n));
+	       msg->rpkt->length - RS_HEADER_LEN - n));
 
   return 0;
 }
@@ -133,21 +133,21 @@ _read_packet (struct rs_packet *pkt)
 /* The read callback for TCP.
 
    Read exactly one RADIUS message from BEV and store it in struct
-   rs_packet passed in USER_DATA.
+   rs_message passed in USER_DATA.
 
    Inform upper layer about successful reception of received RADIUS
    message by invoking conn->callbacks.recevied_cb(), if !NULL.  */
 void
 tcp_read_cb (struct bufferevent *bev, void *user_data)
 {
-  struct rs_packet *pkt = (struct rs_packet *) user_data;
+  struct rs_message *msg = (struct rs_message *) user_data;
 
-  assert (pkt);
-  assert (pkt->conn);
-  assert (pkt->rpkt);
+  assert (msg);
+  assert (msg->conn);
+  assert (msg->rpkt);
 
-  pkt->rpkt->sockfd = pkt->conn->fd;
-  pkt->rpkt->vps = NULL;        /* FIXME: can this be done when initializing pkt? */
+  msg->rpkt->sockfd = msg->conn->fd;
+  msg->rpkt->vps = NULL;        /* FIXME: can this be done when initializing msg? */
 
   /* Read a message header if not already read, return if that
      fails. Read a message and have it dispatched to the user
@@ -155,16 +155,16 @@ tcp_read_cb (struct bufferevent *bev, void *user_data)
 
      Room for improvement: Peek inside buffer (evbuffer_copyout()) to
      avoid the extra copying. */
-  if ((pkt->flags & RS_PACKET_HEADER_READ) == 0)
-    if (_read_header (pkt))
+  if ((msg->flags & RS_MESSAGE_HEADER_READ) == 0)
+    if (_read_header (msg))
       return;			/* Error.  */
-  _read_packet (pkt);
+  _read_message (msg);
 }
 
 void
 tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
 {
-  struct rs_packet *pkt = (struct rs_packet *) user_data;
+  struct rs_message *msg = (struct rs_message *) user_data;
   struct rs_connection *conn = NULL;
   int sockerr = 0;
 #if defined (RS_ENABLE_TLS)
@@ -174,11 +174,11 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
   struct rs_peer *p = NULL;
 #endif
 
-  assert (pkt);
-  assert (pkt->conn);
-  conn = pkt->conn;
+  assert (msg);
+  assert (msg->conn);
+  conn = msg->conn;
 #if defined (DEBUG)
-  assert (pkt->conn->active_peer);
+  assert (msg->conn->active_peer);
   p = conn->active_peer;
 #endif
 
@@ -187,7 +187,7 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
     {
       if (conn->tev)
 	evtimer_del (conn->tev); /* Cancel connect timer.  */
-      if (event_on_connect (conn, pkt))
+      if (event_on_connect (conn, msg))
         {
           event_on_disconnect (conn);
           event_loopbreak (conn);
@@ -245,13 +245,13 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
 void
 tcp_write_cb (struct bufferevent *bev, void *ctx)
 {
-  struct rs_packet *pkt = (struct rs_packet *) ctx;
+  struct rs_message *msg = (struct rs_message *) ctx;
 
-  assert (pkt);
-  assert (pkt->conn);
+  assert (msg);
+  assert (msg->conn);
 
-  if (pkt->conn->callbacks.sent_cb)
-    pkt->conn->callbacks.sent_cb (pkt->conn->user_data);
+  if (msg->conn->callbacks.sent_cb)
+    msg->conn->callbacks.sent_cb (msg->conn->user_data);
 }
 
 int

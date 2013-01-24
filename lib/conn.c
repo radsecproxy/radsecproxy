@@ -16,7 +16,7 @@
 #include "debug.h"
 #include "conn.h"
 #include "event.h"
-#include "packet.h"
+#include "message.h"
 #include "tcp.h"
 
 int
@@ -201,85 +201,85 @@ int rs_conn_fd (struct rs_connection *conn)
 }
 
 static void
-_rcb (struct rs_packet *packet, void *user_data)
+_rcb (struct rs_message *message, void *user_data)
 {
-  struct rs_packet *pkt = (struct rs_packet *) user_data;
-  assert (pkt);
-  assert (pkt->conn);
+  struct rs_message *msg = (struct rs_message *) user_data;
+  assert (msg);
+  assert (msg->conn);
 
-  pkt->flags |= RS_PACKET_RECEIVED;
-  if (pkt->conn->bev)
-    bufferevent_disable (pkt->conn->bev, EV_WRITE|EV_READ);
+  msg->flags |= RS_MESSAGE_RECEIVED;
+  if (msg->conn->bev)
+    bufferevent_disable (msg->conn->bev, EV_WRITE|EV_READ);
   else
-    event_del (pkt->conn->rev);
+    event_del (msg->conn->rev);
 }
 
 int
-rs_conn_receive_packet (struct rs_connection *conn,
-		        struct rs_packet *req_msg,
-		        struct rs_packet **pkt_out)
+rs_conn_receive_message (struct rs_connection *conn,
+                         struct rs_message *req_msg,
+                         struct rs_message **msg_out)
 {
   int err = 0;
-  struct rs_packet *pkt = NULL;
+  struct rs_message *msg = NULL;
 
   assert (conn);
   assert (conn->realm);
   assert (!conn_user_dispatch_p (conn)); /* Blocking mode only.  */
 
-  if (rs_packet_create (conn, &pkt))
+  if (rs_message_create (conn, &msg))
     return -1;
 
   assert (conn->evb);
   assert (conn->fd >= 0);
 
   conn->callbacks.received_cb = _rcb;
-  conn->user_data = pkt;
-  pkt->flags &= ~RS_PACKET_RECEIVED;
+  conn->user_data = msg;
+  msg->flags &= ~RS_MESSAGE_RECEIVED;
 
   if (conn->bev)		/* TCP.  */
     {
       bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
-      bufferevent_setcb (conn->bev, tcp_read_cb, NULL, tcp_event_cb, pkt);
+      bufferevent_setcb (conn->bev, tcp_read_cb, NULL, tcp_event_cb, msg);
       bufferevent_enable (conn->bev, EV_READ);
     }
   else				/* UDP.  */
     {
-      /* Put fresh packet in user_data for the callback and enable the
+      /* Put fresh message in user_data for the callback and enable the
 	 read event.  */
       event_assign (conn->rev, conn->evb, event_get_fd (conn->rev),
-		    EV_READ, event_get_callback (conn->rev), pkt);
+		    EV_READ, event_get_callback (conn->rev), msg);
       err = event_add (conn->rev, NULL);
       if (err < 0)
-	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+	return rs_err_conn_push_fl (msg->conn, RSE_EVENT, __FILE__, __LINE__,
 				    "event_add: %s",
 				    evutil_gai_strerror (err));
 
       /* Activate retransmission timer.  */
-      conn_activate_timeout (pkt->conn);
+      conn_activate_timeout (msg->conn);
     }
 
   rs_debug (("%s: entering event loop\n", __func__));
   err = event_base_dispatch (conn->evb);
   conn->callbacks.received_cb = NULL;
   if (err < 0)
-    return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+    return rs_err_conn_push_fl (msg->conn, RSE_EVENT, __FILE__, __LINE__,
 				"event_base_dispatch: %s",
 				evutil_gai_strerror (err));
   rs_debug (("%s: event loop done\n", __func__));
 
-  if ((pkt->flags & RS_PACKET_RECEIVED) == 0
+  if ((msg->flags & RS_MESSAGE_RECEIVED) == 0
       || (req_msg
-	  && packet_verify_response (pkt->conn, pkt, req_msg) != RSE_OK))
+	  && message_verify_response (msg->conn, msg, req_msg) != RSE_OK))
     {
-      if (rs_err_conn_peek_code (pkt->conn) == RSE_OK)
-        /* No packet and no error on the stack _should_ mean that the
+      if (rs_err_conn_peek_code (msg->conn) == RSE_OK)
+        /* No message and no error on the stack _should_ mean that the
            server hung up on us.  */
-        rs_err_conn_push (pkt->conn, RSE_DISCO, "no response");
+        rs_err_conn_push (msg->conn, RSE_DISCO, "no response");
       return rs_err_conn_peek_code (conn);
     }
 
-  if (pkt_out)
-    *pkt_out = pkt;
+  if (msg_out)
+    *msg_out = msg;
   return RSE_OK;
 }
 

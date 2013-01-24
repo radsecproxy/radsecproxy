@@ -25,7 +25,7 @@
 #include "err.h"
 #include "radsec.h"
 #include "event.h"
-#include "packet.h"
+#include "message.h"
 #include "conn.h"
 #include "debug.h"
 
@@ -241,7 +241,7 @@ event_on_disconnect (struct rs_connection *conn)
 
 /** Internal connect event returning 0 on success or -1 on error.  */
 int
-event_on_connect (struct rs_connection *conn, struct rs_packet *pkt)
+event_on_connect (struct rs_connection *conn, struct rs_message *msg)
 {
   assert (!conn->is_connecting);
 
@@ -261,8 +261,8 @@ event_on_connect (struct rs_connection *conn, struct rs_packet *pkt)
   if (conn->callbacks.connected_cb)
     conn->callbacks.connected_cb (conn->user_data);
 
-  if (pkt)
-    packet_do_send (pkt);
+  if (msg)
+    message_do_send (msg);
 
   return 0;
 }

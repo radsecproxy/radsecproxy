@@ -12,7 +12,7 @@
 #include <radsec/radsec-impl.h>
 #include "conn.h"
 #include "debug.h"
-#include "packet.h"
+#include "message.h"
 
 #if defined (DEBUG)
 #include <netdb.h>
@@ -21,9 +21,9 @@
 #endif
 
 int
-packet_verify_response (struct rs_connection *conn,
-			struct rs_packet *response,
-			struct rs_packet *request)
+message_verify_response (struct rs_connection *conn,
+                         struct rs_message *response,
+                         struct rs_message *request)
 {
   int err;
 
@@ -65,59 +65,59 @@ packet_verify_response (struct rs_connection *conn,
 /* Badly named function for preparing a RADIUS message and queue it.
    FIXME: Rename.  */
 int
-packet_do_send (struct rs_packet *pkt)
+message_do_send (struct rs_message *msg)
 {
   int err;
 
-  assert (pkt);
-  assert (pkt->conn);
-  assert (pkt->conn->active_peer);
-  assert (pkt->conn->active_peer->secret);
-  assert (pkt->rpkt);
+  assert (msg);
+  assert (msg->conn);
+  assert (msg->conn->active_peer);
+  assert (msg->conn->active_peer->secret);
+  assert (msg->rpkt);
 
-  pkt->rpkt->secret = pkt->conn->active_peer->secret;
-  pkt->rpkt->sizeof_secret = strlen (pkt->rpkt->secret);
+  msg->rpkt->secret = msg->conn->active_peer->secret;
+  msg->rpkt->sizeof_secret = strlen (msg->rpkt->secret);
 
   /* Encode message.  */
-  err = nr_packet_encode (pkt->rpkt, NULL);
+  err = nr_packet_encode (msg->rpkt, NULL);
   if (err < 0)
-    return rs_err_conn_push_fl (pkt->conn, -err, __FILE__, __LINE__,
+    return rs_err_conn_push_fl (msg->conn, -err, __FILE__, __LINE__,
 				"nr_packet_encode");
   /* Sign message.  */
-  err = nr_packet_sign (pkt->rpkt, NULL);
+  err = nr_packet_sign (msg->rpkt, NULL);
   if (err < 0)
-    return rs_err_conn_push_fl (pkt->conn, -err, __FILE__, __LINE__,
+    return rs_err_conn_push_fl (msg->conn, -err, __FILE__, __LINE__,
 				"nr_packet_sign");
 #if defined (DEBUG)
   {
     char host[80], serv[80];
 
-    getnameinfo (pkt->conn->active_peer->addr_cache->ai_addr,
-		 pkt->conn->active_peer->addr_cache->ai_addrlen,
+    getnameinfo (msg->conn->active_peer->addr_cache->ai_addr,
+		 msg->conn->active_peer->addr_cache->ai_addrlen,
 		 host, sizeof(host), serv, sizeof(serv),
 		 0 /* NI_NUMERICHOST|NI_NUMERICSERV*/);
     rs_debug (("%s: about to send this to %s:%s:\n", __func__, host, serv));
-    rs_dump_packet (pkt);
+    rs_dump_message (msg);
   }
 #endif
 
   /* Put message in output buffer.  */
-  if (pkt->conn->bev)		/* TCP.  */
+  if (msg->conn->bev)		/* TCP.  */
     {
-      int err = bufferevent_write (pkt->conn->bev, pkt->rpkt->data,
-				   pkt->rpkt->length);
+      int err = bufferevent_write (msg->conn->bev, msg->rpkt->data,
+				   msg->rpkt->length);
       if (err < 0)
-	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+	return rs_err_conn_push_fl (msg->conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_write: %s",
 				    evutil_gai_strerror (err));
     }
   else				/* UDP.  */
     {
-      struct rs_packet **pp = &pkt->conn->out_queue;
+      struct rs_message **pp = &msg->conn->out_queue;
 
       while (*pp && (*pp)->next)
 	*pp = (*pp)->next;
-      *pp = pkt;
+      *pp = msg;
     }
 
   return RSE_OK;
@@ -125,13 +125,13 @@ packet_do_send (struct rs_packet *pkt)
 
 /* Public functions.  */
 int
-rs_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
+rs_message_create (struct rs_connection *conn, struct rs_message **msg_out)
 {
-  struct rs_packet *p;
+  struct rs_message *p;
   RADIUS_PACKET *rpkt;
   int err;
 
-  *pkt_out = NULL;
+  *msg_out = NULL;
 
   rpkt = rs_malloc (conn->ctx, sizeof(*rpkt) + RS_MAX_PACKET_LEN);
   if (rpkt == NULL)
@@ -153,7 +153,7 @@ rs_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
   if (err < 0)
     return rs_err_conn_push (conn, -err, __func__);
 
-  p = (struct rs_packet *) rs_calloc (conn->ctx, 1, sizeof (*p));
+  p = (struct rs_message *) rs_calloc (conn->ctx, 1, sizeof (*p));
   if (p == NULL)
     {
       rs_free (conn->ctx, rpkt);
@@ -162,37 +162,37 @@ rs_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
   p->conn = conn;
   p->rpkt = rpkt;
 
-  *pkt_out = p;
+  *msg_out = p;
   return RSE_OK;
 }
 
 int
-rs_packet_create_authn_request (struct rs_connection *conn,
-				struct rs_packet **pkt_out,
-				const char *user_name,
-                                const char *user_pw,
-                                const char *secret)
+rs_message_create_authn_request (struct rs_connection *conn,
+                                 struct rs_message **msg_out,
+                                 const char *user_name,
+                                 const char *user_pw,
+                                 const char *secret)
 {
-  struct rs_packet *pkt;
+  struct rs_message *msg;
   int err;
 
-  if (rs_packet_create (conn, pkt_out))
+  if (rs_message_create (conn, msg_out))
     return -1;
 
-  pkt = *pkt_out;
-  pkt->rpkt->code = PW_ACCESS_REQUEST;
+  msg = *msg_out;
+  msg->rpkt->code = PW_ACCESS_REQUEST;
 
   if (user_name)
     {
-      err = rs_packet_append_avp (pkt, PW_USER_NAME, 0, user_name, 0);
+      err = rs_message_append_avp (msg, PW_USER_NAME, 0, user_name, 0);
       if (err)
 	return err;
     }
 
   if (user_pw)
     {
-      pkt->rpkt->secret = secret;
-      err = rs_packet_append_avp (pkt, PW_USER_PASSWORD, 0, user_pw, 0);
+      msg->rpkt->secret = secret;
+      err = rs_message_append_avp (msg, PW_USER_PASSWORD, 0, user_pw, 0);
       if (err)
 	return err;
     }
@@ -201,65 +201,65 @@ rs_packet_create_authn_request (struct rs_connection *conn,
 }
 
 void
-rs_packet_destroy (struct rs_packet *pkt)
+rs_message_destroy (struct rs_message *msg)
 {
-  assert (pkt);
-  assert (pkt->conn);
-  assert (pkt->conn->ctx);
+  assert (msg);
+  assert (msg->conn);
+  assert (msg->conn->ctx);
 
-  rs_avp_free (&pkt->rpkt->vps);
-  rs_free (pkt->conn->ctx, pkt->rpkt);
-  rs_free (pkt->conn->ctx, pkt);
+  rs_avp_free (&msg->rpkt->vps);
+  rs_free (msg->conn->ctx, msg->rpkt);
+  rs_free (msg->conn->ctx, msg);
 }
 
 int
-rs_packet_append_avp (struct rs_packet *pkt,
-                      unsigned int attr, unsigned int vendor,
-                      const void *data, size_t data_len)
+rs_message_append_avp (struct rs_message *msg,
+                       unsigned int attr, unsigned int vendor,
+                       const void *data, size_t data_len)
 {
   const DICT_ATTR *da;
   int err;
 
-  assert (pkt);
+  assert (msg);
 
   da = nr_dict_attr_byvalue (attr, vendor);
   if (da == NULL)
     return RSE_ATTR_TYPE_UNKNOWN;
 
-  err = nr_packet_attr_append (pkt->rpkt, NULL, da, data, data_len);
+  err = nr_packet_attr_append (msg->rpkt, NULL, da, data, data_len);
   if (err < 0)
-    return rs_err_conn_push (pkt->conn, -err, __func__);
+    return rs_err_conn_push (msg->conn, -err, __func__);
 
   return RSE_OK;
 }
 
 void
-rs_packet_avps (struct rs_packet *pkt, rs_avp ***vps)
+rs_message_avps (struct rs_message *msg, rs_avp ***vps)
 {
-  assert (pkt);
-  *vps = &pkt->rpkt->vps;
+  assert (msg);
+  *vps = &msg->rpkt->vps;
 }
 
 unsigned int
-rs_packet_code (struct rs_packet *pkt)
+rs_message_code (struct rs_message *msg)
 {
-  assert (pkt);
-  return pkt->rpkt->code;
+  assert (msg);
+  return msg->rpkt->code;
 }
 
 rs_const_avp *
-rs_packet_find_avp (struct rs_packet *pkt, unsigned int attr, unsigned int vendor)
+rs_message_find_avp (struct rs_message *msg, unsigned int attr, unsigned int vendor)
 {
-  assert (pkt);
-  return rs_avp_find_const (pkt->rpkt->vps, attr, vendor);
+  assert (msg);
+  return rs_avp_find_const (msg->rpkt->vps, attr, vendor);
 }
 
 int
-rs_packet_set_id (struct rs_packet *pkt, int id)
+rs_message_set_id (struct rs_message *msg, int id)
 {
-  int old = pkt->rpkt->id;
+  int old = msg->rpkt->id;
 
-  pkt->rpkt->id = id;
+  msg->rpkt->id = id;
 
   return old;
 }
