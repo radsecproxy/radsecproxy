@@ -116,9 +116,9 @@ struct rs_connection {
 };
 
 enum rs_packet_flags {
-    rs_packet_hdr_read_flag,
-    rs_packet_received_flag,
-    rs_packet_sent_flag,
+    RS_PACKET_HEADER_READ,
+    RS_PACKET_RECEIVED,
+    RS_PACKET_SENT,
 };
 
 struct radius_packet;
