@@ -41,7 +41,7 @@ rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
 }
 
 void
-rs_request_add_reqpkt (struct rs_request *req, struct rs_packet *req_msg)
+rs_request_add_reqmsg (struct rs_request *req, struct rs_message *req_msg)
 {
   assert (req);
   req->req_msg = req_msg;
@@ -60,7 +60,7 @@ rs_request_create_authn (struct rs_connection *conn,
   if (rs_request_create (conn, &req))
     return -1;
 
-  if (rs_packet_create_authn_request (conn, &req->req_msg, user_name, user_pw, secret))
+  if (rs_message_create_authn_request (conn, &req->req_msg, user_name, user_pw, secret))
     return -1;
 
   if (req_out)
@@ -76,7 +76,7 @@ rs_request_destroy (struct rs_request *request)
   assert (request->conn->ctx);
 
   if (request->req_msg)
-    rs_packet_destroy (request->req_msg);
+    rs_message_destroy (request->req_msg);
   rs_free (request->conn->ctx, request);
 }
 
@@ -89,7 +89,7 @@ _rand_rt (struct timeval *res, uint32_t rtprev, uint32_t factor)
 }
 
 int
-rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
+rs_request_send (struct rs_request *request, struct rs_message **resp_msg)
 {
   int r = 0;
   struct rs_connection *conn = NULL;
@@ -112,12 +112,12 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
     {
       rs_conn_set_timeout (conn, &rt);
 
-      r = rs_packet_send (request->req_msg, NULL);
+      r = rs_message_send (request->req_msg, NULL);
       if (r == RSE_OK)
 	{
-	  r = rs_conn_receive_packet (request->conn,
-				      request->req_msg,
-				      resp_msg);
+	  r = rs_conn_receive_message (request->conn,
+                                       request->req_msg,
+                                       resp_msg);
 	  if (r == RSE_OK)
 	    break;		/* Success.  */
 
@@ -149,7 +149,7 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
   return r;
 }
 
-struct rs_packet *
+struct rs_message *
 rs_request_get_reqmsg (const struct rs_request *request)
 {
   assert (request);

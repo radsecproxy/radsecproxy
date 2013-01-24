@@ -22,32 +22,32 @@ static int
 _send (struct rs_connection *conn, int fd)
 {
   ssize_t r = 0;
-  struct rs_packet *pkt = conn->out_queue;
+  struct rs_message *msg = conn->out_queue;
 
-  assert (pkt->rpkt);
-  assert (pkt->rpkt->data);
+  assert (msg->rpkt);
+  assert (msg->rpkt->data);
 
   /* Send.  */
-  r = compat_send (fd, pkt->rpkt->data, pkt->rpkt->length, 0);
+  r = compat_send (fd, msg->rpkt->data, msg->rpkt->length, 0);
   if (r == -1)
     {
-      int sockerr = evutil_socket_geterror (pkt->conn->fd);
+      int sockerr = evutil_socket_geterror (msg->conn->fd);
       if (sockerr != EAGAIN)
-	return rs_err_conn_push_fl (pkt->conn, RSE_SOCKERR, __FILE__, __LINE__,
+	return rs_err_conn_push_fl (msg->conn, RSE_SOCKERR, __FILE__, __LINE__,
 				    "%d: send: %d (%s)", fd, sockerr,
 				    evutil_socket_error_to_string (sockerr));
     }
 
-  assert (r == pkt->rpkt->length);
-  /* Unlink the packet.  */
-  conn->out_queue = pkt->next;
+  assert (r == msg->rpkt->length);
+  /* Unlink the message.  */
+  conn->out_queue = msg->next;
 
-  /* If there are more packets in queue, add the write event again.  */
-  if (pkt->conn->out_queue)
+  /* If there are more messages in queue, add the write event again.  */
+  if (msg->conn->out_queue)
     {
-      r = event_add (pkt->conn->wev, NULL);
+      r = event_add (msg->conn->wev, NULL);
       if (r < 0)
-	return rs_err_conn_push_fl (pkt->conn, RSE_EVENT, __FILE__, __LINE__,
+	return rs_err_conn_push_fl (msg->conn, RSE_EVENT, __FILE__, __LINE__,
 				    "event_add: %s", evutil_gai_strerror (r));
       rs_debug (("%s: re-adding the write event\n", __func__));
     }
@@ -57,10 +57,10 @@ _send (struct rs_connection *conn, int fd)
 
 /* Callback for conn->wev and conn->rev.  FIXME: Rename.
 
-   USER_DATA contains connection for EV_READ and a packet for
+   USER_DATA contains connection for EV_READ and a message for
    EV_WRITE.  This is because we don't have a connect/establish entry
    point at the user level -- send implies connect so when we're
-   connected we need the packet to send.  */
+   connected we need the message to send.  */
 static void
 _evcb (evutil_socket_t fd, short what, void *user_data)
 {
@@ -76,17 +76,17 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
     {
       /* Read a single UDP packet and stick it in USER_DATA.  */
       /* TODO: Verify that unsolicited packets are dropped.  */
-      struct rs_packet *pkt = (struct rs_packet *) user_data;
+      struct rs_message *msg = (struct rs_message *) user_data;
       ssize_t r = 0;
 
-      assert (pkt);
-      assert (pkt->conn);
-      assert (pkt->rpkt->data);
+      assert (msg);
+      assert (msg->conn);
+      assert (msg->rpkt->data);
 
-      r = compat_recv (fd, pkt->rpkt->data, RS_MAX_PACKET_LEN, MSG_TRUNC);
+      r = compat_recv (fd, msg->rpkt->data, RS_MAX_PACKET_LEN, MSG_TRUNC);
       if (r == -1)
 	{
-	  int sockerr = evutil_socket_geterror (pkt->conn->fd);
+	  int sockerr = evutil_socket_geterror (msg->conn->fd);
 	  if (sockerr == EAGAIN)
 	    {
 	      /* FIXME: Really shouldn't happen since we've been told
@@ -96,46 +96,46 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 	    }
 
 	  /* Hard error.  */
-	  rs_err_conn_push_fl (pkt->conn, RSE_SOCKERR, __FILE__, __LINE__,
+	  rs_err_conn_push_fl (msg->conn, RSE_SOCKERR, __FILE__, __LINE__,
 			       "%d: recv: %d (%s)", fd, sockerr,
 			       evutil_socket_error_to_string (sockerr));
-	  event_del (pkt->conn->tev);
+	  event_del (msg->conn->tev);
 	  return;
 	}
-      event_del (pkt->conn->tev);
+      event_del (msg->conn->tev);
       if (r < 20 || r > RS_MAX_PACKET_LEN)	/* Short or long packet.  */
 	{
-	  rs_err_conn_push (pkt->conn, RSE_INVALID_PKT,
-			    "invalid packet length: %d",
-			    pkt->rpkt->length);
+	  rs_err_conn_push (msg->conn, RSE_INVALID_MSG,
+			    "invalid message length: %d",
+			    msg->rpkt->length);
 	  return;
 	}
-      pkt->rpkt->length = (pkt->rpkt->data[2] << 8) + pkt->rpkt->data[3];
-      err = nr_packet_ok (pkt->rpkt);
+      msg->rpkt->length = (msg->rpkt->data[2] << 8) + msg->rpkt->data[3];
+      err = nr_packet_ok (msg->rpkt);
       if (err)
 	{
-	  rs_err_conn_push_fl (pkt->conn, err, __FILE__, __LINE__,
-			       "invalid packet");
+	  rs_err_conn_push_fl (msg->conn, err, __FILE__, __LINE__,
+			       "invalid message");
 	  return;
 	}
-      /* Hand over message to user.  This changes ownership of pkt.
+      /* Hand over message to user.  This changes ownership of msg.
 	 Don't touch it afterwards -- it might have been freed.  */
-      if (pkt->conn->callbacks.received_cb)
-	pkt->conn->callbacks.received_cb (pkt, pkt->conn->user_data);
+      if (msg->conn->callbacks.received_cb)
+	msg->conn->callbacks.received_cb (msg, msg->conn->user_data);
     }
   else if (what & EV_WRITE)
     {
-      struct rs_packet *pkt = (struct rs_packet *) user_data;
-      assert (pkt);
-      assert (pkt->conn);
+      struct rs_message *msg = (struct rs_message *) user_data;
+      assert (msg);
+      assert (msg->conn);
 
-      if (!pkt->conn->is_connected)
-	event_on_connect (pkt->conn, pkt);
+      if (!msg->conn->is_connected)
+	event_on_connect (msg->conn, msg);
 
-      if (pkt->conn->out_queue)
-	if (_send (pkt->conn, fd) == RSE_OK)
-	  if (pkt->conn->callbacks.sent_cb)
-	    pkt->conn->callbacks.sent_cb (pkt->conn->user_data);
+      if (msg->conn->out_queue)
+	if (_send (msg->conn, fd) == RSE_OK)
+	  if (msg->conn->callbacks.sent_cb)
+	    msg->conn->callbacks.sent_cb (msg->conn->user_data);
     }
 
 #if defined (DEBUG)
@@ -145,7 +145,7 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 }
 
 int
-udp_init (struct rs_connection *conn, struct rs_packet *pkt)
+udp_init (struct rs_connection *conn, struct rs_message *msg)
 {
   assert (!conn->bev);
 

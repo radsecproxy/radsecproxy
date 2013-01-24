@@ -38,7 +38,7 @@ enum rs_error_code {
     RSE_BADAUTH = 12,
     RSE_INTERNAL = 13,
     RSE_SSLERR = 14,		/* OpenSSL error.  */
-    RSE_INVALID_PKT = 15,
+    RSE_INVALID_MSG = 15,
     RSE_TIMEOUT_CONN = 16,	/* Connection timeout.  */
     RSE_INVAL = 17,		/* Invalid argument.  */
     RSE_TIMEOUT_IO = 18,	/* I/O timeout.  */
@@ -118,10 +118,25 @@ typedef enum rs_attr_type_t {
 extern "C" {
 #endif
 
+/* Backwards compatible with 0.0.2. */
+#define RSE_INVALID_PKT RSE_INVALID_MSG
+#define rs_packet rs_message
+#define rs_conn_packet_received_cb rs_conn_message_received_cb
+#define rs_conn_packet_sent_cb rs_conn_message_sent_cb
+#define rs_conn_receive_packet rs_conn_receive_message
+#define rs_dump_packet rs_dump_message
+#define rs_packet_append_avp rs_message_append_avp
+#define rs_packet_avps rs_message_avps
+#define rs_packet_code rs_message_code
+#define rs_packet_create rs_message_create
+#define rs_packet_create_authn_request rs_message_create_authn_request
+#define rs_packet_destroy rs_message_destroy
+#define rs_packet_send rs_message_send
+
 /* Data types.  */
 struct rs_context;		/* radsec-impl.h */
 struct rs_connection;		/* radsec-impl.h */
-struct rs_packet;		/* radsec-impl.h */
+struct rs_message;		/* radsec-impl.h */
 struct rs_conn;			/* radsec-impl.h */
 struct rs_error;		/* radsec-impl.h */
 struct rs_peer;			/* radsec-impl.h */
@@ -142,18 +157,18 @@ struct rs_alloc_scheme {
 
 typedef void (*rs_conn_connected_cb) (void *user_data /* FIXME: peer? */ );
 typedef void (*rs_conn_disconnected_cb) (void *user_data /* FIXME: reason? */ );
-typedef void (*rs_conn_packet_received_cb) (struct rs_packet *packet,
-					    void *user_data);
-typedef void (*rs_conn_packet_sent_cb) (void *user_data);
+typedef void (*rs_conn_message_received_cb) (struct rs_message *message,
+                                             void *user_data);
+typedef void (*rs_conn_message_sent_cb) (void *user_data);
 struct rs_conn_callbacks {
     /** Callback invoked when the connection has been established.  */
     rs_conn_connected_cb connected_cb;
     /** Callback invoked when the connection has been torn down.  */
     rs_conn_disconnected_cb disconnected_cb;
-    /** Callback invoked when a packet was received.  */
-    rs_conn_packet_received_cb received_cb;
-    /** Callback invoked when a packet was successfully sent.  */
-    rs_conn_packet_sent_cb sent_cb;
+    /** Callback invoked when a message was received.  */
+    rs_conn_message_received_cb received_cb;
+    /** Callback invoked when a message was successfully sent.  */
+    rs_conn_message_sent_cb sent_cb;
 };
 
 typedef struct value_pair rs_avp;
@@ -199,9 +214,9 @@ int rs_context_read_config(struct rs_context *ctx, const char *config_file);
 /** Create a connection.  \a conn is the address of a pointer to an \a
     rs_connection, the output.  Free the connection using \a
     rs_conn_destroy.  Note that a connection must not be freed before
-    all packets associated with the connection have been freed.  A
-    packet is associated with a connection when it's created (\a
-    rs_packet_create) or received (\a rs_conn_receive_packet).
+    all messages associated with the connection have been freed.  A
+    message is associated with a connection when it's created
+    (\a rs_message_create) or received (\a rs_conn_receive_message).
 
     If \a config is not NULL it should be the name of a realm found in
     a config file that has already been read using \a rs_context_read_config.
@@ -224,10 +239,10 @@ int rs_conn_add_listener(struct rs_connection *conn,
 int rs_conn_disconnect (struct rs_connection *conn);
 
 /** Disconnect and free memory allocated for connection \a conn.  Note
-    that a connection must not be freed before all packets associated
-    with the connection have been freed.  A packet is associated with
-    a connection when it's created (\a rs_packet_create) or received
-    (\a rs_conn_receive_packet).  \return RSE_OK (0) on success, !0 *
+    that a connection must not be freed before all messages associated
+    with the connection have been freed.  A message is associated with
+    a connection when it's created (\a rs_message_create) or received
+    (\a rs_conn_receive_message).  \return RSE_OK (0) on success, !0 *
     on error.  On error, errno is set appropriately. */
 int rs_conn_destroy(struct rs_connection *conn);
 
@@ -262,15 +277,15 @@ int rs_conn_get_current_peer(struct rs_connection *conn,
 
     If \a req_msg is not NULL, a successfully received RADIUS message
     is verified against it.  If \a pkt_out is not NULL it will upon
-    return contain a pointer to an \a rs_packet containing the new
+    return contain a pointer to an \a rs_message containing the new
     message.
 
     \return On error or if the connect (TCP only) or read times out,
     \a pkt_out will not be changed and one or more errors are pushed
     on \a conn (available through \a rs_err_conn_pop).  */
-int rs_conn_receive_packet(struct rs_connection *conn,
-			   struct rs_packet *request,
-			   struct rs_packet **pkt_out);
+int rs_conn_receive_message(struct rs_connection *conn,
+                            struct rs_message *request,
+                            struct rs_message **pkt_out);
 
 /** Run the dispatcher for the event base associated with \a conn. A
  * wrapper around event_base_dispatch() for not having to hand out the
@@ -301,58 +316,59 @@ void rs_peer_set_timeout(struct rs_peer *peer, int timeout);
 void rs_peer_set_retries(struct rs_peer *peer, int retries);
 
 /************/
-/* Packet.  */
+/* Message.  */
 /************/
-/** Create a packet associated with connection \a conn.  */
-int rs_packet_create(struct rs_connection *conn, struct rs_packet **pkt_out);
+/** Create a message associated with connection \a conn.  */
+int rs_message_create(struct rs_connection *conn, struct rs_message **pkt_out);
 
-/** Free all memory allocated for packet \a pkt.  */
-void rs_packet_destroy(struct rs_packet *pkt);
+/** Free all memory allocated for message \a msg.  */
+void rs_message_destroy(struct rs_message *msg);
 
-/** Send packet \a pkt on the connection associated with \a pkt.  \a
-    user_data is sent to the \a rs_conn_packet_received_cb callback
-    registered with the connection.  If no callback is registered with
-    the connection, the event loop is run by \a rs_packet_send and it
-    blocks until the packet has been succesfully sent.
+/** Send message \a msg on the connection associated with \a msg.
+    \a user_data is sent to the \a rs_conn_message_received_cb callback
+    registered with the connection. If no callback is registered with
+    the connection, the event loop is run by \a rs_message_send and it
+    blocks until the message has been succesfully sent.
 
     \return On success, RSE_OK (0) is returned.  On error, !0 is
     returned and a struct \a rs_error is pushed on the error stack for
     the connection.  The error can be accessed using \a
     rs_err_conn_pop.  */
-int rs_packet_send(struct rs_packet *pkt, void *user_data);
+int rs_message_send(struct rs_message *msg, void *user_data);
 
-/** Create a RADIUS authentication request packet associated with
+/** Create a RADIUS authentication request message associated with
     connection \a conn.  Optionally, User-Name and User-Password
-    attributes are added to the packet using the data in \a user_name,
+    attributes are added to the message using the data in \a user_name,
     \a user_pw and \a secret where \secret is the RADIUS shared
     secret. */
-int rs_packet_create_authn_request(struct rs_connection *conn,
-				   struct rs_packet **pkt,
-				   const char *user_name,
-				   const char *user_pw,
-                                   const char *secret);
+int rs_message_create_authn_request(struct rs_connection *conn,
+                                    struct rs_message **msg,
+                                    const char *user_name,
+                                    const char *user_pw,
+                                    const char *secret);
 
-/*** Append \a tail to packet \a pkt.  */
+/*** Append \a tail to message \a msg.  */
 int
-rs_packet_append_avp(struct rs_packet *pkt,
-		     unsigned int attribute, unsigned int vendor,
-		     const void *data, size_t data_len);
+rs_message_append_avp(struct rs_message *msg,
+                      unsigned int attribute, unsigned int vendor,
+                      const void *data, size_t data_len);
 
-/*** Get pointer to \a pkt attribute value pairs. */
+/*** Get pointer to \a msg attribute value pairs. */
 void
-rs_packet_avps(struct rs_packet *pkt, rs_avp ***vps);
+rs_message_avps(struct rs_message *msg, rs_avp ***vps);
 
-/*** Get RADIUS packet type of \a pkt. */
+/*** Get RADIUS message type of \a msg. */
 unsigned int
-rs_packet_code(struct rs_packet *pkt);
+rs_message_code(struct rs_message *msg);
 
-/*** Get RADIUS AVP from \a pkt. */
+/*** Get RADIUS AVP from \a msg. */
 rs_const_avp *
-rs_packet_find_avp(struct rs_packet *pkt, unsigned int attr, unsigned int vendor);
+rs_message_find_avp(struct rs_message *msg, unsigned int attr,
+                    unsigned int vendor);
 
-/*** Set packet identifier in \a pkt; returns old identifier */
+/*** Set packet identifier in \a msg; returns old identifier */
 int
-rs_packet_set_id (struct rs_packet *pkt, int id);
+rs_message_set_id (struct rs_message *msg, int id);
 
 /************/
 /* Config.  */

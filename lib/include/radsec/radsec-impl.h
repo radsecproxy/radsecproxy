@@ -107,7 +107,7 @@ struct rs_connection {
     /* UDP transport specifics.  */
     struct event *wev;		/* Write event (for UDP).  */
     struct event *rev;		/* Read event (for UDP).  */
-    struct rs_packet *out_queue; /* Queue for outgoing UDP packets.  */
+    struct rs_message *out_queue; /* Queue for outgoing UDP packets.  */
 #if defined(RS_ENABLE_TLS)
     /* TLS specifics.  */
     SSL_CTX *tls_ctx;
@@ -115,20 +115,20 @@ struct rs_connection {
 #endif
 };
 
-enum rs_packet_flags {
-    RS_PACKET_HEADER_READ,
-    RS_PACKET_RECEIVED,
-    RS_PACKET_SENT,
+enum rs_message_flags {
+    RS_MESSAGE_HEADER_READ,
+    RS_MESSAGE_RECEIVED,
+    RS_MESSAGE_SENT,
 };
 
 struct radius_packet;
 
-struct rs_packet {
+struct rs_message {
     struct rs_connection *conn;
     unsigned int flags;
     uint8_t hdr[RS_HEADER_LEN];
     struct radius_packet *rpkt;	/* FreeRADIUS object.  */
-    struct rs_packet *next;	/* Used for UDP output queue.  */
+    struct rs_message *next;	/* Used for UDP output queue.  */
 };
 
 #if defined (__cplusplus)

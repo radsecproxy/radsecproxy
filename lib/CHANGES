@@ -1,6 +1,8 @@
 Changes in version 0.0.3 - 2013-??-??
-  libradsec 0.0.3 <verb> <other words, forming a summary>
+  libradsec 0.0.3 <summary goes here>
 
-  [o Incompatible changes:]
-  [o Features:]
-  [o Bug fixes:]
+  o Compatible internal code changes:
+    - Most places that used to say 'packet' now say 'message',
+      including public API:s. Preprocessor directives (#define) are in
+      place to make the public interface compatible with previous
+      releases.

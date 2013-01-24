@@ -28,7 +28,7 @@ static const char *_errtxt[] = {
   "authentication failed",			/* 12 RSE_BADAUTH */
   "internal error",				/* 13 RSE_INTERNAL */
   "SSL error",					/* 14 RSE_SSLERR */
-  "invalid packet",				/* 15 RSE_INVALID_PKT */
+  "invalid message",				/* 15 RSE_INVALID_MSG */
   "connect timeout",				/* 16 RSE_TIMEOUT_CONN */
   "invalid argument",				/* 17 RSE_INVAL */
   "I/O timeout",				/* 18 RSE_TIMEOUT_IO */

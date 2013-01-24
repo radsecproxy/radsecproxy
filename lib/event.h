@@ -2,7 +2,7 @@
    See LICENSE for licensing information.  */
 
 void event_on_disconnect (struct rs_connection *conn);
-int event_on_connect (struct rs_connection *conn, struct rs_packet *pkt);
+int event_on_connect (struct rs_connection *conn, struct rs_message *msg);
 int event_loopbreak (struct rs_connection *conn);
 int event_init_eventbase (struct rs_connection *conn);
 int event_init_socket (struct rs_connection *conn, struct rs_peer *p);
