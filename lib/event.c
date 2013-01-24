@@ -246,8 +246,9 @@ event_on_connect (struct rs_connection *conn, struct rs_message *msg)
   assert (!conn->is_connecting);
 
 #if defined (RS_ENABLE_TLS)
-  if (conn->realm->type == RS_CONN_TYPE_TLS
-      || conn->realm->type == RS_CONN_TYPE_DTLS)
+  if ((conn->realm->type == RS_CONN_TYPE_TLS
+       || conn->realm->type == RS_CONN_TYPE_DTLS)
+      && conn->realm->transport_cred->type != RS_CRED_TLS_PSK)
     if (tls_verify_cert (conn) != RSE_OK)
       {
         rs_debug (("%s: server cert verification failed\n", __func__));
