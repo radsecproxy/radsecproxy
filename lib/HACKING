@@ -1,6 +1,6 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
 
-Status as of libradsec-0.0.2.dev (2011-03-24).
+Status as of libradsec-0.0.2.dev (2013-01-25).
 
 * Build instructions
 sh autogen.sh
@@ -56,7 +56,7 @@ Details (within parentheses) apply to Debian Wheezy.
 - OpenSSL (1.0.1c-4) -- optional, for TLS and DTLS support
   sudo apt-get install libssl-dev libssl1.0.0
   
-* Functionality and quality
+* Functionality and quality in 0.0.x
 ** Not well tested
 - reading config file
 - [TCP] short read
@@ -70,10 +70,11 @@ Details (within parentheses) apply to Debian Wheezy.
 - custom allocation scheme is not used in all places
 
 ** Not implemented
-- [client] server failover
+- dispatch mode (planned for 0.1)
+- [client] server failover / RFC3539 watchdog (planned for 0.1)
+- [server] support (planned for 0.2)
+- on-your-own mode
 - [DTLS] support
-- [server] support
-- dispatch mode and on-your-own mode
 
 * Found a bug?
 Please report it. That is how we improve the quality of the code.
