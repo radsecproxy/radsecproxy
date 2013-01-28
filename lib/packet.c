@@ -137,16 +137,6 @@ rs_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
   if (rpkt == NULL)
     return rs_err_conn_push (conn, RSE_NOMEM, __func__);
 
-  /*
-   * This doesn't make sense; the packet identifier is constant for
-   * an entire conversation. A separate API should be provided to
-   * allow the application to set the packet ID, or a conversation
-   * object should group related packets together.
-   */
-#if 0
-  rpkt->id = conn->nextid++
-#endif
-
   err = nr_packet_init (rpkt, NULL, NULL,
 		        PW_ACCESS_REQUEST,
 		        rpkt + 1, RS_MAX_PACKET_LEN);

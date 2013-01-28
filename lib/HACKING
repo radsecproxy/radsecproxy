@@ -73,6 +73,7 @@ Details (within parentheses) apply to Debian Wheezy.
 - dispatch mode (planned for 0.1)
 - [client] server failover / RFC3539 watchdog (planned for 0.1)
 - [server] support (planned for 0.2)
+- [client] TCP keepalive
 - on-your-own mode
 - [DTLS] support
 
