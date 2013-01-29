@@ -296,16 +296,21 @@ int rs_packet_create(struct rs_connection *conn, struct rs_packet **pkt_out);
 /** Free all memory allocated for packet \a pkt.  */
 void rs_packet_destroy(struct rs_packet *pkt);
 
-/** Send packet \a pkt on the connection associated with \a pkt.  \a
-    user_data is sent to the \a rs_conn_packet_received_cb callback
-    registered with the connection.  If no callback is registered with
+/** Send packet \a pkt on the connection associated with \a pkt.
+    \a user_data is passed to the \a rs_conn_packet_received_cb callback
+    registered with the connection. If no callback is registered with
     the connection, the event loop is run by \a rs_packet_send and it
-    blocks until the packet has been succesfully sent.
+    blocks until the full packet has been sent. Note that sending can
+    fail in several ways, f.ex. if the transmission protocol in use
+    is connection oriented (\a RS_CONN_TYPE_TCP and \a RS_CONN_TYPE_TLS)
+    and the connection can not be established. Also note that no
+    retransmission is done, something that is required for connectionless
+    transport protocols (\a RS_CONN_TYPE_UDP and \a RS_CONN_TYPE_DTLS).
+    The "request" API with \a rs_request_send can help with this.
 
-    \return On success, RSE_OK (0) is returned.  On error, !0 is
+    \return On success, RSE_OK (0) is returned. On error, !0 is
     returned and a struct \a rs_error is pushed on the error stack for
-    the connection.  The error can be accessed using \a
-    rs_err_conn_pop.  */
+    the connection. The error can be accessed using \a rs_err_conn_pop. */
 int rs_packet_send(struct rs_packet *pkt, void *user_data);
 
 /** Create a RADIUS authentication request packet associated with
