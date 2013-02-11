@@ -1,7 +1,13 @@
 libradsec is a RADIUS library for clients doing RADIUS over UDP or
-TLS. The goal is to add support for writing servers (and thus
-proxies) and to add transports TCP and DTLS.
+TLS. The goal is to eventually add transports TCP and DTLS.
 
+ * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE *
+
+This branch (libradsec-server-support) is extremely unstable and will
+see changes to public API:s for sure. It might even be rebased without
+any warning what so ever. Don't follow this branch.
+
+ * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE *
 
 The canonical pickup point is
 http://git.nordu.net/?p=radsecproxy.git;a=shortlog;h=refs/heads/libradsec

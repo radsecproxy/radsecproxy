@@ -17,7 +17,7 @@ examples/client -r examples/client.conf blocking-tls; echo $?
 
   - Application registers callbacks with libradsec and runs the
     libevent dispatch loop (a.k.a. user dispatch mode). This would
-    probably how to implement a server or a proxy.
+    probably be how one would implement a server or a proxy.
 
   - Application runs its own event loop, using fd's for select and
     performs I/O using libradsec send/receive functions
