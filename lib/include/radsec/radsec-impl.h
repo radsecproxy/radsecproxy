@@ -40,7 +40,6 @@ struct rs_credentials {
     char *identity;
     char *secret;
     enum rs_key_encoding secret_encoding;
-    unsigned int secret_len;
 };
 
 struct rs_error {
@@ -48,14 +47,25 @@ struct rs_error {
     char buf[1024];
 };
 
+enum rs_peer_type {
+    RS_PEER_TYPE_CLIENT = 1,
+    RS_PEER_TYPE_SERVER = 2
+};
+
 /** Configuration object for a connection.  */
 struct rs_peer {
+    enum rs_peer_type type;
     struct rs_connection *conn;
     struct rs_realm *realm;
     char *hostname;
     char *service;
     char *secret;               /* RADIUS secret.  */
     struct evutil_addrinfo *addr_cache;
+    char *cacertfile;
+    char *cacertpath;
+    char *certfile;
+    char *certkeyfile;
+    struct rs_credentials *transport_cred;
     struct rs_peer *next;
 };
 
@@ -65,11 +75,6 @@ struct rs_realm {
     enum rs_conn_type type;
     int timeout;
     int retries;
-    char *cacertfile;
-    char *cacertpath;
-    char *certfile;
-    char *certkeyfile;
-    struct rs_credentials *transport_cred;
     struct rs_peer *peers;
     struct rs_realm *next;
 };

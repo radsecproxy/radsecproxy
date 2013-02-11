@@ -25,13 +25,15 @@ _get_tlsconf (struct rs_connection *conn, const struct rs_realm *realm)
   if (c)
     {
       memset (c, 0, sizeof (struct tls));
+      /* _conn_open() should've picked a peer by now. */
+      assert (conn->active_peer);
       /* TODO: Make sure old radsecproxy code doesn't free these all
 	 of a sudden, or strdup them.  */
       c->name = realm->name;
-      c->cacertfile = realm->cacertfile;
+      c->cacertfile = conn->active_peer->cacertfile;
       c->cacertpath = NULL;	/* NYI */
-      c->certfile = realm->certfile;
-      c->certkeyfile = realm->certkeyfile;
+      c->certfile = conn->active_peer->certfile;
+      c->certkeyfile = conn->active_peer->certkeyfile;
       c->certkeypwd = NULL;	/* NYI */
       c->cacheexpiry = 0;	/* NYI */
       c->crlcheck = 0;		/* NYI */
@@ -54,10 +56,11 @@ psk_client_cb (SSL *ssl,
 {
   struct rs_connection *conn = NULL;
   struct rs_credentials *cred = NULL;
+  unsigned int secret_len;
 
   conn = SSL_get_ex_data (ssl, 0);
   assert (conn != NULL);
-  cred = conn->active_peer->realm->transport_cred;
+  cred = conn->active_peer->transport_cred;
   assert (cred != NULL);
   /* NOTE: Ignoring identity hint from server.  */
 
@@ -72,14 +75,14 @@ psk_client_cb (SSL *ssl,
   switch (cred->secret_encoding)
     {
     case RS_KEY_ENCODING_UTF8:
-      cred->secret_len = strlen (cred->secret);
-      if (cred->secret_len > max_psk_len)
+      secret_len = strlen (cred->secret);
+      if (secret_len > max_psk_len)
         {
           rs_err_conn_push (conn, RSE_CRED, "PSK secret longer than max %d",
                             max_psk_len);
           return 0;
         }
-      memcpy (psk, cred->secret, cred->secret_len);
+      memcpy (psk, cred->secret, secret_len);
       break;
     case RS_KEY_ENCODING_ASCII_HEX:
       {
@@ -99,7 +102,7 @@ psk_client_cb (SSL *ssl,
             BN_clear_free (bn);
             return 0;
           }
-        cred->secret_len = BN_bn2bin (bn, psk);
+        secret_len = BN_bn2bin (bn, psk);
         BN_clear_free (bn);
       }
       break;
@@ -107,7 +110,7 @@ psk_client_cb (SSL *ssl,
       assert (!"unknown psk encoding");
     }
 
-  return cred->secret_len;
+  return secret_len;
 }
 #endif  /* RS_ENABLE_TLS_PSK */
 
@@ -144,7 +147,7 @@ rs_tls_init (struct rs_connection *conn)
     }
 
 #if defined RS_ENABLE_TLS_PSK
-  if (conn->active_peer->realm->transport_cred != NULL)
+  if (conn->active_peer->transport_cred != NULL)
     {
       SSL_set_psk_client_callback (ssl, psk_client_cb);
       SSL_set_ex_data (ssl, 0, conn);

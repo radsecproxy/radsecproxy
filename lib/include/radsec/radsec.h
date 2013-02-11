@@ -208,6 +208,9 @@ int rs_context_set_alloc_scheme(struct rs_context *ctx,
     accessed using \a rs_err_ctx_pop.  */
 int rs_context_read_config(struct rs_context *ctx, const char *config_file);
 
+int rs_context_print_config (struct rs_context *ctx, char **buf_out);
+
+
 /****************/
 /* Connection.  */
 /****************/

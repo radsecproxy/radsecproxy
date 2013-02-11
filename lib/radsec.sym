@@ -53,6 +53,7 @@ rs_conn_set_timeout
 rs_conn_set_type
 rs_context_create
 rs_context_destroy
+rs_context_print_config
 rs_context_read_config
 rs_context_set_alloc_scheme
 rs_dump_message
