@@ -28,6 +28,7 @@ libradsec_la_SOURCES = \
 	avp.c \
 	compat.c \
 	conf.c \
+	confutil.c \
 	conn.c \
 	debug.c \
 	err.c \
