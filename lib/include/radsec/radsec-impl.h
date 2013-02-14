@@ -1,7 +1,8 @@
 /** @file libradsec-impl.h
     @brief Libraray internal header file for libradsec.  */
 
-/* See LICENSE for licensing information.  */
+/* Copyright 2010, 2011, 2013 NORDUnet A/S. All rights reserved.
+   See LICENSE for licensing information. */
 
 #ifndef _RADSEC_RADSEC_IMPL_H_
 #define _RADSEC_RADSEC_IMPL_H_ 1
@@ -141,14 +142,14 @@ struct rs_message {
 #endif
 
 /* Convenience macros.  */
-#define rs_calloc(h, nmemb, size) \
-    (h->alloc_scheme.calloc ? h->alloc_scheme.calloc : calloc)(nmemb, size)
-#define rs_malloc(h, size) \
-    (h->alloc_scheme.malloc ? h->alloc_scheme.malloc : malloc)(size)
-#define rs_free(h, ptr) \
-    (h->alloc_scheme.free ? h->alloc_scheme.free : free)(ptr)
-#define rs_realloc(h, realloc, ptr, size) \
-    (h->alloc_scheme.realloc ? h->alloc_scheme.realloc : realloc)(ptr, size)
+#define rs_calloc(h, nmemb, size) ((h)->alloc_scheme.calloc != NULL \
+     ? (h)->alloc_scheme.calloc : calloc)((nmemb), (size))
+#define rs_malloc(h, size) ((h)->alloc_scheme.malloc != NULL \
+     ? (h)->alloc_scheme.malloc : malloc)((size))
+#define rs_free(h, ptr) ((h)->alloc_scheme.free != NULL \
+     ? (h)->alloc_scheme.free : free)((ptr))
+#define rs_realloc(h, ptr, size) ((h)->alloc_scheme.realloc != NULL \
+     ? (h)->alloc_scheme.realloc : realloc)((ptr), (size))
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
