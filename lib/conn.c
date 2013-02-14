@@ -66,7 +66,7 @@ rs_conn_create (struct rs_context *ctx,
 
 	  c->realm = r;
 	  c->peers = r->peers;	/* FIXME: Copy instead?  */
-	  for (p = c->peers; p; p = p->next)
+	  for (p = c->peers; p != NULL; p = p->next)
 	    p->conn = c;
 	  c->timeout.tv_sec = r->timeout;
 	  c->tryagain = r->retries;
