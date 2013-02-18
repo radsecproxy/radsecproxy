@@ -1,4 +1,4 @@
-/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
@@ -23,7 +23,7 @@ peer_pick_peer (struct rs_connection *conn)
   if (conn->active_peer)
     conn->active_peer = conn->active_peer->next; /* Next.  */
   if (!conn->active_peer)
-    conn->active_peer = conn->peers; /* From the top.  */
+    conn->active_peer = conn->base_.peers; /* From the top.  */
 
   return conn->active_peer;
 }
@@ -54,7 +54,7 @@ rs_peer_create (struct rs_connection *conn, struct rs_peer **peer_out)
 {
   struct rs_peer *peer;
 
-  peer = peer_create (conn->ctx, &conn->peers);
+  peer = peer_create (conn->base_.ctx, &conn->base_.peers);
   if (peer)
     {
       peer->conn = conn;
@@ -74,10 +74,10 @@ rs_peer_set_address (struct rs_peer *peer, const char *hostname,
 {
   assert (peer);
   assert (peer->conn);
-  assert (peer->conn->ctx);
+  assert (peer->conn->base_.ctx);
 
-  peer->hostname = rs_strdup (peer->conn->ctx, hostname);
-  peer->service = rs_strdup (peer->conn->ctx, service);
+  peer->hostname = rs_strdup (peer->conn->base_.ctx, hostname);
+  peer->service = rs_strdup (peer->conn->base_.ctx, service);
   if (peer->hostname == NULL || peer->service == NULL)
     return RSE_NOMEM;
 

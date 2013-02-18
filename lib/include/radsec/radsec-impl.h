@@ -1,17 +1,19 @@
 /** @file libradsec-impl.h
     @brief Libraray internal header file for libradsec.  */
 
-/* Copyright 2010, 2011, 2013 NORDUnet A/S. All rights reserved.
+/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information. */
 
 #ifndef _RADSEC_RADSEC_IMPL_H_
 #define _RADSEC_RADSEC_IMPL_H_ 1
 
+#include <assert.h>
 #include <event2/util.h>
 #include <confuse.h>
 #if defined(RS_ENABLE_TLS)
 #include <openssl/ssl.h>
 #endif
+#include "compat.h"
 
 /* Constants.  */
 #define RS_HEADER_LEN 4
@@ -86,39 +88,63 @@ struct rs_config {
     cfg_t *cfg;
 };
 
+/** Libradsec context. */
 struct rs_context {
     struct rs_config *config;
     struct rs_alloc_scheme alloc_scheme;
     struct rs_error *err;
+    struct event_base *evb;	/* Event base.  */
 };
 
-struct rs_connection {
+enum rs_conn_subtype {
+    RS_CONN_OBJTYPE_BASE = 1,
+    RS_CONN_OBJTYPE_GENERIC,
+    RS_CONN_OBJTYPE_LISTENER,
+};
+#define RS_CONN_MAGIC_BASE 0xAE004711u
+#define RS_CONN_MAGIC_GENERIC 0x843AEF47u
+#define RS_CONN_MAGIC_LISTENER 0xDCB04783u
+
+/** Base class for a connection. */
+struct rs_conn_base {
+    uint32_t magic;             /* Must be one of RS_CONN_MAGIC_*. */
     struct rs_context *ctx;
     struct rs_realm *realm;	/* Owned by ctx.  */
-    struct event_base *evb;	/* Event base.  */
-    struct event *tev;		/* Timeout event.  */
-    struct rs_conn_callbacks callbacks;
-    void *user_data;
-    struct rs_peer *peers;
-    struct rs_peer *active_peer;
-    struct rs_error *err;
+    struct rs_peer *peers;      /*< Configured peers. */
     struct timeval timeout;
-    char is_connecting;		/* FIXME: replace with a single state member */
-    char is_connected;		/* FIXME: replace with a single state member */
-    int fd;			/* Socket.  */
     int tryagain;		/* For server failover.  */
-    int nextid;			/* Next RADIUS packet identifier.  */
+    void *user_data;
+    struct rs_error *err;
+    int fd;			/* Socket.  */
     /* TCP transport specifics.  */
     struct bufferevent *bev;	/* Buffer event.  */
     /* UDP transport specifics.  */
     struct event *wev;		/* Write event (for UDP).  */
     struct event *rev;		/* Read event (for UDP).  */
+};
+
+/** A "generic" connection. */
+struct rs_connection {
+    struct rs_conn_base base_;
+    struct event *tev;		/* Timeout event.  */
+    struct rs_conn_callbacks callbacks;
+    struct rs_peer *active_peer;
+    char is_connecting;		/* FIXME: replace with a single state member */
+    char is_connected;		/* FIXME: replace with a single state member */
     struct rs_message *out_queue; /* Queue for outgoing UDP packets.  */
 #if defined(RS_ENABLE_TLS)
     /* TLS specifics.  */
     SSL_CTX *tls_ctx;
     SSL *tls_ssl;
 #endif
+};
+
+/** A listening connection. Spawns generic connections when peers
+ * connect to it. */
+struct rs_listener {
+    struct rs_conn_base base_;
+    struct evconnlistener *evlistener;
+    struct rs_listener_callbacks callbacks;
 };
 
 enum rs_message_flags {
@@ -141,7 +167,10 @@ struct rs_message {
 }
 #endif
 
+/************************/
 /* Convenience macros.  */
+
+/* Memory allocation. */
 #define rs_calloc(h, nmemb, size) ((h)->alloc_scheme.calloc != NULL \
      ? (h)->alloc_scheme.calloc : calloc)((nmemb), (size))
 #define rs_malloc(h, size) ((h)->alloc_scheme.malloc != NULL \
@@ -152,6 +181,29 @@ struct rs_message {
      ? (h)->alloc_scheme.realloc : realloc)((ptr), (size))
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
+
+/* Basic CPP-based classes, proudly borrowed from Tor. */
+#if defined(__GNUC__) && __GNUC__ > 3
+ #define STRUCT_OFFSET(tp, member) __builtin_offsetof(tp, member)
+#else
+ #define STRUCT_OFFSET(tp, member) \
+   ((off_t) (((char*)&((tp*)0)->member)-(char*)0))
+#endif
+#define SUBTYPE_P(p, subtype, basemember) \
+  ((void*) (((char*)(p)) - STRUCT_OFFSET(subtype, basemember)))
+#define DOWNCAST(to, ptr) ((to*)SUBTYPE_P(ptr, to, base_))
+static struct rs_connection *TO_GENERIC_CONN (struct rs_conn_base *);
+static struct rs_listener *TO_LISTENER_CONN (struct rs_conn_base *);
+static INLINE struct rs_connection *TO_GENERIC_CONN (struct rs_conn_base *b)
+{
+  assert (b->magic == RS_CONN_MAGIC_GENERIC);
+  return DOWNCAST (struct rs_connection, b);
+}
+static INLINE struct rs_listener *TO_LISTENER_CONN (struct rs_conn_base *b)
+{
+  assert (b->magic == RS_CONN_MAGIC_LISTENER);
+  return DOWNCAST (struct rs_listener, b);
+}
 
 #endif /* _RADSEC_RADSEC_IMPL_H_ */
 

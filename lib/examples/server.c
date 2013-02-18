@@ -1,5 +1,8 @@
 /* RADIUS/RadSec server using libradsec. */
 
+/* Copyright 2013 NORDUnet A/S. All rights reserved.
+   See LICENSE for licensing information.  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -15,27 +18,33 @@
 #define USER_NAME "molgan@PROJECT-MOONSHOT.ORG"
 #define USER_PW "password"
 
+void
+new_conn_cb (struct rs_connection *conn, void *user_data)
+{
+  printf ("new connection: fd=%d\n", -1); /* conn->fd */
+}
 
 struct rs_error *
 server (struct rs_context *ctx)
 {
+  int r = 0;
   struct rs_error *err = NULL;
   struct rs_connection *conn = NULL;
-#if 0
   struct rs_listener *listener = NULL;
+  const struct rs_listener_callbacks cbs = {};
 
   if (rs_listener_create (ctx, &listener, CONFIG))
     goto out;
+  rs_listener_set_callbacks (listener, &cbs);
 
-  while (1)
+  do
     {
-      if (rs_listener_dispatch (listener))
-        goto out;
+      r = rs_listener_dispatch (listener);
+      printf ("DEBUG: rs_listener_dispatch done (r=%d)\n", r);
     }
+  while (r == 0);
 
  out:
-#endif
-
   err = rs_err_ctx_pop (ctx);
   if (err == NULL)
     err = rs_err_conn_pop (conn);

@@ -1,4 +1,4 @@
-/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
@@ -49,12 +49,12 @@ conn_activate_timeout (struct rs_connection *conn)
 {
   assert (conn);
   assert (conn->tev);
-  assert (conn->evb);
-  if (conn->timeout.tv_sec || conn->timeout.tv_usec)
+  assert (conn->base_.ctx->evb);
+  if (conn->base_.timeout.tv_sec || conn->base_.timeout.tv_usec)
     {
       rs_debug (("%s: activating timer: %d.%d\n", __func__,
 		 conn->timeout.tv_sec, conn->timeout.tv_usec));
-      if (evtimer_add (conn->tev, &conn->timeout))
+      if (evtimer_add (conn->tev, &conn->base_.timeout))
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "evtimer_add: %d", errno);
     }
@@ -65,8 +65,8 @@ int
 conn_type_tls (const struct rs_connection *conn)
 {
   assert (conn->active_peer);
-  return conn->realm->type == RS_CONN_TYPE_TLS
-    || conn->realm->type == RS_CONN_TYPE_DTLS;
+  return conn->base_.realm->type == RS_CONN_TYPE_TLS
+    || conn->base_.realm->type == RS_CONN_TYPE_DTLS;
 }
 
 int
@@ -77,22 +77,35 @@ conn_cred_psk (const struct rs_connection *conn)
     conn->active_peer->transport_cred->type == RS_CRED_TLS_PSK;
 }
 
-
-/* Public functions. */
-int
-rs_conn_create (struct rs_context *ctx,
-		struct rs_connection **conn,
-		const char *config)
+void
+conn_init (struct rs_context *ctx,
+           struct rs_conn_base *connbase,
+           enum rs_conn_subtype type)
 {
-  struct rs_connection *c;
+  switch (type)
+    {
+    case RS_CONN_OBJTYPE_BASE:
+      connbase->magic = RS_CONN_MAGIC_BASE;
+      break;
+    case RS_CONN_OBJTYPE_GENERIC:
+      connbase->magic = RS_CONN_MAGIC_GENERIC;
+      break;
+    case RS_CONN_OBJTYPE_LISTENER:
+      connbase->magic = RS_CONN_MAGIC_LISTENER;
+      break;
+    default:
+      assert ("invalid connection subtype" == NULL);
+    }
 
-  c = (struct rs_connection *) malloc (sizeof(struct rs_connection));
-  if (!c)
-    return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
+  connbase->ctx = ctx;
+  connbase->fd = -1;
+}
 
-  memset (c, 0, sizeof(struct rs_connection));
-  c->ctx = ctx;
-  c->fd = -1;
+int
+conn_configure (struct rs_context *ctx,
+                struct rs_conn_base *connbase,
+                const char *config)
+{
   if (config)
     {
       struct rs_realm *r = rs_conf_find_realm (ctx, config);
@@ -100,34 +113,59 @@ rs_conn_create (struct rs_context *ctx,
 	{
 	  struct rs_peer *p;
 
-	  c->realm = r;
-	  c->peers = r->peers;	/* FIXME: Copy instead?  */
-	  for (p = c->peers; p != NULL; p = p->next)
-	    p->conn = c;
-	  c->timeout.tv_sec = r->timeout;
-	  c->tryagain = r->retries;
+	  connbase->realm = r;
+	  connbase->peers = r->peers; /* FIXME: Copy instead?  */
+	  for (p = connbase->peers; p != NULL; p = p->next)
+	    p->conn = TO_GENERIC_CONN(connbase);
+	  connbase->timeout.tv_sec = r->timeout;
+	  connbase->tryagain = r->retries;
 	}
       else
 	{
-	  c->realm = rs_malloc (ctx, sizeof (struct rs_realm));
-	  if (!c->realm)
+	  connbase->realm = rs_malloc (ctx, sizeof (struct rs_realm));
+	  if (!connbase->realm)
 	    return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__,
 				       NULL);
-	  memset (c->realm, 0, sizeof (struct rs_realm));
+	  memset (connbase->realm, 0, sizeof (struct rs_realm));
 	}
     }
+  return RSE_OK;
+}
+
+/* Public functions. */
+int
+rs_conn_create (struct rs_context *ctx,
+		struct rs_connection **conn,
+		const char *config)
+{
+  int err = RSE_OK;
+  struct rs_connection *c = NULL;
+  assert (ctx);
+
+  c = rs_calloc (ctx, 1, sizeof (struct rs_connection));
+  if (c == NULL)
+    return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
+  conn_init (ctx, &c->base_, RS_CONN_OBJTYPE_GENERIC);
+  err = conn_configure (ctx, &c->base_, config);
+  if (err)
+    goto errout;
 
   if (conn)
     *conn = c;
   return RSE_OK;
+
+ errout:
+  if (c)
+    rs_free (ctx, c);
+  return err;
 }
 
 void
 rs_conn_set_type (struct rs_connection *conn, rs_conn_type_t type)
 {
   assert (conn);
-  assert (conn->realm);
-  conn->realm->type = type;
+  assert (conn->base_.realm);
+  conn->base_.realm->type = type;
 }
 
 int
@@ -147,8 +185,8 @@ rs_conn_disconnect (struct rs_connection *conn)
 
   assert (conn);
 
-  err = evutil_closesocket (conn->fd);
-  conn->fd = -1;
+  err = evutil_closesocket (conn->base_.fd);
+  conn->base_.fd = -1;
   return err;
 }
 
@@ -174,16 +212,14 @@ rs_conn_destroy (struct rs_connection *conn)
 
   if (conn->tev)
     event_free (conn->tev);
-  if (conn->bev)
-    bufferevent_free (conn->bev);
-  if (conn->rev)
-    event_free (conn->rev);
-  if (conn->wev)
-    event_free (conn->wev);
-  if (conn->evb)
-    event_base_free (conn->evb);
+  if (conn->base_.bev)
+    bufferevent_free (conn->base_.bev);
+  if (conn->base_.rev)
+    event_free (conn->base_.rev);
+  if (conn->base_.wev)
+    event_free (conn->base_.wev);
 
-  rs_free (conn->ctx, conn);
+  rs_free (conn->base_.ctx, conn);
 
   return err;
 }
@@ -230,15 +266,15 @@ rs_conn_get_current_peer (struct rs_connection *conn,
 }
 
 int
-rs_conn_dispatch(struct rs_connection *conn)
+rs_conn_dispatch (struct rs_connection *conn)
 {
   assert (conn);
-  return event_base_loop (conn->evb, EVLOOP_ONCE);
+  return event_base_loop (conn->base_.ctx->evb, EVLOOP_ONCE);
 }
 
 #if 0
 struct event_base
-*rs_conn_get_evb(const struct rs_connection *conn)
+*rs_conn_get_evb (const struct rs_connection *conn)
 {
   assert (conn);
   return conn->evb;
@@ -249,7 +285,7 @@ int rs_conn_get_fd (struct rs_connection *conn)
 {
   assert (conn);
   assert (conn->active_peer);
-  return conn->fd;
+  return conn->base_.fd;
 }
 
 static void
@@ -260,10 +296,10 @@ _rcb (struct rs_message *message, void *user_data)
   assert (msg->conn);
 
   msg->flags |= RS_MESSAGE_RECEIVED;
-  if (msg->conn->bev)
-    bufferevent_disable (msg->conn->bev, EV_WRITE|EV_READ);
+  if (msg->conn->base_.bev)
+    bufferevent_disable (msg->conn->base_.bev, EV_WRITE|EV_READ);
   else
-    event_del (msg->conn->rev);
+    event_del (msg->conn->base_.rev);
 }
 
 int
@@ -275,32 +311,33 @@ rs_conn_receive_message (struct rs_connection *conn,
   struct rs_message *msg = NULL;
 
   assert (conn);
-  assert (conn->realm);
+  assert (conn->base_.realm);
   assert (!conn_user_dispatch_p (conn)); /* Blocking mode only.  */
 
   if (rs_message_create (conn, &msg))
     return -1;
 
-  assert (conn->evb);
-  assert (conn->fd >= 0);
+  assert (conn->base_.ctx->evb);
+  assert (conn->base_.fd >= 0);
 
   conn->callbacks.received_cb = _rcb;
-  conn->user_data = msg;
+  conn->base_.user_data = msg;
   msg->flags &= ~RS_MESSAGE_RECEIVED;
 
-  if (conn->bev)		/* TCP.  */
+  if (conn->base_.bev)		/* TCP.  */
     {
-      bufferevent_setwatermark (conn->bev, EV_READ, RS_HEADER_LEN, 0);
-      bufferevent_setcb (conn->bev, tcp_read_cb, NULL, tcp_event_cb, msg);
-      bufferevent_enable (conn->bev, EV_READ);
+      bufferevent_setwatermark (conn->base_.bev, EV_READ, RS_HEADER_LEN, 0);
+      bufferevent_setcb (conn->base_.bev, tcp_read_cb, NULL, tcp_event_cb, msg);
+      bufferevent_enable (conn->base_.bev, EV_READ);
     }
   else				/* UDP.  */
     {
       /* Put fresh message in user_data for the callback and enable the
 	 read event.  */
-      event_assign (conn->rev, conn->evb, event_get_fd (conn->rev),
-		    EV_READ, event_get_callback (conn->rev), msg);
-      err = event_add (conn->rev, NULL);
+      event_assign (conn->base_.rev, conn->base_.ctx->evb,
+                    event_get_fd (conn->base_.rev), EV_READ,
+                    event_get_callback (conn->base_.rev), msg);
+      err = event_add (conn->base_.rev, NULL);
       if (err < 0)
 	return rs_err_conn_push_fl (msg->conn, RSE_EVENT, __FILE__, __LINE__,
 				    "event_add: %s",
@@ -311,7 +348,7 @@ rs_conn_receive_message (struct rs_connection *conn,
     }
 
   rs_debug (("%s: entering event loop\n", __func__));
-  err = event_base_dispatch (conn->evb);
+  err = event_base_dispatch (conn->base_.ctx->evb);
   conn->callbacks.received_cb = NULL;
   if (err < 0)
     return rs_err_conn_push_fl (msg->conn, RSE_EVENT, __FILE__, __LINE__,
@@ -340,5 +377,5 @@ rs_conn_set_timeout(struct rs_connection *conn, struct timeval *tv)
 {
   assert (conn);
   assert (tv);
-  conn->timeout = *tv;
+  conn->base_.timeout = *tv;
 }

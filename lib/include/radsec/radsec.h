@@ -1,7 +1,8 @@
 /** \file radsec.h
     \brief Public interface for libradsec.  */
 
-/* See LICENSE for licensing information.  */
+/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
+   See LICENSE for licensing information. */
 
 #ifndef _RADSEC_RADSEC_H_
 #define _RADSEC_RADSEC_H_ 1
@@ -136,6 +137,7 @@ extern "C" {
 /* Data types.  */
 struct rs_context;		/* radsec-impl.h */
 struct rs_connection;		/* radsec-impl.h */
+struct rs_listener;             /* radsec-impl.h */
 struct rs_message;		/* radsec-impl.h */
 struct rs_conn;			/* radsec-impl.h */
 struct rs_error;		/* radsec-impl.h */
@@ -161,7 +163,7 @@ typedef void (*rs_conn_message_received_cb) (struct rs_message *message,
                                              void *user_data);
 typedef void (*rs_conn_message_sent_cb) (void *user_data);
 struct rs_conn_callbacks {
-    /** Callback invoked when the connection has been established.  */
+    /** Callback invoked when an outgoing connection has been established.  */
     rs_conn_connected_cb connected_cb;
     /** Callback invoked when the connection has been torn down.  */
     rs_conn_disconnected_cb disconnected_cb;
@@ -169,6 +171,12 @@ struct rs_conn_callbacks {
     rs_conn_message_received_cb received_cb;
     /** Callback invoked when a message was successfully sent.  */
     rs_conn_message_sent_cb sent_cb;
+};
+
+typedef void (*rs_listener_new_conn_cb) (struct rs_connection *conn,
+                                         void *user_data);
+struct rs_listener_callbacks {
+    rs_listener_new_conn_cb new_conn_cb;
 };
 
 typedef struct value_pair rs_avp;
@@ -210,6 +218,15 @@ int rs_context_read_config(struct rs_context *ctx, const char *config_file);
 
 int rs_context_print_config (struct rs_context *ctx, char **buf_out);
 
+/*************/
+/* Listener. */
+/*************/
+int rs_listener_create (struct rs_context *ctx,
+                        struct rs_listener **listener,
+                        const char *config);
+void rs_listener_set_callbacks (struct rs_listener *listener,
+                                const struct rs_listener_callbacks *cb);
+int rs_listener_dispatch (const struct rs_listener *listener);
 
 /****************/
 /* Connection.  */
@@ -319,7 +336,7 @@ void rs_peer_set_timeout(struct rs_peer *peer, int timeout);
 void rs_peer_set_retries(struct rs_peer *peer, int retries);
 
 /************/
-/* Message.  */
+/* Message. */
 /************/
 /** Create a message associated with connection \a conn.  */
 int rs_message_create(struct rs_connection *conn, struct rs_message **pkt_out);

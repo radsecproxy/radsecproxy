@@ -1,4 +1,4 @@
-/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
@@ -102,9 +102,9 @@ message_do_send (struct rs_message *msg)
 #endif
 
   /* Put message in output buffer.  */
-  if (msg->conn->bev)		/* TCP.  */
+  if (msg->conn->base_.bev)       /* TCP.  */
     {
-      int err = bufferevent_write (msg->conn->bev, msg->rpkt->data,
+      int err = bufferevent_write (msg->conn->base_.bev, msg->rpkt->data,
 				   msg->rpkt->length);
       if (err < 0)
 	return rs_err_conn_push_fl (msg->conn, RSE_EVENT, __FILE__, __LINE__,
@@ -133,7 +133,7 @@ rs_message_create (struct rs_connection *conn, struct rs_message **msg_out)
 
   *msg_out = NULL;
 
-  rpkt = rs_malloc (conn->ctx, sizeof(*rpkt) + RS_MAX_PACKET_LEN);
+  rpkt = rs_malloc (conn->base_.ctx, sizeof(*rpkt) + RS_MAX_PACKET_LEN);
   if (rpkt == NULL)
     return rs_err_conn_push (conn, RSE_NOMEM, __func__);
 
@@ -143,10 +143,10 @@ rs_message_create (struct rs_connection *conn, struct rs_message **msg_out)
   if (err < 0)
     return rs_err_conn_push (conn, -err, __func__);
 
-  p = (struct rs_message *) rs_calloc (conn->ctx, 1, sizeof (*p));
+  p = (struct rs_message *) rs_calloc (conn->base_.ctx, 1, sizeof (*p));
   if (p == NULL)
     {
-      rs_free (conn->ctx, rpkt);
+      rs_free (conn->base_.ctx, rpkt);
       return rs_err_conn_push (conn, RSE_NOMEM, __func__);
     }
   p->conn = conn;
@@ -195,11 +195,11 @@ rs_message_destroy (struct rs_message *msg)
 {
   assert (msg);
   assert (msg->conn);
-  assert (msg->conn->ctx);
+  assert (msg->conn->base_.ctx);
 
   rs_avp_free (&msg->rpkt->vps);
-  rs_free (msg->conn->ctx, msg->rpkt);
-  rs_free (msg->conn->ctx, msg);
+  rs_free (msg->conn->base_.ctx, msg->rpkt);
+  rs_free (msg->conn->base_.ctx, msg);
 }
 
 int

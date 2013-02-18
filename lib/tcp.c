@@ -1,4 +1,4 @@
-/* Copyright 2011 NORDUnet A/S. All rights reserved.
+/* Copyright 2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
@@ -31,7 +31,7 @@ _read_header (struct rs_message *msg)
 {
   size_t n = 0;
 
-  n = bufferevent_read (msg->conn->bev, msg->hdr, RS_HEADER_LEN);
+  n = bufferevent_read (msg->conn->base_.bev, msg->hdr, RS_HEADER_LEN);
   if (n == RS_HEADER_LEN)
     {
       msg->flags |= RS_MESSAGE_HEADER_READ;
@@ -44,7 +44,7 @@ _read_header (struct rs_message *msg)
 				   msg->rpkt->length);
 	}
       memcpy (msg->rpkt->data, msg->hdr, RS_HEADER_LEN);
-      bufferevent_setwatermark (msg->conn->bev, EV_READ,
+      bufferevent_setwatermark (msg->conn->base_.bev, EV_READ,
 				msg->rpkt->length - RS_HEADER_LEN, 0);
       rs_debug (("%s: message header read, total msg len=%d\n",
 		 __func__, msg->rpkt->length));
@@ -79,7 +79,7 @@ _read_message (struct rs_message *msg)
   rs_debug (("%s: trying to read %d octets of message data\n", __func__,
 	     msg->rpkt->length - RS_HEADER_LEN));
 
-  n = bufferevent_read (msg->conn->bev,
+  n = bufferevent_read (msg->conn->base_.bev,
 			msg->rpkt->data + RS_HEADER_LEN,
 			msg->rpkt->length - RS_HEADER_LEN);
 
@@ -87,7 +87,7 @@ _read_message (struct rs_message *msg)
 
   if (n == msg->rpkt->length - RS_HEADER_LEN)
     {
-      bufferevent_disable (msg->conn->bev, EV_READ);
+      bufferevent_disable (msg->conn->base_.bev, EV_READ);
       rs_debug (("%s: complete message read\n", __func__));
       msg->flags &= ~RS_MESSAGE_HEADER_READ;
       memset (msg->hdr, 0, sizeof(*msg->hdr));
@@ -119,7 +119,7 @@ _read_message (struct rs_message *msg)
       /* Hand over message to user.  This changes ownership of msg.
 	 Don't touch it afterwards -- it might have been freed.  */
       if (msg->conn->callbacks.received_cb)
-	msg->conn->callbacks.received_cb (msg, msg->conn->user_data);
+	msg->conn->callbacks.received_cb (msg, msg->conn->base_.user_data);
     }
   else if (n < 0)		/* Buffer frozen.  */
     rs_debug (("%s: buffer frozen when reading message\n", __func__));
@@ -146,7 +146,7 @@ tcp_read_cb (struct bufferevent *bev, void *user_data)
   assert (msg->conn);
   assert (msg->rpkt);
 
-  msg->rpkt->sockfd = msg->conn->fd;
+  msg->rpkt->sockfd = msg->conn->base_.fd;
   msg->rpkt->vps = NULL;        /* FIXME: can this be done when initializing msg? */
 
   /* Read a message header if not already read, return if that
@@ -216,15 +216,15 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
 	  rs_debug (("%s: %d: %d (%s)\n", __func__, conn->fd, sockerr,
 		     evutil_socket_error_to_string (sockerr)));
 	  rs_err_conn_push_fl (conn, RSE_SOCKERR, __FILE__, __LINE__,
-			       "%d: %d (%s)", conn->fd, sockerr,
+			       "%d: %d (%s)", conn->base_.fd, sockerr,
 			       evutil_socket_error_to_string (sockerr));
 	}
 #if defined (RS_ENABLE_TLS)
       if (conn->tls_ssl)	/* FIXME: correct check?  */
 	{
-	  for (tlserr = bufferevent_get_openssl_error (conn->bev);
+	  for (tlserr = bufferevent_get_openssl_error (conn->base_.bev);
 	       tlserr;
-	       tlserr = bufferevent_get_openssl_error (conn->bev))
+	       tlserr = bufferevent_get_openssl_error (conn->base_.bev))
 	    {
 	      rs_debug (("%s: openssl error: %s\n", __func__,
 			 ERR_error_string (tlserr, NULL)));
@@ -251,17 +251,18 @@ tcp_write_cb (struct bufferevent *bev, void *ctx)
   assert (msg->conn);
 
   if (msg->conn->callbacks.sent_cb)
-    msg->conn->callbacks.sent_cb (msg->conn->user_data);
+    msg->conn->callbacks.sent_cb (msg->conn->base_.user_data);
 }
 
 int
 tcp_init_connect_timer (struct rs_connection *conn)
 {
   assert (conn);
+  assert (conn->base_.ctx);
 
   if (conn->tev)
     event_free (conn->tev);
-  conn->tev = evtimer_new (conn->evb, event_conn_timeout_cb, conn);
+  conn->tev = evtimer_new (conn->base_.ctx->evb, event_conn_timeout_cb, conn);
   if (!conn->tev)
     return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				"evtimer_new");

@@ -1,4 +1,4 @@
-/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
@@ -20,7 +20,7 @@
 static struct tls *
 _get_tlsconf (struct rs_connection *conn, const struct rs_realm *realm)
 {
-  struct tls *c = rs_malloc (conn->ctx, sizeof (struct tls));
+  struct tls *c = rs_malloc (conn->base_.ctx, sizeof (struct tls));
 
   if (c)
     {
@@ -123,8 +123,8 @@ rs_tls_init (struct rs_connection *conn)
   SSL *ssl = NULL;
   unsigned long sslerr = 0;
 
-  assert (conn->ctx);
-  ctx = conn->ctx;
+  assert (conn->base_.ctx);
+  ctx = conn->base_.ctx;
 
   tlsconf = _get_tlsconf (conn, conn->active_peer->realm);
   if (!tlsconf)

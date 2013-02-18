@@ -1,4 +1,4 @@
-/* Copyright 2011 NORDUnet A/S. All rights reserved.
+/* Copyright 2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
@@ -99,7 +99,7 @@ event_retransmit_timeout_cb (int fd, short event, void *data)
 int
 event_init_socket (struct rs_connection *conn, struct rs_peer *p)
 {
-  if (conn->fd != -1)
+  if (conn->base_.fd != -1)
     return RSE_OK;
 
   if (p->addr_cache == NULL)
@@ -110,16 +110,16 @@ event_init_socket (struct rs_connection *conn, struct rs_peer *p)
         return err_conn_push_err (conn, err);
     }
 
-  conn->fd = socket (p->addr_cache->ai_family, p->addr_cache->ai_socktype,
+  conn->base_.fd = socket (p->addr_cache->ai_family, p->addr_cache->ai_socktype,
 		     p->addr_cache->ai_protocol);
-  if (conn->fd < 0)
+  if (conn->base_.fd < 0)
     return rs_err_conn_push_fl (conn, RSE_SOCKERR, __FILE__, __LINE__,
 				"socket: %d (%s)",
 				errno, strerror (errno));
-  if (evutil_make_socket_nonblocking (conn->fd) < 0)
+  if (evutil_make_socket_nonblocking (conn->base_.fd) < 0)
     {
-      evutil_closesocket (conn->fd);
-      conn->fd = -1;
+      evutil_closesocket (conn->base_.fd);
+      conn->base_.fd = -1;
       return rs_err_conn_push_fl (conn, RSE_SOCKERR, __FILE__, __LINE__,
 				  "evutil_make_socket_nonblocking: %d (%s)",
 				  errno, strerror (errno));
@@ -130,28 +130,30 @@ event_init_socket (struct rs_connection *conn, struct rs_peer *p)
 int
 event_init_bufferevent (struct rs_connection *conn, struct rs_peer *peer)
 {
-  if (conn->bev)
+  if (conn->base_.bev)
     return RSE_OK;
 
-  if (conn->realm->type == RS_CONN_TYPE_TCP)
+  if (conn->base_.realm->type == RS_CONN_TYPE_TCP)
     {
-      conn->bev = bufferevent_socket_new (conn->evb, conn->fd, 0);
-      if (!conn->bev)
+      conn->base_.bev = bufferevent_socket_new (conn->base_.ctx->evb,
+                                              conn->base_.fd, 0);
+      if (!conn->base_.bev)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_socket_new");
     }
 #if defined (RS_ENABLE_TLS)
-  else if (conn->realm->type == RS_CONN_TYPE_TLS)
+  else if (conn->base_.realm->type == RS_CONN_TYPE_TLS)
     {
       if (rs_tls_init (conn))
 	return -1;
       /* Would be convenient to pass BEV_OPT_CLOSE_ON_FREE but things
 	 seem to break when be_openssl_ctrl() (in libevent) calls
 	 SSL_set_bio() after BIO_new_socket() with flag=1.  */
-      conn->bev =
-	bufferevent_openssl_socket_new (conn->evb, conn->fd, conn->tls_ssl,
+      conn->base_.bev =
+	bufferevent_openssl_socket_new (conn->base_.ctx->evb, conn->base_.fd,
+                                        conn->tls_ssl,
 					BUFFEREVENT_SSL_CONNECTING, 0);
-      if (!conn->bev)
+      if (!conn->base_.bev)
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "bufferevent_openssl_socket_new");
     }
@@ -160,7 +162,7 @@ event_init_bufferevent (struct rs_connection *conn, struct rs_peer *peer)
     {
       return rs_err_conn_push_fl (conn, RSE_INTERNAL, __FILE__, __LINE__,
 				  "%s: unknown connection type: %d", __func__,
-				  conn->realm->type);
+				  conn->base_.realm->type);
     }
 
   return RSE_OK;
@@ -188,10 +190,11 @@ event_do_connect (struct rs_connection *conn)
   }
 #endif
 
-  if (p->conn->bev)		/* TCP */
+  if (p->conn->base_.bev)		/* TCP */
     {
       conn_activate_timeout (conn); /* Connect timeout.  */
-      err = bufferevent_socket_connect (p->conn->bev, p->addr_cache->ai_addr,
+      err = bufferevent_socket_connect (p->conn->base_.bev,
+                                        p->addr_cache->ai_addr,
 					p->addr_cache->ai_addrlen);
       if (err < 0)
 	rs_err_conn_push_fl (p->conn, RSE_EVENT, __FILE__, __LINE__,
@@ -202,7 +205,7 @@ event_do_connect (struct rs_connection *conn)
     }
   else				/* UDP */
     {
-      err = connect (p->conn->fd,
+      err = connect (p->conn->base_.fd,
                      p->addr_cache->ai_addr,
                      p->addr_cache->ai_addrlen);
       if (err < 0)
@@ -211,7 +214,7 @@ event_do_connect (struct rs_connection *conn)
 	  rs_debug (("%s: %d: connect: %d (%s)\n", __func__, p->conn->fd,
 		     sockerr, evutil_socket_error_to_string (sockerr)));
 	  rs_err_conn_push_fl (p->conn, RSE_SOCKERR, __FILE__, __LINE__,
-			       "%d: connect: %d (%s)", p->conn->fd, sockerr,
+			       "%d: connect: %d (%s)", p->conn->base_.fd, sockerr,
 			       evutil_socket_error_to_string (sockerr));
 	}
     }
@@ -220,7 +223,7 @@ event_do_connect (struct rs_connection *conn)
 int
 event_loopbreak (struct rs_connection *conn)
 {
-  int err = event_base_loopbreak (conn->evb);
+  int err = event_base_loopbreak (conn->base_.ctx->evb);
   if (err < 0)
     rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 			 "event_base_loopbreak: %s",
@@ -236,7 +239,7 @@ event_on_disconnect (struct rs_connection *conn)
   conn->is_connected = 0;
   rs_debug (("%s: %p disconnected\n", __func__, conn->active_peer));
   if (conn->callbacks.disconnected_cb)
-    conn->callbacks.disconnected_cb (conn->user_data);
+    conn->callbacks.disconnected_cb (conn->base_.user_data);
 }
 
 /** Internal connect event returning 0 on success or -1 on error.  */
@@ -259,7 +262,7 @@ event_on_connect (struct rs_connection *conn, struct rs_message *msg)
   rs_debug (("%s: %p connected\n", __func__, conn->active_peer));
 
   if (conn->callbacks.connected_cb)
-    conn->callbacks.connected_cb (conn->user_data);
+    conn->callbacks.connected_cb (conn->base_.user_data);
 
   if (msg)
     message_do_send (msg);
@@ -271,7 +274,8 @@ int
 event_init_eventbase (struct rs_connection *conn)
 {
   assert (conn);
-  if (conn->evb)
+  assert (conn->base_.ctx);
+  if (conn->base_.ctx->evb)
     return RSE_OK;
 
 #if defined (DEBUG)
@@ -279,8 +283,8 @@ event_init_eventbase (struct rs_connection *conn)
     event_enable_debug_mode ();
 #endif
   event_set_log_callback (_evlog_cb);
-  conn->evb = event_base_new ();
-  if (!conn->evb)
+  conn->base_.ctx->evb = event_base_new ();
+  if (!conn->base_.ctx->evb)
     return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				"event_base_new");
 

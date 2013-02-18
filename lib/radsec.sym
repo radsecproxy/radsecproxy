@@ -67,6 +67,9 @@ rs_err_ctx_push
 rs_err_ctx_push_fl
 rs_err_free
 rs_err_msg
+rs_listener_create
+rs_listener_dispatch
+rs_listener_set_callbacks
 rs_message_append_avp
 rs_message_avps
 rs_message_code

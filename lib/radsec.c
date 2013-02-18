@@ -127,6 +127,9 @@ rs_context_destroy (struct rs_context *ctx)
       rs_free (ctx, ctx->config);
     }
 
+  if (ctx->evb)
+    event_base_free (ctx->evb);
+
   free (ctx);
 }
 

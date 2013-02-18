@@ -1,4 +1,4 @@
-/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
@@ -30,7 +30,7 @@
 int
 rs_request_create (struct rs_connection *conn, struct rs_request **req_out)
 {
-  struct rs_request *req = rs_malloc (conn->ctx, sizeof(*req));
+  struct rs_request *req = rs_malloc (conn->base_.ctx, sizeof(*req));
   assert (req_out);
   if (!req)
     return rs_err_conn_push_fl (conn, RSE_NOMEM, __FILE__, __LINE__, NULL);
@@ -73,11 +73,11 @@ rs_request_destroy (struct rs_request *request)
 {
   assert (request);
   assert (request->conn);
-  assert (request->conn->ctx);
+  assert (request->conn->base_.ctx);
 
   if (request->req_msg)
     rs_message_destroy (request->req_msg);
-  rs_free (request->conn->ctx, request);
+  rs_free (request->conn->base_.ctx, request);
 }
 
 static void

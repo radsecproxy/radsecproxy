@@ -1,4 +1,4 @@
-/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
@@ -159,9 +159,9 @@ int
 err_conn_push_err (struct rs_connection *conn, struct rs_error *err)
 {
 
-  if (conn->err)
-    rs_err_free (conn->err);
-  conn->err = err;		/* FIXME: use a stack */
+  if (conn->base_.err)
+    rs_err_free (conn->base_.err);
+  conn->base_.err = err;		/* FIXME: use a stack */
 
   return err->code;
 }
@@ -225,8 +225,8 @@ rs_err_conn_pop (struct rs_connection *conn)
 
   if (!conn)
     return NULL;		/* FIXME: RSE_INVALID_CONN */
-  err = conn->err;
-  conn->err = NULL;
+  err = conn->base_.err;
+  conn->base_.err = NULL;
 
   return err;
 }
@@ -236,8 +236,8 @@ rs_err_conn_peek_code (struct rs_connection *conn)
 {
   if (!conn)
     return -1;			/* FIXME: RSE_INVALID_CONN */
-  if (conn->err)
-    return conn->err->code;
+  if (conn->base_.err)
+    return conn->base_.err->code;
 
   return RSE_OK;
 }

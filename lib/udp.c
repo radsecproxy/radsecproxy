@@ -1,4 +1,4 @@
-/* Copyright 2011 NORDUnet A/S. All rights reserved.
+/* Copyright 2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
@@ -45,7 +45,7 @@ _send (struct rs_connection *conn, int fd)
   /* If there are more messages in queue, add the write event again.  */
   if (msg->conn->out_queue)
     {
-      r = event_add (msg->conn->wev, NULL);
+      r = event_add (msg->conn->base_.wev, NULL);
       if (r < 0)
 	return rs_err_conn_push_fl (msg->conn, RSE_EVENT, __FILE__, __LINE__,
 				    "event_add: %s", evutil_gai_strerror (r));
@@ -121,7 +121,7 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
       /* Hand over message to user.  This changes ownership of msg.
 	 Don't touch it afterwards -- it might have been freed.  */
       if (msg->conn->callbacks.received_cb)
-	msg->conn->callbacks.received_cb (msg, msg->conn->user_data);
+	msg->conn->callbacks.received_cb (msg, msg->conn->base_.user_data);
     }
   else if (what & EV_WRITE)
     {
@@ -135,7 +135,7 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
       if (msg->conn->out_queue)
 	if (_send (msg->conn, fd) == RSE_OK)
 	  if (msg->conn->callbacks.sent_cb)
-	    msg->conn->callbacks.sent_cb (msg->conn->user_data);
+	    msg->conn->callbacks.sent_cb (msg->conn->base_.user_data);
     }
 
 #if defined (DEBUG)
@@ -147,16 +147,18 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 int
 udp_init (struct rs_connection *conn, struct rs_message *msg)
 {
-  assert (!conn->bev);
+  assert (!conn->base_.bev);
 
-  conn->rev = event_new (conn->evb, conn->fd, EV_READ|EV_PERSIST, _evcb, NULL);
-  conn->wev = event_new (conn->evb, conn->fd, EV_WRITE, _evcb, NULL);
-  if (!conn->rev || !conn->wev)
+  conn->base_.rev = event_new (conn->base_.ctx->evb, conn->base_.fd,
+                             EV_READ|EV_PERSIST, _evcb, NULL);
+  conn->base_.wev = event_new (conn->base_.ctx->evb, conn->base_.fd,
+                             EV_WRITE, _evcb, NULL);
+  if (!conn->base_.rev || !conn->base_.wev)
     {
-      if (conn->rev)
+      if (conn->base_.rev)
 	{
-	  event_free (conn->rev);
-	  conn->rev = NULL;
+	  event_free (conn->base_.rev);
+	  conn->base_.rev = NULL;
 	}
       /* ENOMEM _or_ EINVAL but EINVAL only if we use EV_SIGNAL, at
 	 least for now (libevent-2.0.5).  */
@@ -169,10 +171,13 @@ int
 udp_init_retransmit_timer (struct rs_connection *conn)
 {
   assert (conn);
+  assert (conn->base_.ctx);
+  assert (conn->base_.ctx->evb);
 
   if (conn->tev)
     event_free (conn->tev);
-  conn->tev = evtimer_new (conn->evb, event_retransmit_timeout_cb, conn);
+  conn->tev =
+    evtimer_new (conn->base_.ctx->evb, event_retransmit_timeout_cb, conn);
   if (!conn->tev)
     return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				"evtimer_new");
