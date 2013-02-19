@@ -1,13 +1,16 @@
-libradsec is a RADIUS library for clients doing RADIUS over UDP or
+Libradsec is a RADIUS library for clients doing RADIUS over UDP or
 TLS. The goal is to eventually add transports TCP and DTLS.
+
 
  * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE *
 
 This branch (libradsec-server-support) is extremely unstable and will
-see changes to public API:s for sure. It might even be rebased without
-any warning what so ever. Don't follow this branch.
+see changes its to public API:s for sure. It _will_ be rebased without
+any warning what so ever. Yuo probably don't want to follow this
+branch.
 
  * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE * NOTE *
+
 
 The canonical pickup point is
 http://git.nordu.net/?p=radsecproxy.git;a=shortlog;h=refs/heads/libradsec
@@ -16,7 +19,7 @@ http://git.nordu.net/?p=radsecproxy.git;a=shortlog;h=refs/heads/libradsec
 The source code is licensed under a 3-clause BSD license. See LICENSE.
 
 
-libradsec depends on 
+Libradsec depends on 
 - libconfuse
 - libevent2
 - openssl (if configured with --enable-tls)
