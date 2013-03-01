@@ -1,5 +1,5 @@
 /* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+   See LICENSE for licensing information. */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -28,21 +28,21 @@ message_verify_response (struct rs_connection *conn,
   int err;
 
   assert (conn);
-  assert (conn->active_peer);
-  assert (conn->active_peer->secret);
+  assert (conn->base_.active_peer);
+  assert (conn->base_.active_peer->secret);
   assert (response);
   assert (response->rpkt);
   assert (request);
   assert (request->rpkt);
 
-  response->rpkt->secret = conn->active_peer->secret;
-  response->rpkt->sizeof_secret = strlen (conn->active_peer->secret);
+  response->rpkt->secret = conn->base_.active_peer->secret;
+  response->rpkt->sizeof_secret = strlen (conn->base_.active_peer->secret);
 
   /* Verify header and message authenticator.  */
   err = nr_packet_verify (response->rpkt, request->rpkt);
   if (err)
     {
-      if (conn->is_connected)
+      if (conn->state == RS_CONN_STATE_CONNECTED)
 	rs_conn_disconnect(conn);
       return rs_err_conn_push_fl (conn, -err, __FILE__, __LINE__,
 				  "nr_packet_verify");
@@ -52,7 +52,7 @@ message_verify_response (struct rs_connection *conn,
   err = nr_packet_decode (response->rpkt, request->rpkt);
   if (err)
     {
-      if (conn->is_connected)
+      if (conn->state == RS_CONN_STATE_CONNECTED)
 	rs_conn_disconnect(conn);
       return rs_err_conn_push_fl (conn, -err, __FILE__, __LINE__,
 				  "nr_packet_decode");
@@ -71,11 +71,11 @@ message_do_send (struct rs_message *msg)
 
   assert (msg);
   assert (msg->conn);
-  assert (msg->conn->active_peer);
-  assert (msg->conn->active_peer->secret);
+  assert (msg->conn->base_.active_peer);
+  assert (msg->conn->base_.active_peer->secret);
   assert (msg->rpkt);
 
-  msg->rpkt->secret = msg->conn->active_peer->secret;
+  msg->rpkt->secret = msg->conn->base_.active_peer->secret;
   msg->rpkt->sizeof_secret = strlen (msg->rpkt->secret);
 
   /* Encode message.  */
@@ -92,8 +92,8 @@ message_do_send (struct rs_message *msg)
   {
     char host[80], serv[80];
 
-    getnameinfo (msg->conn->active_peer->addr_cache->ai_addr,
-		 msg->conn->active_peer->addr_cache->ai_addrlen,
+    getnameinfo (msg->conn->base_.active_peer->addr_cache->ai_addr,
+		 msg->conn->base_.active_peer->addr_cache->ai_addrlen,
 		 host, sizeof(host), serv, sizeof(serv),
 		 0 /* NI_NUMERICHOST|NI_NUMERICSERV*/);
     rs_debug (("%s: about to send this to %s:%s:\n", __func__, host, serv));

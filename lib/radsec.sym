@@ -77,7 +77,10 @@ rs_message_create
 rs_message_create_authn_request
 rs_message_destroy
 rs_message_send
-rs_peer_create
+rs_peer_create_for_conn
+rs_peer_create_for_listener
+rs_peer_free_address
+rs_peer_free_secret
 rs_peer_set_address
 rs_peer_set_retries
 rs_peer_set_secret

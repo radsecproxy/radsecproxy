@@ -1,5 +1,5 @@
 /* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+   See LICENSE for licensing information. */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -25,7 +25,7 @@ conn_close (struct rs_connection **connp)
   int r = 0;
   assert (connp);
   assert (*connp);
-  if ((*connp)->is_connected)
+  if ((*connp)->state == RS_CONN_STATE_CONNECTED)
     r = rs_conn_disconnect (*connp);
   if (r == RSE_OK)
     *connp = NULL;
@@ -53,7 +53,7 @@ conn_activate_timeout (struct rs_connection *conn)
   if (conn->base_.timeout.tv_sec || conn->base_.timeout.tv_usec)
     {
       rs_debug (("%s: activating timer: %d.%d\n", __func__,
-		 conn->timeout.tv_sec, conn->timeout.tv_usec));
+		 conn->base_.timeout.tv_sec, conn->base_.timeout.tv_usec));
       if (evtimer_add (conn->tev, &conn->base_.timeout))
 	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				    "evtimer_add: %d", errno);
@@ -64,7 +64,7 @@ conn_activate_timeout (struct rs_connection *conn)
 int
 conn_type_tls (const struct rs_connection *conn)
 {
-  assert (conn->active_peer);
+  assert (conn->base_.active_peer);
   return conn->base_.realm->type == RS_CONN_TYPE_TLS
     || conn->base_.realm->type == RS_CONN_TYPE_DTLS;
 }
@@ -72,9 +72,9 @@ conn_type_tls (const struct rs_connection *conn)
 int
 conn_cred_psk (const struct rs_connection *conn)
 {
-  assert (conn->active_peer);
-  return conn->active_peer->transport_cred &&
-    conn->active_peer->transport_cred->type == RS_CRED_TLS_PSK;
+  assert (conn->base_.active_peer);
+  return conn->base_.active_peer->transport_cred &&
+    conn->base_.active_peer->transport_cred->type == RS_CRED_TLS_PSK;
 }
 
 void
@@ -111,23 +111,21 @@ conn_configure (struct rs_context *ctx,
       struct rs_realm *r = rs_conf_find_realm (ctx, config);
       if (r)
 	{
-	  struct rs_peer *p;
-
 	  connbase->realm = r;
 	  connbase->peers = r->peers; /* FIXME: Copy instead?  */
+#if 0
 	  for (p = connbase->peers; p != NULL; p = p->next)
-	    p->conn = TO_GENERIC_CONN(connbase);
+	    p->connbase = connbase;
+#endif
 	  connbase->timeout.tv_sec = r->timeout;
 	  connbase->tryagain = r->retries;
 	}
-      else
-	{
-	  connbase->realm = rs_malloc (ctx, sizeof (struct rs_realm));
-	  if (!connbase->realm)
-	    return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__,
-				       NULL);
-	  memset (connbase->realm, 0, sizeof (struct rs_realm));
-	}
+    }
+  if (connbase->realm == NULL)
+    {
+      connbase->realm = rs_calloc (ctx, 1, sizeof (struct rs_realm));
+      if (connbase->realm == NULL)
+        return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
     }
   return RSE_OK;
 }
@@ -200,7 +198,7 @@ rs_conn_destroy (struct rs_connection *conn)
   /* NOTE: conn->realm is owned by context.  */
   /* NOTE: conn->peers is owned by context.  */
 
-  if (conn->is_connected)
+  if (conn->state == RS_CONN_STATE_CONNECTED)
     err = rs_conn_disconnect (conn);
 
 #if defined (RS_ENABLE_TLS)
@@ -284,7 +282,7 @@ struct event_base
 int rs_conn_get_fd (struct rs_connection *conn)
 {
   assert (conn);
-  assert (conn->active_peer);
+  assert (conn->base_.active_peer);
   return conn->base_.fd;
 }
 

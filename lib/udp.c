@@ -129,7 +129,7 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
       assert (msg);
       assert (msg->conn);
 
-      if (!msg->conn->is_connected)
+      if (msg->conn->state == RS_CONN_STATE_CONNECTING)
 	event_on_connect (msg->conn, msg);
 
       if (msg->conn->out_queue)

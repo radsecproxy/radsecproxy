@@ -1,5 +1,5 @@
 /** \file radsec.h
-    \brief Public interface for libradsec.  */
+    \brief Public interface for libradsec. */
 
 /* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information. */
@@ -136,6 +136,7 @@ extern "C" {
 
 /* Data types.  */
 struct rs_context;		/* radsec-impl.h */
+struct rs_conn_base;            /* radsec-impl.h */
 struct rs_connection;		/* radsec-impl.h */
 struct rs_listener;             /* radsec-impl.h */
 struct rs_message;		/* radsec-impl.h */
@@ -175,8 +176,10 @@ struct rs_conn_callbacks {
 
 typedef void (*rs_listener_new_conn_cb) (struct rs_connection *conn,
                                          void *user_data);
+typedef void (*rs_listener_error_cb) (void *user_data);
 struct rs_listener_callbacks {
     rs_listener_new_conn_cb new_conn_cb;
+    rs_listener_error_cb error_cb;
 };
 
 typedef struct value_pair rs_avp;
@@ -327,11 +330,20 @@ int rs_conn_get_fd(struct rs_connection *conn);
 void rs_conn_set_timeout(struct rs_connection *conn, struct timeval *tv);
 
 /* Peer -- client and server.  */
-int rs_peer_create(struct rs_connection *conn, struct rs_peer **peer_out);
+/** Create a peer and add it to list of peers held by \a conn. */
+int rs_peer_create_for_conn (struct rs_connection *conn,
+                             struct rs_peer **peer_out);
+/** Create a peer and add it to list of peers held by \a listener. */
+int rs_peer_create_for_listener (struct rs_listener *listener,
+                                 struct rs_peer **peer_out);
+/** Set RADIUS secret for \a peer. Free resurces with \a rs_peer_free_secret. */
+int rs_peer_set_secret(struct rs_peer *peer, const char *secret);
+/** Free resources allocated by \a rs_peer_set_secret. */
+void rs_peer_free_secret (struct rs_peer *peer);
 int rs_peer_set_address(struct rs_peer *peer,
 			const char *hostname,
 			const char *service);
-int rs_peer_set_secret(struct rs_peer *peer, const char *secret);
+void rs_peer_free_address (struct rs_peer *peer);
 void rs_peer_set_timeout(struct rs_peer *peer, int timeout);
 void rs_peer_set_retries(struct rs_peer *peer, int retries);
 
@@ -427,6 +439,12 @@ int rs_err_conn_push_fl(struct rs_connection *conn,
 			int line,
 			const char *fmt,
 			...);
+int rs_err_connbase_push_fl (struct rs_conn_base *connbase,
+                             int code,
+                             const char *file,
+                             int line,
+                             const char *fmt,
+                             ...);
 /** Pop the first error from the error FIFO associated with connection
     \a conn or NULL if there are no errors in the FIFO.  */
 struct rs_error *rs_err_conn_pop(struct rs_connection *conn);

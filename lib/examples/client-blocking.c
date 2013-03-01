@@ -1,7 +1,11 @@
 /* RADIUS/RadSec client using libradsec in blocking mode. */
 
+/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
+   See LICENSE for licensing information. */
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <assert.h>
 #include <radsec/radsec.h>
 #include <radsec/request.h>
@@ -13,7 +17,7 @@
 #define USER_PW "password"
 
 struct rs_error *
-blocking_client (const char *config_fn, const char *configuration,
+blocking_client (const char *av1, const char *av2, const char *av3,
                  int use_request_object_flag)
 {
   struct rs_context *h = NULL;
@@ -22,6 +26,15 @@ blocking_client (const char *config_fn, const char *configuration,
   struct rs_message *req = NULL, *resp = NULL;
   struct rs_error *err = NULL;
   int r;
+#if defined (USE_CONFIG_FILE)
+  const char *config_fn= av1;
+  const char *configuration = av2;
+#else
+  const char *host = av1;
+  const char *service = av2;
+  const char *proto = av3;
+  struct rs_peer *server;
+#endif
 
   r = rs_context_create (&h);
   if (r)
@@ -31,15 +44,25 @@ blocking_client (const char *config_fn, const char *configuration,
     }
 
 #if !defined (USE_CONFIG_FILE)
+  /* Do it without a configuration file by setting all stuff "by
+   hand".  Doesn't work for TLS at the moment because we don't have an
+   API for setting the X509 cert file names and such. */
   {
-    struct rs_peer *server;
+    int conn_type = RS_CONN_TYPE_UDP;
 
     if (rs_conn_create (h, &conn, NULL))
       goto cleanup;
-    rs_conn_set_type (conn, RS_CONN_TYPE_UDP);
-    if (rs_peer_create (conn, &server))
+    if (proto)
+      {
+        if (!strncmp (proto, "udp", strlen ("udp")))
+          conn_type = RS_CONN_TYPE_UDP;
+        else if (!strncmp (proto, "tls", strlen ("tls")))
+          conn_type = RS_CONN_TYPE_TLS;
+      }
+    rs_conn_set_type (conn, conn_type);
+    if (rs_peer_create_for_conn (conn, &server))
       goto cleanup;
-    if (rs_peer_set_address (server, av1, av2))
+    if (rs_peer_set_address (server, host, service))
       goto cleanup;
     rs_peer_set_timeout (server, 1);
     rs_peer_set_retries (server, 3);
@@ -85,6 +108,10 @@ blocking_client (const char *config_fn, const char *configuration,
   err = rs_err_ctx_pop (h);
   if (err == RSE_OK)
     err = rs_err_conn_pop (conn);
+#if !defined (USE_CONFIG_FILE)
+  rs_peer_free_address (server);
+  rs_peer_free_secret (server);
+#endif
   if (resp)
     rs_message_destroy (resp);
   if (request)
@@ -118,7 +145,8 @@ main (int argc, char *argv[])
     }
   if (argc < 3)
     usage (argc, argv);
-  err = blocking_client (argv[1], argv[2], use_request_object_flag);
+  err = blocking_client (argv[1], argv[2], argc >= 3 ? argv[3] : NULL,
+                         use_request_object_flag);
   if (err)
     {
       fprintf (stderr, "error: %s: %d\n", rs_err_msg (err), rs_err_code (err, 0));

@@ -24,12 +24,12 @@ _conn_open (struct rs_connection *conn, struct rs_message *msg)
   if (event_init_eventbase (conn))
     return -1;
 
-  if (!conn->active_peer)
+  if (!conn->base_.active_peer)
     peer_pick_peer (conn);
-  if (!conn->active_peer)
+  if (!conn->base_.active_peer)
     return rs_err_conn_push_fl (conn, RSE_NOPEER, __FILE__, __LINE__, NULL);
 
-  if (event_init_socket (conn, conn->active_peer))
+  if (event_init_socket (conn, conn->base_.active_peer))
     return -1;
 
   if (conn->base_.realm->type == RS_CONN_TYPE_TCP
@@ -37,7 +37,7 @@ _conn_open (struct rs_connection *conn, struct rs_message *msg)
     {
       if (tcp_init_connect_timer (conn))
 	return -1;
-      if (event_init_bufferevent (conn, conn->active_peer))
+      if (event_init_bufferevent (conn, conn->base_.active_peer))
 	return -1;
     }
   else
@@ -48,9 +48,9 @@ _conn_open (struct rs_connection *conn, struct rs_message *msg)
 	return -1;
     }
 
-  if (!conn->is_connected)
-    if (!conn->is_connecting)
-      event_do_connect (conn);
+  if (conn->state != RS_CONN_STATE_CONNECTED
+      && conn->state != RS_CONN_STATE_CONNECTING)
+    event_do_connect (conn);
 
   return RSE_OK;
 }
@@ -58,7 +58,8 @@ _conn_open (struct rs_connection *conn, struct rs_message *msg)
 static int
 _conn_is_open_p (struct rs_connection *conn)
 {
-  return conn->active_peer && conn->is_connected;
+  return conn->state == RS_CONN_STATE_CONNECTED
+    && conn->base_.active_peer != NULL;
 }
 
 /* User callback used when we're dispatching for user.  */
@@ -92,7 +93,7 @@ rs_message_send (struct rs_message *msg, void *user_data)
 
   assert (conn->base_.ctx);
   assert (conn->base_.ctx->evb);
-  assert (conn->active_peer);
+  assert (conn->base_.active_peer);
   assert (conn->base_.fd >= 0);
 
   conn->base_.user_data = user_data;

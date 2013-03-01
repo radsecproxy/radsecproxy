@@ -1,5 +1,5 @@
 /* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+   See LICENSE for licensing information. */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -156,26 +156,41 @@ rs_err_ctx_push_fl (struct rs_context *ctx, int code, const char *file,
 }
 
 int
-err_conn_push_err (struct rs_connection *conn, struct rs_error *err)
+err_connbase_push_err (struct rs_conn_base *connbase, struct rs_error *err)
 {
 
-  if (conn->base_.err)
-    rs_err_free (conn->base_.err);
-  conn->base_.err = err;		/* FIXME: use a stack */
+  if (connbase->err)
+    rs_err_free (connbase->err);
+  connbase->err = err;		/* FIXME: use a stack */
 
   return err->code;
 }
 
 static int
-_conn_err_vpush_fl (struct rs_connection *conn, int code, const char *file,
-		    int line, const char *fmt, va_list args)
+_connbase_err_vpush_fl (struct rs_conn_base *connbase, int code,
+                        const char *file, int line, const char *fmt,
+                        va_list args)
 {
   struct rs_error *err = _err_vcreate (code, file, line, fmt, args);
 
   if (!err)
     return RSE_NOMEM;
 
-  return err_conn_push_err (conn, err);
+  return err_connbase_push_err (connbase, err);
+}
+
+int
+rs_err_connbase_push (struct rs_conn_base *connbase, int code,
+                      const char *fmt, ...)
+{
+  int r = 0;
+
+  va_list args;
+  va_start (args, fmt);
+  r = _connbase_err_vpush_fl (connbase, code, NULL, 0, fmt, args);
+  va_end (args);
+
+  return r;
 }
 
 int
@@ -185,7 +200,22 @@ rs_err_conn_push (struct rs_connection *conn, int code, const char *fmt, ...)
 
   va_list args;
   va_start (args, fmt);
-  r = _conn_err_vpush_fl (conn, code, NULL, 0, fmt, args);
+  r = _connbase_err_vpush_fl (TO_BASE_CONN (conn), code, NULL, 0, fmt, args);
+  va_end (args);
+
+  return r;
+}
+
+int
+rs_err_connbase_push_fl (struct rs_conn_base *connbase, int code,
+                         const char *file,
+                         int line, const char *fmt, ...)
+{
+  int r = 0;
+
+  va_list args;
+  va_start (args, fmt);
+  r = _connbase_err_vpush_fl (connbase, code, file, line, fmt, args);
   va_end (args);
 
   return r;
@@ -199,7 +229,7 @@ rs_err_conn_push_fl (struct rs_connection *conn, int code, const char *file,
 
   va_list args;
   va_start (args, fmt);
-  r = _conn_err_vpush_fl (conn, code, file, line, fmt, args);
+  r = _connbase_err_vpush_fl (TO_BASE_CONN (conn), code, file, line, fmt, args);
   va_end (args);
 
   return r;

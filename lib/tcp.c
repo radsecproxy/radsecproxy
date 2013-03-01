@@ -109,7 +109,8 @@ _read_message (struct rs_message *msg)
       /* Find out what happens if there's data left in the buffer.  */
       {
 	size_t rest = 0;
-	rest = evbuffer_get_length (bufferevent_get_input (msg->conn->bev));
+	rest =
+          evbuffer_get_length (bufferevent_get_input (msg->conn->base_.bev));
 	if (rest)
 	  rs_debug (("%s: returning with %d octets left in buffer\n", __func__,
 		     rest));
@@ -178,11 +179,10 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
   assert (msg->conn);
   conn = msg->conn;
 #if defined (DEBUG)
-  assert (msg->conn->active_peer);
-  p = conn->active_peer;
+  assert (msg->conn->base_.active_peer);
+  p = conn->base_.active_peer;
 #endif
 
-  conn->is_connecting = 0;
   if (events & BEV_EVENT_CONNECTED)
     {
       if (conn->tev)
@@ -213,7 +213,7 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
 	}
       else
 	{
-	  rs_debug (("%s: %d: %d (%s)\n", __func__, conn->fd, sockerr,
+	  rs_debug (("%s: %d: %d (%s)\n", __func__, conn->base_.fd, sockerr,
 		     evutil_socket_error_to_string (sockerr)));
 	  rs_err_conn_push_fl (conn, RSE_SOCKERR, __FILE__, __LINE__,
 			       "%d: %d (%s)", conn->base_.fd, sockerr,

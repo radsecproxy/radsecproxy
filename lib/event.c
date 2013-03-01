@@ -1,5 +1,5 @@
 /* Copyright 2011,2013 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+   See LICENSE for licensing information. */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -72,8 +72,8 @@ event_conn_timeout_cb (int fd, short event, void *data)
   if (event & EV_TIMEOUT)
     {
       rs_debug (("%s: connection timeout on %p (fd %d) connecting to %p\n",
-		 __func__, conn, conn->fd, conn->active_peer));
-      conn->is_connecting = 0;
+		 __func__, conn, conn->base_.fd, conn->base_.active_peer));
+      conn->state = RS_CONN_STATE_UNDEFINED;
       rs_err_conn_push_fl (conn, RSE_TIMEOUT_CONN, __FILE__, __LINE__, NULL);
       event_loopbreak (conn);
     }
@@ -90,7 +90,7 @@ event_retransmit_timeout_cb (int fd, short event, void *data)
   if (event & EV_TIMEOUT)
     {
       rs_debug (("%s: retransmission timeout on %p (fd %d) sending to %p\n",
-		 __func__, conn, conn->fd, conn->active_peer));
+		 __func__, conn, conn->base_.fd, conn->base_.active_peer));
       rs_err_conn_push_fl (conn, RSE_TIMEOUT_IO, __FILE__, __LINE__, NULL);
       event_loopbreak (conn);
     }
@@ -107,7 +107,7 @@ event_init_socket (struct rs_connection *conn, struct rs_peer *p)
       struct rs_error *err =
         rs_resolve (&p->addr_cache, p->realm->type, p->hostname, p->service);
       if (err != NULL)
-        return err_conn_push_err (conn, err);
+        return err_connbase_push_err (TO_BASE_CONN (conn), err);
     }
 
   conn->base_.fd = socket (p->addr_cache->ai_family, p->addr_cache->ai_socktype,
@@ -171,59 +171,67 @@ event_init_bufferevent (struct rs_connection *conn, struct rs_peer *peer)
 void
 event_do_connect (struct rs_connection *conn)
 {
-  struct rs_peer *p;
   int err, sockerr;
+  struct sockaddr *peer_addr;
+  size_t peer_addrlen;
 
   assert (conn);
-  assert (conn->active_peer);
-  p = conn->active_peer;
+  assert (conn->base_.active_peer);
+  assert (conn->base_.active_peer->addr_cache);
+  peer_addr = conn->base_.active_peer->addr_cache->ai_addr;
+  peer_addrlen = conn->base_.active_peer->addr_cache->ai_addrlen;
+
+  /* We don't connect listeners. */
+  assert (conn->base_.magic == RS_CONN_MAGIC_GENERIC);
 
 #if defined (DEBUG)
   {
     char host[80], serv[80];
 
-    getnameinfo (p->addr_cache->ai_addr,
-		 p->addr_cache->ai_addrlen,
-		 host, sizeof(host), serv, sizeof(serv),
+    getnameinfo (peer_addr, peer_addrlen,
+		 host, sizeof(host),
+                 serv, sizeof(serv),
 		 0 /* NI_NUMERICHOST|NI_NUMERICSERV*/);
     rs_debug (("%s: connecting to %s:%s\n", __func__, host, serv));
   }
 #endif
 
-  if (p->conn->base_.bev)		/* TCP */
+  if (conn->base_.bev)		/* TCP */
     {
       conn_activate_timeout (conn); /* Connect timeout.  */
-      err = bufferevent_socket_connect (p->conn->base_.bev,
-                                        p->addr_cache->ai_addr,
-					p->addr_cache->ai_addrlen);
+      err = bufferevent_socket_connect (conn->base_.bev,
+                                        peer_addr, peer_addrlen);
       if (err < 0)
-	rs_err_conn_push_fl (p->conn, RSE_EVENT, __FILE__, __LINE__,
-			     "bufferevent_socket_connect: %s",
-			     evutil_gai_strerror (err));
+	rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
+                             "bufferevent_socket_connect: %s",
+                             evutil_gai_strerror (err));
       else
-	p->conn->is_connecting = 1;
+	conn->state = RS_CONN_STATE_CONNECTING;
     }
   else				/* UDP */
     {
-      err = connect (p->conn->base_.fd,
-                     p->addr_cache->ai_addr,
-                     p->addr_cache->ai_addrlen);
+      err = connect (conn->base_.fd, peer_addr, peer_addrlen);
       if (err < 0)
 	{
-	  sockerr = evutil_socket_geterror (p->conn->fd);
-	  rs_debug (("%s: %d: connect: %d (%s)\n", __func__, p->conn->fd,
+	  sockerr = evutil_socket_geterror (conn->base_.fd);
+	  rs_debug (("%s: %d: connect: %d (%s)\n", __func__,
+                     conn->base_.fd,
 		     sockerr, evutil_socket_error_to_string (sockerr)));
-	  rs_err_conn_push_fl (p->conn, RSE_SOCKERR, __FILE__, __LINE__,
-			       "%d: connect: %d (%s)", p->conn->base_.fd, sockerr,
+	  rs_err_conn_push_fl (conn, RSE_SOCKERR,
+                               __FILE__, __LINE__,
+                               "%d: connect: %d (%s)", conn->base_.fd,
+                               sockerr,
 			       evutil_socket_error_to_string (sockerr));
 	}
+      else
+	conn->state = RS_CONN_STATE_CONNECTING;
     }
 }
 
 int
 event_loopbreak (struct rs_connection *conn)
 {
-  int err = event_base_loopbreak (conn->base_.ctx->evb);
+  int err = event_base_loopbreak (TO_BASE_CONN(conn)->ctx->evb);
   if (err < 0)
     rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 			 "event_base_loopbreak: %s",
@@ -235,9 +243,9 @@ event_loopbreak (struct rs_connection *conn)
 void
 event_on_disconnect (struct rs_connection *conn)
 {
-  conn->is_connecting = 0;
-  conn->is_connected = 0;
-  rs_debug (("%s: %p disconnected\n", __func__, conn->active_peer));
+  conn->state = RS_CONN_STATE_UNDEFINED;
+  rs_debug (("%s: %p disconnected\n", __func__,
+             TO_BASE_CONN(conn)->active_peer));
   if (conn->callbacks.disconnected_cb)
     conn->callbacks.disconnected_cb (conn->base_.user_data);
 }
@@ -246,8 +254,8 @@ event_on_disconnect (struct rs_connection *conn)
 int
 event_on_connect (struct rs_connection *conn, struct rs_message *msg)
 {
-  assert (!conn->is_connecting);
-  assert (conn->active_peer);
+  assert (conn->state == RS_CONN_STATE_CONNECTING);
+  assert (conn->base_.active_peer);
 
 #if defined (RS_ENABLE_TLS)
   if (conn_type_tls(conn) && !conn_cred_psk(conn))
@@ -258,8 +266,8 @@ event_on_connect (struct rs_connection *conn, struct rs_message *msg)
       }
 #endif	/* RS_ENABLE_TLS */
 
-  conn->is_connected = 1;
-  rs_debug (("%s: %p connected\n", __func__, conn->active_peer));
+  conn->state = RS_CONN_STATE_CONNECTED;
+  rs_debug (("%s: %p connected\n", __func__, TO_BASE_CONN(conn)->active_peer));
 
   if (conn->callbacks.connected_cb)
     conn->callbacks.connected_cb (conn->base_.user_data);

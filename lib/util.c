@@ -11,9 +11,10 @@ rs_strdup (struct rs_context *ctx, const char *s)
 {
   char *buf = rs_calloc (ctx, 1, strlen (s) + 1);
 
-  if (buf != NULL)
-    return strcpy (buf, s);
+  if (buf)
+    strcpy (buf, s);
+  else
+    rs_err_ctx_push (ctx, RSE_NOMEM, NULL);
 
-  rs_err_ctx_push (ctx, RSE_NOMEM, NULL);
-  return NULL;
+  return buf;
 }
