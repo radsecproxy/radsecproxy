@@ -49,7 +49,7 @@ _hash(const uint8_t *in,
     unless \a KEY is NULL.  If \a KEY is null \a IN is hashed with an
     ordinary cryptographic hash function such as SHA-2.
 
-    \a IN and \a KEY are NULL terminated strings.
+    \a IN and \a KEY are NUL terminated strings.
 
     \a IN is supposed to be an Ethernet MAC address and is sanitised
     by lowercasing it, removing all but [0-9a-f] and truncating it at
