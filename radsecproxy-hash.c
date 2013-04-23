@@ -18,7 +18,7 @@ usage()
 #endif
 	  "   -h\t\t\tdisplay this help and exit\n"
 	  "   -k key\t\tuse KEY for HMAC\n"
-	  "   -t type\t\tprint digest of type TYPE [mac|hmac]\n");
+	  "   -t type\t\tprint digest of type TYPE [hash|hmac]\n");
   exit(1);
 }
 
