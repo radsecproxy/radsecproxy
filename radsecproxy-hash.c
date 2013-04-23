@@ -84,3 +84,7 @@ main(int argc, char *argv[])
 
   return 0;
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

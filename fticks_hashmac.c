@@ -91,3 +91,7 @@ fticks_hashmac(const uint8_t *in,
     free(in_copy);
     return 0;
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */

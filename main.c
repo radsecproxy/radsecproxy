@@ -7,3 +7,7 @@ int main(int argc, char **argv)
 {
   return radsecproxy_main(argc, argv);
 }
+
+/* Local Variables: */
+/* c-file-style: "stroustrup" */
+/* End: */
