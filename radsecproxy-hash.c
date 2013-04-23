@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 NORDUnet A/S
+ * Copyright (C) 2011,2013 NORDUnet A/S
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -36,7 +36,7 @@ main(int argc, char *argv[])
 #if defined(READ_CONFIG)
   char *config = NULL;
 #endif
-  uint8_t buf[256];
+  uint8_t buf[64+1];
   char mac[80+1];
   uint8_t *key = NULL;
   enum { TYPE_HASH, TYPE_HMAC } type = TYPE_HASH;
