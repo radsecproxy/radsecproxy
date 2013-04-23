@@ -1,4 +1,4 @@
-/* Copyright (c) 2011, NORDUnet A/S */
+/* Copyright (c) 2011,2013, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
 #include <stdio.h>
@@ -10,10 +10,18 @@
 #include <nettle/hmac.h>
 #include "fticks_hashmac.h"
 
+/** \a HASH is an input buffer of length SHA256_DIGEST_SIZE bytes.
+    \a OUT_LEN is the size in bytes of \OUT.
+    \a OUT is an output buffer of length \a OUT_LEN. */
 static void
 _format_hash(const uint8_t *hash, size_t out_len, uint8_t *out)
 {
     int ir, iw;
+
+    if (out_len < 3) {
+        memset(out, 0, out_len);
+        return;
+    }
 
     for (ir = 0, iw = 0; iw <= out_len - 3; ir++, iw += 2)
 	sprintf((char *) out + iw, "%02x", hash[ir % SHA256_DIGEST_SIZE]);
@@ -56,6 +64,15 @@ _hash(const uint8_t *in,
     the first ';' found.  The truncation is done because RADIUS
     supposedly has a praxis of tacking on SSID to the MAC address in
     Calling-Station-Id.
+
+    The resulting hash value is written to \a OUT as a NUL terminated
+    string of numbers in two-digit hexadecimal ASCII representation.
+
+    Exactly \a OUT_LEN bytes are written to \a OUT, based on the first
+    (\a OUT_LEN - 1) / 2 bytes of the hash. Note that in the case when
+    \OUT_LEN - 1 is more than two times the length of the hash, the
+    output is repeated by concatinating another hex ASCII
+    representation of the hash to the output until the buffer is full.
 
     \return 0 on success, -ENOMEM on out of memory.
 */
