@@ -159,9 +159,7 @@ rs_packet_create (struct rs_connection *conn, struct rs_packet **pkt_out)
 int
 rs_packet_create_authn_request (struct rs_connection *conn,
 				struct rs_packet **pkt_out,
-				const char *user_name,
-                                const char *user_pw,
-                                const char *secret)
+				const char *user_name, const char *user_pw)
 {
   struct rs_packet *pkt;
   int err;
@@ -181,7 +179,6 @@ rs_packet_create_authn_request (struct rs_connection *conn,
 
   if (user_pw)
     {
-      pkt->rpkt->secret = secret;
       err = rs_packet_append_avp (pkt, PW_USER_PASSWORD, 0, user_pw, 0);
       if (err)
 	return err;

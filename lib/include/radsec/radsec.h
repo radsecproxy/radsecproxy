@@ -315,14 +315,12 @@ int rs_packet_send(struct rs_packet *pkt, void *user_data);
 
 /** Create a RADIUS authentication request packet associated with
     connection \a conn.  Optionally, User-Name and User-Password
-    attributes are added to the packet using the data in \a user_name,
-    \a user_pw and \a secret where \secret is the RADIUS shared
-    secret. */
+    attributes are added to the packet using the data in \a user_name
+    and \a user_pw.  */
 int rs_packet_create_authn_request(struct rs_connection *conn,
 				   struct rs_packet **pkt,
 				   const char *user_name,
-				   const char *user_pw,
-                                   const char *secret);
+				   const char *user_pw);
 
 /*** Append \a tail to packet \a pkt.  */
 int
