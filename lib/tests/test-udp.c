@@ -1,11 +1,13 @@
+/* Copyright 2011,2013, NORDUnet A/S. All rights reserved. */
+/* See LICENSE for licensing information. */
+
 #include <stdlib.h>
-#include <cgreen/cgreen.h>
+#include <assert.h>
+#include <CUnit/Basic.h>
+#include "radius/client.h"
 #include "radsec/radsec.h"
 #include "radsec/request.h"
 #include "udp.h"
-
-#define true 1			/* FIXME: Bug report cgreen.  */
-#define false 0
 
 static void
 authenticate (struct rs_connection *conn, const char *user, const char *pw)
@@ -13,12 +15,12 @@ authenticate (struct rs_connection *conn, const char *user, const char *pw)
   struct rs_request *req;
   struct rs_packet *msg, *resp;
 
-  assert_true (rs_request_create (conn, &req) == 0);
-  assert_true (rs_packet_create_authn_request (conn, &msg, user, pw) == 0);
+  CU_ASSERT (rs_request_create (conn, &req) == 0);
+  CU_ASSERT (!rs_packet_create_authn_request (conn, &msg, user, pw, "sikrit"));
   rs_request_add_reqpkt (req, msg);
-  assert_true (rs_request_send (req, &resp) == 0);
+  CU_ASSERT (rs_request_send (req, &resp) == 0);
   //printf ("%s\n", rs_err_msg (rs_err_conn_pop (conn), 1));
-  assert_true (rs_packet_code(resp) == PW_ACCESS_ACCEPT);
+  CU_ASSERT (rs_packet_code(resp) == PW_ACCESS_ACCEPT);
 
   rs_request_destroy (req);
 }
@@ -28,10 +30,12 @@ send_more_than_one_msg_in_one_packet (struct rs_connection *conn)
 {
   struct rs_packet *msg0, *msg1;
 
-  assert_true (rs_packet_create_authn_request (conn, &msg0, NULL, NULL) == 0);
-  assert_true (rs_packet_create_authn_request (conn, &msg1, NULL, NULL) == 0);
-  assert_true (rs_packet_send (msg0, NULL) == 0);
-  assert_true (rs_packet_send (msg1, NULL) == 0);
+  CU_ASSERT (rs_packet_create_authn_request (conn, &msg0, NULL, NULL, "sikrit")
+             == 0);
+  CU_ASSERT (rs_packet_create_authn_request (conn, &msg1, NULL, NULL, "sikrit")
+             == 0);
+  CU_ASSERT (rs_packet_send (msg0, NULL) == 0);
+  CU_ASSERT (rs_packet_send (msg1, NULL) == 0);
 }
 
 #if 0
@@ -44,18 +48,18 @@ send_large_packet (struct rs_connection *conn)
   int f;
 
   buf = malloc (RS_MAX_PACKET_LEN);
-  assert_true (buf != NULL);
+  CU_ASSERT (buf != NULL);
   memset (buf, 0, RS_MAX_PACKET_LEN);
 
-  assert_true (rs_packet_create (conn, &msg0) == 0);
+  CU_ASSERT (rs_packet_create (conn, &msg0) == 0);
   /* 16 chunks --> heap corruption in evbuffer_drain detected by free() */
   for (f = 0; f < 15; f++)
     {
       memset (buf, 'a' + f, 252);
       //vp = pairmake ("EAP-Message", buf, T_OP_EQ);
-      assert_true (rs_packet_append_avp (msg0, fixme...) == RSE_OK);
+      CU_ASSERT (rs_packet_append_avp (msg0, fixme...) == RSE_OK);
     }
-  assert_true (rs_packet_send (msg0, NULL) == 0);
+  CU_ASSERT (rs_packet_send (msg0, NULL) == 0);
 }
 #endif  /* 0 */
 
@@ -78,10 +82,9 @@ test_auth ()
   setup.username = "molgan@PROJECT-MOONSHOT.ORG";
   setup.pw = "password";
 
-  assert_true (rs_context_create (&ctx) == 0);
-  assert_true (rs_context_read_config (ctx, setup.config_file) == 0);
-  assert_true (rs_context_init_freeradius_dict (ctx, NULL) == 0);
-  assert_true (rs_conn_create (ctx, &conn, setup.config_name) == 0);
+  CU_ASSERT (rs_context_create (&ctx) == 0);
+  CU_ASSERT (rs_context_read_config (ctx, setup.config_file) == 0);
+  CU_ASSERT (rs_conn_create (ctx, &conn, setup.config_name) == 0);
 
   authenticate (conn, setup.username, setup.pw);
 
@@ -97,9 +100,9 @@ test_buffering_cb (const uint8_t *buf, ssize_t len)
 #if 0
   hd (buf, len);
 #endif
-  assert_true (len >= 20);
-  assert_true (len <= RS_MAX_PACKET_LEN);
-  assert_true ((buf[2] << 8) +  buf[3] == len);
+  CU_ASSERT (len >= 20);
+  CU_ASSERT (len <= RS_MAX_PACKET_LEN);
+  CU_ASSERT ((buf[2] << 8) +  buf[3] == len);
   return len;
 }
 
@@ -111,34 +114,19 @@ test_buffering ()
   struct timeval timeout;
   struct polldata *polldata;
 
-  assert_true (rs_context_create (&ctx) == 0);
-  assert_true (rs_context_read_config (ctx, "test.conf") == 0);
-  assert_true (rs_conn_create (ctx, &conn, "test-udp-buffering") == 0);
+  CU_ASSERT (rs_context_create (&ctx) == 0);
+  CU_ASSERT (rs_context_read_config (ctx, "test.conf") == 0);
+  CU_ASSERT (rs_conn_create (ctx, &conn, "test-udp-buffering") == 0);
 
   timeout.tv_sec = 0;
   timeout.tv_usec = 150000;
   polldata = udp_server ("11820", &timeout, test_buffering_cb);
-  assert_true (polldata != NULL);
+  CU_ASSERT (polldata != NULL);
 
   send_more_than_one_msg_in_one_packet (conn);
-  assert_true (udp_poll (polldata) > 0);
-  assert_true (udp_poll (polldata) > 0);
+  CU_ASSERT (udp_poll (polldata) > 0);
+  CU_ASSERT (udp_poll (polldata) > 0);
 
-#if 0
-"
-send_large_packet() disabled, it's hanging after
-
-Sending Access-Request of id 1 to (null) port 0
-        Message-Authenticator = 0x00000000000000000000000000000000
-packet_do_send: about to send this to localhost:11820:
-        Code: 1, Identifier: 1, Lenght: 38
-rs_packet_send: entering event loop
-_evcb: fd=5 what = WRITE
-rs_packet_send: event loop done
-"
-  send_large_packet (conn);
-  assert_true (udp_poll (polldata) > 0);
-#endif  /* 0 */
 
   udp_free_polldata (polldata);
   rs_conn_destroy (conn);
@@ -146,28 +134,20 @@ rs_packet_send: event loop done
 }
 
 /* ************************************************************ */
-static void
-setup_auth (TestSuite *ts)
-{
-  add_test (ts, test_auth);
-}
-
-static void
-setup_buffering (TestSuite *ts)
-{
-  add_test (ts, test_buffering);
-}
-
 int
 main (int argc, char *argv[])
 {
-  TestSuite *ts = create_test_suite ();
+  CU_pSuite s = NULL;
+  CU_pTest t = NULL;
 
-  setup_auth (ts);
-  setup_buffering (ts);
+  assert (CU_initialize_registry () == CUE_SUCCESS);
+  s =  CU_add_suite ("auth", NULL, NULL); assert (s);
+  t = CU_ADD_TEST (s, test_auth); assert (t);
+  s =  CU_add_suite ("buffering", NULL, NULL); assert (s);
+  t = CU_ADD_TEST (s, test_buffering); assert (t);
 
-  if (argc > 1)
-    return run_single_test (ts, argv[1], create_text_reporter ());
-  else
-    return run_test_suite (ts, create_text_reporter ());
+  return !(CU_basic_run_tests () == CUE_SUCCESS);
+
+  CU_cleanup_registry ();
+  return 0;
 }

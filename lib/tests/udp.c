@@ -1,3 +1,6 @@
+/* Copyright 2011,2013, NORDUnet A/S. All rights reserved. */
+/* See LICENSE for licensing information. */
+
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -10,6 +13,7 @@
 #include <netdb.h>
 #include <sys/select.h>
 #include <sys/time.h>
+#include "radius/client.h"
 #include "udp.h"
 
 static struct addrinfo *
@@ -57,7 +61,7 @@ ssize_t
 udp_poll (struct polldata *data)
 {
   int r;
-  long timeout;
+  long timeout = 0;
   fd_set rfds;
   ssize_t len;
   uint8_t buf[RS_MAX_PACKET_LEN];
