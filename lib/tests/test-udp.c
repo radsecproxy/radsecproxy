@@ -16,7 +16,7 @@ authenticate (struct rs_connection *conn, const char *user, const char *pw)
   struct rs_packet *msg, *resp;
 
   CU_ASSERT (rs_request_create (conn, &req) == 0);
-  CU_ASSERT (!rs_packet_create_authn_request (conn, &msg, user, pw, "sikrit"));
+  CU_ASSERT (!rs_packet_create_authn_request (conn, &msg, user, pw));
   rs_request_add_reqpkt (req, msg);
   CU_ASSERT (rs_request_send (req, &resp) == 0);
   //printf ("%s\n", rs_err_msg (rs_err_conn_pop (conn), 1));
@@ -30,10 +30,8 @@ send_more_than_one_msg_in_one_packet (struct rs_connection *conn)
 {
   struct rs_packet *msg0, *msg1;
 
-  CU_ASSERT (rs_packet_create_authn_request (conn, &msg0, NULL, NULL, "sikrit")
-             == 0);
-  CU_ASSERT (rs_packet_create_authn_request (conn, &msg1, NULL, NULL, "sikrit")
-             == 0);
+  CU_ASSERT (rs_packet_create_authn_request (conn, &msg0, NULL, NULL) == 0);
+  CU_ASSERT (rs_packet_create_authn_request (conn, &msg1, NULL, NULL) == 0);
   CU_ASSERT (rs_packet_send (msg0, NULL) == 0);
   CU_ASSERT (rs_packet_send (msg1, NULL) == 0);
 }
