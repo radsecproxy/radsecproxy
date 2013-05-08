@@ -67,5 +67,5 @@ EXTRA_DIST = HACKING LICENSE libradsec.spec radsec.sym
 AM_DISTCHECK_CONFIGURE_FLAGS = --enable-tls --enable-tls-psk
 
 libradsec_la_LIBADD = radsecproxy/libradsec-radsecproxy.la radius/libradsec-radius.la
-libradsec_la_LDFLAGS = -version-info 1:0:0 -export-symbols $(srcdir)/radsec.sym
+libradsec_la_LDFLAGS = -version-info 0:0:0 -export-symbols $(srcdir)/radsec.sym
 libradsec_la_CFLAGS = $(AM_CFLAGS) -DHAVE_CONFIG_H -Werror # -DDEBUG -DDEBUG_LEVENT 
