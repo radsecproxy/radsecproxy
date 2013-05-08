@@ -137,6 +137,7 @@ main (int argc, char *argv[])
 {
   CU_pSuite s = NULL;
   CU_pTest t = NULL;
+  unsigned int nfail;
 
   assert (CU_initialize_registry () == CUE_SUCCESS);
   s =  CU_add_suite ("auth", NULL, NULL); assert (s);
@@ -144,8 +145,9 @@ main (int argc, char *argv[])
   s =  CU_add_suite ("buffering", NULL, NULL); assert (s);
   t = CU_ADD_TEST (s, test_buffering); assert (t);
 
-  return !(CU_basic_run_tests () == CUE_SUCCESS);
+  assert (CU_basic_run_tests () == CUE_SUCCESS);
+  nfail = CU_get_number_of_failures();
 
   CU_cleanup_registry ();
-  return 0;
+  return nfail;
 }
