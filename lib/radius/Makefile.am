@@ -18,6 +18,8 @@ libradsec_radius_la_SOURCES = \
 	static.c \
 	valuepair.c
 
+libradsec_radius_la_SOURCES += client.h
+
 libradsec_radius_la_CFLAGS = $(AM_CFLAGS) -DHAVE_CONFIG_H
 
 DICTIONARIES = \
@@ -27,7 +29,7 @@ DICTIONARIES = \
 	share/dictionary.ukerna \
 	share/dictionary.abfab.ietf
 
-EXTRA_DIST = $(DICTIONARIES)
+EXTRA_DIST = dictionaries.c $(DICTIONARIES) common.pl convert.pl
 
 $(top_srcdir)/include/radsec/radius.h dictionaries.c: ${DICTIONARIES} convert.pl common.pl
 	$(srcdir)/convert.pl ${DICTIONARIES}
@@ -38,4 +40,3 @@ clean-local:
 	rm -f dictionaries.c
 
 $(libradsec_radius_la_SOURCES): $(top_srcdir)/include/radsec/radius.h
-

@@ -1,5 +1,5 @@
 AUTOMAKE_OPTIONS = foreign
-INCLUDES = -I$(top_srcdir)/include
+INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)
 AM_CFLAGS = -Wall -Werror -g
 
 noinst_PROGRAMS = client
