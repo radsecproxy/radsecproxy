@@ -67,6 +67,7 @@ enum rs_error_code {
     RSE_VENDOR_UNKNOWN = 42,
     RSE_CRED = 43,
     RSE_CERT = 44,
+    RSE_MAX = RSE_CERT
 };
 
 enum rs_conn_type {
