@@ -47,7 +47,22 @@ else
 libradsec_la_SOURCES += md5.c
 endif
 
-EXTRA_DIST = HACKING LICENSE
+libradsec_la_SOURCES += \
+	compat.h \
+	conn.h \
+	debug.h \
+	err.h \
+	event.h \
+	md5.h \
+	packet.h \
+	peer.h \
+	radsec.h \
+	tcp.h \
+	tls.h \
+	udp.h \
+	util.h
+
+EXTRA_DIST = HACKING LICENSE libradsec.spec radsec.sym
 
 libradsec_la_LIBADD = radsecproxy/libradsec-radsecproxy.la radius/libradsec-radius.la
 libradsec_la_LDFLAGS = -version-info 1:0:0 -export-symbols radsec.sym
