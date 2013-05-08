@@ -29,7 +29,6 @@ enum rs_error_code {
     RSE_INVALID_CTX = 3,
     RSE_INVALID_CONN = 4,
     RSE_CONN_TYPE_MISMATCH = 5,
-    RSE_FR = 6,
     RSE_BADADDR = 7,
     RSE_NOPEER = 8,
     RSE_EVENT = 9,		/* libevent error.  */
@@ -68,7 +67,6 @@ enum rs_error_code {
     RSE_VENDOR_UNKNOWN = 42,
     RSE_CRED = 43,
     RSE_CERT = 44,
-    RSE_MAX = RSE_CERT
 };
 
 enum rs_conn_type {
