@@ -211,7 +211,7 @@ rs_packet_append_avp (struct rs_packet *pkt,
 
   da = nr_dict_attr_byvalue (attr, vendor);
   if (da == NULL)
-    return RSE_ATTR_TYPE_UNKNOWN;
+    return rs_err_conn_push (pkt->conn, RSE_ATTR_TYPE_UNKNOWN, __func__);
 
   err = nr_packet_attr_append (pkt->rpkt, NULL, da, data, data_len);
   if (err < 0)
