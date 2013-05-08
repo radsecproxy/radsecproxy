@@ -158,6 +158,8 @@ rs_err_ctx_push_fl (struct rs_context *ctx, int code, const char *file,
 int
 err_conn_push_err (struct rs_connection *conn, struct rs_error *err)
 {
+  assert (conn);
+  assert (err);
 
   if (conn->err)
     rs_err_free (conn->err);
