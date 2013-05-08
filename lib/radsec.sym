@@ -65,6 +65,7 @@ rs_err_ctx_push
 rs_err_ctx_push_fl
 rs_err_free
 rs_err_msg
+rs_packet_add_avp
 rs_packet_append_avp
 rs_packet_avps
 rs_packet_code
