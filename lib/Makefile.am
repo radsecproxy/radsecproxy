@@ -17,7 +17,7 @@ ACLOCAL_AMFLAGS = -I m4
 #     library interface is _changed_.
 
 
-SUBDIRS = radius radsecproxy include . examples
+SUBDIRS = radius radsecproxy include . examples tests
 
 INCLUDES = -I$(srcdir)/include
 AM_CFLAGS = -Wall -Werror -g
