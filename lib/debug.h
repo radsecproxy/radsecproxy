@@ -1,5 +1,5 @@
 /* Copyright 2011 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+   See LICENSE for licensing information. */
 
 #define hd(p, l) { int i;		\
     for (i = 1; i <= l; i++) {		\
