@@ -1,4 +1,4 @@
-/* Copyright 2012 NORDUnet A/S. All rights reserved.
+/* Copyright 2012,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #include <string.h>
@@ -9,11 +9,16 @@
 char *
 rs_strdup (struct rs_context *ctx, const char *s)
 {
-  char *buf = rs_calloc (ctx, 1, strlen (s) + 1);
+  size_t len;
+  char *buf;
+
+  len = strlen (s);
+  buf = rs_malloc (ctx, len + 1);
 
   if (buf != NULL)
-    return strcpy (buf, s);
+    memcpy (buf, s, len + 1);
+  else
+    rs_err_ctx_push (ctx, RSE_NOMEM, __func__);
 
-  rs_err_ctx_push (ctx, RSE_NOMEM, NULL);
-  return NULL;
+  return buf;
 }
