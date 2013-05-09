@@ -1,7 +1,8 @@
 /** \file radsec.h
     \brief Public interface for libradsec.  */
 
-/* See LICENSE for licensing information.  */
+/* Copyright 2010-2013 NORDUnet A/S. All rights reserved.
+   See LICENSE for licensing information. */
 
 #ifndef _RADSEC_RADSEC_H_
 #define _RADSEC_RADSEC_H_ 1

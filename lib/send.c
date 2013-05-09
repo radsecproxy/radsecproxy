@@ -1,5 +1,5 @@
-/* Copyright 2011 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+/* Copyright 2011,2013 NORDUnet A/S. All rights reserved.
+   See LICENSE for licensing information. */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>

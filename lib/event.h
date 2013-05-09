@@ -1,5 +1,5 @@
-/* Copyright 2011 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+/* Copyright 2011-2012 NORDUnet A/S. All rights reserved.
+   See LICENSE for licensing information. */
 
 void event_on_disconnect (struct rs_connection *conn);
 int event_on_connect (struct rs_connection *conn, struct rs_packet *pkt);

@@ -1,4 +1,5 @@
-/* See LICENSE for licensing information.  */
+/* Copyright 2010-2011 NORDUnet A/S. All rights reserved.
+   See LICENSE for licensing information. */
 
 #ifndef _RADSEC_REQUEST_IMPL_H_
 #define _RADSEC_REQUEST_IMPL_H_ 1
