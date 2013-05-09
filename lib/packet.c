@@ -1,10 +1,11 @@
-/* Copyright 2010, 2011 NORDUnet A/S. All rights reserved.
+/* Copyright 2010-2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
 #endif
 
+#include <stdlib.h>
 #include <assert.h>
 #include <radius/client.h>
 #include <event2/bufferevent.h>

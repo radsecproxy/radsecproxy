@@ -1,6 +1,7 @@
 /* Copyright 2012,2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information.  */
 
+#include <stdlib.h>
 #include <string.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
