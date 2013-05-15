@@ -58,7 +58,7 @@ _read_header (struct rs_packet *pkt)
   else	    /* Error: libevent gave us less than the low watermark. */
     {
       rs_debug (("%s: got: %d octets reading header\n", __func__, n));
-      rs_conn_disconnect (pkg->conn);
+      rs_conn_disconnect (pkt->conn);
       return rs_err_conn_push_fl (pkt->conn, RSE_INTERNAL, __FILE__, __LINE__,
 				  "got %d octets reading header", n);
     }
