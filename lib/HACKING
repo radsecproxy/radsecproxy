@@ -1,6 +1,6 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
 
-Status as of libradsec-0.0.2.dev (2013-01-25).
+Status as of libradsec-0.2.0.dev (2013-05-02).
 
 * Build instructions
 sh autogen.sh
@@ -8,6 +8,53 @@ sh autogen.sh
 make
 
 examples/client -r examples/client.conf blocking-tls; echo $?
+
+* Dependencies
+Details (within parentheses) apply to Debian Wheezy.
+
+- libconfuse (2.7-4)
+  sudo apt-get install libconfuse-dev libconfuse0
+- libevent2 (2.0.19-stable-3)
+  sudo apt-get install libevent-dev libevent-2.0-5
+- OpenSSL (1.0.1c-4) -- optional, for TLS and DTLS support
+  sudo apt-get install libssl-dev libssl1.0.0
+  
+* Functionality and quality in 0.0.x
+** Not well tested
+- reading config file
+- [TCP] short read
+- [TCP] short write
+- [TLS] basic tls support
+- [TLS] preshared key support
+- [TLS] verification of CN
+
+** Known issues
+- error handling when server can't bind to given listen_addr+port
+- configuration of listen_addr/service is per realm
+- error stack is only one entry deep
+- custom allocation scheme is not used in all places
+
+** Not implemented
+- dispatch mode (planned for 0.1)
+- [client] server failover / RFC3539 watchdog (planned for 0.1)
+- [server] support (planned for 0.2)
+- [client] TCP keepalive
+- on-your-own mode
+- [DTLS] support
+
+* Found a bug?
+Please report it. That is how we improve the quality of the code.
+
+If possible, please build the library with DEBUG defined (CFLAGS="-g
+-DDEBUG") and reproduce the problem. With DEBUG defined, lots of
+asserts are enabled which might give a hint about what's gone wrong.
+
+Running the library under gdb is another good idea. If you experience
+a crash, catching the crash in gdb and providing a backtrace is highly
+valuable for debugging.
+
+Contact: mailto:linus+libradsec@nordu.net
+
 
 * Design of the API
 - There are three usage modes:
@@ -46,46 +93,35 @@ timeout (UDP) will result in the event loop being broken. The same
 thing will happen if there's an error on a TCP connection, f.ex. a
 failing certificate validation (TLS).
 
-* Dependencies
-Details (within parentheses) apply to Debian Wheezy.
+* Notes on internals
+** How to connect an outgoing connection?
+Connecting is not done explicitly by the application but implicitly by
+rs_message_send(). The application can treat connections in the same
+way regardless of whether they're connection-oriented (i.e. TCP) or
+not (UDP).
 
-- libconfuse (2.7-4)
-  sudo apt-get install libconfuse-dev libconfuse0
-- libevent2 (2.0.19-stable-3)
-  sudo apt-get install libevent-dev libevent-2.0-5
-- OpenSSL (1.0.1c-4) -- optional, for TLS and DTLS support
-  sudo apt-get install libssl-dev libssl1.0.0
+rs_message_send(msg)
+  if msg->conn is open: mesasge_do_send(msg)
+  else: 
+    -> _conn_open(conn, msg)
+      pick configured peer
+      event_init_socket(peer)
+      if TCP or TLS:
+        init tcp timers
+        event_init_bufferevent(conn, peer)
+      else:
+        init udp timers
+      if not connected and not connecting:
+        event_do_connect(conn)    
+
+  if TCP:
+    bufferevent_setcb()
+    bufferevent_enable()
+  else:
+    event_assign(write_ev)         ; libevent func?
+    event_add(write_ev)
   
-* Functionality and quality in 0.0.x
-** Not well tested
-- reading config file
-- [TCP] short read
-- [TCP] short write
-- [TLS] basic tls support
-- [TLS] preshared key support
-- [TLS] verification of CN
+  if not in user-dispatch-mode:
+    event_base_dispatch()
+** How to bind a listener and start listening for incoming connections?
 
-** Known issues
-- error stack is only one entry deep
-- custom allocation scheme is not used in all places
-
-** Not implemented
-- dispatch mode (planned for 0.1)
-- [client] server failover / RFC3539 watchdog (planned for 0.1)
-- [server] support (planned for 0.2)
-- [client] TCP keepalive
-- on-your-own mode
-- [DTLS] support
-
-* Found a bug?
-Please report it. That is how we improve the quality of the code.
-
-If possible, please build the library with DEBUG defined (CFLAGS="-g
--DDEBUG") and reproduce the problem. With DEBUG defined, lots of
-asserts are enabled which might give a hint about what's gone wrong.
-
-Running the library under gdb is another good idea. If you experience
-a crash, catching the crash in gdb and providing a backtrace is highly
-valuable for debugging.
-
-Contact: mailto:linus+libradsec@nordu.net

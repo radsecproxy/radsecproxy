@@ -31,36 +31,27 @@ _read_header (struct rs_message *msg)
 {
   size_t n = 0;
 
-  n = bufferevent_read (msg->conn->base_.bev, msg->hdr, RS_HEADER_LEN);
+  n = bufferevent_read (TO_BASE_CONN(msg->conn)->bev, msg->hdr, RS_HEADER_LEN);
   if (n == RS_HEADER_LEN)
     {
       msg->flags |= RS_MESSAGE_HEADER_READ;
       msg->rpkt->length = (msg->hdr[2] << 8) + msg->hdr[3];
       if (msg->rpkt->length < 20 || msg->rpkt->length > RS_MAX_PACKET_LEN)
-	{
-	  conn_close (&msg->conn);
-	  return rs_err_conn_push (msg->conn, RSE_INVALID_MSG,
-				   "invalid message length: %d",
-				   msg->rpkt->length);
-	}
+        return  rs_err_conn_push (msg->conn, RSE_INVALID_MSG,
+                                  "invalid message length: %d",
+                                  msg->rpkt->length);
       memcpy (msg->rpkt->data, msg->hdr, RS_HEADER_LEN);
-      bufferevent_setwatermark (msg->conn->base_.bev, EV_READ,
+      bufferevent_setwatermark (TO_BASE_CONN(msg->conn)->bev, EV_READ,
 				msg->rpkt->length - RS_HEADER_LEN, 0);
       rs_debug (("%s: message header read, total msg len=%d\n",
 		 __func__, msg->rpkt->length));
     }
   else if (n < 0)
-    {
-      rs_debug (("%s: buffer frozen while reading header\n", __func__));
-    }
+    rs_debug (("%s: buffer frozen while reading header\n", __func__));
   else	    /* Error: libevent gave us less than the low watermark. */
-    {
-      conn_close (&msg->conn);
-      return rs_err_conn_push_fl (msg->conn, RSE_INTERNAL, __FILE__, __LINE__,
-				  "got %d octets reading header", n);
-    }
-
-  return 0;
+    return rs_err_conn_push_fl (msg->conn, RSE_INTERNAL, __FILE__, __LINE__,
+                                "got %d octets reading header", n);
+  return RSE_OK;
 }
 
 /** Read a message, check that it's valid RADIUS and hand it off to
@@ -98,12 +89,9 @@ _read_message (struct rs_message *msg)
 	 - attribute lengths >= 2
 	 - attribute sizes adding up correctly  */
       err = nr_packet_ok (msg->rpkt);
-      if (err != RSE_OK)
-	{
-	  conn_close (&msg->conn);
-	  return rs_err_conn_push_fl (msg->conn, err, __FILE__, __LINE__,
-				      "invalid message");
-	}
+      if (err)
+        return rs_err_conn_push_fl (msg->conn, err, __FILE__, __LINE__,
+                                    "invalid message");
 
 #if defined (DEBUG)
       /* Find out what happens if there's data left in the buffer.  */
@@ -133,11 +121,11 @@ _read_message (struct rs_message *msg)
 
 /* The read callback for TCP.
 
-   Read exactly one RADIUS message from BEV and store it in struct
-   rs_message passed in USER_DATA.
+   Read exactly one RADIUS message from \a bev and store it in the
+   struct rs_message passed in \a user_data.
 
    Inform upper layer about successful reception of received RADIUS
-   message by invoking conn->callbacks.recevied_cb(), if !NULL.  */
+   message by invoking conn->callbacks.recevied_cb(), if not NULL. */
 void
 tcp_read_cb (struct bufferevent *bev, void *user_data)
 {
@@ -148,7 +136,7 @@ tcp_read_cb (struct bufferevent *bev, void *user_data)
   assert (msg->rpkt);
 
   msg->rpkt->sockfd = msg->conn->base_.fd;
-  msg->rpkt->vps = NULL;        /* FIXME: can this be done when initializing msg? */
+  msg->rpkt->vps = NULL; /* FIXME: can this be done when initializing msg? */
 
   /* Read a message header if not already read, return if that
      fails. Read a message and have it dispatched to the user
@@ -158,8 +146,9 @@ tcp_read_cb (struct bufferevent *bev, void *user_data)
      avoid the extra copying. */
   if ((msg->flags & RS_MESSAGE_HEADER_READ) == 0)
     if (_read_header (msg))
-      return;			/* Error.  */
-  _read_message (msg);
+      return;                   /* Invalid header. */
+  if (_read_message (msg))
+    return;                     /* Invalid message. */
 }
 
 void
@@ -179,15 +168,27 @@ tcp_event_cb (struct bufferevent *bev, short events, void *user_data)
   assert (msg->conn);
   conn = msg->conn;
 #if defined (DEBUG)
-  assert (msg->conn->base_.active_peer);
-  p = conn->base_.active_peer;
+  assert (conn->active_peer);
+  p = conn->active_peer;
 #endif
 
   if (events & BEV_EVENT_CONNECTED)
     {
-      if (conn->tev)
-	evtimer_del (conn->tev); /* Cancel connect timer.  */
-      if (event_on_connect (conn, msg))
+      int err = -1;
+
+      if (conn_originating_p (conn)) /* We're a client. */
+        {
+          assert (conn->tev);
+          if (conn->tev)
+            evtimer_del (conn->tev); /* Cancel connect timer.  */
+          err = event_on_connect_orig (conn, msg);
+        }
+      else                      /* We're a server. */
+        {
+          assert (conn->tev == NULL);
+          err = event_on_connect_term (conn, msg);
+        }
+      if (err)
         {
           event_on_disconnect (conn);
           event_loopbreak (conn);

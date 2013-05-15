@@ -20,20 +20,20 @@
 static struct tls *
 _get_tlsconf (struct rs_connection *conn, const struct rs_realm *realm)
 {
-  struct tls *c = rs_malloc (conn->base_.ctx, sizeof (struct tls));
+  struct tls *c = rs_calloc (conn->base_.ctx, 1, sizeof (struct tls));
 
   if (c)
     {
-      memset (c, 0, sizeof (struct tls));
+      assert (realm);
       /* _conn_open() should've picked a peer by now. */
-      assert (conn->base_.active_peer);
+      assert (conn->active_peer);
       /* TODO: Make sure old radsecproxy code doesn't free these all
 	 of a sudden, or strdup them.  */
       c->name = realm->name;
-      c->cacertfile = conn->base_.active_peer->cacertfile;
+      c->cacertfile = conn->active_peer->cacertfile;
       c->cacertpath = NULL;	/* NYI */
-      c->certfile = conn->base_.active_peer->certfile;
-      c->certkeyfile = conn->base_.active_peer->certkeyfile;
+      c->certfile = conn->active_peer->certfile;
+      c->certkeyfile = conn->active_peer->certkeyfile;
       c->certkeypwd = NULL;	/* NYI */
       c->cacheexpiry = 0;	/* NYI */
       c->crlcheck = 0;		/* NYI */
@@ -60,7 +60,7 @@ psk_client_cb (SSL *ssl,
 
   conn = SSL_get_ex_data (ssl, 0);
   assert (conn != NULL);
-  cred = conn->base_.active_peer->transport_cred;
+  cred = conn->active_peer->transport_cred;
   assert (cred != NULL);
   /* NOTE: Ignoring identity hint from server.  */
 
@@ -125,8 +125,9 @@ rs_tls_init (struct rs_connection *conn)
 
   assert (conn->base_.ctx);
   ctx = conn->base_.ctx;
+  assert (conn->active_peer);
 
-  tlsconf = _get_tlsconf (conn, conn->base_.active_peer->realm);
+  tlsconf = _get_tlsconf (conn, conn->active_peer->realm);
   if (!tlsconf)
     return -1;
   ssl_ctx = tlsgetctx (RAD_TLS, tlsconf);
@@ -147,7 +148,7 @@ rs_tls_init (struct rs_connection *conn)
     }
 
 #if defined RS_ENABLE_TLS_PSK
-  if (conn->base_.active_peer->transport_cred != NULL)
+  if (conn->active_peer->transport_cred != NULL)
     {
       SSL_set_psk_client_callback (ssl, psk_client_cb);
       SSL_set_ex_data (ssl, 0, conn);
@@ -203,9 +204,9 @@ tls_verify_cert (struct rs_connection *conn)
   struct in6_addr addr;
   const char *hostname = NULL;
 
-  assert (conn->base_.active_peer != NULL);
-  assert (conn->base_.active_peer->hostname != NULL);
-  hostname = conn->base_.active_peer->hostname;
+  assert (conn->active_peer != NULL);
+  assert (conn->active_peer->hostname != NULL);
+  hostname = conn->active_peer->hostname;
 
   /* verifytlscert() performs basic verification as described by
      OpenSSL VERIFY(1), i.e. verification of the certificate chain.  */

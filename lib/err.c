@@ -121,6 +121,7 @@ _ctx_err_vpush_fl (struct rs_context *ctx, int code, const char *file,
     return RSE_NOMEM;
 
   /* TODO: Implement a stack.  */
+  assert (ctx);
   if (ctx->err)
     rs_err_free (ctx->err);
   ctx->err = err;
@@ -158,11 +159,12 @@ rs_err_ctx_push_fl (struct rs_context *ctx, int code, const char *file,
 int
 err_connbase_push_err (struct rs_conn_base *connbase, struct rs_error *err)
 {
-
+  assert (connbase);
   if (connbase->err)
     rs_err_free (connbase->err);
   connbase->err = err;		/* FIXME: use a stack */
 
+  assert (err);
   return err->code;
 }
 
@@ -185,6 +187,7 @@ rs_err_connbase_push (struct rs_conn_base *connbase, int code,
 {
   int r = 0;
 
+  assert (connbase);
   va_list args;
   va_start (args, fmt);
   r = _connbase_err_vpush_fl (connbase, code, NULL, 0, fmt, args);
@@ -198,6 +201,7 @@ rs_err_conn_push (struct rs_connection *conn, int code, const char *fmt, ...)
 {
   int r = 0;
 
+  assert (conn);
   va_list args;
   va_start (args, fmt);
   r = _connbase_err_vpush_fl (TO_BASE_CONN (conn), code, NULL, 0, fmt, args);
@@ -249,16 +253,28 @@ rs_err_ctx_pop (struct rs_context *ctx)
 }
 
 struct rs_error *
-rs_err_conn_pop (struct rs_connection *conn)
+rs_err_connbase_pop (struct rs_conn_base *connbase)
 {
   struct rs_error *err;
 
-  if (!conn)
+  if (!connbase)
     return NULL;		/* FIXME: RSE_INVALID_CONN */
-  err = conn->base_.err;
-  conn->base_.err = NULL;
+  err = connbase->err;
+  connbase->err = NULL;
 
   return err;
+}
+
+struct rs_error *
+rs_err_conn_pop (struct rs_connection *conn)
+{
+  return rs_err_connbase_pop (TO_BASE_CONN (conn));
+}
+
+struct rs_error *
+rs_err_listener_pop (struct rs_listener *l)
+{
+  return rs_err_connbase_pop (TO_BASE_CONN (l));
 }
 
 int

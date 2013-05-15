@@ -22,6 +22,7 @@
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
 #endif
+#include "compat.h"
 
 enum rs_error_code {
     RSE_OK = 0,
@@ -72,7 +73,7 @@ enum rs_error_code {
     RSE_MAX = RSE_CERT
 };
 
-enum rs_conn_type {
+enum rs_conn_type {             /* FIXME: Rename rs_transport_type? */
     RS_CONN_TYPE_NONE = 0,
     RS_CONN_TYPE_UDP,
     RS_CONN_TYPE_TCP,
@@ -174,10 +175,14 @@ struct rs_conn_callbacks {
     rs_conn_message_sent_cb sent_cb;
 };
 
-typedef void (*rs_listener_new_conn_cb) (struct rs_connection *conn,
-                                         void *user_data);
-typedef void (*rs_listener_error_cb) (void *user_data);
+typedef struct rs_peer *(*rs_listener_client_filter_cb)
+    (const struct rs_listener *listener, void *user_data);
+typedef void (*rs_listener_new_conn_cb)
+    (struct rs_connection *conn, void *user_data);
+typedef void (*rs_listener_error_cb)
+    (struct rs_connection *conn, void *user_data);
 struct rs_listener_callbacks {
+    rs_listener_client_filter_cb client_filter_cb;
     rs_listener_new_conn_cb new_conn_cb;
     rs_listener_error_cb error_cb;
 };
@@ -228,8 +233,13 @@ int rs_listener_create (struct rs_context *ctx,
                         struct rs_listener **listener,
                         const char *config);
 void rs_listener_set_callbacks (struct rs_listener *listener,
-                                const struct rs_listener_callbacks *cb);
+                                const struct rs_listener_callbacks *cb,
+                                void *user_data);
+int rs_listener_listen (struct rs_listener *listener);
 int rs_listener_dispatch (const struct rs_listener *listener);
+int rs_listener_close (struct rs_listener *l);
+struct event_base *rs_listener_get_eventbase (const struct rs_listener *l);
+int rs_listener_get_fd (const struct rs_listener *l);
 
 /****************/
 /* Connection.  */
@@ -277,7 +287,8 @@ int rs_conn_set_eventbase(struct rs_connection *conn, struct event_base *eb);
 
 /** Register callbacks \a cb for connection \a conn.  */
 void rs_conn_set_callbacks(struct rs_connection *conn,
-			   struct rs_conn_callbacks *cb);
+			   struct rs_conn_callbacks *cb,
+                           void *user_data);
 
 /** Remove callbacks for connection \a conn.  */
 void rs_conn_del_callbacks(struct rs_connection *conn);
@@ -356,28 +367,27 @@ int rs_message_create(struct rs_connection *conn, struct rs_message **pkt_out);
 /** Free all memory allocated for message \a msg.  */
 void rs_message_destroy(struct rs_message *msg);
 
-/** Send message \a msg on the connection associated with \a msg.
-    \a user_data is sent to the \a rs_conn_message_received_cb callback
-    registered with the connection. If no callback is registered with
-    the connection, the event loop is run by \a rs_message_send and it
-    blocks until the message has been succesfully sent.
+/** Send \a msg on the connection associated with \a msg.
+    If no callback is registered with the connection
+    (\a rs_conn_set_callbacks), the event loop is run by
+    \a rs_message_send and it blocks until the message has been
+    succesfully sent.
 
-    \return On success, RSE_OK (0) is returned.  On error, !0 is
+    \return On success, RSE_OK (0) is returned. On error, !0 is
     returned and a struct \a rs_error is pushed on the error stack for
-    the connection.  The error can be accessed using \a
-    rs_err_conn_pop.  */
-int rs_message_send(struct rs_message *msg, void *user_data);
+    the connection. The error can be accessed using \a
+    rs_err_conn_pop. */
+int rs_message_send(struct rs_message *msg);
 
 /** Create a RADIUS authentication request message associated with
-    connection \a conn.  Optionally, User-Name and User-Password
-    attributes are added to the message using the data in \a user_name,
-    \a user_pw and \a secret where \secret is the RADIUS shared
-    secret. */
+    connection \a conn. Optionally, User-Name and User-Password
+    attributes are added to the message using the data in \a user_name
+    and \a user_pw.
+    FIXME: describe what RADIUS shared secret is being used */
 int rs_message_create_authn_request(struct rs_connection *conn,
                                     struct rs_message **msg,
                                     const char *user_name,
-                                    const char *user_pw,
-                                    const char *secret);
+                                    const char *user_pw);
 
 /*** Append \a tail to message \a msg.  */
 int
@@ -439,15 +449,17 @@ int rs_err_conn_push_fl(struct rs_connection *conn,
 			int line,
 			const char *fmt,
 			...);
-int rs_err_connbase_push_fl (struct rs_conn_base *connbase,
-                             int code,
-                             const char *file,
-                             int line,
-                             const char *fmt,
-                             ...);
+int rs_err_connbase_push_fl(struct rs_conn_base *connbase,
+                            int code,
+                            const char *file,
+                            int line,
+                            const char *fmt,
+                            ...);
 /** Pop the first error from the error FIFO associated with connection
-    \a conn or NULL if there are no errors in the FIFO.  */
+    \a conn or NULL if there are no errors in the FIFO. */
 struct rs_error *rs_err_conn_pop(struct rs_connection *conn);
+struct rs_error *rs_err_connbase_pop(struct rs_conn_base *connbase);
+struct rs_error *rs_err_listener_pop(struct rs_listener *l);
 
 int rs_err_conn_peek_code (struct rs_connection *conn);
 void rs_err_free(struct rs_error *err);

@@ -1,6 +1,6 @@
 AUTOMAKE_OPTIONS = foreign
 INCLUDES = -I$(top_srcdir)/include
-AM_CFLAGS = -Wall -Werror -g
+AM_CFLAGS = -Wall -Werror -g -DDEBUG -DDEBUG_LEVENT
 
 LDADD = ../libradsec.la #-lefence
 CFLAGS = $(AM_CFLAGS) -DUSE_CONFIG_FILE

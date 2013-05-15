@@ -53,10 +53,10 @@ else
 endif
 
 EXTRA_DIST = HACKING LICENSE
+EXTRA_libradsec_la_DEPENDENCIES = radsec.sym
 
 libradsec_la_CFLAGS = \
-	$(AM_CFLAGS) -DHAVE_CONFIG_H \
-	-DDEBUG -DDEBUG_LEVENT
+	$(AM_CFLAGS) -DHAVE_CONFIG_H -DDEBUG -DDEBUG_LEVENT
 libradsec_la_LDFLAGS = \
 	-version-info $(VER_CUR):$(VER_REV):$(VER_AGE) \
 	-export-symbols radsec.sym

@@ -16,6 +16,7 @@
 #include "event.h"
 #include "compat.h"
 #include "udp.h"
+#include "conn.h"
 
 /* Send one packet, the first in queue.  */
 static int
@@ -55,16 +56,16 @@ _send (struct rs_connection *conn, int fd)
   return RSE_OK;
 }
 
-/* Callback for conn->wev and conn->rev.  FIXME: Rename.
+/** Callback for conn->wev and conn->rev.  FIXME: Rename.
 
-   USER_DATA contains connection for EV_READ and a message for
-   EV_WRITE.  This is because we don't have a connect/establish entry
-   point at the user level -- send implies connect so when we're
-   connected we need the message to send.  */
+    \a user_data holds a message. */
 static void
 _evcb (evutil_socket_t fd, short what, void *user_data)
 {
   int err;
+  struct rs_message *msg = (struct rs_message *) user_data;
+  assert (msg);
+  assert (msg->conn);
 
   rs_debug (("%s: fd=%d what =", __func__, fd));
   if (what & EV_TIMEOUT) rs_debug ((" TIMEOUT"));
@@ -74,13 +75,11 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 
   if (what & EV_READ)
     {
-      /* Read a single UDP packet and stick it in USER_DATA.  */
+      /* Read a single UDP packet and stick it in the struct
+         rs_message passed in user_data. */
       /* TODO: Verify that unsolicited packets are dropped.  */
-      struct rs_message *msg = (struct rs_message *) user_data;
       ssize_t r = 0;
-
-      assert (msg);
-      assert (msg->conn);
+      assert (msg->rpkt);
       assert (msg->rpkt->data);
 
       r = compat_recv (fd, msg->rpkt->data, RS_MAX_PACKET_LEN, MSG_TRUNC);
@@ -96,9 +95,9 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 	    }
 
 	  /* Hard error.  */
-	  rs_err_conn_push_fl (msg->conn, RSE_SOCKERR, __FILE__, __LINE__,
-			       "%d: recv: %d (%s)", fd, sockerr,
-			       evutil_socket_error_to_string (sockerr));
+	  rs_err_conn_push (msg->conn, RSE_SOCKERR,
+                            "%d: recv: %d (%s)", fd, sockerr,
+                            evutil_socket_error_to_string (sockerr));
 	  event_del (msg->conn->tev);
 	  return;
 	}
@@ -125,12 +124,18 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
     }
   else if (what & EV_WRITE)
     {
-      struct rs_message *msg = (struct rs_message *) user_data;
-      assert (msg);
-      assert (msg->conn);
-
-      if (msg->conn->state == RS_CONN_STATE_CONNECTING)
-	event_on_connect (msg->conn, msg);
+      if (conn_originating_p (msg->conn))
+        {
+          /* We're a client. */
+          if (msg->conn->state == RS_CONN_STATE_CONNECTING)
+            event_on_connect_orig (msg->conn, msg);
+        }
+      else
+        {
+          /* We're a server. */
+          rs_debug (("%s: write event on terminating conn %p\n",
+                     __func__, msg->conn));
+        }
 
       if (msg->conn->out_queue)
 	if (_send (msg->conn, fd) == RSE_OK)
@@ -149,10 +154,12 @@ udp_init (struct rs_connection *conn, struct rs_message *msg)
 {
   assert (!conn->base_.bev);
 
+  /* FIXME: Explain why we set EV_PERSIST on the read event but not on
+     the write event. */
   conn->base_.rev = event_new (conn->base_.ctx->evb, conn->base_.fd,
-                             EV_READ|EV_PERSIST, _evcb, NULL);
+                               EV_READ|EV_PERSIST, _evcb, NULL);
   conn->base_.wev = event_new (conn->base_.ctx->evb, conn->base_.fd,
-                             EV_WRITE, _evcb, NULL);
+                               EV_WRITE, _evcb, NULL);
   if (!conn->base_.rev || !conn->base_.wev)
     {
       if (conn->base_.rev)

@@ -20,12 +20,12 @@ peer_pick_peer (struct rs_connection *conn)
 {
   assert (conn);
 
-  if (conn->base_.active_peer)
-    conn->base_.active_peer = conn->base_.active_peer->next; /* Next.  */
-  if (!conn->base_.active_peer)
-    conn->base_.active_peer = conn->base_.peers; /* From the top.  */
+  if (conn->active_peer)
+    conn->active_peer = conn->active_peer->next; /* Next.  */
+  if (conn->active_peer == NULL)
+    conn->active_peer = TO_BASE_CONN (conn)->peers; /* From the top.  */
 
-  return conn->base_.active_peer;
+  return conn->active_peer;
 }
 
 struct rs_peer *

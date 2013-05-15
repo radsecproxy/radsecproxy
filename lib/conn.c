@@ -13,24 +13,12 @@
 #include <event2/bufferevent.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
+#include "err.h"
 #include "debug.h"
 #include "conn.h"
 #include "event.h"
 #include "message.h"
 #include "tcp.h"
-
-int
-conn_close (struct rs_connection **connp)
-{
-  int r = 0;
-  assert (connp);
-  assert (*connp);
-  if ((*connp)->state == RS_CONN_STATE_CONNECTED)
-    r = rs_conn_disconnect (*connp);
-  if (r == RSE_OK)
-    *connp = NULL;
-  return r;
-}
 
 int
 conn_user_dispatch_p (const struct rs_connection *conn)
@@ -42,7 +30,6 @@ conn_user_dispatch_p (const struct rs_connection *conn)
 	  conn->callbacks.received_cb ||
 	  conn->callbacks.sent_cb);
 }
-
 
 int
 conn_activate_timeout (struct rs_connection *conn)
@@ -62,23 +49,37 @@ conn_activate_timeout (struct rs_connection *conn)
 }
 
 int
-conn_type_tls (const struct rs_connection *conn)
+conn_type_tls_p (const struct rs_connection *conn)
 {
-  assert (conn->base_.active_peer);
-  return conn->base_.realm->type == RS_CONN_TYPE_TLS
-    || conn->base_.realm->type == RS_CONN_TYPE_DTLS;
+  return TO_BASE_CONN(conn)->transport == RS_CONN_TYPE_TLS
+    || TO_BASE_CONN(conn)->transport == RS_CONN_TYPE_DTLS;
+}
+
+int
+baseconn_type_datagram_p (const struct rs_conn_base *connbase)
+{
+  return connbase->transport == RS_CONN_TYPE_UDP
+    || connbase->transport == RS_CONN_TYPE_DTLS;
+}
+
+int
+baseconn_type_stream_p (const struct rs_conn_base *connbase)
+{
+  return connbase->transport == RS_CONN_TYPE_TCP
+    || connbase->transport == RS_CONN_TYPE_TLS;
 }
 
 int
 conn_cred_psk (const struct rs_connection *conn)
 {
-  assert (conn->base_.active_peer);
-  return conn->base_.active_peer->transport_cred &&
-    conn->base_.active_peer->transport_cred->type == RS_CRED_TLS_PSK;
+  assert (conn);
+  assert (conn->active_peer);
+  return conn->active_peer->transport_cred &&
+    conn->active_peer->transport_cred->type == RS_CRED_TLS_PSK;
 }
 
 void
-conn_init (struct rs_context *ctx,
+conn_init (struct rs_context *ctx, /* FIXME: rename connbase_init? */
            struct rs_conn_base *connbase,
            enum rs_conn_subtype type)
 {
@@ -102,7 +103,7 @@ conn_init (struct rs_context *ctx,
 }
 
 int
-conn_configure (struct rs_context *ctx,
+conn_configure (struct rs_context *ctx, /* FIXME: rename conbbase_configure? */
                 struct rs_conn_base *connbase,
                 const char *config)
 {
@@ -121,13 +122,82 @@ conn_configure (struct rs_context *ctx,
 	  connbase->tryagain = r->retries;
 	}
     }
+#if 0  /* incoming connections don't have a realm (a config object), update: they do, but "somebody else" is setting this up <-- FIXME */
   if (connbase->realm == NULL)
     {
-      connbase->realm = rs_calloc (ctx, 1, sizeof (struct rs_realm));
-      if (connbase->realm == NULL)
+      struct rs_realm *r = rs_calloc (ctx, 1, sizeof (struct rs_realm));
+      if (r == NULL)
         return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__, NULL);
+      r->next = ctx->realms;
+      ctx->realms = connbase->realm = r;
     }
+#else
+  if (connbase->realm)
+    connbase->transport = connbase->realm->type;
+#endif
+
   return RSE_OK;
+}
+
+int
+conn_add_read_event (struct rs_connection *conn, void *user_data)
+{
+  struct rs_conn_base *connbase = TO_BASE_CONN(conn);
+  int err;
+
+  assert(connbase);
+
+  if (connbase->bev)		/* TCP (including TLS).  */
+    {
+      bufferevent_setwatermark (connbase->bev, EV_READ, RS_HEADER_LEN, 0);
+      bufferevent_setcb (connbase->bev, tcp_read_cb, NULL, tcp_event_cb,
+                         user_data);
+      bufferevent_enable (connbase->bev, EV_READ);
+    }
+  else				/* UDP.  */
+    {
+      /* Put fresh message in user_data for the callback and enable the
+	 read event.  */
+      event_assign (connbase->rev, connbase->ctx->evb,
+                    event_get_fd (connbase->rev), EV_READ,
+                    event_get_callback (connbase->rev),
+                    user_data);
+      err = event_add (connbase->rev, NULL);
+      if (err < 0)
+	return rs_err_connbase_push_fl (connbase, RSE_EVENT, __FILE__, __LINE__,
+                                        "event_add: %s",
+                                        evutil_gai_strerror (err));
+
+      /* Activate retransmission timer.  */
+      conn_activate_timeout (conn);
+    }
+
+  return RSE_OK;
+}
+
+/** Return !=0 if \a conn is an originating connection, i.e. if its
+    peer is a server. */
+int
+conn_originating_p (const struct rs_connection *conn)
+{
+  return conn->active_peer->type == RS_PEER_TYPE_SERVER;
+}
+
+int
+baseconn_close (struct rs_conn_base *connbase)
+{
+  int err = 0;
+  assert (connbase);
+
+  rs_debug (("%s: closing fd %d\n", __func__, connbase->fd));
+
+  err = evutil_closesocket (connbase->fd);
+  if (err)
+    err = rs_err_connbase_push (connbase, RSE_EVENT,
+                                "evutil_closesocket: %d (%s)",
+                                errno, strerror (errno));
+  connbase->fd = -1;
+  return err;
 }
 
 /* Public functions. */
@@ -179,12 +249,8 @@ rs_conn_add_listener (struct rs_connection *conn,
 int
 rs_conn_disconnect (struct rs_connection *conn)
 {
-  int err = 0;
-
-  assert (conn);
-
-  err = evutil_closesocket (conn->base_.fd);
-  conn->base_.fd = -1;
+  int err = baseconn_close (TO_BASE_CONN (conn));
+  conn->state = RS_CONN_STATE_UNDEFINED;
   return err;
 }
 
@@ -229,9 +295,12 @@ rs_conn_set_eventbase (struct rs_connection *conn, struct event_base *eb)
 }
 
 void
-rs_conn_set_callbacks (struct rs_connection *conn, struct rs_conn_callbacks *cb)
+rs_conn_set_callbacks (struct rs_connection *conn,
+                       struct rs_conn_callbacks *cb,
+                       void *user_data)
 {
   assert (conn);
+  TO_BASE_CONN(conn)->user_data = user_data;
   memcpy (&conn->callbacks, cb, sizeof (conn->callbacks));
 }
 
@@ -243,7 +312,7 @@ rs_conn_del_callbacks (struct rs_connection *conn)
 }
 
 struct rs_conn_callbacks *
-rs_conn_get_callbacks(struct rs_connection *conn)
+rs_conn_get_callbacks (struct rs_connection *conn)
 {
   assert (conn);
   return &conn->callbacks;
@@ -282,7 +351,6 @@ struct event_base
 int rs_conn_get_fd (struct rs_connection *conn)
 {
   assert (conn);
-  assert (conn->base_.active_peer);
   return conn->base_.fd;
 }
 
@@ -294,9 +362,9 @@ _rcb (struct rs_message *message, void *user_data)
   assert (msg->conn);
 
   msg->flags |= RS_MESSAGE_RECEIVED;
-  if (msg->conn->base_.bev)
+  if (msg->conn->base_.bev)     /* TCP -- disable bufferevent. */
     bufferevent_disable (msg->conn->base_.bev, EV_WRITE|EV_READ);
-  else
+  else                          /* UDP -- remove read event. */
     event_del (msg->conn->base_.rev);
 }
 
@@ -322,46 +390,29 @@ rs_conn_receive_message (struct rs_connection *conn,
   conn->base_.user_data = msg;
   msg->flags &= ~RS_MESSAGE_RECEIVED;
 
-  if (conn->base_.bev)		/* TCP.  */
-    {
-      bufferevent_setwatermark (conn->base_.bev, EV_READ, RS_HEADER_LEN, 0);
-      bufferevent_setcb (conn->base_.bev, tcp_read_cb, NULL, tcp_event_cb, msg);
-      bufferevent_enable (conn->base_.bev, EV_READ);
-    }
-  else				/* UDP.  */
-    {
-      /* Put fresh message in user_data for the callback and enable the
-	 read event.  */
-      event_assign (conn->base_.rev, conn->base_.ctx->evb,
-                    event_get_fd (conn->base_.rev), EV_READ,
-                    event_get_callback (conn->base_.rev), msg);
-      err = event_add (conn->base_.rev, NULL);
-      if (err < 0)
-	return rs_err_conn_push_fl (msg->conn, RSE_EVENT, __FILE__, __LINE__,
-				    "event_add: %s",
-				    evutil_gai_strerror (err));
-
-      /* Activate retransmission timer.  */
-      conn_activate_timeout (msg->conn);
-    }
+  err = conn_add_read_event (conn, msg);
+  if (err)
+    return err;
 
   rs_debug (("%s: entering event loop\n", __func__));
   err = event_base_dispatch (conn->base_.ctx->evb);
   conn->callbacks.received_cb = NULL;
   if (err < 0)
-    return rs_err_conn_push_fl (msg->conn, RSE_EVENT, __FILE__, __LINE__,
+    return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
 				"event_base_dispatch: %s",
 				evutil_gai_strerror (err));
   rs_debug (("%s: event loop done\n", __func__));
 
-  if ((msg->flags & RS_MESSAGE_RECEIVED) == 0
+  if ((msg->flags & RS_MESSAGE_RECEIVED) == 0 /* No message. */
       || (req_msg
-	  && message_verify_response (msg->conn, msg, req_msg) != RSE_OK))
+	  && message_verify_response (conn, msg, req_msg) != RSE_OK))
     {
-      if (rs_err_conn_peek_code (msg->conn) == RSE_OK)
-        /* No message and no error on the stack _should_ mean that the
-           server hung up on us.  */
-        rs_err_conn_push (msg->conn, RSE_DISCO, "no response");
+      if (rs_err_conn_peek_code (conn) == RSE_OK)
+        {
+          /* No message and no error on the stack _should_ mean that the
+             server hung up on us. */
+          rs_err_conn_push (conn, RSE_DISCO, "no response");
+        }
       return rs_err_conn_peek_code (conn);
     }
 
@@ -376,4 +427,11 @@ rs_conn_set_timeout(struct rs_connection *conn, struct timeval *tv)
   assert (conn);
   assert (tv);
   conn->base_.timeout = *tv;
+}
+
+struct rs_peer *
+connbase_get_peers (const struct rs_conn_base *connbase)
+{
+  assert (connbase);
+  return connbase->peers;
 }

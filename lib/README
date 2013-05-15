@@ -19,7 +19,7 @@ http://git.nordu.net/?p=radsecproxy.git;a=shortlog;h=refs/heads/libradsec
 The source code is licensed under a 3-clause BSD license. See LICENSE.
 
 
-Libradsec depends on 
+Libradsec depends on
 - libconfuse
 - libevent2
 - openssl (if configured with --enable-tls)

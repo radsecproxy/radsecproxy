@@ -67,14 +67,13 @@ dispatching_client (struct rs_context *ctx)
 
   if (rs_conn_create(ctx, &conn, CONFIG))
     goto out;
-  rs_conn_set_callbacks (conn, &cb);
-  if (rs_packet_create_authn_request (conn, &req_msg,
-                                      USER_NAME, USER_PW, SECRET))
+  rs_conn_set_callbacks (conn, &cb, &state);
+  if (rs_packet_create_authn_request (conn, &req_msg, USER_NAME, USER_PW))
     goto out;
   /* Doesn't really send the message but rather queues it for sending.
      msg_received_cb() will be invoked with user_data = &state when
      the message has been sent.  */
-  if (rs_packet_send (req_msg, &state))
+  if (rs_packet_send (req_msg))
     goto out;
 
   while (1)

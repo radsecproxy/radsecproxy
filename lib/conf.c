@@ -1,5 +1,5 @@
 /* Copyright 2010, 2011, 2013 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+   See LICENSE for licensing information. */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -23,7 +23,7 @@
       retries = INT
   }
 
-  # realm configuration inherited by clients and servers
+  # realm configuration inherited (and overwritable) by clients and servers
   realm STRING {
       cacertfile = STRING
       #cacertpath = STRING
@@ -46,6 +46,8 @@
 
   # server configuration
   realm STRING {
+      listen_addr = STRING
+      listen_service = STRING
       client {
           hostname = STRING
 	  service = STRING      # name or port number
@@ -82,6 +84,8 @@ confload_peers (struct rs_context *ctx,
   const char *peer_type_str[] = {"<no type>", "client", "server"};
   cfg_t *cfg_peer = NULL;
   int j;
+  char *def_listen_addr = cfg_getstr (cfg_realm, "listen_addr");
+  char *def_listen_service = cfg_getstr (cfg_realm, "listen_service");
   char *def_cacertfile = cfg_getstr (cfg_realm, "cacertfile");
   /*char *def_cacertpath = cfg_getstr (cfg_realm, "cacertpath");*/
   char *def_certfile = cfg_getstr (cfg_realm, "certfile");
@@ -104,6 +108,24 @@ confload_peers (struct rs_context *ctx,
       p->hostname = cfg_getstr (cfg_peer, "hostname");
       p->service = cfg_getstr (cfg_peer, "service");
       p->secret = cfg_getstr (cfg_peer, "secret");
+
+      if (type == RS_PEER_TYPE_CLIENT)
+        {
+          struct rs_peer *lp = peer_create (ctx, &r->local_addr); /* FIXME: this should be saved per peer, not realm */
+          if (lp == NULL)
+            return rs_err_ctx_push_fl (ctx, RSE_NOMEM, __FILE__, __LINE__,
+                                       NULL);
+          lp->realm = r;
+          fprintf (stderr, " *** %s %s ***\n", def_listen_addr, def_listen_service);
+#if 0
+          CONFGET_STR (lp->hostname, cfg_peer, "listen_addr", def_listen_addr);
+          CONFGET_STR (lp->service, cfg_peer, "listen_service",
+                       def_listen_service);
+#else
+          lp->hostname = "127.0.0.1";
+          lp->service = "4711";
+#endif
+        }
 
       CONFGET_STR (p->cacertfile, cfg_peer, "cacertfile", def_cacertfile);
       CONFGET_STR (p->certfile, cfg_peer, "certfile", def_certfile);
@@ -161,7 +183,7 @@ confload_peers (struct rs_context *ctx,
 #endif  /* RS_ENABLE_TLS_PSK */
         }
 
-
+#if defined (RS_ENABLE_TLS)
       /* For a TLS or DTLS client or server, validate that we have either of CA
          cert file/path or PSK.  */
       if ((r->type == RS_CONN_TYPE_TLS || r->type == RS_CONN_TYPE_DTLS)
@@ -170,6 +192,7 @@ confload_peers (struct rs_context *ctx,
         return rs_err_ctx_push (ctx, RSE_CONFIG,
                                 "%s: missing both CA file/path and PSK",
                                 r->name);
+#endif
     }
 
   return RSE_OK;
@@ -189,6 +212,8 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
     {
       CFG_STR ("hostname", NULL, CFGF_NONE),
       CFG_STR ("service", "2083", CFGF_NONE),
+      CFG_STR ("listen_addr", "127.0.0.1", CFGF_NONE), /* Clients only. */
+      CFG_STR ("listen_service", "0", CFGF_NONE), /* Clients only. */
       CFG_STR ("secret", "radsec", CFGF_NONE),
       CFG_STR ("cacertfile", NULL, CFGF_NONE),
       /*CFG_STR ("cacertpath", NULL, CFGF_NONE),*/
@@ -204,6 +229,8 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
   cfg_opt_t realm_opts[] =
     {
       CFG_STR ("type", "UDP", CFGF_NONE),
+      CFG_STR ("listen_addr", "127.0.0.1", CFGF_NONE),
+      CFG_STR ("listen_service", "0", CFGF_NONE),
       CFG_INT ("timeout", 2, CFGF_NONE), /* FIXME: Remove?  */
       CFG_INT ("retries", 2, CFGF_NONE), /* FIXME: Remove?  */
       CFG_STR ("cacertfile", NULL, CFGF_NONE),
@@ -283,10 +310,12 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
 	r->type = RS_CONN_TYPE_UDP;
       else if (strcmp (typestr, "TCP") == 0)
 	r->type = RS_CONN_TYPE_TCP;
+#if defined (RS_ENABLE_TLS)
       else if (strcmp (typestr, "TLS") == 0)
 	r->type = RS_CONN_TYPE_TLS;
       else if (strcmp (typestr, "DTLS") == 0)
 	r->type = RS_CONN_TYPE_DTLS;
+#endif
       else
 	return rs_err_ctx_push (ctx, RSE_CONFIG,
                                 "%s: invalid connection type: %s",

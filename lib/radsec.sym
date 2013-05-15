@@ -42,7 +42,7 @@ rs_conn_del_callbacks
 rs_conn_destroy
 rs_conn_disconnect
 rs_conn_dispatch
-rs_conn_fd
+rs_conn_get_fd
 rs_conn_get_callbacks
 rs_conn_get_current_peer
 rs_conn_receive_message
@@ -66,9 +66,14 @@ rs_err_ctx_pop
 rs_err_ctx_push
 rs_err_ctx_push_fl
 rs_err_free
+rs_err_listener_pop
 rs_err_msg
 rs_listener_create
+rs_listener_close
 rs_listener_dispatch
+rs_listener_get_eventbase
+rs_listener_get_fd
+rs_listener_listen
 rs_listener_set_callbacks
 rs_message_append_avp
 rs_message_avps

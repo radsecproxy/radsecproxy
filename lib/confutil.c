@@ -94,10 +94,17 @@ rs_context_print_config (struct rs_context *ctx, char **buf_out)
   for (r = cfg->realms; r != NULL; r = r->next)
     {
       if (pp (&out, &len, "realm %s {\n", r->name)
-          || pp (&out, &len, "\ttype = \"%s\"\n\ttimeout = %d\n\tretries = %d\n",
+          || pp (&out, &len,
+                 "\ttype = \"%s\"\n"
+                 "\ttimeout = %d\n"
+                 "\tretries = %d\n"
+                 "\tlisten_addr = \"%s\"\n"
+                 "\tlisten_service = \"%s\"\n",
                  realm_type[r->type],
                  r->timeout,
-                 r->retries))
+                 r->retries,
+                 r->local_addr->hostname,
+                 r->local_addr->service))
         return -RSE_INTERNAL;
       for (p = r->peers; p != NULL; p = p->next)
         {

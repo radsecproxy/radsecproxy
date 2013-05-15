@@ -85,9 +85,9 @@ blocking_client (const char *av1, const char *av2, const char *av3,
     }
   else
     {
-      if (rs_message_create_authn_request (conn, &req, USER_NAME, USER_PW, SECRET))
+      if (rs_message_create_authn_request (conn, &req, USER_NAME, USER_PW))
 	goto cleanup;
-      if (rs_message_send (req, NULL))
+      if (rs_message_send (req))
 	goto cleanup;
       if (rs_conn_receive_message (conn, req, &resp))
 	goto cleanup;

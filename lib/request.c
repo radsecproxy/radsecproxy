@@ -60,7 +60,7 @@ rs_request_create_authn (struct rs_connection *conn,
   if (rs_request_create (conn, &req))
     return -1;
 
-  if (rs_message_create_authn_request (conn, &req->req_msg, user_name, user_pw, secret))
+  if (rs_message_create_authn_request (conn, &req->req_msg, user_name, user_pw))
     return -1;
 
   if (req_out)
@@ -103,7 +103,7 @@ rs_request_send (struct rs_request *request, struct rs_message **resp_msg)
   if (!request || !request->conn || !request->req_msg || !resp_msg)
     return rs_err_conn_push_fl (conn, RSE_INVAL, __FILE__, __LINE__, NULL);
   conn = request->conn;
-  assert (!conn_user_dispatch_p (conn)); /* This function is high level.  */
+  assert (!conn_user_dispatch_p (conn)); /* This function is high level. */
 
   gettimeofday (&end, NULL);
   end.tv_sec += MRD;
@@ -112,7 +112,7 @@ rs_request_send (struct rs_request *request, struct rs_message **resp_msg)
     {
       rs_conn_set_timeout (conn, &rt);
 
-      r = rs_message_send (request->req_msg, NULL);
+      r = rs_message_send (request->req_msg);
       if (r == RSE_OK)
 	{
 	  r = rs_conn_receive_message (request->conn,

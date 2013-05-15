@@ -90,6 +90,7 @@ struct rs_realm {
     int timeout;
     int retries;
     struct rs_listener *listeners;
+    struct rs_peer *local_addr;
     struct rs_peer *peers;
     struct rs_realm *next;
 };
@@ -103,9 +104,10 @@ struct rs_config {
 /** Libradsec context. */
 struct rs_context {
     struct rs_config *config;
+    struct rs_realm *realms;
     struct rs_alloc_scheme alloc_scheme;
     struct rs_error *err;
-    struct event_base *evb;	/* Event base. */
+    struct event_base *evb;
 };
 
 /** Base class for a connection. */
@@ -113,11 +115,11 @@ struct rs_conn_base {
     uint32_t magic;             /* Must be one of RS_CONN_MAGIC_*. */
     struct rs_context *ctx;
     struct rs_realm *realm;	/* Owned by ctx. */
+    enum rs_conn_type transport;
     /** For a listener, allowed client addr/port pairs.
-     For an outgoing connection, set of servers.
+     For an outgoing connection, set of configured servers.
      For an incoming connection, the peer (as the only entry). */
-    struct rs_peer *peers;      /**< Configured peers. */
-    struct rs_peer *active_peer; /**< The other end of the connection. */
+    struct rs_peer *peers;
     struct timeval timeout;
     int tryagain;		/* For server failover. */
     void *user_data;
@@ -137,16 +139,13 @@ enum rs_conn_state {
     RS_CONN_STATE_CONNECTED,
 };
 
-/** A "generic" connection. */
+/** A generic connection. */
 struct rs_connection {
     struct rs_conn_base base_;
     struct event *tev;		/* Timeout event. */
     struct rs_conn_callbacks callbacks;
     enum rs_conn_state state;
-#if 0
-    char is_connecting;		/* FIXME: replace with a single state member */
-    char is_connected;		/* FIXME: replace with a single state member */
-#endif                          /* 0 */
+    struct rs_peer *active_peer;
     struct rs_message *out_queue; /* Queue for outgoing UDP packets. */
 #if defined(RS_ENABLE_TLS)
     /* TLS specifics. */
@@ -156,7 +155,7 @@ struct rs_connection {
 };
 
 /** A listening connection. Spawns generic connections when peers
- * connect to it. */
+    connect to it. */
 struct rs_listener {
     struct rs_conn_base base_;
     struct evconnlistener *evlistener;

@@ -28,15 +28,15 @@ message_verify_response (struct rs_connection *conn,
   int err;
 
   assert (conn);
-  assert (conn->base_.active_peer);
-  assert (conn->base_.active_peer->secret);
+  assert (conn->active_peer);
+  assert (conn->active_peer->secret);
   assert (response);
   assert (response->rpkt);
   assert (request);
   assert (request->rpkt);
 
-  response->rpkt->secret = conn->base_.active_peer->secret;
-  response->rpkt->sizeof_secret = strlen (conn->base_.active_peer->secret);
+  response->rpkt->secret = conn->active_peer->secret;
+  response->rpkt->sizeof_secret = strlen (conn->active_peer->secret);
 
   /* Verify header and message authenticator.  */
   err = nr_packet_verify (response->rpkt, request->rpkt);
@@ -71,11 +71,11 @@ message_do_send (struct rs_message *msg)
 
   assert (msg);
   assert (msg->conn);
-  assert (msg->conn->base_.active_peer);
-  assert (msg->conn->base_.active_peer->secret);
+  assert (msg->conn->active_peer);
+  assert (msg->conn->active_peer->secret);
   assert (msg->rpkt);
 
-  msg->rpkt->secret = msg->conn->base_.active_peer->secret;
+  msg->rpkt->secret = msg->conn->active_peer->secret;
   msg->rpkt->sizeof_secret = strlen (msg->rpkt->secret);
 
   /* Encode message.  */
@@ -89,16 +89,16 @@ message_do_send (struct rs_message *msg)
     return rs_err_conn_push_fl (msg->conn, -err, __FILE__, __LINE__,
 				"nr_packet_sign");
 #if defined (DEBUG)
-  {
-    char host[80], serv[80];
-
-    getnameinfo (msg->conn->base_.active_peer->addr_cache->ai_addr,
-		 msg->conn->base_.active_peer->addr_cache->ai_addrlen,
-		 host, sizeof(host), serv, sizeof(serv),
-		 0 /* NI_NUMERICHOST|NI_NUMERICSERV*/);
-    rs_debug (("%s: about to send this to %s:%s:\n", __func__, host, serv));
-    rs_dump_message (msg);
-  }
+  if (msg->conn->active_peer->addr_cache)
+    {
+      char host[80], serv[80];
+      getnameinfo (msg->conn->active_peer->addr_cache->ai_addr,
+                   msg->conn->active_peer->addr_cache->ai_addrlen,
+                   host, sizeof(host), serv, sizeof(serv),
+                   0 /* NI_NUMERICHOST|NI_NUMERICSERV*/);
+      rs_debug (("%s: about to send this to %s:%s:\n", __func__, host, serv));
+      rs_dump_message (msg);
+    }
 #endif
 
   /* Put message in output buffer.  */
@@ -160,8 +160,7 @@ int
 rs_message_create_authn_request (struct rs_connection *conn,
                                  struct rs_message **msg_out,
                                  const char *user_name,
-                                 const char *user_pw,
-                                 const char *secret)
+                                 const char *user_pw)
 {
   struct rs_message *msg;
   int err;
@@ -174,6 +173,7 @@ rs_message_create_authn_request (struct rs_connection *conn,
 
   if (user_name)
     {
+      /* FIXME: use new rs_message_add_avp() */
       err = rs_message_append_avp (msg, PW_USER_NAME, 0, user_name, 0);
       if (err)
 	return err;
@@ -181,7 +181,9 @@ rs_message_create_authn_request (struct rs_connection *conn,
 
   if (user_pw)
     {
-      msg->rpkt->secret = secret;
+      /* FIXME: msg->rpkt->secret = secret;
+         FIXME: use new rs_message_add_avp() */
+      msg->rpkt->secret = "sikrit"; /* FIXME */
       err = rs_message_append_avp (msg, PW_USER_PASSWORD, 0, user_pw, 0);
       if (err)
 	return err;
