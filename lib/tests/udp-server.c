@@ -1,3 +1,6 @@
+/* Copyright 2011, NORDUnet A/S. All rights reserved. */
+/* See LICENSE for licensing information. */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include "udp.h"

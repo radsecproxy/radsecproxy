@@ -1,5 +1,5 @@
-/* Copyright 2011,2013 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+/* Copyright 2011-2013 NORDUnet A/S. All rights reserved.
+   See LICENSE for licensing information. */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -37,9 +37,14 @@ _read_header (struct rs_message *msg)
       msg->flags |= RS_MESSAGE_HEADER_READ;
       msg->rpkt->length = (msg->hdr[2] << 8) + msg->hdr[3];
       if (msg->rpkt->length < 20 || msg->rpkt->length > RS_MAX_PACKET_LEN)
-        return  rs_err_conn_push (msg->conn, RSE_INVALID_MSG,
-                                  "invalid message length: %d",
-                                  msg->rpkt->length);
+        {
+          rs_debug (("%s: invalid packet length: %d\n", __func__,
+                     msg->rpkt->length));
+          rs_conn_disconnect (msg->conn);
+          return  rs_err_conn_push (msg->conn, RSE_INVALID_MSG,
+                                    "invalid message length: %d",
+                                    msg->rpkt->length);
+        }
       memcpy (msg->rpkt->data, msg->hdr, RS_HEADER_LEN);
       bufferevent_setwatermark (TO_BASE_CONN(msg->conn)->bev, EV_READ,
 				msg->rpkt->length - RS_HEADER_LEN, 0);
@@ -49,8 +54,13 @@ _read_header (struct rs_message *msg)
   else if (n < 0)
     rs_debug (("%s: buffer frozen while reading header\n", __func__));
   else	    /* Error: libevent gave us less than the low watermark. */
-    return rs_err_conn_push_fl (msg->conn, RSE_INTERNAL, __FILE__, __LINE__,
-                                "got %d octets reading header", n);
+    {
+      rs_debug (("%s: got: %d octets reading header\n", __func__, n));
+      rs_conn_disconnect (msg->conn);
+      return rs_err_conn_push (msg->conn, RSE_INTERNAL,
+                               "got %d octets reading header", n);
+    }
+
   return RSE_OK;
 }
 
@@ -90,8 +100,11 @@ _read_message (struct rs_message *msg)
 	 - attribute sizes adding up correctly  */
       err = nr_packet_ok (msg->rpkt);
       if (err)
-        return rs_err_conn_push_fl (msg->conn, err, __FILE__, __LINE__,
-                                    "invalid message");
+	{
+          rs_debug (("%s: %d: invalid packet\n", __func__, -err));
+          rs_conn_disconnect (msg->conn);
+          return rs_err_conn_push (msg->conn, -err, "invalid message");
+        }
 
 #if defined (DEBUG)
       /* Find out what happens if there's data left in the buffer.  */
@@ -147,8 +160,7 @@ tcp_read_cb (struct bufferevent *bev, void *user_data)
   if ((msg->flags & RS_MESSAGE_HEADER_READ) == 0)
     if (_read_header (msg))
       return;                   /* Invalid header. */
-  if (_read_message (msg))
-    return;                     /* Invalid message. */
+  _read_message (msg);
 }
 
 void

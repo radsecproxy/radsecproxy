@@ -1,7 +1,7 @@
 /** \file radsec.h
     \brief Public interface for libradsec. */
 
-/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
+/* Copyright 2010-2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information. */
 
 #ifndef _RADSEC_RADSEC_H_
@@ -31,7 +31,6 @@ enum rs_error_code {
     RSE_INVALID_CTX = 3,
     RSE_INVALID_CONN = 4,
     RSE_CONN_TYPE_MISMATCH = 5,
-    RSE_FR = 6,
     RSE_BADADDR = 7,
     RSE_NOPEER = 8,
     RSE_EVENT = 9,		/* libevent error.  */
@@ -373,10 +372,19 @@ void rs_message_destroy(struct rs_message *msg);
     \a rs_message_send and it blocks until the message has been
     succesfully sent.
 
+    Note that sending can fail in several ways, f.ex. if the
+    transmission protocol in use is connection oriented
+    (\a RS_CONN_TYPE_TCP and \a RS_CONN_TYPE_TLS) and the connection
+    can not be established.
+
+    Also note that no retransmission is being done. This is required
+    for connectionless transport protocols (\a RS_CONN_TYPE_UDP and
+    \a RS_CONN_TYPE_DTLS). The "request" API with \a rs_request_send can
+    help with this.
+
     \return On success, RSE_OK (0) is returned. On error, !0 is
     returned and a struct \a rs_error is pushed on the error stack for
-    the connection. The error can be accessed using \a
-    rs_err_conn_pop. */
+    the connection. The error can be accessed using \a rs_err_conn_pop. */
 int rs_message_send(struct rs_message *msg);
 
 /** Create a RADIUS authentication request message associated with

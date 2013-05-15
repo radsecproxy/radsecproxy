@@ -1,3 +1,6 @@
+/* Copyright 2011, NORDUnet A/S. All rights reserved. */
+/* See LICENSE for licensing information. */
+
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/time.h>

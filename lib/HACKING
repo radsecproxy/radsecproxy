@@ -1,6 +1,6 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
 
-Status as of libradsec-0.2.0.dev (2013-05-02).
+Status as of libradsec-0.2.0.dev (2013-05-06).
 
 * Build instructions
 sh autogen.sh
@@ -19,7 +19,7 @@ Details (within parentheses) apply to Debian Wheezy.
 - OpenSSL (1.0.1c-4) -- optional, for TLS and DTLS support
   sudo apt-get install libssl-dev libssl1.0.0
   
-* Functionality and quality in 0.0.x
+* Functionality and quality in 0.2.x
 ** Not well tested
 - reading config file
 - [TCP] short read

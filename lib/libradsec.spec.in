@@ -1,0 +1,77 @@
+Name: @PACKAGE@
+Version:	@PACKAGE_VERSION@
+Release:	1%{?dist}
+Summary:	RADIUS over TLS library
+
+Group:		System Environment/Libraries
+License:	BSD
+URL:		http://software.uninett.no/radsecproxy/?page=documentation
+Source0:	%{name}-%{version}.tar.gz
+BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root
+
+
+
+BuildRequires: openssl-devel
+BuildRequires: libconfuse-devel
+BuildRequires: autoconf
+BuildRequires: automake
+BuildRequires: libtool
+BuildRequires: libevent-devel >= 2.0
+
+
+
+%description
+	Libradsec is a RADIUS over TLS library.
+
+
+%package	devel
+Summary:	Development files for %{name}
+Group:		Development/Libraries
+Requires:	%{name} = %{version}-%{release}
+
+%description	devel
+The %{name}-devel package contains libraries and header files for
+developing applications that use %{name}.
+
+
+%prep
+%setup -q
+
+
+%build
+	export CPPFLAGS='-I%{_includedir}'
+	export LDFLAGS='-L%{_libdir}'
+%configure --disable-static
+make %{?_smp_mflags}
+
+
+%install
+rm -rf $RPM_BUILD_ROOT
+make install DESTDIR=$RPM_BUILD_ROOT
+find $RPM_BUILD_ROOT -name '*.la' -exec rm -f {} ';'
+
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+
+%post -p /sbin/ldconfig
+
+%postun -p /sbin/ldconfig
+
+
+%files
+%defattr(-,root,root,-)
+%doc README
+%{_libdir}/*.so.*
+
+%files devel
+%defattr(-,root,root,-)
+%{_includedir}/*
+%{_libdir}/*.so
+
+
+%changelog
+* Tue Sep 27 2011  <hartmans@moonbuildcentos.dev.ja.net> - %{version}-1
+- initial version
+

@@ -78,7 +78,7 @@ blocking_client (const char *av1, const char *av2, const char *av3,
 
   if (use_request_object_flag)
     {
-      if (rs_request_create_authn (conn, &request, USER_NAME, USER_PW, SECRET))
+      if (rs_request_create_authn (conn, &request, USER_NAME, USER_PW))
 	goto cleanup;
       if (rs_request_send (request, &resp))
 	goto cleanup;

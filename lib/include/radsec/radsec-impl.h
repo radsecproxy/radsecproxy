@@ -1,7 +1,7 @@
 /** @file libradsec-impl.h
     @brief Libraray internal header file for libradsec. */
 
-/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
+/* Copyright 2010-2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information. */
 
 #ifndef _RADSEC_RADSEC_IMPL_H_
@@ -131,7 +131,6 @@ struct rs_conn_base {
     struct event *wev;		/* Write event (for UDP). */
     struct event *rev;		/* Read event (for UDP). */
 };
-
 
 enum rs_conn_state {
     RS_CONN_STATE_UNDEFINED = 0,

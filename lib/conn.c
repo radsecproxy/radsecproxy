@@ -1,4 +1,4 @@
-/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
+/* Copyright 2010-2013 NORDUnet A/S. All rights reserved.
    See LICENSE for licensing information. */
 
 #if defined HAVE_CONFIG_H
@@ -34,16 +34,18 @@ conn_user_dispatch_p (const struct rs_connection *conn)
 int
 conn_activate_timeout (struct rs_connection *conn)
 {
+  const struct rs_conn_base *connbase;
   assert (conn);
+  connbase = TO_BASE_CONN (conn);
+  assert (connbase->ctx);
+  assert (connbase->ctx->evb);
   assert (conn->tev);
-  assert (conn->base_.ctx->evb);
-  if (conn->base_.timeout.tv_sec || conn->base_.timeout.tv_usec)
+  if (connbase->timeout.tv_sec || connbase->timeout.tv_usec)
     {
       rs_debug (("%s: activating timer: %d.%d\n", __func__,
-		 conn->base_.timeout.tv_sec, conn->base_.timeout.tv_usec));
-      if (evtimer_add (conn->tev, &conn->base_.timeout))
-	return rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
-				    "evtimer_add: %d", errno);
+		 connbase->timeout.tv_sec, connbase->timeout.tv_usec));
+      if (evtimer_add (conn->tev, &connbase->timeout))
+	return rs_err_conn_push (conn, RSE_EVENT, "evtimer_add: %d", errno);
     }
   return RSE_OK;
 }
@@ -73,9 +75,9 @@ int
 conn_cred_psk (const struct rs_connection *conn)
 {
   assert (conn);
-  assert (conn->active_peer);
-  return conn->active_peer->transport_cred &&
-    conn->active_peer->transport_cred->type == RS_CRED_TLS_PSK;
+  return conn->active_peer != NULL
+    && conn->active_peer->transport_cred
+    && conn->active_peer->transport_cred->type == RS_CRED_TLS_PSK;
 }
 
 void
@@ -249,8 +251,31 @@ rs_conn_add_listener (struct rs_connection *conn,
 int
 rs_conn_disconnect (struct rs_connection *conn)
 {
-  int err = baseconn_close (TO_BASE_CONN (conn));
-  conn->state = RS_CONN_STATE_UNDEFINED;
+  int err = 0;
+
+  assert (conn);
+
+  if (conn->state == RS_CONN_STATE_CONNECTED)
+    event_on_disconnect (conn);
+
+  if (TO_BASE_CONN (conn)->bev)
+    {
+      bufferevent_free (TO_BASE_CONN (conn)->bev);
+      TO_BASE_CONN (conn)->bev = NULL;
+    }
+  if (TO_BASE_CONN (conn)->rev)
+    {
+      event_free (TO_BASE_CONN (conn)->rev);
+      TO_BASE_CONN (conn)->rev = NULL;
+    }
+  if (TO_BASE_CONN (conn)->wev)
+    {
+      event_free (TO_BASE_CONN (conn)->wev);
+      TO_BASE_CONN (conn)->wev = NULL;
+    }
+
+  err = evutil_closesocket (TO_BASE_CONN (conn)->fd);
+  TO_BASE_CONN (conn)->fd = -1;
   return err;
 }
 

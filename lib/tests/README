@@ -1,8 +1,14 @@
+This is the README file for the test directory of libradsec.
+
 Build
 -----
 
-In order to build and run the tests, you'll need to have libcgreen
-installed (http://www.lastcraft.com/cgreen.php).
+In order to build and run the tests, you'll need to have CUnit
+installed.
+
+Source code: http://cunit.sourceforge.net/
+Debian package: libcunit1-dev
+FreeBSD port: devel/cunit
 
 
 Run
@@ -23,12 +29,11 @@ Run the tests by typing
 
 The output should read something like
 
-  Completed "main": 32 passes, 0 failures, 0 exceptions.
-
-
-When trying to debug the test programs under GDB you might run into
-trouble with multiple threads being executed by the test framework.
-If so, make sure to run a single test rather than the full test suite.
-For example:
-
-  libtool --mode execute gdb --args test-udp test_auth
+    --Run Summary: Type      Total     Ran  Passed  Failed
+                   suites        2       2     n/a       0
+                   tests         2       2       2       0
+                   asserts      23      23      23       0
+    PASS: test-udp
+    =============
+    1 test passed
+    =============

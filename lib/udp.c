@@ -1,5 +1,5 @@
 /* Copyright 2011,2013 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+   See LICENSE for licensing information. */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -64,15 +64,15 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 {
   int err;
   struct rs_message *msg = (struct rs_message *) user_data;
-  assert (msg);
-  assert (msg->conn);
 
   rs_debug (("%s: fd=%d what =", __func__, fd));
-  if (what & EV_TIMEOUT) rs_debug ((" TIMEOUT"));
+  if (what & EV_TIMEOUT) rs_debug ((" TIMEOUT -- shouldn't happen!"));
   if (what & EV_READ) rs_debug ((" READ"));
   if (what & EV_WRITE) rs_debug ((" WRITE"));
   rs_debug (("\n"));
 
+  assert (msg);
+  assert (msg->conn);
   if (what & EV_READ)
     {
       /* Read a single UDP packet and stick it in the struct
@@ -91,7 +91,7 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 	      /* FIXME: Really shouldn't happen since we've been told
 		 that fd is readable!  */
 	      rs_debug (("%s: EAGAIN reading UDP packet -- wot?"));
-	      return;
+              goto err_out;
 	    }
 
 	  /* Hard error.  */
@@ -99,23 +99,21 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
                             "%d: recv: %d (%s)", fd, sockerr,
                             evutil_socket_error_to_string (sockerr));
 	  event_del (msg->conn->tev);
-	  return;
+          goto err_out;
 	}
       event_del (msg->conn->tev);
       if (r < 20 || r > RS_MAX_PACKET_LEN)	/* Short or long packet.  */
 	{
 	  rs_err_conn_push (msg->conn, RSE_INVALID_MSG,
-			    "invalid message length: %d",
-			    msg->rpkt->length);
-	  return;
+			    "invalid message length: %d", r);
+          goto err_out;
 	}
       msg->rpkt->length = (msg->rpkt->data[2] << 8) + msg->rpkt->data[3];
       err = nr_packet_ok (msg->rpkt);
       if (err)
 	{
-	  rs_err_conn_push_fl (msg->conn, err, __FILE__, __LINE__,
-			       "invalid message");
-	  return;
+	  rs_err_conn_push (msg->conn, -err, "invalid message");
+          goto err_out;
 	}
       /* Hand over message to user.  This changes ownership of msg.
 	 Don't touch it afterwards -- it might have been freed.  */
@@ -142,11 +140,10 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 	  if (msg->conn->callbacks.sent_cb)
 	    msg->conn->callbacks.sent_cb (msg->conn->base_.user_data);
     }
+  return;
 
-#if defined (DEBUG)
-  if (what & EV_TIMEOUT)
-    rs_debug (("%s: timeout on UDP event, shouldn't happen\n", __func__));
-#endif
+ err_out:
+  rs_conn_disconnect (msg->conn);
 }
 
 int

@@ -1,5 +1,5 @@
-/* Copyright 2010,2011,2013 NORDUnet A/S. All rights reserved.
-   See LICENSE for licensing information.  */
+/* Copyright 2010-2013 NORDUnet A/S. All rights reserved.
+   See LICENSE for licensing information. */
 
 #if defined HAVE_CONFIG_H
 #include <config.h>
@@ -51,8 +51,7 @@ int
 rs_request_create_authn (struct rs_connection *conn,
 			 struct rs_request **req_out,
 			 const char *user_name,
-			 const char *user_pw,
-                         const char *secret)
+			 const char *user_pw)
 {
   struct rs_request *req = NULL;
   assert (req_out);

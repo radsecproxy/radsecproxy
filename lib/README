@@ -16,7 +16,8 @@ The canonical pickup point is
 http://git.nordu.net/?p=radsecproxy.git;a=shortlog;h=refs/heads/libradsec
 
 
-The source code is licensed under a 3-clause BSD license. See LICENSE.
+The source code is licensed under a 3-clause BSD license. See the
+LICENSE file.
 
 
 Libradsec depends on
@@ -30,10 +31,24 @@ For changes between releases, see the CHANGES file.
 
 To compile the library and the examples, do something like
 
- sh autogen.sh && ./configure && make
+  sh autogen.sh && ./configure && make
 
-If any of the libraries are not found, try setting environment
-variable LDFLAGS at configure time like so:
+
+There are a couple of options that can be used when configuring. See
+
+  ./configure --help
+
+for the full list. Worth mentioning here is --enable-tls and
+--enable-tls-psk.
+
+If the preprocessor has a hard time finding some of the header files
+are, try setting environment variable CPPFLAGS at configure
+time. Example:
+
+  CPPFLAGS="-I/usr/local/include" ./configure --enable-tls
+
+If the link editor has trouble finding any of the libraries needed,
+try setting environment variable LDFLAGS at configure time. Example:
 
   LDFLAGS="-L/usr/local/lib" ./configure --enable-tls
 
