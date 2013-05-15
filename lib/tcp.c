@@ -38,7 +38,9 @@ _read_header (struct rs_packet *pkt)
       pkt->rpkt->length = (pkt->hdr[2] << 8) + pkt->hdr[3];
       if (pkt->rpkt->length < 20 || pkt->rpkt->length > RS_MAX_PACKET_LEN)
 	{
-	  conn_close (&pkt->conn);
+          rs_debug (("%s: invalid packet length: %d\n",
+                     __func__, pkt->rpkt->length));
+          rs_conn_disconnect (pkt->conn);
 	  return rs_err_conn_push (pkt->conn, RSE_INVALID_PKT,
 				   "invalid packet length: %d",
 				   pkt->rpkt->length);
@@ -55,7 +57,8 @@ _read_header (struct rs_packet *pkt)
     }
   else	    /* Error: libevent gave us less than the low watermark. */
     {
-      conn_close (&pkt->conn);
+      rs_debug (("%s: got: %d octets reading header\n", __func__, n));
+      rs_conn_disconnect (pkg->conn);
       return rs_err_conn_push_fl (pkt->conn, RSE_INTERNAL, __FILE__, __LINE__,
 				  "got %d octets reading header", n);
     }
@@ -100,8 +103,9 @@ _read_packet (struct rs_packet *pkt)
       err = nr_packet_ok (pkt->rpkt);
       if (err != RSE_OK)
 	{
-	  conn_close (&pkt->conn);
-	  return rs_err_conn_push_fl (pkt->conn, err, __FILE__, __LINE__,
+          rs_debug (("%s: %d: invalid packet\n", __func__, -err));
+          rs_conn_disconnect (pkt->conn);
+	  return rs_err_conn_push_fl (pkt->conn, -err, __FILE__, __LINE__,
 				      "invalid packet");
 	}
 

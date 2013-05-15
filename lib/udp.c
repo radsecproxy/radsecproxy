@@ -65,22 +65,22 @@ static void
 _evcb (evutil_socket_t fd, short what, void *user_data)
 {
   int err;
+  struct rs_packet *pkt = (struct rs_packet *) user_data;
 
   rs_debug (("%s: fd=%d what =", __func__, fd));
-  if (what & EV_TIMEOUT) rs_debug ((" TIMEOUT"));
+  if (what & EV_TIMEOUT) rs_debug ((" TIMEOUT -- shouldn't happen!"));
   if (what & EV_READ) rs_debug ((" READ"));
   if (what & EV_WRITE) rs_debug ((" WRITE"));
   rs_debug (("\n"));
 
+  assert (pkt);
+  assert (pkt->conn);
   if (what & EV_READ)
     {
       /* Read a single UDP packet and stick it in USER_DATA.  */
       /* TODO: Verify that unsolicited packets are dropped.  */
-      struct rs_packet *pkt = (struct rs_packet *) user_data;
       ssize_t r = 0;
 
-      assert (pkt);
-      assert (pkt->conn);
       assert (pkt->rpkt->data);
 
       r = compat_recv (fd, pkt->rpkt->data, RS_MAX_PACKET_LEN, MSG_TRUNC);
@@ -92,7 +92,7 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 	      /* FIXME: Really shouldn't happen since we've been told
 		 that fd is readable!  */
 	      rs_debug (("%s: EAGAIN reading UDP packet -- wot?"));
-	      return;
+              goto err_out;
 	    }
 
 	  /* Hard error.  */
@@ -100,23 +100,22 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 			       "%d: recv: %d (%s)", fd, sockerr,
 			       evutil_socket_error_to_string (sockerr));
 	  event_del (pkt->conn->tev);
-	  return;
+          goto err_out;
 	}
       event_del (pkt->conn->tev);
       if (r < 20 || r > RS_MAX_PACKET_LEN)	/* Short or long packet.  */
 	{
 	  rs_err_conn_push (pkt->conn, RSE_INVALID_PKT,
-			    "invalid packet length: %d",
-			    pkt->rpkt->length);
-	  return;
+                            "invalid packet length: %d", r);
+          goto err_out;
 	}
       pkt->rpkt->length = (pkt->rpkt->data[2] << 8) + pkt->rpkt->data[3];
       err = nr_packet_ok (pkt->rpkt);
       if (err)
 	{
-	  rs_err_conn_push_fl (pkt->conn, err, __FILE__, __LINE__,
+	  rs_err_conn_push_fl (pkt->conn, -err, __FILE__, __LINE__,
 			       "invalid packet");
-	  return;
+          goto err_out;
 	}
       /* Hand over message to user.  This changes ownership of pkt.
 	 Don't touch it afterwards -- it might have been freed.  */
@@ -125,10 +124,6 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
     }
   else if (what & EV_WRITE)
     {
-      struct rs_packet *pkt = (struct rs_packet *) user_data;
-      assert (pkt);
-      assert (pkt->conn);
-
       if (!pkt->conn->is_connected)
 	event_on_connect (pkt->conn, pkt);
 
@@ -137,11 +132,10 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 	  if (pkt->conn->callbacks.sent_cb)
 	    pkt->conn->callbacks.sent_cb (pkt->conn->user_data);
     }
+  return;
 
-#if defined (DEBUG)
-  if (what & EV_TIMEOUT)
-    rs_debug (("%s: timeout on UDP event, shouldn't happen\n", __func__));
-#endif
+ err_out:
+  rs_conn_disconnect (pkt->conn);
 }
 
 int

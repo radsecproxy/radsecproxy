@@ -20,19 +20,6 @@
 #include "tcp.h"
 
 int
-conn_close (struct rs_connection **connp)
-{
-  int r = 0;
-  assert (connp);
-  assert (*connp);
-  if ((*connp)->is_connected)
-    r = rs_conn_disconnect (*connp);
-  if (r == RSE_OK)
-    *connp = NULL;
-  return r;
-}
-
-int
 conn_user_dispatch_p (const struct rs_connection *conn)
 {
   assert (conn);
@@ -144,6 +131,25 @@ rs_conn_disconnect (struct rs_connection *conn)
   int err = 0;
 
   assert (conn);
+
+  if (conn->is_connected)
+    event_on_disconnect (conn);
+
+  if (conn->bev)
+    {
+      bufferevent_free (conn->bev);
+      conn->bev = NULL;
+    }
+  if (conn->rev)
+    {
+      event_free (conn->rev);
+      conn->rev = NULL;
+    }
+  if (conn->wev)
+    {
+      event_free (conn->wev);
+      conn->wev = NULL;
+    }
 
   err = evutil_closesocket (conn->fd);
   conn->fd = -1;
