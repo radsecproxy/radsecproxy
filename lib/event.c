@@ -222,9 +222,7 @@ event_loopbreak (struct rs_connection *conn)
 {
   int err = event_base_loopbreak (conn->evb);
   if (err < 0)
-    rs_err_conn_push_fl (conn, RSE_EVENT, __FILE__, __LINE__,
-			 "event_base_loopbreak: %s",
-			 evutil_gai_strerror (err));
+    rs_err_conn_push (conn, RSE_EVENT, "event_base_loopbreak");
   return err;
 }
 
