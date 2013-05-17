@@ -871,7 +871,11 @@ ssize_t nr_packet_attr_append(RADIUS_PACKET *packet,
 		data_len = strlen(data);
 	}
 
-	packet->flags |= RS_PACKET_ENCODED; /* ignore any VPs */
+        /* We're going to mark the whole packet as encoded so we
+           better not have any unencoded value-pairs attached. */
+        if (packet->vps)
+                return -RSE_INVAL;
+	packet->flags |= RS_PACKET_ENCODED;
 
 	attr = packet->data + packet->length;
 	end = attr + packet->sizeof_data;

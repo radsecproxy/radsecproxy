@@ -173,14 +173,16 @@ rs_packet_create_authn_request (struct rs_connection *conn,
 
   if (user_name)
     {
-      err = rs_packet_append_avp (pkt, PW_USER_NAME, 0, user_name, 0);
+      err = rs_packet_add_avp (pkt, PW_USER_NAME, 0, user_name,
+                               strlen (user_name));
       if (err)
 	return err;
     }
 
   if (user_pw)
     {
-      err = rs_packet_append_avp (pkt, PW_USER_PASSWORD, 0, user_pw, 0);
+      err = rs_packet_add_avp (pkt, PW_USER_PASSWORD, 0, user_pw,
+                               strlen (user_pw));
       if (err)
 	return err;
     }
@@ -200,6 +202,45 @@ rs_packet_destroy (struct rs_packet *pkt)
   rs_free (pkt->conn->ctx, pkt);
 }
 
+int
+rs_packet_add_avp (struct rs_packet *pkt,
+                   unsigned int attr, unsigned int vendor,
+                   const void *data, size_t data_len)
+
+{
+  const DICT_ATTR *da;
+  VALUE_PAIR *vp;
+  int err;
+
+  assert (pkt);
+  assert (pkt->conn);
+  assert (pkt->conn->ctx);
+
+  da = nr_dict_attr_byvalue (attr, vendor);
+  if (da == NULL)
+    return rs_err_conn_push (pkt->conn, RSE_ATTR_TYPE_UNKNOWN,
+                             "nr_dict_attr_byvalue");
+  vp = rs_malloc (pkt->conn->ctx, sizeof(*vp));
+  if (vp == NULL)
+    return rs_err_conn_push (pkt->conn, RSE_NOMEM, NULL);
+  if (nr_vp_init (vp, da) == NULL)
+    {
+      nr_vp_free (&vp);
+      return rs_err_conn_push (pkt->conn, RSE_INTERNAL, NULL);
+    }
+  err = nr_vp_set_data (vp, data, data_len);
+  if (err < 0)
+    {
+      nr_vp_free (&vp);
+      return rs_err_conn_push (pkt->conn, -err, "nr_vp_set_data");
+    }
+  nr_vps_append (&pkt->rpkt->vps, vp);
+
+  return RSE_OK;
+}
+
+/* TODO: Rename rs_packet_append_avp, indicating that encoding is
+   being done. */
 int
 rs_packet_append_avp (struct rs_packet *pkt,
                       unsigned int attr, unsigned int vendor,

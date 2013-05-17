@@ -322,7 +322,17 @@ int rs_packet_create_authn_request(struct rs_connection *conn,
 				   const char *user_name,
 				   const char *user_pw);
 
-/*** Append \a tail to packet \a pkt.  */
+/** Add a new attribute-value pair to \a pkt. */
+int rs_packet_add_avp(struct rs_packet *pkt,
+                      unsigned int attr, unsigned int vendor,
+                      const void *data, size_t data_len);
+
+/** Append a new attribute to packet \a pkt. Note that this function
+    encodes the attribute and therefore might require the secret
+    shared with the thought recipient to be set in pkt->rpkt. Note
+    also that this function marks \a pkt as already encoded and can
+    not be used on packets with non-encoded value-pairs already
+    added. */
 int
 rs_packet_append_avp(struct rs_packet *pkt,
 		     unsigned int attribute, unsigned int vendor,
