@@ -2432,7 +2432,9 @@ struct modattr *extractmodattr(char *nameval) {
     if (s[strlen(s) - 1] == '/')
 	s[strlen(s) - 1] = '\0';
 
-    t = strchr(s, '/');
+    for (t = strchr(s, '/'); t; t = strchr(t+1, '/'))
+        if (t == s || t[-1] != '\\')
+            break;
     if (!t)
 	return NULL;
     *t = '\0';
