@@ -1,3 +1,14 @@
+2013-      1.6.3
+	Enhancements:
+	- Threads are allocated with a 32 KB stack rather than what
+	happens to be the default. Patch by Fabian Mauchle.
+	- On systems with mallopt(3), freed memory is returned to the
+	system more aggressively. Patch by Fabian Mauchle.
+
+	Bug fixes:
+	- The duplication cache is purged properly. Patch by Fabian
+	Mauchle.
+
 2012-10-25 1.6.2
 	Bug fixes (security):
 	- Fix the issue with verification of clients when using multiple
