@@ -348,15 +348,15 @@ void initextraudp() {
     }
 
     if (client4_sock >= 0)
-	if (pthread_create(&cl4th, NULL, udpclientrd, (void *)&client4_sock))
+	if (pthread_create(&cl4th, &pthread_attr, udpclientrd, (void *)&client4_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     if (client6_sock >= 0)
-	if (pthread_create(&cl6th, NULL, udpclientrd, (void *)&client6_sock))
+	if (pthread_create(&cl6th, &pthread_attr, udpclientrd, (void *)&client6_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
 
     if (find_clconf_type(handle, NULL)) {
 	server_replyq = newqueue();
-	if (pthread_create(&srvth, NULL, udpserverwr, (void *)server_replyq))
+	if (pthread_create(&srvth, &pthread_attr, udpserverwr, (void *)server_replyq))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }
 }

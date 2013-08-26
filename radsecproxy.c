@@ -1803,7 +1803,7 @@ void *clientwr(void *arg) {
 #if defined ENABLE_EXPERIMENTAL_DYNDISC
 	server->in_use = 1;
 #endif
-	if (pthread_create(&clientrdth, NULL, conf->pdef->clientconnreader, (void *)server)) {
+	if (pthread_create(&clientrdth, &pthread_attr, conf->pdef->clientconnreader, (void *)server)) {
 	    debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
 	    goto errexit;
 	}
@@ -1962,7 +1962,7 @@ void createlistener(uint8_t type, char *arg) {
         if (!sp)
             debugx(1, DBG_ERR, "malloc failed");
 	*sp = s;
-	if (pthread_create(&th, NULL, protodefs[type]->listener, (void *)sp))
+	if (pthread_create(&th, &pthread_attr, protodefs[type]->listener, (void *)sp))
             debugerrnox(errno, DBG_ERR, "pthread_create failed");
 	pthread_detach(th);
     }
@@ -2212,7 +2212,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
 #if defined ENABLE_EXPERIMENTAL_DYNDISC
         	pthread_mutex_lock(&srvconf->servers->lock);
 #endif
-		if (pthread_create(&clientth, NULL, clientwr, (void *)(srvconf->servers))) {
+		if (pthread_create(&clientth, &pthread_attr, clientwr, (void *)(srvconf->servers))) {
 #if defined ENABLE_EXPERIMENTAL_DYNDISC
                     pthread_mutex_unlock(&srvconf->servers->lock);
 #endif
@@ -3331,6 +3331,11 @@ int radsecproxy_main(int argc, char **argv) {
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
 
+    if (pthread_attr_init(&pthread_attr))
+	debugx(1, DBG_ERR, "pthread_attr_init failed");
+    if (pthread_attr_setstacksize(&pthread_attr, PTHREAD_STACK_SIZE))
+	debugx(1, DBG_ERR, "pthread_attr_setstacksize failed");
+
     for (i = 0; i < RAD_PROTOCOUNT; i++)
 	protodefs[i] = protoinits[i](i);
 
@@ -3382,7 +3387,7 @@ int radsecproxy_main(int argc, char **argv) {
     sigaddset(&sigset, SIGHUP);
     sigaddset(&sigset, SIGPIPE);
     pthread_sigmask(SIG_BLOCK, &sigset, NULL);
-    pthread_create(&sigth, NULL, sighandler, NULL);
+    pthread_create(&sigth, &pthread_attr, sighandler, NULL);
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	srvconf = (struct clsrvconf *)entry->data;
@@ -3390,7 +3395,7 @@ int radsecproxy_main(int argc, char **argv) {
 	    continue;
 	if (!addserver(srvconf))
 	    debugx(1, DBG_ERR, "failed to add server");
-	if (pthread_create(&srvconf->servers->clientth, NULL, clientwr,
+	if (pthread_create(&srvconf->servers->clientth, &pthread_attr, clientwr,
 			   (void *)(srvconf->servers)))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     }

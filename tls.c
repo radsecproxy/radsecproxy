@@ -335,7 +335,7 @@ void tlsserverrd(struct client *client) {
 
     debug(DBG_DBG, "tlsserverrd: starting for %s", addr2string(client->addr));
 
-    if (pthread_create(&tlsserverwrth, NULL, tlsserverwr, (void *)client)) {
+    if (pthread_create(&tlsserverwrth, &pthread_attr, tlsserverwr, (void *)client)) {
 	debug(DBG_ERR, "tlsserverrd: pthread_create failed");
 	return;
     }
@@ -456,7 +456,7 @@ void *tlslistener(void *arg) {
 	    debug(DBG_WARN, "accept failed");
 	    continue;
 	}
-	if (pthread_create(&tlsserverth, NULL, tlsservernew, (void *)&s)) {
+	if (pthread_create(&tlsserverth, &pthread_attr, tlsservernew, (void *)&s)) {
 	    debug(DBG_ERR, "tlslistener: pthread_create failed");
 	    shutdown(s, SHUT_RDWR);
 	    close(s);

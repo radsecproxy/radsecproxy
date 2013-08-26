@@ -305,7 +305,7 @@ void dtlsserverrd(struct client *client) {
 
     debug(DBG_DBG, "dtlsserverrd: starting for %s", addr2string(client->addr));
 
-    if (pthread_create(&dtlsserverwrth, NULL, dtlsserverwr, (void *)client)) {
+    if (pthread_create(&dtlsserverwrth, &pthread_attr, dtlsserverwr, (void *)client)) {
 	debug(DBG_ERR, "dtlsserverrd: pthread_create failed");
 	return;
     }
@@ -508,7 +508,7 @@ void *udpdtlsserverrd(void *arg) {
 
 	    if (udp2bio(s, params->sesscache->rbios, cnt)) {
 		debug(DBG_DBG, "udpdtlsserverrd: got DTLS in UDP from %s", addr2string((struct sockaddr *)&from));
-		if (!pthread_create(&dtlsserverth, NULL, dtlsservernew, (void *)params)) {
+		if (!pthread_create(&dtlsserverth, &pthread_attr, dtlsservernew, (void *)params)) {
 		    pthread_detach(dtlsserverth);
 		    cacheexpire(sessioncache, &lastexpiry);
 		    continue;
@@ -697,10 +697,10 @@ void initextradtls() {
     }
 
     if (client4_sock >= 0)
-	if (pthread_create(&cl4th, NULL, udpdtlsclientrd, (void *)&client4_sock))
+	if (pthread_create(&cl4th, &pthread_attr, udpdtlsclientrd, (void *)&client4_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
     if (client6_sock >= 0)
-	if (pthread_create(&cl6th, NULL, udpdtlsclientrd, (void *)&client6_sock))
+	if (pthread_create(&cl6th, &pthread_attr, udpdtlsclientrd, (void *)&client6_sock))
 	    debugx(1, DBG_ERR, "pthread_create failed");
 }
 #else
