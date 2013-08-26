@@ -10,6 +10,8 @@
 	Mauchle.
 	- Stop freeing a shared piece of memory manifesting itself as a
 	crash when using dynamic discovery. Patch by Fabian Mauchle.
+	- Closing and freeing TLS clients properly. Patch by Fabian
+	Mauchle.
 
 2012-10-25 1.6.2
 	Bug fixes (security):

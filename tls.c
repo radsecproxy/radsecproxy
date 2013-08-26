@@ -290,8 +290,17 @@ void *tlsclientrd(void *arg) {
 	    }
 	}
     }
+    debug(DBG_INFO, "tlsclientrd: exiting for %s", server->conf->name);
     ERR_remove_state(0);
+    SSL_shutdown(server->ssl);
+    shutdown(server->sock, SHUT_RDWR);
+    close(server->sock);
+
+    /* Wake up clientwr(). */
     server->clientrdgone = 1;
+    pthread_mutex_lock(&server->newrq_mutex);
+    pthread_cond_signal(&server->newrq_cond);
+    pthread_mutex_unlock(&server->newrq_mutex);
     return NULL;
 }
 
