@@ -169,7 +169,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 /* returns 0 on timeout, -1 on error and num if ok */
 int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout) {
     int s, ndesc, cnt, len;
-    fd_set readfds, writefds;
+    fd_set readfds;
     struct timeval timer;
 
     s = SSL_get_fd(ssl);
@@ -177,16 +177,17 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout) {
 	return -1;
     /* make socket non-blocking? */
     for (len = 0; len < num; len += cnt) {
-	FD_ZERO(&readfds);
-	FD_SET(s, &readfds);
-	writefds = readfds;
-	if (timeout) {
-	    timer.tv_sec = timeout;
-	    timer.tv_usec = 0;
+	if (SSL_pending(ssl) == 0) {
+            FD_ZERO(&readfds);
+            FD_SET(s, &readfds);
+            if (timeout) {
+                timer.tv_sec = timeout;
+                timer.tv_usec = 0;
+            }
+	    ndesc = select(s + 1, &readfds, NULL, NULL, timeout ? &timer : NULL);
+            if (ndesc < 1)
+                return ndesc;
 	}
-	ndesc = select(s + 1, &readfds, &writefds, NULL, timeout ? &timer : NULL);
-	if (ndesc < 1)
-	    return ndesc;
 
 	cnt = SSL_read(ssl, buf + len, num - len);
 	if (cnt <= 0)
