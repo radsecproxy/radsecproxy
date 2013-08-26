@@ -2646,8 +2646,8 @@ void freeclsrvconf(struct clsrvconf *conf) {
 	free(conf->rewriteusername);
     }
     free(conf->dynamiclookupcommand);
-    free(conf->rewritein);
-    free(conf->rewriteout);
+    conf->rewritein=NULL;
+    conf->rewriteout=NULL;
     if (conf->hostports)
 	freehostports(conf->hostports);
     if (conf->lock) {
