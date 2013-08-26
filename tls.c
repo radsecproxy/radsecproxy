@@ -355,7 +355,7 @@ void tlsserverrd(struct client *client) {
     }
 
     for (;;) {
-	buf = radtlsget(client->ssl, 0);
+	buf = radtlsget(client->ssl, IDLE_TIMEOUT * 3);
 	if (!buf) {
 	    debug(DBG_ERR, "tlsserverrd: connection from %s lost", addr2string(client->addr));
 	    break;

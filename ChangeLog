@@ -12,6 +12,8 @@
 	crash when using dynamic discovery. Patch by Fabian Mauchle.
 	- Closing and freeing TLS clients properly. Patch by Fabian
 	Mauchle.
+	- Timing out on TLS clients not closing the connection properly.
+	Patch by Fabian Mauchle.
 
 2012-10-25 1.6.2
 	Bug fixes (security):
