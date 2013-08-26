@@ -1377,6 +1377,22 @@ struct request *newrequest() {
     return rq;
 }
 
+static void
+purgedupcache(struct client *client) {
+    struct request *r;
+    struct timeval now;
+    int i;
+
+    gettimeofday(&now, NULL);
+    for (i = 0; i < MAX_REQUESTS; i++) {
+	r = client->rqs[i];
+	if (r && now.tv_sec - r->created.tv_sec > r->from->conf->dupinterval) {
+	    freerq(r);
+	    client->rqs[i] = NULL;
+	}
+    }
+}
+
 int addclientrq(struct request *rq) {
     struct request *r;
     struct timeval now;
@@ -1440,6 +1456,7 @@ int radsrv(struct request *rq) {
 	goto exit;
     }
 
+    purgedupcache(from);
     if (!addclientrq(rq))
 	goto exit;
 
