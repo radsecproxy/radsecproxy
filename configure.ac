@@ -1,5 +1,5 @@
 dnl Copyright (c) 2006-2010, UNINETT AS
-dnl Copyright (c) 2010-2012, NORDUnet A/S
+dnl Copyright (c) 2010-2013, NORDUnet A/S
 dnl See LICENSE for licensing information.
 
 AC_INIT(radsecproxy, 1.7-dev, radsecproxy@uninett.no)
@@ -7,6 +7,8 @@ AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
 AC_PROG_CC
 AC_PROG_RANLIB
+AC_CHECK_FUNCS([mallopt])
+
 udp=yes
 AC_ARG_ENABLE(udp,
   [  --enable-udp whether to enable UDP transport: yes/no; default yes ],
