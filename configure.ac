@@ -3,6 +3,8 @@ AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
 AC_PROG_CC
 AC_PROG_RANLIB
+AC_CHECK_FUNCS([mallopt])
+
 udp=yes
 AC_ARG_ENABLE(udp,
   [  --enable-udp whether to enable UDP transport: yes/no; default yes ],

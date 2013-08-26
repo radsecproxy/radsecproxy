@@ -52,6 +52,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
+#if defined(HAVE_MALLOPT)
+#include <malloc.h>
+#endif
 #ifdef SYS_SOLARIS9
 #include <fcntl.h>
 #endif
@@ -3348,6 +3351,10 @@ int radsecproxy_main(int argc, char **argv) {
 	debugx(1, DBG_ERR, "pthread_attr_init failed");
     if (pthread_attr_setstacksize(&pthread_attr, PTHREAD_STACK_SIZE))
 	debugx(1, DBG_ERR, "pthread_attr_setstacksize failed");
+#if defined(HAVE_MALLOPT)
+    if (mallopt(M_TRIM_THRESHOLD, 4 * 1024) != 1)
+	debugx(1, DBG_ERR, "mallopt failed");
+#endif
 
     for (i = 0; i < RAD_PROTOCOUNT; i++)
 	protodefs[i] = protoinits[i](i);
