@@ -276,7 +276,7 @@ void tcpserverrd(struct client *client) {
 
     debug(DBG_DBG, "tcpserverrd: starting for %s", addr2string(client->addr));
 
-    if (pthread_create(&tcpserverwrth, NULL, tcpserverwr, (void *)client)) {
+    if (pthread_create(&tcpserverwrth, &pthread_attr, tcpserverwr, (void *)client)) {
 	debug(DBG_ERR, "tcpserverrd: pthread_create failed");
 	return;
     }
@@ -357,7 +357,7 @@ void *tcplistener(void *arg) {
 	    debug(DBG_WARN, "accept failed");
 	    continue;
 	}
-	if (pthread_create(&tcpserverth, NULL, tcpservernew, (void *)&s)) {
+	if (pthread_create(&tcpserverth, &pthread_attr, tcpservernew, (void *)&s)) {
 	    debug(DBG_ERR, "tcplistener: pthread_create failed");
 	    shutdown(s, SHUT_RDWR);
 	    close(s);
