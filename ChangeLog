@@ -1,4 +1,5 @@
-2013-      1.6.3
+Changes between 1.6.2 and the master branch
+
 	Enhancements:
 	- Threads are allocated with a 32 KB stack rather than what
 	happens to be the default. Patch by Fabian Mauchle.
