@@ -7,6 +7,10 @@ Changes between 1.6.2 and the master branch
 	system more aggressively. Patch by Fabian Mauchle.
 
 	Bug fixes:
+	- radsecproxy-hash(1) no longer prints the hash four times.
+	Reported by Simon Lundström and jocar.
+	- Escaped slashes in regular expressions now works. Reported by
+	Duarte Fonseca. (RADSECPROXY-51)
 	- The duplication cache is purged properly. Patch by Fabian
 	Mauchle.
 	- Stop freeing a shared piece of memory manifesting itself as a
