@@ -1784,8 +1784,8 @@ void *clientwr(void *arg) {
 #if defined ENABLE_EXPERIMENTAL_DYNDISC
 	pthread_mutex_unlock(&server->lock);
 #endif
-	debug(DBG_WARN, "%s: dynamicconfig(%s) failed, sleeping %ds",
-              __func__, server->conf->name, ZZZ);
+	debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, sleeping %ds",
+              __func__, server->conf->name, server->dynamiclookuparg, ZZZ);
 	sleep(ZZZ);
 	goto errexit;
     }
