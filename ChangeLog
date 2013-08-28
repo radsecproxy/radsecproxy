@@ -1,4 +1,9 @@
-Changes between 1.6.3 and the master branch
+Changes between 1.6.4 and the master branch
+	Bug fixes:
+	- Fix a crash bug introduced in 1.6.4. Fixes RADSECPROXY-53,
+	bugfix on 1.6.4.
+
+2013-09-05 1.6.4
 	Bug fixes:
 	- Keeping Proxy-State attributes in all replies to clients
 	(RADSECPROXY-52). Reported by Stefan Winter.
