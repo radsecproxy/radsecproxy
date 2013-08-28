@@ -15,6 +15,7 @@
 #define RAD_Attr_Reply_Message 18
 #define RAD_Attr_Vendor_Specific 26
 #define RAD_Attr_Calling_Station_Id 31
+#define RAD_Proxy_State 33
 #define RAD_Attr_Tunnel_Password 69
 #define RAD_Attr_Message_Authenticator 80
 
@@ -32,6 +33,10 @@ void radmsg_free(struct radmsg *);
 struct radmsg *radmsg_init(uint8_t, uint8_t, uint8_t *);
 int radmsg_add(struct radmsg *, struct tlv *);
 struct tlv *radmsg_gettype(struct radmsg *, uint8_t);
+struct list *radmsg_getalltype(const struct radmsg *msg, uint8_t type);
+int radmsg_copy_attrs(struct radmsg *dst,
+                      const struct radmsg *src,
+                      uint8_t type);
 uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *);
 struct radmsg *buf2radmsg(uint8_t *, uint8_t *, uint8_t *);
 

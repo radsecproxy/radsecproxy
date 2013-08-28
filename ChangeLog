@@ -19,6 +19,8 @@ Changes between 1.6.2 and the master branch
 	Mauchle.
 	- Timing out on TLS clients not closing the connection properly.
 	Patch by Fabian Mauchle.
+	- Keeping Proxy-State attributes in all replies to clients
+	(RADSECPROXY-52). Reported by Stefan Winter.
 
 2012-10-25 1.6.2
 	Bug fixes (security):

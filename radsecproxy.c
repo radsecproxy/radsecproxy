@@ -1274,7 +1274,9 @@ void acclog(struct radmsg *msg, struct client *from) {
     }
 }
 
-void respond(struct request *rq, uint8_t code, char *message) {
+void respond(struct request *rq, uint8_t code, char *message,
+             int copy_proxystate_flag)
+{
     struct radmsg *msg;
     struct tlv *attr;
 
@@ -1291,6 +1293,12 @@ void respond(struct request *rq, uint8_t code, char *message) {
 	    debug(DBG_ERR, "respond: malloc failed");
 	    return;
 	}
+    }
+    if (copy_proxystate_flag) {
+        if (radmsg_copy_attrs(msg, rq->msg, RAD_Proxy_State) < 0) {
+            debug(DBG_ERR, "%s: unable to copy all Proxy-State attributes",
+                  __func__);
+        }
     }
 
     radmsg_free(rq->msg);
@@ -1461,7 +1469,7 @@ int radsrv(struct request *rq) {
 	goto exit;
 
     if (msg->code == RAD_Status_Server) {
-	respond(rq, RAD_Access_Accept, NULL);
+	respond(rq, RAD_Access_Accept, NULL, 0);
 	goto exit;
     }
 
@@ -1480,7 +1488,7 @@ int radsrv(struct request *rq) {
     if (!attr) {
 	if (msg->code == RAD_Accounting_Request) {
 	    acclog(msg, from);
-	    respond(rq, RAD_Accounting_Response, NULL);
+	    respond(rq, RAD_Accounting_Response, NULL, 1);
 	} else
 	    debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
 	goto exit;
@@ -1506,10 +1514,10 @@ int radsrv(struct request *rq) {
     if (!to) {
 	if (realm->message && msg->code == RAD_Access_Request) {
 	    debug(DBG_INFO, "radsrv: sending reject to %s (%s) for %s", from->conf->name, addr2string(from->addr), userascii);
-	    respond(rq, RAD_Access_Reject, realm->message);
+	    respond(rq, RAD_Access_Reject, realm->message, 1);
 	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
 	    acclog(msg, from);
-	    respond(rq, RAD_Accounting_Response, NULL);
+	    respond(rq, RAD_Accounting_Response, NULL, 1);
 	}
 	goto exit;
     }

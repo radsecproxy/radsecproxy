@@ -5,6 +5,24 @@
 #include <string.h>
 #include "list.h"
 
+/* Private helper functions. */
+static void list_free_helper_(struct list *list, int free_data_flag) {
+    struct list_node *node, *next;
+
+    if (!list)
+	return;
+
+    for (node = list->first; node; node = next) {
+        if (free_data_flag)
+            free(node->data);
+	next = node->next;
+	free(node);
+    }
+    free(list);
+}
+
+/* Public functions. */
+
 /* allocates and initialises list structure; returns NULL if malloc fails */
 struct list *list_create() {
     struct list *list = malloc(sizeof(struct list));
@@ -13,19 +31,18 @@ struct list *list_create() {
     return list;
 }
 
-/* frees all memory associated with the list */
+/* frees all memory associated with the list
+   note that the data pointed at from each node is also freed
+   use list_free() to free only the memory used by the list itself */
 void list_destroy(struct list *list) {
-    struct list_node *node, *next;
+    list_free_helper_(list, 1);
+}
 
-    if (!list)
-	return;
-
-    for (node = list->first; node; node = next) {
-	free(node->data);
-	next = node->next;
-	free(node);
-    }
-    free(list);
+/* frees the meory used by the list itself
+   note that the data pointed at from each node is not freed
+   use list_destroy() to free all the data associated with the list */
+void list_free(struct list *list) {
+    list_free_helper_(list, 0);
 }
 
 /* appends entry to list; returns 1 if ok, 0 if malloc fails */

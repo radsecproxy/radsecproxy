@@ -57,6 +57,30 @@ int radmsg_add(struct radmsg *msg, struct tlv *attr) {
     return list_push(msg->attrs, attr);
 }
 
+/** Return a new list with all tlv's in \a msg of type \a type. The
+ * caller is responsible for freeing the list by calling \a
+ * list_free(). */
+struct list *
+radmsg_getalltype(const struct radmsg *msg, uint8_t type)
+{
+    struct list *list = NULL;
+    struct list_node *node = NULL;
+
+    if (!msg || !msg->attrs)
+        return NULL;
+    list = list_create();
+    if (!list)
+        return NULL;
+
+    for (node = list_first(msg->attrs); node; node = list_next(node))
+        if (((struct tlv *) node->data)->t == type)
+            if (list_push(list, node->data) != 1) {
+                list_free(list);
+                return NULL;
+            }
+    return list;
+}
+
 /* returns first tlv of the given type */
 struct tlv *radmsg_gettype(struct radmsg *msg, uint8_t type) {
     struct list_node *node;
@@ -70,6 +94,33 @@ struct tlv *radmsg_gettype(struct radmsg *msg, uint8_t type) {
             return tlv;
     }
     return NULL;
+}
+
+/** Copy all attributes of type \a type from \a src to \a dst.
+ *
+ * If all attributes were copied successfully, the number of
+ * attributes copied is returned.
+ *
+ * If copying failed, a negative number is returned. The number
+ * returned is 0 minus the number of attributes successfully copied
+ * before the failure. */
+int radmsg_copy_attrs(struct radmsg *dst,
+                      const struct radmsg *src,
+                      uint8_t type)
+{
+    struct list_node *node = NULL;
+    struct list *list = radmsg_getalltype(src, type);
+    int n = 0;
+
+    for (node = list_first(list); node; node = list_next(node)) {
+        if (radmsg_add(dst, (struct tlv *) node->data) != 1) {
+            n = -n;
+            break;
+        }
+        n++;
+    }
+    list_free(list);
+    return n;
 }
 
 int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret) {

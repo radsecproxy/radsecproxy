@@ -23,6 +23,9 @@ struct list *list_create();
 /* frees all memory associated with the list */
 void list_destroy(struct list *list);
 
+/* frees memory allocated for the list itself */
+void list_free(struct list *list);
+
 /* appends entry to list; returns 1 if ok, 0 if malloc fails */
 int list_push(struct list *list, void *data);
 
