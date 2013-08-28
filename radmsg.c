@@ -113,7 +113,7 @@ int radmsg_copy_attrs(struct radmsg *dst,
     int n = 0;
 
     for (node = list_first(list); node; node = list_next(node)) {
-        if (radmsg_add(dst, (struct tlv *) node->data) != 1) {
+        if (radmsg_add(dst, copytlv((struct tlv *) node->data)) != 1) {
             n = -n;
             break;
         }
