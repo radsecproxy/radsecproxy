@@ -1,5 +1,9 @@
-Changes between 1.6.2 and the master branch
+Changes between 1.6.3 and the master branch
+	Bug fixes:
+	- Keeping Proxy-State attributes in all replies to clients
+	(RADSECPROXY-52). Reported by Stefan Winter.
 
+2013-09-05 1.6.3
 	Enhancements:
 	- Threads are allocated with a 32 KB stack rather than what
 	happens to be the default. Patch by Fabian Mauchle.
@@ -19,8 +23,6 @@ Changes between 1.6.2 and the master branch
 	Mauchle.
 	- Timing out on TLS clients not closing the connection properly.
 	Patch by Fabian Mauchle.
-	- Keeping Proxy-State attributes in all replies to clients
-	(RADSECPROXY-52). Reported by Stefan Winter.
 
 2012-10-25 1.6.2
 	Bug fixes (security):
