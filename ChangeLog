@@ -1,3 +1,8 @@
+2013-09-05 1.6.4
+	Bug fixes:
+	- Keeping Proxy-State attributes in all replies to clients
+	(RADSECPROXY-52). Reported by Stefan Winter.
+
 2013-09-05 1.6.3
 	Enhancements:
 	- Threads are allocated with a 32 KB stack rather than what
