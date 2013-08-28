@@ -101,9 +101,7 @@ struct tlv *radmsg_gettype(struct radmsg *msg, uint8_t type) {
  * If all attributes were copied successfully, the number of
  * attributes copied is returned.
  *
- * If copying failed, a negative number is returned. The number
- * returned is 0 minus the number of attributes successfully copied
- * before the failure. */
+ * If copying failed, a negative number is returned. */
 int radmsg_copy_attrs(struct radmsg *dst,
                       const struct radmsg *src,
                       uint8_t type)
@@ -114,7 +112,7 @@ int radmsg_copy_attrs(struct radmsg *dst,
 
     for (node = list_first(list); node; node = list_next(node)) {
         if (radmsg_add(dst, copytlv((struct tlv *) node->data)) != 1) {
-            n = -n;
+            n = -1;
             break;
         }
         n++;
