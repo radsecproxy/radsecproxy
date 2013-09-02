@@ -1,4 +1,4 @@
-2013-      1.6.3
+2013-09-02 1.6.3-rc0
 	Enhancements:
 	- Threads are allocated with a 32 KB stack rather than what
 	happens to be the default. Patch by Fabian Mauchle.
