@@ -22,7 +22,8 @@ AC_CHECK_LIB([event_core], [event_get_version],,
 ## Enable TLS (RadSec).
 AH_TEMPLATE([RS_ENABLE_TLS], [TLS (RadSec) enabled])
 AH_TEMPLATE([RADPROT_TLS], [])  dnl Legacy.
-AC_ARG_ENABLE([tls], AS_HELP_STRING([--enable-tls], [enable TLS (RadSec)]),
+AC_ARG_ENABLE([tls], AS_HELP_STRING([--disable-tls], [disable TLS (RadSec)]),
+    [],
     [AC_CHECK_LIB([event_openssl], [bufferevent_openssl_socket_new],,
          AC_MSG_ERROR([required library event_openssl not found]))
      AC_DEFINE([RS_ENABLE_TLS])
