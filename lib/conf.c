@@ -31,6 +31,7 @@
       pskhexstr = STRING # Transport pre-shared key, ASCII hex form.
       pskid = STRING
       pskex = "PSK"|"DHE_PSK"|"RSA_PSK"
+      disable_hostname_check = "yes"|"no"
   }
 
   # client specific realm config options
@@ -73,6 +74,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
       CFG_STR ("pskhexstr", NULL, CFGF_NONE),
       CFG_STR ("pskid", NULL, CFGF_NONE),
       CFG_STR ("pskex", "PSK", CFGF_NONE),
+      CFG_BOOL ("disable_hostname_check", cfg_false, CFGF_NONE),
       CFG_SEC ("server", server_opts, CFGF_MULTI),
       CFG_END ()
     };
@@ -150,6 +152,7 @@ rs_context_read_config(struct rs_context *ctx, const char *config_file)
                                 r->name, typestr);
       r->timeout = cfg_getint (cfg_realm, "timeout");
       r->retries = cfg_getint (cfg_realm, "retries");
+      r->disable_hostname_check = cfg_getbool (cfg_realm, "disable_hostname_check");
 
       r->cacertfile = cfg_getstr (cfg_realm, "cacertfile");
       /*r->cacertpath = cfg_getstr (cfg_realm, "cacertpath");*/

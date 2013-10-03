@@ -70,6 +70,7 @@ struct rs_realm {
     char *cacertpath;
     char *certfile;
     char *certkeyfile;
+    int disable_hostname_check;
     struct rs_credentials *transport_cred;
     struct rs_peer *peers;
     struct rs_realm *next;

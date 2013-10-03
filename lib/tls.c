@@ -225,6 +225,8 @@ tls_verify_cert (struct rs_connection *conn)
   if (!success)
     success = (cnregexp (peer_cert, hostname, NULL) == 1);
 
+  if (conn->realm->disable_hostname_check)
+    success = 1;
   if (!success)
     err = rs_err_conn_push (conn, RSE_CERT, "server certificate doesn't "
                             "match configured hostname \"%s\"", hostname);
