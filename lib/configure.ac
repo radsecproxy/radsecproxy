@@ -19,18 +19,21 @@ AC_CHECK_LIB([event_core], [event_get_version],,
     AC_MSG_ERROR([required library libevent_core not found]))
 
 # Enable-knobs.
-## Enable TLS (RadSec).
+## Enable TLS (RadSec), default on.
+want_tls=yes
 AH_TEMPLATE([RS_ENABLE_TLS], [TLS (RadSec) enabled])
-AH_TEMPLATE([RADPROT_TLS], [])  dnl Legacy.
-AC_ARG_ENABLE([tls], AS_HELP_STRING([--disable-tls], [disable TLS (RadSec)]),
-    [],
-    [AC_CHECK_LIB([event_openssl], [bufferevent_openssl_socket_new],,
-         AC_MSG_ERROR([required library event_openssl not found]))
-     AC_DEFINE([RS_ENABLE_TLS])
-     AC_DEFINE([RADPROT_TLS])]) dnl Legacy.
-AM_CONDITIONAL([RS_ENABLE_TLS], [test "${enable_tls+set}" = set])
-### Define WITHOUT_OPENSSL for radius/client.h.
-if test -z "$enable_tls"; then
+AH_TEMPLATE([RADPROT_TLS], [])
+AC_ARG_ENABLE([tls],
+    AS_HELP_STRING([--disable-tls], [disable TLS (RadSec)]),
+    [want_tls=$enableval])
+AM_CONDITIONAL([RS_ENABLE_TLS], [test $want_tls = yes])
+if test $want_tls = yes; then
+    AC_CHECK_LIB([event_openssl], [bufferevent_openssl_socket_new],,
+        AC_MSG_ERROR([required library event_openssl not found]))
+    AC_DEFINE([RS_ENABLE_TLS])
+    AC_DEFINE([RADPROT_TLS])
+else
+    # Define WITHOUT_OPENSSL for radius/client.h.
     CPPFLAGS="$CPPFLAGS -DWITHOUT_OPENSSL"
 fi
 ## Enable TLS-PSK (preshared keys).
