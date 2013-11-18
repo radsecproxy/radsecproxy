@@ -91,7 +91,7 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 	    {
 	      /* FIXME: Really shouldn't happen since we've been told
 		 that fd is readable!  */
-	      rs_debug (("%s: EAGAIN reading UDP packet -- wot?"));
+	      rs_debug (("%s: EAGAIN reading UDP packet -- wot?\n"));
               goto err_out;
 	    }
 
@@ -121,6 +121,8 @@ _evcb (evutil_socket_t fd, short what, void *user_data)
 	 Don't touch it afterwards -- it might have been freed.  */
       if (pkt->conn->callbacks.received_cb)
 	pkt->conn->callbacks.received_cb (pkt, pkt->conn->user_data);
+      else
+        rs_debug (("%s: no received-callback -- dropping packet\n", __func__));
     }
   else if (what & EV_WRITE)
     {
