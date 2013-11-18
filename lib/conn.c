@@ -307,20 +307,23 @@ rs_conn_receive_packet (struct rs_connection *conn,
 				evutil_gai_strerror (err));
   rs_debug (("%s: event loop done\n", __func__));
 
-  if ((pkt->flags & RS_PACKET_RECEIVED) == 0
-      || (req_msg
-	  && packet_verify_response (pkt->conn, pkt, req_msg) != RSE_OK))
+  if ((pkt->flags & RS_PACKET_RECEIVED) != 0)
     {
-      if (rs_err_conn_peek_code (pkt->conn) == RSE_OK)
-        /* No packet and no error on the stack _should_ mean that the
-           server hung up on us.  */
-        rs_err_conn_push (pkt->conn, RSE_DISCO, "no response");
-      return rs_err_conn_peek_code (conn);
-    }
+      /* If the caller passed a request, check the response. */
+      if (req_msg)
+        err = packet_verify_response (pkt->conn, pkt, req_msg);
 
-  if (pkt_out)
-    *pkt_out = pkt;
-  return RSE_OK;
+      /* If the response was OK and the caller wants it, hand it
+         over, else free it. */
+      if (err == RSE_OK && pkt_out)
+        *pkt_out = pkt;
+      else
+        rs_packet_destroy (pkt);
+    }
+  else
+    err = rs_err_conn_peek_code (pkt->conn);
+
+  return err;
 }
 
 void
