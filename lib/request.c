@@ -119,17 +119,19 @@ rs_request_send (struct rs_request *request, struct rs_packet **resp_msg)
 				      resp_msg);
 	  if (r == RSE_OK)
 	    break;		/* Success.  */
-
-	  if (r != RSE_TIMEOUT_CONN && r != RSE_TIMEOUT_IO)
-	    break;		/* Error.  */
 	}
-      else if (r != RSE_TIMEOUT_CONN && r != RSE_TIMEOUT_IO)
+      if (r != RSE_TIMEOUT_CONN && r != RSE_TIMEOUT_IO)
 	break;			/* Error.  */
+
+      /* Timing out reading or writing. Pop the timeout error from the
+         stack and continue the loop. */
+      rs_err_conn_pop (request->conn);
 
       gettimeofday (&now, NULL);
       if (++count > MRC || timercmp (&now, &end, >))
 	{
-	  r = RSE_TIMEOUT;
+	  r = rs_err_conn_push_fl (request->conn, RSE_TIMEOUT,
+                                   __FILE__, __LINE__, NULL);
 	  break;		/* Timeout.  */
 	}
 
