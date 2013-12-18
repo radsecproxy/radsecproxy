@@ -6,17 +6,23 @@
 #endif
 
 #include <stdlib.h>
+#include <unistd.h>
 #include <assert.h>
+#include <fcntl.h>
+#include <limits.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/bn.h>
 #include <openssl/x509v3.h>
+#include <openssl/rand.h>
 #include <radsec/radsec.h>
 #include <radsec/radsec-impl.h>
 
 #include <regex.h>
 #include "radsecproxy/list.h"
 #include "radsecproxy/radsecproxy.h"
+
+#include "tls.h"
 
 static struct tls *
 _get_tlsconf (struct rs_connection *conn, const struct rs_realm *realm)
@@ -112,8 +118,81 @@ psk_client_cb (SSL *ssl,
 }
 #endif  /* RS_ENABLE_TLS_PSK */
 
+/** Read \a buf_len bytes from one of the random devices into \a
+    buf. Return 0 on success and -1 on failure. */
+static int
+load_rand_ (uint8_t *buf, size_t buf_len)
+{
+  static const char *fns[] = {"/dev/urandom", "/dev/random", NULL};
+  int i;
+
+  if (buf_len > SSIZE_MAX)
+    return -1;
+
+  for (i = 0; fns[i] != NULL; i++)
+    {
+      size_t nread = 0;
+      int fd = open (fns[i], O_RDONLY);
+      if (fd < 0)
+        continue;
+      while (nread != buf_len)
+        {
+          ssize_t r = read (fd, buf + nread, buf_len - nread);
+          if (r < 0)
+            return -1;
+          if (r == 0)
+            break;
+          nread += r;
+        }
+      close (fd);
+      if (nread != buf_len)
+        return -1;
+      return 0;
+    }
+  return -1;
+}
+
+/** Initialise OpenSSL's PRNG by possibly invoking RAND_poll() and by
+    feeding RAND_seed() data from one of the random devices. If either
+    succeeds, we're happy and return 0. */
+static int
+init_openssl_rand_ (void)
+{
+  long openssl_version = 0;
+  int openssl_random_init_flag = 0;
+  int our_random_init_flag = 0;
+  uint8_t buf[32];
+
+  /* Older OpenSSL has a crash bug in RAND_poll (when a file it opens
+     gets a file descriptor with a number higher than FD_SETSIZE) so
+     use it only for newer versions. */
+  openssl_version = SSLeay ();
+  if (openssl_version >= OPENSSL_V (0,9,8,'c'))
+    openssl_random_init_flag = RAND_poll ();
+
+  our_random_init_flag = !load_rand_ (buf, sizeof(buf));
+  if (our_random_init_flag)
+    RAND_seed (buf, sizeof(buf));
+  memset (buf, 0, sizeof(buf)); /* FIXME: What if memset() is optimised out? */
+
+  if (!openssl_random_init_flag && !our_random_init_flag)
+    return -1;
+  if (!RAND_bytes (buf, sizeof(buf)))
+    return -1;
+  return 0;
+}
+
+/** Initialise the TLS library. Return 0 on success, -1 on failure. */
 int
-rs_tls_init (struct rs_connection *conn)
+tls_init (void)
+{
+  SSL_load_error_strings ();
+  SSL_library_init ();
+  return init_openssl_rand_ ();
+}
+
+int
+tls_init_conn (struct rs_connection *conn)
 {
   struct rs_context *ctx = NULL;
   struct tls *tlsconf = NULL;

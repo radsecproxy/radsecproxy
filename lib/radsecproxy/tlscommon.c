@@ -39,21 +39,6 @@
 
 static struct hash *tlsconfs = NULL;
 
-void ssl_init(void) {
-    time_t t;
-    pid_t pid;
-
-    SSL_load_error_strings();
-    SSL_library_init();
-
-    while (!RAND_status()) {
-	t = time(NULL);
-	pid = getpid();
-	RAND_seed((unsigned char *)&t, sizeof(time_t));
-	RAND_seed((unsigned char *)&pid, sizeof(pid));
-    }
-}
-
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
     int pwdlen = strlen(userdata);
     if (rwflag != 0 || pwdlen > size) /* not for decryption or too large */

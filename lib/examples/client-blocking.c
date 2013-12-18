@@ -26,8 +26,7 @@ blocking_client (const char *config_fn, const char *configuration,
   r = rs_context_create (&h);
   if (r)
     {
-      assert(r == RSE_NOMEM);
-      assert (!"out of RAM -- unable to create libradsec context");
+      assert (!"unable to create libradsec context");
     }
 
 #if !defined (USE_CONFIG_FILE)

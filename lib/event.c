@@ -158,7 +158,7 @@ event_init_bufferevent (struct rs_connection *conn, struct rs_peer *peer)
 #if defined (RS_ENABLE_TLS)
   else if (conn->realm->type == RS_CONN_TYPE_TLS)
     {
-      if (rs_tls_init (conn))
+      if (tls_init_conn (conn))
 	return -1;
       /* Would be convenient to pass BEV_OPT_CLOSE_ON_FREE but things
 	 seem to break when be_openssl_ctrl() (in libevent) calls

@@ -21,6 +21,7 @@
 #include "debug.h"
 #include "radsecproxy/debug.h"
 #if defined (RS_ENABLE_TLS)
+#include "tls.h"
 #include <regex.h>
 #include "radsecproxy/list.h"
 #include "radsecproxy/radsecproxy.h"
@@ -32,13 +33,14 @@ rs_context_create (struct rs_context **ctx)
 {
   struct rs_context *h;
 
+#if defined (RS_ENABLE_TLS)
+  if (tls_init ())
+    return RSE_SSLERR;
+#endif
+
   h = calloc (1, sizeof(*h));
   if (h == NULL)
     return RSE_NOMEM;
-
-#if defined (RS_ENABLE_TLS)
-  ssl_init ();
-#endif
 
   debug_init ("libradsec");	/* radsecproxy compat, FIXME: remove */
 
