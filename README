@@ -1,6 +1,7 @@
-This is not radsecproxy, it's libradsec (see lib/) sharing the
-radsecproxy repository.
+This is libradsec, not radsecproxy, sharing repository with
+radsecproxy.
 
 For radsecproxy, see branch 'master'.
 
-The repository ca be found at http://git.nordu.net/?p=radsecproxy.git;a=summary .
+The source code can be found at
+http://git.nordu.net/?p=radsecproxy.git;a=summary .
