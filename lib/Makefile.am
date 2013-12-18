@@ -63,7 +63,7 @@ libradsec_la_SOURCES += \
 	udp.h \
 	util.h
 
-EXTRA_DIST = HACKING LICENSE libradsec.spec radsec.sym
+EXTRA_DIST = CHANGES HACKING LICENSE libradsec.spec radsec.sym
 EXTRA_libradsec_la_DEPENDENCIES = radsec.sym
 AM_DISTCHECK_CONFIGURE_FLAGS = --enable-tls --enable-tls-psk
 
