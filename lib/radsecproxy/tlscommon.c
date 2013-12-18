@@ -37,8 +37,6 @@
 #include "hostport_types.h"
 #include "radsecproxy.h"
 
-static struct hash *tlsconfs = NULL;
-
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
     int pwdlen = strlen(userdata);
     if (rwflag != 0 || pwdlen > size) /* not for decryption or too large */
@@ -265,15 +263,6 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     return ctx;
 }
 
-struct tls *tlsgettls(char *alt1, char *alt2) {
-    struct tls *t;
-
-    t = hash_read(tlsconfs, alt1, strlen(alt1));
-    if (!t)
-	t = hash_read(tlsconfs, alt2, strlen(alt2));
-    return t;
-}
-
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
     struct timeval now;
 
@@ -459,70 +448,6 @@ int cnregexp(X509 *cert, const char *exact, const regex_t *regex) {
 	}
     }
     return 0;
-}
-
-/* this is a bit sloppy, should not always accept match to any */
-int certnamecheck(X509 *cert, struct list *hostports) {
-    struct list_node *entry;
-    struct hostportres *hp;
-    int r;
-    uint8_t type = 0; /* 0 for DNS, AF_INET for IPv4, AF_INET6 for IPv6 */
-    struct in6_addr addr;
-
-    for (entry = list_first(hostports); entry; entry = list_next(entry)) {
-	hp = (struct hostportres *)entry->data;
-	if (hp->prefixlen != 255) {
-	    /* we disable the check for prefixes */
-	    return 1;
-	}
-	if (inet_pton(AF_INET, hp->host, &addr))
-	    type = AF_INET;
-	else if (inet_pton(AF_INET6, hp->host, &addr))
-	    type = AF_INET6;
-	else
-	    type = 0;
-
-	r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, hp->host, NULL);
-	if (r) {
-	    if (r > 0) {
-		debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", type ? "address" : "host", hp->host);
-		return 1;
-	    }
-	    debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", type ? "address" : "host", hp->host);
-	} else {
-	    if (cnregexp(cert, hp->host, NULL)) {
-		debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
-		return 1;
-	    }
-	    debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
-	}
-    }
-    return 0;
-}
-
-int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
-    if (conf->certnamecheck) {
-	if (!certnamecheck(cert, conf->hostports)) {
-	    debug(DBG_WARN, "verifyconfcert: certificate name check failed");
-	    return 0;
-	}
-	debug(DBG_WARN, "verifyconfcert: certificate name check ok");
-    }
-    if (conf->certcnregex) {
-	if (cnregexp(cert, NULL, conf->certcnregex) < 1) {
-	    debug(DBG_WARN, "verifyconfcert: CN not matching regex");
-	    return 0;
-	}
-	debug(DBG_DBG, "verifyconfcert: CN matching regex");
-    }
-    if (conf->certuriregex) {
-	if (subjectaltnameregexp(cert, GEN_URI, NULL, conf->certuriregex) < 1) {
-	    debug(DBG_WARN, "verifyconfcert: subjectaltname URI not matching regex");
-	    return 0;
-	}
-	debug(DBG_DBG, "verifyconfcert: subjectaltname URI matching regex");
-    }
-    return 1;
 }
 
 /* Local Variables: */
