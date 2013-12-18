@@ -1,10 +1,10 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
 
-Status as of libradsec-0.0.4.dev (2013-05-06).
+Status as of libradsec-0.0.4 (2013-12-18).
 
 * Build instructions
 sh autogen.sh
-./configure #--enable-tls
+./configure
 make
 
 examples/client -r examples/client.conf blocking-tls; echo $?
@@ -37,7 +37,7 @@ examples/client -r examples/client.conf blocking-tls; echo $?
 
 - Application chooses allocation regime.
 
-Note that as of 0.0.2.dev libradsec suffers from way too much focus on
+Note that as of 0.0.4 libradsec suffers from way too much focus on
 the behaviour of a blocking client and is totally useless as a server.
 Not only does it lack most of the functions needed for writing a
 server but it also contains at least one architectural mishap which

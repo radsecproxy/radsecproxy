@@ -14,7 +14,7 @@ LICENSE file.
 Libradsec depends on 
 - libconfuse
 - libevent2
-- openssl (if configured with --enable-tls)
+- openssl (unless configured with --disable-tls)
 
 
 To compile the library and the examples, do something like
@@ -26,8 +26,7 @@ There are a couple of options that can be used when configuring. See
 
   ./configure --help
 
-for the full list. Worth mentioning here is --enable-tls and
---enable-tls-psk.
+for the full list. Worth mentioning here is --enable-tls-psk.
 
 If the preprocessor has a hard time finding some of the header files
 are, try setting environment variable CPPFLAGS at configure

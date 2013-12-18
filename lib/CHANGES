@@ -1,0 +1,9 @@
+User visible changes between 0.0.1 and 0.0.4
+
+  - TLS support is now enabled by default. Use --disable-tls to
+    disable it.
+
+  - Support for TLS-PSK has been added (--enable-tls-psk).
+
+  - The RADIUS dictionaries are now compiled into the library and are
+    no longer read from disk.
