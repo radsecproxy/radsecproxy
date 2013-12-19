@@ -20,7 +20,7 @@ ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = radius radsecproxy include . examples
 DIST_SUBDIRS = $(SUBDIRS) tests
 
-INCLUDES = -I$(srcdir)/include
+AM_CPPFLAGS = -I$(srcdir)/include
 AM_CFLAGS = -Wall -Werror -g
 
 lib_LTLIBRARIES = libradsec.la

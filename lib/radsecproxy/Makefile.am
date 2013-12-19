@@ -1,7 +1,7 @@
 AUTOMAKE_OPTIONS = foreign
 ACLOCAL_AMFLAGS = -I m4
 
-INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)
+AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_srcdir)
 AM_CFLAGS = -Wall -Werror -g
 
 noinst_LTLIBRARIES = libradsec-radsecproxy.la
