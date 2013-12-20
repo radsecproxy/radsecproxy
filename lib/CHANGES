@@ -1,3 +1,9 @@
+Changes between 0.0.4 and 0.0.5.dev
+
+  - When POSIX thread support is detected at configure and build time
+    libradsec will be more safe to use by programs that call it from
+    more than one thread simultaneously.
+
 User visible changes between 0.0.1 and 0.0.4
 
   - TLS support is now enabled by default. Use --disable-tls to
