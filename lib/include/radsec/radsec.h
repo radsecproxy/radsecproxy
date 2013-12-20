@@ -168,10 +168,15 @@ typedef const struct value_pair rs_const_avp;
     that the context must not be freed before all other libradsec
     objects have been freed.
 
+    If support for POSIX threads was detected at configure and build
+    time \a rs_context_create will use mutexes to protect multiple
+    threads from stomping on each other in OpenSSL.
+
     \a ctx Address of pointer to a struct rs_context.  This is the
     output of this function.
 
-    \return RSE_OK (0) on success or RSE_NOMEM on out of memory.  */
+    \return RSE_OK (0) on success, RSE_SSLERR on TLS library
+    initialisation error and RSE_NOMEM on out of memory.  */
 int rs_context_create(struct rs_context **ctx);
 
 /** Free a context.  Note that the context must not be freed before
