@@ -1,6 +1,6 @@
 HACKING file for libradsec (in Emacs -*- org -*- mode).
 
-Status as of libradsec-0.0.4 (2013-12-18).
+Status as of libradsec-0.0.5 (2014-02-03).
 
 * Build instructions
 sh autogen.sh

@@ -1,4 +1,4 @@
-Changes between 0.0.4 and 0.0.5.dev
+Changes between 0.0.4 and 0.0.5
 
   - When POSIX thread support is detected at configure and build time
     libradsec will be more safe to use by programs that call it from

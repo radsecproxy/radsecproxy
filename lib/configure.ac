@@ -1,7 +1,7 @@
 # -*- Autoconf -*- script for libradsec.
 
 AC_PREREQ([2.63])
-AC_INIT([libradsec], [0.0.5.dev], [linus+libradsec@nordu.net])
+AC_INIT([libradsec], [0.0.5], [linus+libradsec@nordu.net])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([radsec.c])
 AC_CONFIG_AUX_DIR([build-aux])
