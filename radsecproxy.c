@@ -1638,9 +1638,8 @@ void replyh(struct server *server, unsigned char *buf) {
     }
 
     gettimeofday(&server->lastreply, NULL);
-    from = rqout->rq->from;
 
-    if (server->conf->rewritein && !dorewrite(msg, from->conf->rewritein)) {
+    if (server->conf->rewritein && !dorewrite(msg, server->conf->rewritein)) {
 	debug(DBG_INFO, "replyh: rewritein failed");
 	goto errunlock;
     }
@@ -1650,6 +1649,8 @@ void replyh(struct server *server, unsigned char *buf) {
 	debug(DBG_INFO, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->name);
 	goto errunlock;
     }
+
+    from = rqout->rq->from;
 
     /* MS MPPE */
     for (node = list_first(msg->attrs); node; node = list_next(node)) {
