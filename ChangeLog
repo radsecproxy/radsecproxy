@@ -1,4 +1,11 @@
-Changes between 1.6.4 and the master branch
+Changes between 1.6.5 and the master branch
+	Bug fixes:
+	- Have rewriteIn for servers use the correct config section. We
+	used to apply rewriteIn using the rewrite block of the client
+	rather than the server. Patch by Fabian Mauchle. Fixes
+	RADSECPROXY-59.
+
+2013-09-06 1.6.5
 	Bug fixes:
 	- Fix a crash bug introduced in 1.6.4. Fixes RADSECPROXY-53,
 	bugfix on 1.6.4.
