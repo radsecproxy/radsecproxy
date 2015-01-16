@@ -1,6 +1,7 @@
 *.o
 .~/
 .gitignore
+compile
 config.log
 config.status
 librsp.a
