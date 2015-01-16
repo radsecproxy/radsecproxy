@@ -1530,6 +1530,28 @@ int radsrv(struct request *rq) {
 	goto exit;
     }
 
+    /* If there is a CHAP-Password attribute but no CHAP-Challenge
+     * one, create a CHAP-Challenge containing the Request
+     * Authenticator because that's what the CHAP-Password is based
+     * on. */
+    attr = radmsg_gettype(msg, RAD_Attr_CHAP_Password);
+    if (attr) {
+	debug(DBG_DBG, "%s: found CHAP-Password with value length %d", __func__,
+              attr->l);
+        attr = radmsg_gettype(msg, RAD_Attr_CHAP_Challenge);
+        if (attr == NULL) {
+            debug(DBG_DBG, "%s: no CHAP-Challenge found, creating one", __func__);
+            attr = maketlv(RAD_Attr_CHAP_Challenge, 16, msg->auth);
+            if (attr == NULL || radmsg_add(msg, attr) != 1) {
+                debug(DBG_ERR, "%s: adding CHAP-Challenge failed, "
+                      "CHAP-Password request dropped", __func__);
+                freetlv(attr);
+                goto rmclrqexit;
+            }
+        }
+    }
+
+    /* Create new Request Authenticator. */
     if (msg->code == RAD_Accounting_Request)
 	memset(msg->auth, 0, 16);
     else if (!RAND_bytes(msg->auth, 16)) {
