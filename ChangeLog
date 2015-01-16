@@ -1,4 +1,8 @@
 Changes between 1.6.5 and the master branch
+	Bug fixes (security):
+	- Fix two use-after-free, a null pointer dereference and three
+	heap overflows. Patches by Stephen Röttger.
+
 	Bug fixes:
 	- Have rewriteIn for servers use the correct config section. We
 	used to apply rewriteIn using the rewrite block of the client
