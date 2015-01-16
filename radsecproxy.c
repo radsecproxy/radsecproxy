@@ -1295,7 +1295,7 @@ void respond(struct request *rq, uint8_t code, char *message,
 	}
     }
     if (copy_proxystate_flag) {
-        if (radmsg_copy_attrs(msg, rq->msg, RAD_Proxy_State) < 0) {
+        if (radmsg_copy_attrs(msg, rq->msg, RAD_Attr_Proxy_State) < 0) {
             debug(DBG_ERR, "%s: unable to copy all Proxy-State attributes",
                   __func__);
         }
