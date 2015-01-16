@@ -404,7 +404,7 @@ static int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *reg
 	if (l <= 0)
 	    continue;
 #ifdef DEBUG
-	printfchars(NULL, gn->type == GEN_DNS ? "dns" : "uri", NULL, v, l);
+	printfchars(NULL, gn->type == GEN_DNS ? "dns" : "uri", NULL, (uint8_t *) v, l);
 #endif
 	if (exact) {
 	    if (memcmp(v, exact, l))

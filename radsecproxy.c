@@ -1560,7 +1560,7 @@ int radsrv(struct request *rq) {
     }
 
 #ifdef DEBUG
-    printfchars(NULL, "auth", "%02x ", auth, 16);
+    printfchars(NULL, "auth", "%02x ", msg->auth, 16);
 #endif
 
     attr = radmsg_gettype(msg, RAD_Attr_User_Password);
@@ -1625,6 +1625,9 @@ void replyh(struct server *server, unsigned char *buf) {
     }
 
     msg = buf2radmsg(buf, (uint8_t *)server->conf->secret, rqout->rq->msg->auth);
+#ifdef DEBUG
+    printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
+#endif
     free(buf);
     buf = NULL;
     if (!msg) {
@@ -1730,10 +1733,6 @@ void replyh(struct server *server, unsigned char *buf) {
 
     msg->id = (char)rqout->rq->rqid;
     memcpy(msg->auth, rqout->rq->rqauth, 16);
-
-#ifdef DEBUG
-    printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
-#endif
 
     if (rqout->rq->origusername && (attr = radmsg_gettype(msg, RAD_Attr_User_Name))) {
 	if (!resizeattr(attr, strlen(rqout->rq->origusername))) {

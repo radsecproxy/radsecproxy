@@ -29,7 +29,7 @@ char *stringcopy(const char *s, int len) {
     return r;
 }
 
-void printfchars(char *prefixfmt, char *prefix, char *charfmt, char *chars, int len) {
+void printfchars(char *prefixfmt, char *prefix, char *charfmt, uint8_t *chars, int len) {
     int i;
     unsigned char *s = (unsigned char *)chars;
     if (prefix)
