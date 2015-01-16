@@ -1,5 +1,5 @@
 /* Copyright (c) 2007-2009, UNINETT AS
- * Copyright (c) 2010-2012, NORDUnet A/S */
+ * Copyright (c) 2010-2013,2015 NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
 /* For UDP there is one server instance consisting of udpserverrd and udpserverth
