@@ -1173,6 +1173,9 @@ void addttlattr(struct radmsg *msg, uint32_t *attrtype, uint8_t addttl) {
 int decttl(uint8_t l, uint8_t *v) {
     int i;
 
+    if (l == 0)
+	return 0;
+
     i = l - 1;
     if (v[i]) {
 	if (--v[i--])
