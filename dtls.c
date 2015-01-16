@@ -239,6 +239,10 @@ unsigned char *raddtlsget(SSL *ssl, struct gqueue *rbios, int timeout) {
         }
 
 	len = RADLEN(buf);
+	if (len < 4) {
+	    debug(DBG_ERR, "raddtlsget: length too small");
+	    continue;
+	}
 	rad = malloc(len);
 	if (!rad) {
 	    debug(DBG_ERR, "raddtlsget: malloc failed");

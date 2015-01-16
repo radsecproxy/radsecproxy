@@ -173,6 +173,10 @@ unsigned char *radtcpget(int s, int timeout) {
 	}
 
 	len = RADLEN(buf);
+	if (len < 4) {
+	    debug(DBG_ERR, "radtcpget: length too small");
+	    continue;
+	}
 	rad = malloc(len);
 	if (!rad) {
 	    debug(DBG_ERR, "radtcpget: malloc failed");

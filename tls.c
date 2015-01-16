@@ -220,6 +220,10 @@ unsigned char *radtlsget(SSL *ssl, int timeout) {
 	}
 
 	len = RADLEN(buf);
+	if (len < 4) {
+	    debug(DBG_ERR, "radtlsget: length too small");
+	    continue;
+	}
 	rad = malloc(len);
 	if (!rad) {
 	    debug(DBG_ERR, "radtlsget: malloc failed");
