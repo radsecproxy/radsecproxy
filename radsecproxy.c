@@ -777,6 +777,7 @@ int hasdynamicserver(struct list *srvconfs) {
 void _internal_removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
     struct list_node *entry, *entry2;
     struct realm *realm;
+    struct list *srvconfs;
 
     for (entry = list_first(realmlist); entry;) {
 	realm = newrealmref((struct realm *)entry->data);
@@ -784,16 +785,18 @@ void _internal_removeserversubrealms(struct list *realmlist, struct clsrvconf *s
 	entry = list_next(entry);
 
 	if (realm->srvconfs) {
+	    srvconfs = realm->srvconfs;
 	    for (entry2 = list_first(realm->srvconfs); entry2; entry2 = list_next(entry2))
 		if (entry2->data == srv)
 		    freerealm(realm);
-	    list_removedata(realm->srvconfs, srv);
+	    list_removedata(srvconfs, srv);
 	}
 	if (realm->accsrvconfs) {
+	    srvconfs = realm->accsrvconfs;
 	    for (entry2 = list_first(realm->accsrvconfs); entry2; entry2 = list_next(entry2))
 		if (entry2->data == srv)
 		    freerealm(realm);
-	    list_removedata(realm->accsrvconfs, srv);
+	    list_removedata(srvconfs, srv);
 	}
 
 	/* remove subrealm if no dynamic servers left */
