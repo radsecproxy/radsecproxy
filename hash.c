@@ -92,6 +92,7 @@ void *hash_read(struct hash *h, void *key, uint32_t keylen) {
 void *hash_extract(struct hash *h, void *key, uint32_t keylen) {
     struct list_node *ln;
     struct hash_entry *e;
+    void *data;
 
     if (!h)
 	return 0;
@@ -101,9 +102,10 @@ void *hash_extract(struct hash *h, void *key, uint32_t keylen) {
 	if (e->keylen == keylen && !memcmp(e->key, key, keylen)) {
 	    free(e->key);
 	    list_removedata(h->hashlist, e);
+	    data = e->data;
 	    free(e);
 	    pthread_mutex_unlock(&h->mutex);
-	    return e->data;
+	    return data;
 	}
     }
     pthread_mutex_unlock(&h->mutex);
