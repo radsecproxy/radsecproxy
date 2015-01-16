@@ -4,6 +4,8 @@ Unreleased 1.6.6-dev
 	used to apply rewriteIn using the rewrite block of the client
 	rather than the server. Patch by Fabian Mauchle. Fixes
 	RADSECPROXY-59.
+	- Handle CHAP authentication properly when there is no
+	CHAP-Challenge. Fixes RADSECPROXY-58.
 
 2013-09-06 1.6.5
 	Bug fixes:
