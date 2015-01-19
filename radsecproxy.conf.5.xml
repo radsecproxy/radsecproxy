@@ -1015,8 +1015,8 @@ blocktype name {
       <citerefentry>
         <refentrytitle>radsecproxy</refentrytitle><manvolnum>1</manvolnum>
 	</citerefentry>,
-	<ulink url="http://tools.ietf.org/html/draft-ietf-radext-radsec">
-	  <citetitle>RadSec internet draft</citetitle>
+	<ulink url="https://tools.ietf.org/html/rfc6614">
+	  <citetitle>Transport Layer Security (TLS) Encryption for RADIUS</citetitle>
 	</ulink>
     </para>
   </refsect1>
