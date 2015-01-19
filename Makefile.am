@@ -52,7 +52,7 @@ radsecproxy_LDADD = librsp.a @SSL_LIBS@
 
 radsecproxy_conf_LDFLAGS = @TARGET_LDFLAGS@
 
-dist_man_MANS = radsecproxy.1 radsecproxy-hash.1 $(GENMANPAGES)
+dist_man_MANS = radsecproxy.1 radsecproxy-hash.1 radsecproxy.conf.5
 
 EXTRA_DIST = \
 	LICENSE THANKS \
