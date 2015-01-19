@@ -10,6 +10,8 @@
 	RADSECPROXY-59.
 	- Handle CHAP authentication properly when there is no
 	CHAP-Challenge. Fixes RADSECPROXY-58.
+	- Install radsecproxy.conf.5 unconditionally. Keep regeneration of
+	it dependent on configure finding docbook2x-man(1).
 
 2013-09-06 1.6.5
 	Bug fixes:
