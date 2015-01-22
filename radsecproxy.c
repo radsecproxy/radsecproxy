@@ -1440,6 +1440,8 @@ void rmclientrq(struct request *rq, uint8_t id) {
     }
 }
 
+/* Called from server readers, handling incoming requests from
+ * clients. */
 /* returns 0 if validation/authentication fails, else 1 */
 int radsrv(struct request *rq) {
     struct radmsg *msg = NULL;
@@ -1608,6 +1610,7 @@ exit:
     return 1;
 }
 
+/* Called from client readers, handling replies from servers. */
 void replyh(struct server *server, unsigned char *buf) {
     struct client *from;
     struct rqout *rqout;

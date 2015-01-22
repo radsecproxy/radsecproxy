@@ -21,8 +21,8 @@ This is all that happens in the main thread. The threads created
 above need to take care of the rest.
 
 Client writers are generally responsible for sending messages to
-clients, and if necessary creating and maintaining connections to
-the client. Client writers create threads for handling replies from
+servers, and if necessary creating and maintaining connections to
+the server. Client writers create threads for handling replies from
 servers. If connections are used, one thread is created for reading
 from each connection. clientwr() will use connecter() and
 clientconnreader() definitions for the transport.
@@ -35,6 +35,16 @@ The function receiving RADIUS client requests is generally called
 xxxserverrd, where xxx is the transport name. The server reader
 is responsible for creating a server writer thread that takes care
 of sending RADIUS replies to a client.
+
+Summary of request and response proxied between client and server:
+
+  request from client -> (listener ->) server reader
+    request queue
+  client writer -> request to server
+
+  response from server -> client reader
+    reply queue
+  server writer -> response to client
 
 
 2. RADIUS message processing
