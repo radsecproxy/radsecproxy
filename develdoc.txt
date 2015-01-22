@@ -36,17 +36,15 @@ xxxserverrd, where xxx is the transport name. The server reader
 is responsible for creating a server writer thread that takes care
 of sending RADIUS replies to a client.
 
-  (listener) > server reader       <-- requests from clients
-  client writer                    --> requests to a server
-  (client writer) > client reader  <-- responses from a server
-  (server reader) > server writer  --> responses to a client
+Summary of request and response proxied between client and server:
 
-TODO: they are all their own threads?
+  request from client -> (listener ->) server reader
+    request queue
+  client writer -> request to server
 
-Legend:
-  > creates
-  --> sends message
-  <-- receives message
+  response from server -> client reader
+    reply queue
+  server writer -> response to client
 
 
 2. RADIUS message processing
