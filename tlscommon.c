@@ -203,7 +203,8 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     switch (type) {
 #ifdef RADPROT_TLS
     case RAD_TLS:
-	ctx = SSL_CTX_new(TLSv1_method());
+	ctx = SSL_CTX_new(SSLv23_method());
+        SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
 #ifdef DEBUG
 	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
 #endif
