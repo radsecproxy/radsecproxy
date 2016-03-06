@@ -217,7 +217,12 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #endif
 #ifdef RADPROT_DTLS
     case RAD_DTLS:
+#if OPENSSL_VERSION_NUMBER >= 0x10002000
+        /* DTLS_method() seems to have been introduced in OpenSSL 1.0.2. */
+	ctx = SSL_CTX_new(DTLS_method());
+#else
 	ctx = SSL_CTX_new(DTLSv1_method());
+#endif
 #ifdef DEBUG
 	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
 #endif
