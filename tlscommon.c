@@ -203,8 +203,14 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     switch (type) {
 #ifdef RADPROT_TLS
     case RAD_TLS:
-	ctx = SSL_CTX_new(SSLv23_method());
+#if OPENSSL_VERSION_NUMBER >= 0x10100000
+        /* TLS_method() was introduced in OpenSSL 1.1.0. */
+	ctx = SSL_CTX_new(TLS_method());
+#else
+        /* No TLS_method(), use SSLv23_method() and disable SSLv2 and SSLv3. */
+        ctx = SSL_CTX_new(SSLv23_method());
         SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+#endif
 #ifdef DEBUG
 	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
 #endif
