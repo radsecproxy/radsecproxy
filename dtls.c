@@ -285,7 +285,7 @@ void *dtlsserverwr(void *arg) {
 		/* ssl might have changed while waiting */
 		pthread_mutex_unlock(&replyq->mutex);
 		debug(DBG_DBG, "dtlsserverwr: exiting as requested");
-		ERR_remove_state(0);
+		ERR_remove_thread_state(0);
 		pthread_exit(NULL);
 	    }
 	}
@@ -407,7 +407,7 @@ exit:
     params->sesscache->expiry.tv_sec += delay;
     pthread_mutex_unlock(&params->sesscache->mutex);
     free(params);
-    ERR_remove_state(0);
+    ERR_remove_thread_state(0);
     pthread_exit(NULL);
     debug(DBG_DBG, "dtlsservernew: exiting");
 }
@@ -664,7 +664,7 @@ void *dtlsclientrd(void *arg) {
 	}
 	replyh(server, buf);
     }
-    ERR_remove_state(0);
+    ERR_remove_thread_state(0);
     server->clientrdgone = 1;
     return NULL;
 }
