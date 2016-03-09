@@ -12,7 +12,6 @@ endif
 
 SUBDIRS = tests
 
-
 sbin_PROGRAMS = radsecproxy
 bin_PROGRAMS = radsecproxy-conf $(fticks_programs)
 noinst_LIBRARIES = librsp.a
@@ -67,10 +66,12 @@ DISTCHECK_CONFIGURE_FLAGS = --enable-fticks
 radsecproxy.conf.5: $(srcdir)/radsecproxy.conf.5.xml
 	docbook2x-man $<
 
-# Build HTML version of radsecproxy.conf.5.  NOTE: Only tested with
-# 'openjade' package installed on Ubuntu 9.10.
-html: $(srcdir)/radsecproxy.conf.5.xml
-	-openjade -E2000 -t sgml-raw -d /usr/share/sgml/docbook/stylesheet/dsssl/modular/html/docbook.dsl -o radsecproxy.conf.html $<
+html: radsecproxy.html radsecproxy-hash.html radsecproxy.conf.html
+
+%.html: %.1
+	groff -mandoc -Thtml $< >$@
+%.html: %.5
+	groff -mandoc -Thtml $< >$@
 
 clean-local:
 	-rm $(GENMANPAGES)
