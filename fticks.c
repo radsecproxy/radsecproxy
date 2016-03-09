@@ -2,6 +2,7 @@
  * See LICENSE for information about licensing.
  */
 
+#include <string.h>
 #include "radsecproxy.h"
 #include "debug.h"
 #include "fticks.h"
