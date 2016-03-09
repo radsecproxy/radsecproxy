@@ -1,6 +1,7 @@
 /* Copyright (c) 2011, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
+#include <string.h>
 #include "radsecproxy.h"
 #include "debug.h"
 #include "fticks.h"
