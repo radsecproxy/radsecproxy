@@ -168,8 +168,8 @@ int dtlsread(SSL *ssl, struct gqueue *q, unsigned char *buf, int num, int timeou
 		rbio = getrbio(ssl, q, timeout);
 		if (!rbio)
 		    return 0;
-		BIO_free(ssl->rbio);
-		ssl->rbio = rbio;
+		BIO_free(SSL_get_rbio(ssl));
+		SSL_set_bio(ssl, rbio, SSL_get_wbio(ssl));
 		cnt = 0;
 		continue;
 	    case SSL_ERROR_WANT_WRITE:
@@ -210,9 +210,9 @@ SSL *dtlsacccon(uint8_t acc, SSL_CTX *ctx, int s, struct sockaddr *addr, struct 
         if (res == 0)
             break;
         if (SSL_get_error(ssl, res) == SSL_ERROR_WANT_READ) {
-            BIO_free(ssl->rbio);
-            ssl->rbio = getrbio(ssl, rbios, 5);
-            if (!ssl->rbio)
+            BIO_free(SSL_get_rbio(ssl));
+            SSL_set_bio(ssl, getrbio(ssl, rbios, 5), SSL_get_wbio(ssl));
+            if (!SSL_get_rbio(ssl))
                 break;
         }
         while ((error = ERR_get_error()))
