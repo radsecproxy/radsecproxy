@@ -1,4 +1,4 @@
-Changes since 1.6.6
+2016-03-14 1.6.7
 	Enhancements (security):
 	- Negotiate TLS1.1, TLS1.2 and DTLS1.2 when possible, client and
 	server side. Fixes RADSECPROXY-62.

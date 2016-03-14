@@ -1,4 +1,4 @@
-This is radsecproxy 1.6.6 from 2015-01-19.
+This is radsecproxy 1.6.7 from 2016-03-14.
 
 radsecproxy is a generic RADIUS proxy that supports both UDP and TLS
 (RadSec) RADIUS transports.  There is also experimental support for
