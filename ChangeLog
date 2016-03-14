@@ -1,8 +1,16 @@
-Changes between 1.6.6 and the master branch
+Changes between 1.6.7 and the master branch
 
 	License and copyright changes:
 	- Copyright UNINETT AS and NORDUnet A/S.
 	- 3-clause BSD license only, no GPL.
+
+2016-03-14 1.6.7
+	Enhancements (security):
+	- Negotiate TLS1.1, TLS1.2 and DTLS1.2 when possible, client and
+	server side. Fixes RADSECPROXY-62.
+
+	Enhancements:
+	- Build HTML documentation properly.
 
 2015-01-19 1.6.6
 	Bug fixes (security):
