@@ -402,6 +402,7 @@ void *tlsservernew(void *arg) {
     struct tls *accepted_tls = NULL;
 
     s = *(int *)arg;
+    free(arg);
     if (getpeername(s, (struct sockaddr *)&from, &fromlen)) {
 	debug(DBG_DBG, "tlsservernew: getpeername failed, exiting");
 	goto exit;
@@ -462,7 +463,7 @@ exit:
 
 void *tlslistener(void *arg) {
     pthread_t tlsserverth;
-    int s, *sp = (int *)arg;
+    int s, *sp = (int *)arg, *s_arg = NULL;
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
 
@@ -474,8 +475,13 @@ void *tlslistener(void *arg) {
 	    debug(DBG_WARN, "accept failed");
 	    continue;
 	}
-	if (pthread_create(&tlsserverth, &pthread_attr, tlsservernew, (void *)&s)) {
+        s_arg = malloc(sizeof(s));
+        if (!s_arg)
+            debugx(1, DBG_ERR, "malloc failed");
+        *s_arg = s;
+	if (pthread_create(&tlsserverth, &pthread_attr, tlsservernew, (void *) s_arg)) {
 	    debug(DBG_ERR, "tlslistener: pthread_create failed");
+            free(s_arg);
 	    shutdown(s, SHUT_RDWR);
 	    close(s);
 	    continue;
