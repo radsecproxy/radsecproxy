@@ -77,8 +77,6 @@ static struct list *clconfs, *srvconfs;
 static struct list *realms;
 static struct hash *rewriteconfs;
 
-static pthread_mutex_t *ssl_locks = NULL;
-static long *ssl_lock_count;
 extern int optind;
 extern char *optarg;
 static const struct protodefs *protodefs[RAD_PROTOCOUNT];
@@ -102,19 +100,6 @@ uint8_t protoname2int(const char *name) {
 	if (protodefs[i] && protodefs[i]->name && !strcasecmp(protodefs[i]->name, name))
 	    return i;
     return 255;
-}
-
-/* callbacks for making OpenSSL thread safe */
-unsigned long ssl_thread_id() {
-    return (unsigned long)pthread_self();
-}
-
-void ssl_locking_callback(int mode, int type, const char *file, int line) {
-    if (mode & CRYPTO_LOCK) {
-	pthread_mutex_lock(&ssl_locks[type]);
-	ssl_lock_count[type]++;
-    } else
-	pthread_mutex_unlock(&ssl_locks[type]);
 }
 
 /* returns 1 if the len first bits are equal, else 0 */
@@ -2044,18 +2029,8 @@ void createlisteners(uint8_t type) {
 }
 
 void sslinit() {
-    int i;
     time_t t;
     pid_t pid;
-
-    ssl_locks = calloc(CRYPTO_num_locks(), sizeof(pthread_mutex_t));
-    ssl_lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
-    for (i = 0; i < CRYPTO_num_locks(); i++) {
-	ssl_lock_count[i] = 0;
-	pthread_mutex_init(&ssl_locks[i], NULL);
-    }
-    CRYPTO_set_id_callback(ssl_thread_id);
-    CRYPTO_set_locking_callback(ssl_locking_callback);
 
     SSL_load_error_strings();
     SSL_library_init();
