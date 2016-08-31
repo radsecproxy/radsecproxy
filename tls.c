@@ -291,7 +291,6 @@ void *tlsclientrd(void *arg) {
 	}
     }
     debug(DBG_INFO, "tlsclientrd: exiting for %s", server->conf->name);
-    ERR_remove_thread_state(0);
     SSL_shutdown(server->ssl);
     shutdown(server->sock, SHUT_RDWR);
     close(server->sock);
@@ -325,7 +324,6 @@ void *tlsserverwr(void *arg) {
 		/* ssl might have changed while waiting */
 		pthread_mutex_unlock(&replyq->mutex);
 		debug(DBG_DBG, "tlsserverwr: exiting as requested");
-		ERR_remove_thread_state(0);
 		pthread_exit(NULL);
 	    }
 	}
@@ -451,7 +449,6 @@ exit:
 	SSL_shutdown(ssl);
 	SSL_free(ssl);
     }
-    ERR_remove_thread_state(0);
     shutdown(s, SHUT_RDWR);
     close(s);
     pthread_exit(NULL);

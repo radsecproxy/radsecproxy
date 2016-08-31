@@ -1983,7 +1983,6 @@ errexit:
 	    freeclsrvconf(conf);
     }
     freeserver(server, 1);
-    ERR_remove_thread_state(0);
     return NULL;
 }
 
