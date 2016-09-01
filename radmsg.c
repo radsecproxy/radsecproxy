@@ -122,116 +122,115 @@ int radmsg_copy_attrs(struct radmsg *dst,
 }
 
 int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret) {
+    int result = 0;             /* Fail. */
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static HMAC_CTX hmacctx;
+    HMAC_CTX *hmacctx = NULL;
     unsigned int md_len;
     uint8_t auth[16], hash[EVP_MAX_MD_SIZE];
 
     pthread_mutex_lock(&lock);
-    if (first) {
-	HMAC_CTX_init(&hmacctx);
-	first = 0;
-    }
 
     memcpy(auth, authattr, 16);
     memset(authattr, 0, 16);
     md_len = 0;
-    HMAC_Init_ex(&hmacctx, secret, strlen((char *)secret), EVP_md5(), NULL);
-    HMAC_Update(&hmacctx, rad, RADLEN(rad));
-    HMAC_Final(&hmacctx, hash, &md_len);
+    hmacctx = HMAC_CTX_new();
+    if (!hmacctx)
+        debugx(1, DBG_ERR, "%s: malloc failed", __func__);
+    HMAC_Init_ex(hmacctx, secret, strlen((char *)secret), EVP_md5(), NULL);
+    HMAC_Update(hmacctx, rad, RADLEN(rad));
+    HMAC_Final(hmacctx, hash, &md_len);
     memcpy(authattr, auth, 16);
     if (md_len != 16) {
 	debug(DBG_WARN, "message auth computation failed");
-	pthread_mutex_unlock(&lock);
-	return 0;
+        goto out;
     }
 
     if (memcmp(auth, hash, 16)) {
 	debug(DBG_WARN, "message authenticator, wrong value");
-	pthread_mutex_unlock(&lock);
-	return 0;
+        goto out;
     }
 
+    result = 1;
+out:
+    HMAC_CTX_free(hmacctx);
     pthread_mutex_unlock(&lock);
-    return 1;
+    return result;
 }
 
 int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static EVP_MD_CTX mdctx;
+    EVP_MD_CTX *mdctx = NULL;
     unsigned char hash[EVP_MAX_MD_SIZE];
     unsigned int len;
     int result;
 
     pthread_mutex_lock(&lock);
-    if (first) {
-	EVP_MD_CTX_init(&mdctx);
-	first = 0;
-    }
+    mdctx = EVP_MD_CTX_new();
+    if (!mdctx)
+        debugx(1, DBG_ERR, "%s: malloc failed", __func__);
 
     len = RADLEN(rad);
 
-    result = (EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) &&
-	      EVP_DigestUpdate(&mdctx, rad, 4) &&
-	      EVP_DigestUpdate(&mdctx, reqauth, 16) &&
-	      (len <= 20 || EVP_DigestUpdate(&mdctx, rad + 20, len - 20)) &&
-	      EVP_DigestUpdate(&mdctx, sec, strlen((char *)sec)) &&
-	      EVP_DigestFinal_ex(&mdctx, hash, &len) &&
+    result = (EVP_DigestInit_ex(mdctx, EVP_md5(), NULL) &&
+	      EVP_DigestUpdate(mdctx, rad, 4) &&
+	      EVP_DigestUpdate(mdctx, reqauth, 16) &&
+	      (len <= 20 || EVP_DigestUpdate(mdctx, rad + 20, len - 20)) &&
+	      EVP_DigestUpdate(mdctx, sec, strlen((char *)sec)) &&
+	      EVP_DigestFinal_ex(mdctx, hash, &len) &&
 	      len == 16 &&
 	      !memcmp(hash, rad + 4, 16));
+    EVP_MD_CTX_free(mdctx);
     pthread_mutex_unlock(&lock);
     return result;
 }
 
 int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *secret) {
+    int result = 0;             /* Fail. */
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static HMAC_CTX hmacctx;
+    static HMAC_CTX *hmacctx = NULL;
     unsigned int md_len;
 
     if (!authattrval)
 	return 1;
 
     pthread_mutex_lock(&lock);
-    if (first) {
-	HMAC_CTX_init(&hmacctx);
-	first = 0;
-    }
+    hmacctx = HMAC_CTX_new();
+    if (!hmacctx)
+        debugx(1, DBG_ERR, "%s: malloc failed", __func__);
 
     memset(authattrval, 0, 16);
     md_len = 0;
-    HMAC_Init_ex(&hmacctx, secret, strlen((char *)secret), EVP_md5(), NULL);
-    HMAC_Update(&hmacctx, rad, RADLEN(rad));
-    HMAC_Final(&hmacctx, authattrval, &md_len);
+    HMAC_Init_ex(hmacctx, secret, strlen((char *)secret), EVP_md5(), NULL);
+    HMAC_Update(hmacctx, rad, RADLEN(rad));
+    HMAC_Final(hmacctx, authattrval, &md_len);
     if (md_len != 16) {
 	debug(DBG_WARN, "message auth computation failed");
-	pthread_mutex_unlock(&lock);
-	return 0;
+        goto out;
     }
+    result = 1;
+out:
+    HMAC_CTX_free(hmacctx);
     pthread_mutex_unlock(&lock);
-    return 1;
+    return result;
 }
 
 int _radsign(unsigned char *rad, unsigned char *sec) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static EVP_MD_CTX mdctx;
+    EVP_MD_CTX *mdctx = NULL;
     unsigned int md_len;
     int result;
 
     pthread_mutex_lock(&lock);
-    if (first) {
-	EVP_MD_CTX_init(&mdctx);
-	first = 0;
-    }
+    mdctx = EVP_MD_CTX_new();
+    if (!mdctx)
+        debugx(1, DBG_ERR, "%s: malloc failed", __func__);
 
-    result = (EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) &&
-	      EVP_DigestUpdate(&mdctx, rad, RADLEN(rad)) &&
-	      EVP_DigestUpdate(&mdctx, sec, strlen((char *)sec)) &&
-	      EVP_DigestFinal_ex(&mdctx, rad + 4, &md_len) &&
+    result = (EVP_DigestInit_ex(mdctx, EVP_md5(), NULL) &&
+	      EVP_DigestUpdate(mdctx, rad, RADLEN(rad)) &&
+	      EVP_DigestUpdate(mdctx, sec, strlen((char *)sec)) &&
+	      EVP_DigestFinal_ex(mdctx, rad + 4, &md_len) &&
 	      md_len == 16);
+    EVP_MD_CTX_free(mdctx);
     pthread_mutex_unlock(&lock);
     return result;
 }

@@ -544,30 +544,28 @@ void sendreply(struct request *rq) {
     pthread_mutex_unlock(&to->replyq->mutex);
 }
 
-int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_t *auth) {
+static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_t *auth) {
+    int result = 0;             /* Fail. */
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static EVP_MD_CTX mdctx;
+    EVP_MD_CTX *mdctx = NULL;
     unsigned char hash[EVP_MAX_MD_SIZE], *input;
     unsigned int md_len;
     uint8_t i, offset = 0, out[128];
 
     pthread_mutex_lock(&lock);
-    if (first) {
-	EVP_MD_CTX_init(&mdctx);
-	first = 0;
-    }
+    mdctx = EVP_MD_CTX_new();
+    if (!mdctx)
+        debugx(1, DBG_ERR, "%s: malloc failed", __func__);
 
     input = auth;
     for (;;) {
-	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
-	    !EVP_DigestUpdate(&mdctx, (uint8_t *)shared, sharedlen) ||
-	    !EVP_DigestUpdate(&mdctx, input, 16) ||
-	    !EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
+	if (!EVP_DigestInit_ex(mdctx, EVP_md5(), NULL) ||
+	    !EVP_DigestUpdate(mdctx, (uint8_t *)shared, sharedlen) ||
+	    !EVP_DigestUpdate(mdctx, input, 16) ||
+	    !EVP_DigestFinal_ex(mdctx, hash, &md_len) ||
 	    md_len != 16) {
-	    pthread_mutex_unlock(&lock);
-	    return 0;
-	}
+            goto out;
+        }
 	for (i = 0; i < 16; i++)
 	    out[offset + i] = hash[i] ^ in[offset + i];
 	if (encrypt_flag)
@@ -579,23 +577,25 @@ int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, char *shared, uint8_t 
 	    break;
     }
     memcpy(in, out, len);
+    result = 1;
+out:
+    EVP_MD_CTX_free(mdctx);
     pthread_mutex_unlock(&lock);
-    return 1;
+    return result;
 }
 
-int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
+static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
+    int result = 0;             /* Fail. */
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static EVP_MD_CTX mdctx;
+    EVP_MD_CTX *mdctx = NULL;
     unsigned char hash[EVP_MAX_MD_SIZE];
     unsigned int md_len;
     uint8_t i, offset;
 
     pthread_mutex_lock(&lock);
-    if (first) {
-	EVP_MD_CTX_init(&mdctx);
-	first = 0;
-    }
+    mdctx = EVP_MD_CTX_new();
+    if (!mdctx)
+        debugx(1, DBG_ERR, "%s: malloc failed", __func__);
 
 #if 0
     printfchars(NULL, "msppencrypt auth in", "%02x ", auth, 16);
@@ -603,13 +603,12 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     printfchars(NULL, "msppencrypt in", "%02x ", text, len);
 #endif
 
-    if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
-	!EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
-	!EVP_DigestUpdate(&mdctx, auth, 16) ||
-	!EVP_DigestUpdate(&mdctx, salt, 2) ||
-	!EVP_DigestFinal_ex(&mdctx, hash, &md_len)) {
-	pthread_mutex_unlock(&lock);
-	return 0;
+    if (!EVP_DigestInit_ex(mdctx, EVP_md5(), NULL) ||
+	!EVP_DigestUpdate(mdctx, shared, sharedlen) ||
+	!EVP_DigestUpdate(mdctx, auth, 16) ||
+	!EVP_DigestUpdate(mdctx, salt, 2) ||
+	!EVP_DigestFinal_ex(mdctx, hash, &md_len)) {
+        goto out;
     }
 
 #if 0
@@ -624,13 +623,12 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
-	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
-	    !EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
-	    !EVP_DigestUpdate(&mdctx, text + offset - 16, 16) ||
-	    !EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
+	if (!EVP_DigestInit_ex(mdctx, EVP_md5(), NULL) ||
+	    !EVP_DigestUpdate(mdctx, shared, sharedlen) ||
+	    !EVP_DigestUpdate(mdctx, text + offset - 16, 16) ||
+	    !EVP_DigestFinal_ex(mdctx, hash, &md_len) ||
 	    md_len != 16) {
-	    pthread_mutex_unlock(&lock);
-	    return 0;
+            goto out;
 	}
 #if 0
 	printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
@@ -639,29 +637,31 @@ int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	for (i = 0; i < 16; i++)
 	    text[offset + i] ^= hash[i];
     }
+    result = 1;
 
 #if 0
     printfchars(NULL, "msppencrypt out", "%02x ", text, len);
 #endif
 
+out:
+    EVP_MD_CTX_free(mdctx);
     pthread_mutex_unlock(&lock);
-    return 1;
+    return result;
 }
 
-int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
+static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
+    int result = 0;             /* Fail. */
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned char first = 1;
-    static EVP_MD_CTX mdctx;
+    EVP_MD_CTX *mdctx = NULL;
     unsigned char hash[EVP_MAX_MD_SIZE];
     unsigned int md_len;
     uint8_t i, offset;
     char plain[255];
 
     pthread_mutex_lock(&lock);
-    if (first) {
-	EVP_MD_CTX_init(&mdctx);
-	first = 0;
-    }
+    mdctx= EVP_MD_CTX_new();
+    if (!mdctx)
+        debugx(1, DBG_ERR, "%s: malloc failed", __func__);
 
 #if 0
     printfchars(NULL, "msppdecrypt auth in", "%02x ", auth, 16);
@@ -669,13 +669,12 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     printfchars(NULL, "msppdecrypt in", "%02x ", text, len);
 #endif
 
-    if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
-	!EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
-	!EVP_DigestUpdate(&mdctx, auth, 16) ||
-	!EVP_DigestUpdate(&mdctx, salt, 2) ||
-	!EVP_DigestFinal_ex(&mdctx, hash, &md_len)) {
-	pthread_mutex_unlock(&lock);
-	return 0;
+    if (!EVP_DigestInit_ex(mdctx, EVP_md5(), NULL) ||
+	!EVP_DigestUpdate(mdctx, shared, sharedlen) ||
+	!EVP_DigestUpdate(mdctx, auth, 16) ||
+	!EVP_DigestUpdate(mdctx, salt, 2) ||
+	!EVP_DigestFinal_ex(mdctx, hash, &md_len)) {
+        goto out;
     }
 
 #if 0
@@ -690,13 +689,12 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
-	if (!EVP_DigestInit_ex(&mdctx, EVP_md5(), NULL) ||
-	    !EVP_DigestUpdate(&mdctx, shared, sharedlen) ||
-	    !EVP_DigestUpdate(&mdctx, text + offset - 16, 16) ||
-	    !EVP_DigestFinal_ex(&mdctx, hash, &md_len) ||
+	if (!EVP_DigestInit_ex(mdctx, EVP_md5(), NULL) ||
+	    !EVP_DigestUpdate(mdctx, shared, sharedlen) ||
+	    !EVP_DigestUpdate(mdctx, text + offset - 16, 16) ||
+	    !EVP_DigestFinal_ex(mdctx, hash, &md_len) ||
 	    md_len != 16) {
-	    pthread_mutex_unlock(&lock);
-	    return 0;
+            goto out;
 	}
 #if 0
 	printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
@@ -707,12 +705,15 @@ int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen,
     }
 
     memcpy(text, plain, len);
+    result = 1;
 #if 0
     printfchars(NULL, "msppdecrypt out", "%02x ", text, len);
 #endif
 
+out:
+    EVP_MD_CTX_free(mdctx);
     pthread_mutex_unlock(&lock);
-    return 1;
+    return result;
 }
 
 struct realm *newrealmref(struct realm *r) {
