@@ -68,9 +68,7 @@
 #include "tcp.h"
 #include "tls.h"
 #include "dtls.h"
-#if defined(WANT_FTICKS)
 #include "fticks.h"
-#endif
 
 static struct options options;
 static struct list *clconfs, *srvconfs;
@@ -1682,11 +1680,9 @@ void replyh(struct server *server, unsigned char *buf) {
 	}
     }
 
-#if defined(WANT_FTICKS)
     if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)
 	if (options.fticks_reporting && from->conf->fticks_viscountry != NULL)
 	    fticks_log(&options, from, msg, rqout);
-#endif
 
     msg->id = (char)rqout->rq->rqid;
     memcpy(msg->auth, rqout->rq->rqauth, 16);
@@ -2759,10 +2755,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "rewriteIn", CONF_STR, &conf->confrewritein,
 	    "rewriteOut", CONF_STR, &conf->confrewriteout,
 	    "rewriteattribute", CONF_STR, &conf->confrewriteusername,
-#if defined(WANT_FTICKS)
 	    "fticksVISCOUNTRY", CONF_STR, &conf->fticks_viscountry,
 	    "fticksVISINST", CONF_STR, &conf->fticks_visinst,
-#endif
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
@@ -3121,11 +3115,9 @@ void getmainconfig(const char *configfile) {
     struct gconffile *cfs;
     char **listenargs[RAD_PROTOCOUNT];
     char *sourcearg[RAD_PROTOCOUNT];
-#if defined(WANT_FTICKS)
     uint8_t *fticks_reporting_str = NULL;
     uint8_t *fticks_mac_str = NULL;
     uint8_t *fticks_key_str = NULL;
-#endif
     int i;
 
     cfs = openconfigfile(configfile);
@@ -3180,12 +3172,10 @@ void getmainconfig(const char *configfile) {
 	    "TLS", CONF_CBK, conftls_cb, NULL,
 #endif
 	    "Rewrite", CONF_CBK, confrewrite_cb, NULL,
-#if defined(WANT_FTICKS)
 	    "FTicksReporting", CONF_STR, &fticks_reporting_str,
 	    "FTicksMAC", CONF_STR, &fticks_mac_str,
 	    "FTicksKey", CONF_STR, &fticks_key_str,
 	    "FTicksSyslogFacility", CONF_STR, &options.ftickssyslogfacility,
-#endif
             "IPv4Only", CONF_BLN, &options.ipv4only,
             "IPv6Only", CONF_BLN, &options.ipv6only,
 	    NULL
@@ -3205,10 +3195,8 @@ void getmainconfig(const char *configfile) {
     if (!setttlattr(&options, DEFAULT_TTL_ATTR))
     	debugx(1, DBG_ERR, "Failed to set TTLAttribute, exiting");
 
-#if defined(WANT_FTICKS)
     fticks_configure(&options, &fticks_reporting_str, &fticks_mac_str,
 		     &fticks_key_str);
-#endif
 
     for (i = 0; i < RAD_PROTOCOUNT; i++)
 	if (listenargs[i] || sourcearg[i])
@@ -3354,13 +3342,11 @@ int radsecproxy_main(int argc, char **argv) {
 	debug_set_destination(options.logdestination
                               ? options.logdestination
                               : "x-syslog:///", LOG_TYPE_DEBUG);
-#if defined(WANT_FTICKS)
     	if (options.ftickssyslogfacility) {
             debug_set_destination(options.ftickssyslogfacility,
                                   LOG_TYPE_FTICKS);
             free(options.ftickssyslogfacility);
     	}
-#endif
     }
     free(options.logdestination);
 

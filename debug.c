@@ -23,9 +23,7 @@ static uint8_t debug_level = DBG_INFO;
 static char *debug_filepath = NULL;
 static FILE *debug_file = NULL;
 static int debug_syslogfacility = 0;
-#if defined(WANT_FTICKS)
 static int fticks_syslogfacility = 0;
-#endif
 static uint8_t debug_timestamp = 0;
 
 void debug_init(char *ident) {
@@ -104,17 +102,13 @@ int debug_set_destination(char *dest, int log_type) {
 		debugx(1, DBG_ERR, "Unknown syslog facility %s", dest);
 	    if (log_type != LOG_TYPE_FTICKS)
 		debug_syslogfacility = facvals[i];
-#if defined(WANT_FTICKS)
             else if (log_type == LOG_TYPE_FTICKS)
 		fticks_syslogfacility = facvals[i];
-#endif
 	} else {
             if (log_type != LOG_TYPE_FTICKS)
                 debug_syslogfacility = LOG_DAEMON;
-#if defined(WANT_FTICKS)
             else if (log_type == LOG_TYPE_FTICKS)
                 fticks_syslogfacility = 0;
-#endif
     	}
 	openlog(debug_ident, LOG_PID, debug_syslogfacility);
 	return 1;
@@ -231,7 +225,6 @@ void debugerrnox(int err, uint8_t level, char *format, ...) {
     exit(err);
 }
 
-#if defined(WANT_FTICKS)
 void fticks_debug(const char *format, ...) {
     int priority;
     va_list ap;
@@ -244,7 +237,6 @@ void fticks_debug(const char *format, ...) {
     	va_end(ap);
     }
 }
-#endif
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
 /* End: */
