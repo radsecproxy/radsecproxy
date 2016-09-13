@@ -3,6 +3,11 @@
 
 #include <openssl/ssl.h>
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#define ASN1_STRING_get0_data(o) ((o)->data)
+#define ASN1_STRING_length(o) ((o)->length)
+#endif
+
 struct tls {
     char *name;
     char *cacertfile;
