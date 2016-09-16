@@ -5,9 +5,7 @@
     <date>2016-03-23</date>
   </refentryinfo>
   <refmeta>
-    <refentrytitle>
-      <application>radsecproxy.conf</application>
-    </refentrytitle>
+    <refentrytitle>radsecproxy.conf</refentrytitle>
     <manvolnum>5</manvolnum>
     <refmiscinfo>radsecproxy 1.7-dev</refmiscinfo>
   </refmeta>
