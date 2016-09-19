@@ -122,9 +122,12 @@ AM_CONDITIONAL(ENABLE_EXPERIMENTAL_DYNDISC,
                test "$enable_experimental_dyndisc" = "yes")
 
 
-AC_ARG_VAR([DOCBOOK2X_MAN], [docbook2x-man])
-AC_CHECK_PROG([DOCBOOK2X_MAN], [docbook2x-man], [yes])
-AM_CONDITIONAL(HAVE_DOCBOOK2X_MAN, test "$DOCBOOK2X_MAN" = "yes")
+AC_ARG_VAR([DOCBOOK2X_MAN], [docbook2x-man program to use])
+if test -z "$DOCBOOK2X_MAN" ; then
+  AC_SUBST([DOCBOOK2X_MAN], [docbook2x-man])
+fi
+AC_CHECK_PROG([DOCBOOK2X_MAN_PROG], [$DOCBOOK2X_MAN], [yes])
+AM_CONDITIONAL(HAVE_DOCBOOK2X_MAN, test "$DOCBOOK2X_MAN_PROG" = "yes")
 
 AC_SUBST(TARGET_CFLAGS)
 AC_SUBST(TARGET_LDFLAGS)
