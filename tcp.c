@@ -135,7 +135,7 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 /* returns 0 on timeout, -1 on error and num if ok */
 int tcpreadtimeout(int s, unsigned char *buf, int num, int timeout) {
     int ndesc, cnt, len;
-    fd_set readfds, writefds;
+    fd_set readfds;
     struct timeval timer;
 
     if (s < 0)
@@ -144,12 +144,11 @@ int tcpreadtimeout(int s, unsigned char *buf, int num, int timeout) {
     for (len = 0; len < num; len += cnt) {
 	FD_ZERO(&readfds);
 	FD_SET(s, &readfds);
-	writefds = readfds;
 	if (timeout) {
 	    timer.tv_sec = timeout;
 	    timer.tv_usec = 0;
 	}
-	ndesc = select(s + 1, &readfds, &writefds, NULL, timeout ? &timer : NULL);
+	ndesc = select(s + 1, &readfds, NULL, NULL, timeout ? &timer : NULL);
 	if (ndesc < 1)
 	    return ndesc;
 
