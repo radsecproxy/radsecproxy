@@ -4,6 +4,14 @@ Changes between 1.6.7 and the master branch
 	- Copyright UNINETT AS and NORDUnet A/S.
 	- 3-clause BSD license only, no GPL.
 
+	Bug fixes:
+	- Detect the presence of docbook2x-man correctly.
+	- Stop waiting on writable when reading a TCP socket.
+	- Stomp less on the memory of other threads (RADSECPROXY-64).
+
+	Enhancements:
+	- Support the use of OpenSSL version 1.1 series (RADSECPROXY-66).
+
 2016-03-14 1.6.7
 	Enhancements (security):
 	- Negotiate TLS1.1, TLS1.2 and DTLS1.2 when possible, client and
