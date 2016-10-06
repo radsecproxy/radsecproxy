@@ -1757,6 +1757,7 @@ void *clientwr(void *arg) {
     struct request *statsrvrq;
     struct clsrvconf *conf;
 
+    assert(server);
     conf = server->conf;
 
 #define ZZZ 900
