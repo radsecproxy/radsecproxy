@@ -783,7 +783,7 @@ int hasdynamicserver(struct list *srvconfs) {
         if (((struct clsrvconf *)entry->data)->dynamiclookupcommand
             || ((struct clsrvconf *)entry->data)->servers->in_use)
 #else
-        if (((struct clsrvconf *)entry->data)->dynamiclookupcommand)
+        if (((struct clsrvconf *)entry->data)->servers->dynamiclookuparg)
 #endif
 	    return 1;
     return 0;
@@ -1988,7 +1988,6 @@ errexit:
 #if defined ENABLE_EXPERIMENTAL_DYNDISC
     server->in_use = 0;
 #endif
-    conf->servers = NULL;
     if (server->dynamiclookuparg) {
 	removeserversubrealms(realms, conf);
 	if (dynconffail)
@@ -1996,6 +1995,7 @@ errexit:
 	else
 	    freeclsrvconf(conf);
     }
+    conf->servers = NULL;
     freeserver(server, 1);
     ERR_remove_state(0);
     return NULL;
