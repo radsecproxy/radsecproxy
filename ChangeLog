@@ -3,6 +3,7 @@
 	- Use a listen(2) backlog of 128 (RADSECPROXY-72).
 
 	Bug fixes:
+	- Don't follow NULL the pointer at debug level 5 (RADSECPROXY-68).
 	- Completely reload CAs and CRLs with cacheExpiry (RADSECPROXY-50).
 	- Tie Access-Request log lines to response log lines (RADSECPROXY-60).
 	- Fix a couple of memory leaks and NULL ptr derefs in error cases.
