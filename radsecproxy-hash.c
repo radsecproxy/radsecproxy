@@ -14,7 +14,7 @@ usage()
 {
   fprintf(stderr,
 	  "usage: radsecproxy-hash [-h] [-k key] [-t type]\n"
-#if defined (READ_CONFIG)
+#if defined(READ_CONFIG)
 	  "   -c configfile\tuse configuration from CONFIGFILE\n"
 #endif
 	  "   -h\t\t\tdisplay this help and exit\n"
