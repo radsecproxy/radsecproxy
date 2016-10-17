@@ -163,7 +163,10 @@ int resolvehostport(struct hostportres *hp, int af, int socktype, uint8_t passiv
 	    }
 	}
     }
-    debug(DBG_DBG, "%s: %s -> %s", __func__, hp->host, addr2string(hp->addrinfo->ai_addr));
+    debug(DBG_DBG, "%s: %s -> %s", __func__,
+          (hp->host ? hp->host : "(src info not available)"),
+          ((hp->addrinfo && hp->addrinfo->ai_addr) ?
+           addr2string(hp->addrinfo->ai_addr) : "(dst info not available)"));
     return 1;
 
 errexit:
