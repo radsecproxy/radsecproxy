@@ -2,7 +2,7 @@ dnl Copyright (c) 2006-2010, UNINETT AS
 dnl Copyright (c) 2010-2013, NORDUnet A/S
 dnl See LICENSE for licensing information.
 
-AC_INIT(radsecproxy, 1.7-dev, radsecproxy@uninett.no)
+AC_INIT(radsecproxy, 1.7-dev, radsecproxy@lists.nordu.net)
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
 AC_PROG_CC
