@@ -23,7 +23,16 @@
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
+
+/* We want PTHREAD_STACK_SIZE to be 32768, but some platforms
+ * have a higher minimum value defined in PTHREAD_STACK_MIN. */
 #define PTHREAD_STACK_SIZE 32768
+#if defined(PTHREAD_STACK_MIN)
+#if PTHREAD_STACK_MIN > PTHREAD_STACK_SIZE
+#undef PTHREAD_STACK_SIZE
+#define PTHREAD_STACK_SIZE PTHREAD_STACK_MIN
+#endif
+#endif
 
 /* 27262 is vendor DANTE Ltd. */
 #define DEFAULT_TTL_ATTR "27262:1"
