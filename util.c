@@ -23,7 +23,7 @@ char *stringcopy(const char *s, int len) {
 	len = strlen(s);
     r = malloc(len + 1);
     if (!r)
-	debug(DBG_ERR, "stringcopy: malloc failed");
+	debugx(1, DBG_ERR, "stringcopy: malloc failed");
     memcpy(r, s, len);
     r[len] = '\0';
     return r;
