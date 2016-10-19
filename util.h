@@ -13,7 +13,7 @@
 			      sizeof(struct sockaddr_in6))
 
 char *stringcopy(const char *s, int len);
-char *addr2string(struct sockaddr *addr);
+const char *addr2string(struct sockaddr *addr);
 struct sockaddr *addr_copy(struct sockaddr *in);
 void port_set(struct sockaddr *sa, uint16_t port);
 

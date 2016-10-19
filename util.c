@@ -76,7 +76,7 @@ struct sockaddr *addr_copy(struct sockaddr *in) {
     return out;
 }
 
-char *addr2string(struct sockaddr *addr) {
+const char *addr2string(struct sockaddr *addr) {
     struct sockaddr_in6 *sa6;
     struct sockaddr_in sa4;
     static char addr_buf[2][INET6_ADDRSTRLEN];
