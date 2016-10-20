@@ -10,6 +10,9 @@ Changes between 1.6.8 and the master branch
 	Misc:
 	- libnettle is now an unconditional dependency.
 	- FTicks support is now on by default and not optional.
+	- Experimental code for dynamic discovery has been removed. Be
+	aware that use of the DynamicLookupCommand configuration option
+	still enables code known to be buggy.
 
 	Bug fixes:
 	- Detect the presence of docbook2x-man correctly.

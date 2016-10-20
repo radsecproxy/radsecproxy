@@ -1,5 +1,5 @@
 /* Copyright (c) 2007-2009, UNINETT AS
- * Copyright (c) 2010-2012, NORDUnet A/S */
+ * Copyright (c) 2010-2012,2016, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
 #include <sys/time.h>
@@ -169,9 +169,6 @@ struct server {
     uint8_t lostrqs;
     uint8_t dynstartup;
     uint8_t dynfailing;
-#if defined ENABLE_EXPERIMENTAL_DYNDISC
-    uint8_t in_use;
-#endif
     char *dynamiclookuparg;
     int nextid;
     struct timeval lastrcv;
