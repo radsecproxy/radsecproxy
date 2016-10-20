@@ -1,28 +1,25 @@
-This is unreleased radsecproxy 1.7-dev.
+This is unreleased radsecproxy 1.7.1-alpha-dev.
 
 radsecproxy is a generic RADIUS proxy that supports both UDP and TLS
 (RadSec) RADIUS transports.  There is also experimental support for
 TCP and DTLS.
 
-It should build on most Unix and OSX platforms by simply typing
-"./configure && make".  It is possible to specify which RADIUS
-transport the build should support.  Without any special options to
-configure, all transports supported by the system will be enabled.
-See the output from "configure --help" for how to change this.
+It should build on most Unix like systems by simply typing
 
-Known build issues:
-- Older BSD's (like NetBSD 4.x) need newer OpenSSL in order to support
-  DTLS.  Workaround: ./configure --disable-dtls.
+    ./configure && make
 
-- FreeBSD 6.x need newer OpenSSL to build at all.  OpenSSL 1.0.0c from
-  ports is fine f.ex., configure radsecproxy with `--with-ssl=/usr/local'.
+It is possible to specify which RADIUS transport the build should
+support.  Without any special options to configure, all transports
+supported by the system will be enabled.  See the output from
+"./configure --help" for how to change this.
 
-To use radsecproxy you need to create a config file which normally is
-called "/etc/radsecproxy.conf".  You can also specify the location
-with the "-c" command line option (see below).  For further
+To use radsecproxy you need to create a config file which is normally
+found in /usr/local/etc/radsecproxy.conf.  You can also specify the
+location with the "-c" command line option (see below).  For further
 instructions, please see the enclosed example file and the
 documentation at
-http://software.uninett.no/radsecproxy/?page=documentation
+
+    https://software.nordu.net/radsecproxy/doc/
 
 The following options may be specified on the command line:
 "-c configfile" to specify a non-default config file path.
