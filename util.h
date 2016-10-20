@@ -1,4 +1,5 @@
-/* Copyright (c) 2007-2009, UNINETT AS */
+/* Copyright (c) 2007-2009, UNINETT AS
+ * Copyright (c) 2016, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
 #include <sys/socket.h>

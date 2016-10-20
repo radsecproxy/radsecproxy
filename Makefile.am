@@ -1,3 +1,7 @@
+## Copyright (c) 2006-2010, UNINETT AS
+## Copyright (c) 2010-2012,2016, NORDUnet A/S
+## See LICENSE for licensing information.
+
 AUTOMAKE_OPTIONS = foreign
 
 if HAVE_DOCBOOK2X_MAN
