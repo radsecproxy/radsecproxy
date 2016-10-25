@@ -1995,7 +1995,6 @@ errexit:
 	else
 	    freeclsrvconf(conf);
     }
-    conf->servers = NULL;
     freeserver(server, 1);
     ERR_remove_state(0);
     return NULL;
