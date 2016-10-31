@@ -337,8 +337,8 @@ traverses the list of realms and for each realm:
 
   - same thing for realm->accsrvconfs as for srvconfs
 
-  - if none of the realm->srvconfs nor the realm->accsrvonfs has a
-    dynamiclookupcommand:
+  - if none of realm->srvconfs->servers and realm->accsrvonfs->servers
+    have dynamiclookuparg set:
 
     - for each srv in realm->srvconfs: free srv and decrease ref on realm
 

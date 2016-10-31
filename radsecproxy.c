@@ -706,7 +706,7 @@ int hasdynamicserver(struct list *srvconfs) {
     struct list_node *entry;
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry))
-        if (((struct clsrvconf *)entry->data)->dynamiclookupcommand)
+        if (((struct clsrvconf *)entry->data)->servers->dynamiclookuparg)
 	    return 1;
     return 0;
 }
