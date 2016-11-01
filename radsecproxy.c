@@ -777,14 +777,10 @@ int hasdynamicserver(struct list *srvconfs) {
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry))
 #if defined ENABLE_EXPERIMENTAL_DYNDISC
-        /* NOTE: This should probably be servers->dynamiclookuparg,
-         * like in !ENABLE_EXPERIMENTAL_DYNDISC, but we're not
-         * touching this code any more. It shouldn't be used and it's
-         * going away. */
         if (((struct clsrvconf *)entry->data)->dynamiclookupcommand
             || ((struct clsrvconf *)entry->data)->servers->in_use)
 #else
-        if (((struct clsrvconf *)entry->data)->servers->dynamiclookuparg)
+        if (((struct clsrvconf *)entry->data)->dynamiclookupcommand)
 #endif
 	    return 1;
     return 0;

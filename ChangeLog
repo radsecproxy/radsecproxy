@@ -1,8 +1,3 @@
-Unreleased 1.6.9
-	Bug fixes:
-	- Avoid creating another dynamic server when we already have one
-	working (RADSECPROXY-69). Patch by Fabian Mauchle.
-
 2016-09-21 1.6.8
 	Bug fixes:
 	- Stop waiting on writable when reading a TCP socket.
