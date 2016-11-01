@@ -1,4 +1,4 @@
-AC_INIT(radsecproxy, 1.6.8, radsecproxy@lists.nordu.net)
+AC_INIT(radsecproxy, 1.6.9-dev, radsecproxy@lists.nordu.net)
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
 AC_PROG_CC
