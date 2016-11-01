@@ -706,7 +706,7 @@ int hasdynamicserver(struct list *srvconfs) {
     struct list_node *entry;
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry))
-        if (((struct clsrvconf *)entry->data)->servers->dynamiclookuparg)
+        if (((struct clsrvconf *)entry->data)->dynamiclookupcommand)
 	    return 1;
     return 0;
 }
@@ -1899,13 +1899,14 @@ void *clientwr(void *arg) {
 	}
     }
 errexit:
-    conf->servers = NULL;
     if (server->dynamiclookuparg) {
 	removeserversubrealms(realms, conf);
 	if (dynconffail)
 	    free(conf);
 	else
 	    freeclsrvconf(conf);
+    } else {
+        conf->servers = NULL;
     }
     freeserver(server, 1);
     return NULL;
