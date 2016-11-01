@@ -27,6 +27,8 @@ Changes between 1.6.8 and the master branch
 	- Tie Access-Request log lines to response log lines (RADSECPROXY-60).
 	- Take lock on realm refcount before updating it (RADSECPROXY-77).
 	- Fix a couple of memory leaks and NULL ptr derefs in error cases.
+	- Don't forget about good dynamically discovered (TLS) connections
+	(RADSECPROXY-69).
 
 2016-09-21 1.6.8
 	Bug fixes:
