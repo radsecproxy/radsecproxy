@@ -1767,6 +1767,7 @@ void *clientwr(void *arg) {
      * dynamicconfig() above?  */
     if (!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype)) {
         debug(DBG_WARN, "%s: resolve failed, sleeping %ds", __func__, ZZZ);
+	server->dynfailing=1;
         sleep(ZZZ);
         goto errexit;
     }
@@ -1780,9 +1781,9 @@ void *clientwr(void *arg) {
 
     if (conf->pdef->connecter) {
 	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+	    server->dynfailing = 1;
 	    if (server->dynamiclookuparg) {
                 server->dynstartup = 0;
-		server->dynfailing = 1;
                 debug(DBG_WARN, "%s: connect failed, sleeping %ds",
                       __func__, ZZZ);
 		sleep(ZZZ);
@@ -1792,6 +1793,7 @@ void *clientwr(void *arg) {
 	server->connectionok = 1;
 	if (pthread_create(&clientrdth, &pthread_attr, conf->pdef->clientconnreader, (void *)server)) {
 	    debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
+	    server->dynfailing=1;
 	    goto errexit;
 	}
     } else
@@ -1834,6 +1836,7 @@ void *clientwr(void *arg) {
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
 	    if (server->clientrdgone) {
+		server->dynfailing=1;
                 if (conf->pdef->connecter)
                     pthread_join(clientrdth, NULL);
 		goto errexit;
@@ -1906,8 +1909,6 @@ errexit:
 	    free(conf);
 	else
 	    freeclsrvconf(conf);
-    } else {
-        conf->servers = NULL;
     }
     freeserver(server, 1);
     return NULL;
