@@ -349,7 +349,7 @@ void *tcplistener(void *arg) {
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
 
-    listen(*sp, 0);
+    listen(*sp, 128);
 
     for (;;) {
 	s = accept(*sp, (struct sockaddr *)&from, &fromlen);
