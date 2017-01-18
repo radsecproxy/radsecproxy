@@ -1,4 +1,7 @@
 2017-10-?? 1.6.9
+	Misc:
+	- Use a listen(2) backlog of 128 (RADSECPROXY-72).
+
 	Bug fixes:
 	- Completely reload CAs and CRLs with cacheExpiry (RADSECPROXY-50).
 	- Tie Access-Request log lines to response log lines (RADSECPROXY-60).
