@@ -19,6 +19,7 @@ Changes between 1.6.8 and the master branch
 	- Make clang less unhappy.
 	- Don't use a smaller pthread stack size than what's allowed.
 	- Don't follow NULL the pointer at debug level 5 (RADSECPROXY-68).
+	- Avoid a deadlock situation with dynamic servers (RADSECPROXY-73).
 
 2016-09-21 1.6.8
 	Bug fixes:

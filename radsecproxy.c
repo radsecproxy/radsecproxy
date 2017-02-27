@@ -289,8 +289,6 @@ void freeserver(struct server *server, uint8_t destroymutex) {
     if (server->requests) {
 	rqout = server->requests;
 	for (end = rqout + MAX_REQUESTS; rqout < end; rqout++) {
-	    if (rqout->rq)
-		rqout->rq->to = NULL;
 	    freerqoutdata(rqout);
 	    pthread_mutex_destroy(rqout->lock);
 	    free(rqout->lock);
@@ -421,6 +419,7 @@ void freerqoutdata(struct rqout *rqout) {
 	    free(rqout->rq->buf);
 	    rqout->rq->buf = NULL;
 	}
+	rqout->rq->to = NULL;
 	freerq(rqout->rq);
 	rqout->rq = NULL;
     }
