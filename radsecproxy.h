@@ -58,6 +58,13 @@ enum rsp_fticks_mac_type {
     RSP_FTICKS_MAC_FULLY_KEY_HASHED
 };
 
+enum rsp_server_state {
+    RSP_SERVER_STATE_STARTUP = 0, /* default */
+    RSP_SERVER_STATE_CONNECTED,
+    RSP_SERVER_STATE_RECONNECTING,
+    RSP_SERVER_STATE_FAILING
+};
+
 struct options {
     char *pidfile;
     char *logdestination;
@@ -165,10 +172,8 @@ struct server {
     uint8_t clientrdgone;
     struct timeval lastconnecttry;
     struct timeval lastreply;
-    uint8_t connectionok;
+    enum rsp_server_state state;
     uint8_t lostrqs;
-    uint8_t dynstartup;
-    uint8_t dynfailing;
     char *dynamiclookuparg;
     int nextid;
     struct timeval lastrcv;

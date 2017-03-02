@@ -556,8 +556,8 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 	    return 0;
 	}
 
-	if (server->connectionok) {
-	    server->connectionok = 0;
+	if (server->state == RSP_SERVER_STATE_CONNECTED) {
+	    server->state = RSP_SERVER_STATE_RECONNECTING;
 	    sleep(2);
 	} else if (elapsed < 1)
 	    sleep(2);
@@ -591,7 +591,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
     }
     X509_free(cert);
     debug(DBG_WARN, "dtlsconnect: DTLS connection to %s port %s up", hp->host, hp->port);
-    server->connectionok = 1;
+    server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
     return 1;
@@ -603,7 +603,7 @@ int clientradputdtls(struct server *server, unsigned char *rad) {
     unsigned long error;
     struct clsrvconf *conf = server->conf;
 
-    if (!server->connectionok)
+    if (server->state != RSP_SERVER_STATE_CONNECTED)
 	return 0;
     len = RADLEN(rad);
     if ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {
