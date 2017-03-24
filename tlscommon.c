@@ -158,6 +158,7 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     X509_STORE *x509_s;
     unsigned long error;
 
+    SSL_CTX_set_cert_store(ctx, X509_STORE_new());
     if (!SSL_CTX_load_verify_locations(ctx, conf->cacertfile, conf->cacertpath)) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
