@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <netdb.h>
 #include <string.h>
 #include <unistd.h>
@@ -83,6 +84,9 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
     struct timeval now;
     time_t elapsed;
 
+    int optval;
+    socklen_t optlen = sizeof(optval);
+
     debug(DBG_DBG, "tcpconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
     if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
@@ -118,8 +122,30 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 
 	if (server->sock >= 0)
 	    close(server->sock);
-	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) >= 0)
+	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) >= 0) {
+	    optval = 1;
+	    if(setsockopt(server->sock, SOL_SOCKET, TCP_KEEPCNT, &optval, optlen) < 0) {
+		debug(DBG_ERR, "tcpconnect: setsockopt TCP_KEEPCNT failed");
+	    }
+	    optval = 2000;
+	    if(setsockopt(server->sock, SOL_SOCKET, TCP_KEEPIDLE, &optval, optlen) < 0) {
+		debug(DBG_ERR, "tcpconnect: setsockopt TCP_KEEPIDLE %d failed", optval);
+	    }
+	    if(getsockopt(server->sock, SOL_SOCKET, TCP_KEEPIDLE, &optval, &optlen) < 0) {
+		debug(DBG_ERR, "tcpconnect: getsockopt failed");
+	    }else{
+		debug(DBG_ERR, "tcpconnect: TCP_KEEPIDLE is %d", optval);
+	    }
+	    optval = 1;
+	    if(setsockopt(server->sock, SOL_SOCKET, TCP_KEEPINTVL, &optval, optlen) < 0) {
+		debug(DBG_ERR, "tcpconnect: setsockopt TCP_KEEPINTVL failed");
+	    }
+	    optval = 1;
+	    if(setsockopt(server->sock, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen) < 0) {
+		debug(DBG_ERR, "tcpconnect: setsockopt SO_KEEPALIVE failed");
+	    }
 	    break;
+	}
     }
     server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
