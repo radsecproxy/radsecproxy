@@ -223,8 +223,10 @@ void *tcpclientrd(void *arg) {
     for (;;) {
 	/* yes, lastconnecttry is really necessary */
 	lastconnecttry = server->lastconnecttry;
-	buf = radtcpget(server->sock, 0);
+	buf = radtcpget(server->sock, server->dynamiclookuparg ? IDLE_TIMEOUT : 0);
 	if (!buf) {
+        if (server->dynamiclookuparg)
+		break;
 	    tcpconnect(server, &lastconnecttry, 0, "tcpclientrd");
 	    continue;
 	}
@@ -232,6 +234,9 @@ void *tcpclientrd(void *arg) {
 	replyh(server, buf);
     }
     server->clientrdgone = 1;
+    pthread_mutex_lock(&server->newrq_mutex);
+    pthread_cond_signal(&server->newrq_cond);
+    pthread_mutex_unlock(&server->newrq_mutex);
     return NULL;
 }
 
