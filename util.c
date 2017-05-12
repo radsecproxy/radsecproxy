@@ -4,6 +4,7 @@
 
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -120,6 +121,28 @@ void disable_DF_bit(int socket, struct addrinfo *res) {
 #else
 	debug(DBG_INFO, "Non-Linux platform, unable to unset DF bit for UDP. You should check with tcpdump whether radsecproxy will send its UDP packets with DF bit set!");
 #endif
+    }
+}
+
+void enable_keepalive(int socket) {
+    int optval;
+    socklen_t optlen = sizeof(optval);
+
+    optval = 3;
+    if(setsockopt(socket, SOL_TCP, TCP_KEEPCNT, &optval, optlen) < 0) {
+        debug(DBG_ERR, "enable_keepalive: setsockopt TCP_KEEPCNT failed");
+    }
+    optval = 10;
+    if(setsockopt(socket, SOL_TCP, TCP_KEEPIDLE, &optval, optlen) < 0) {
+        debug(DBG_ERR, "enable_keepalive: setsockopt TCP_KEEPIDLE %d failed", optval);
+    }
+    optval = 10;
+    if(setsockopt(socket, SOL_TCP, TCP_KEEPINTVL, &optval, optlen) < 0) {
+        debug(DBG_ERR, "enable_keepalive: setsockopt TCP_KEEPINTVL failed");
+    }
+    optval = 1;
+    if(setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen) < 0) {
+        debug(DBG_ERR, "enable_keepalive: setsockopt SO_KEEPALIVE failed");
     }
 }
 

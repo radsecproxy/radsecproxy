@@ -130,6 +130,8 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
 	    continue;
 
+    enable_keepalive(server->sock);
+
 	SSL_free(server->ssl);
 	server->ssl = NULL;
 	ctx = tlsgetctx(handle, server->conf->tlsconf);

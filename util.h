@@ -20,6 +20,7 @@ void port_set(struct sockaddr *sa, uint16_t port);
 
 void printfchars(char *prefixfmt, char *prefix, char *charfmt, uint8_t *chars, int len);
 void disable_DF_bit(int socket, struct addrinfo *res);
+void enable_keepalive(int socket);
 int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only);
 int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout);
 
