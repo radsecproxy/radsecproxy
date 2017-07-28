@@ -184,6 +184,7 @@ struct realm {
     uint8_t accresp;
     regex_t regex;
     uint32_t refcount;
+    pthread_mutex_t refmutex;
     pthread_mutex_t mutex;
     struct realm *parent;
     struct list *subrealms;
