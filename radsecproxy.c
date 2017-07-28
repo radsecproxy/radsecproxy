@@ -673,8 +673,11 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 }
 
 struct realm *newrealmref(struct realm *r) {
-    if (r)
+    if (r) {
+        pthread_mutex_lock(&r->refmutex);
 	r->refcount++;
+        pthread_mutex_unlock(&r->refmutex);
+    }
     return r;
 }
 
@@ -2022,12 +2025,16 @@ void freerealm(struct realm *realm) {
     if (!realm)
 	return;
     debug(DBG_DBG, "freerealm: called with refcount %d", realm->refcount);
-    if (--realm->refcount)
+    pthread_mutex_lock(&realm->refmutex);
+    --realm->refcount;
+    pthread_mutex_unlock(&realm->refmutex);
+    if (realm->refcount)
 	return;
 
     free(realm->name);
     free(realm->message);
     regfree(&realm->regex);
+    pthread_mutex_destroy(&realm->refmutex);
     pthread_mutex_destroy(&realm->mutex);
     /* if refcount == 0, all subrealms gone */
     list_destroy(realm->subrealms);
@@ -2083,7 +2090,8 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
     }
     memset(realm, 0, sizeof(struct realm));
 
-    if (pthread_mutex_init(&realm->mutex, NULL)) {
+    if (pthread_mutex_init(&realm->mutex, NULL) ||
+        pthread_mutex_init(&realm->refmutex, NULL)) {
 	debugerrno(errno, DBG_ERR, "mutex init failed");
 	free(realm);
 	realm = NULL;

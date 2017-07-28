@@ -22,6 +22,7 @@ Changes between 1.6.8 and the master branch
 	- Avoid a deadlock situation with dynamic servers (RADSECPROXY-73).
 	- Completely reload CAs and CRLs with cacheExpiry (RADSECPROXY-50).
 	- Tie Access-Request log lines to response log lines (RADSECPROXY-60).
+	- Take lock on realm refcount before updating it (RADSECPROXY-77).
 
 2016-09-21 1.6.8
 	Bug fixes:
