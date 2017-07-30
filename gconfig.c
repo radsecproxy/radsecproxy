@@ -536,6 +536,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 errparam:
     debug(DBG_ERR, "getgenericconfig: internal parameter error");
 errexit:
+    va_end(ap);
     free(opt);
     free(val);
     return 0;
