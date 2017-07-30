@@ -1054,9 +1054,8 @@ makevendortlv(uint32_t vendor, struct tlv *attr)
 	tlv2buf(v + 4, attr);
 	v[5] += 2; /* Vendor length increased for type and length fields. */
 	newtlv = maketlv(RAD_Attr_Vendor_Specific, l, v);
-	if (newtlv == NULL)
-	    free(v);
-	else
+        free(v);
+	if (newtlv)
 	    freetlv(attr);
     }
     return newtlv;
