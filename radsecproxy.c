@@ -1929,13 +1929,15 @@ void createlistener(uint8_t type, char *arg) {
             debugerrno(errno, DBG_WARN, "createlistener: socket failed");
             continue;
         }
-	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+	if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1)
+            debugerrno(errno, DBG_WARN, "createlistener: SO_REUSEADDR");
 
 	disable_DF_bit(s, res);
 
 #ifdef IPV6_V6ONLY
 	if (res->ai_family == AF_INET6)
-	    setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
+	    if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on)) == -1)
+                debugerrno(errno, DBG_WARN, "createlistener: IPV6_V6ONLY");
 #endif
 	if (bind(s, res->ai_addr, res->ai_addrlen)) {
 	    debugerrno(errno, DBG_WARN, "createlistener: bind failed");
