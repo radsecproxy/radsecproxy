@@ -57,17 +57,17 @@ struct sockaddr *addr_copy(struct sockaddr *in) {
     switch (in->sa_family) {
     case AF_INET:
 	out = malloc(sizeof(struct sockaddr_in));
-	if (out) {
-	    memset(out, 0, sizeof(struct sockaddr_in));
-	    ((struct sockaddr_in *)out)->sin_addr = ((struct sockaddr_in *)in)->sin_addr;
-	}
+        if (out == NULL)
+            return NULL;
+        memset(out, 0, sizeof(struct sockaddr_in));
+        ((struct sockaddr_in *)out)->sin_addr = ((struct sockaddr_in *)in)->sin_addr;
 	break;
     case AF_INET6:
 	out = malloc(sizeof(struct sockaddr_in6));
-	if (out) {
-	    memset(out, 0, sizeof(struct sockaddr_in6));
-	    ((struct sockaddr_in6 *)out)->sin6_addr = ((struct sockaddr_in6 *)in)->sin6_addr;
-	}
+        if (out == NULL)
+            return NULL;
+        memset(out, 0, sizeof(struct sockaddr_in6));
+        ((struct sockaddr_in6 *)out)->sin6_addr = ((struct sockaddr_in6 *)in)->sin6_addr;
 	break;
     }
     out->sa_family = in->sa_family;
