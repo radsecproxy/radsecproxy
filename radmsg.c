@@ -308,7 +308,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
 	}
     }
 
-    if (rqauth && !_validauth(buf, rqauth, secret)) {
+    if (rqauth && secret && !_validauth(buf, rqauth, secret)) {
 	debug(DBG_WARN, "buf2radmsg: Invalid auth, ignoring reply");
 	return NULL;
     }
