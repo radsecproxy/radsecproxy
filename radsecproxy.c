@@ -990,6 +990,7 @@ int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
 	    i++;
 	}
     }
+    free(in);
 
     memcpy(attr->v + reslen, out + start, i - start);
     return 1;
