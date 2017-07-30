@@ -160,7 +160,14 @@ int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, st
     socklen_t len;
 
     origflags = fcntl(s, F_GETFL, 0);
-    fcntl(s, F_SETFL, origflags | O_NONBLOCK);
+    if (origflags == -1) {
+        debugerrno(errno, DBG_WARN, "Failed to get flags");
+        return -1;
+    }
+    if (fcntl(s, F_SETFL, origflags | O_NONBLOCK) == -1) {
+        debugerrno(errno, DBG_WARN, "Failed to set O_NONBLOCK");
+        return -1;
+    }
     if (!connect(s, addr, addrlen)) {
 	r = 0;
 	goto exit;
@@ -178,7 +185,8 @@ int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, st
 	r = 0;
 
 exit:
-    fcntl(s, F_SETFL, origflags);
+    if (fcntl(s, F_SETFL, origflags) == -1)
+        debugerrno(errno, DBG_WARN, "Failed to set original flags back");
     return r;
 }
 
