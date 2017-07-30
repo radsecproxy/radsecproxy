@@ -320,7 +320,7 @@ void addserverextraudp(struct clsrvconf *conf) {
     switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
     case AF_INET:
 	if (client4_sock < 0) {
-	    client4_sock = bindtoaddr(srcres, AF_INET, 0, 1);
+	    client4_sock = bindtoaddr(srcres, AF_INET, 0, 0);
 	    if (client4_sock < 0)
 		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}
