@@ -1834,7 +1834,8 @@ void *clientwr(void *arg) {
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
 	    if (server->clientrdgone) {
-		pthread_join(clientrdth, NULL);
+                if (conf->pdef->connecter)
+                    pthread_join(clientrdth, NULL);
 		goto errexit;
 	    }
 
