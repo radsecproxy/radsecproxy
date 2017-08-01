@@ -1447,7 +1447,7 @@ int radsrv(struct request *rq) {
     userascii = radattr2ascii(attr);
     if (!userascii)
 	goto rmclrqexit;
-    debug(DBG_DBG, "%s with username: %s", radmsgtype2string(msg->code), userascii);
+    debug(DBG_DBG, "radsrv: got %s (id %d) with username: %s from client %s (%s)", radmsgtype2string(msg->code), msg->id, userascii, from->conf->name, addr2string(from->addr));
 
     /* will return with lock on the realm */
     to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
@@ -1694,8 +1694,7 @@ void replyh(struct server *server, unsigned char *buf) {
     if (ttlres == -1 && (options.addttl || from->conf->addttl))
 	addttlattr(msg, options.ttlattrtype, from->conf->addttl ? from->conf->addttl : options.addttl);
 
-    debug(msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response ? DBG_WARN : DBG_INFO,
-	  "replyh: passing %s to client %s (%s)", radmsgtype2string(msg->code), from->conf->name, addr2string(from->addr));
+    debug(DBG_DBG, "replyh: passing %s (id %d) to client %s (%s)", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr));
 
     radmsg_free(rqout->rq->msg);
     rqout->rq->msg = msg;
