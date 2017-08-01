@@ -222,12 +222,7 @@ void freebios(struct gqueue *q) {
 }
 
 struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
-    struct client *new = malloc(sizeof(struct client));
-
-    if (!new) {
-	debug(DBG_ERR, "malloc failed");
-	return NULL;
-    }
+    struct client *new = NULL;
 
     if (lock)
 	pthread_mutex_lock(conf->lock);
@@ -241,7 +236,11 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
 	}
     }
 
-    memset(new, 0, sizeof(struct client));
+    new = calloc(1, sizeof(struct client));
+    if (!new) {
+	debug(DBG_ERR, "malloc failed");
+	return NULL;
+    }
     new->conf = conf;
     if (conf->pdef->addclient)
 	conf->pdef->addclient(new);
