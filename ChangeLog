@@ -21,6 +21,7 @@ Changes between 1.6.8 and the master branch
 	- Don't follow NULL the pointer at debug level 5 (RADSECPROXY-68).
 	- Avoid a deadlock situation with dynamic servers (RADSECPROXY-73).
 	- Completely reload CAs and CRLs with cacheExpiry (RADSECPROXY-50).
+	- Tie Access-Request log lines to response log lines (RADSECPROXY-60).
 
 2016-09-21 1.6.8
 	Bug fixes:
