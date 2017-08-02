@@ -13,6 +13,7 @@ Changes between 1.6.8 and the master branch
 	- Experimental code for dynamic discovery has been removed. Be
 	aware that use of the DynamicLookupCommand configuration option
 	still enables code known to be buggy.
+	- Use a listen(2) backlog of 128 (RADSECPROXY-72).
 
 	Bug fixes:
 	- Detect the presence of docbook2x-man correctly.
