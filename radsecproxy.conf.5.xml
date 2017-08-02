@@ -9,7 +9,7 @@
       <application>radsecproxy.conf</application>
     </refentrytitle>
     <manvolnum>5</manvolnum>
-    <refmiscinfo>radsecproxy 1.6.9-dev</refmiscinfo>
+    <refmiscinfo>radsecproxy 1.6.9</refmiscinfo>
   </refmeta>
   <refnamediv>
     <refname>
