@@ -1862,9 +1862,9 @@ void *clientwr(void *arg) {
 
     if (conf->pdef->connecter) {
 	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+        server->dynfailing = 1;
 	    if (server->dynamiclookuparg) {
                 server->dynstartup = 0;
-		server->dynfailing = 1;
                 debug(DBG_WARN, "%s: connect failed, sleeping %ds",
                       __func__, ZZZ);
 		sleep(ZZZ);
@@ -1876,6 +1876,7 @@ void *clientwr(void *arg) {
 	server->in_use = 1;
 #endif
 	if (pthread_create(&clientrdth, &pthread_attr, conf->pdef->clientconnreader, (void *)server)) {
+        server->dynfailing = 1;
 	    debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
 	    goto errexit;
 	}
@@ -1919,6 +1920,7 @@ void *clientwr(void *arg) {
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
 	    if (server->clientrdgone) {
+                server->dynfailing = 1;
                 if (conf->pdef->connecter)
                     pthread_join(clientrdth, NULL);
 		goto errexit;
