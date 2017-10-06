@@ -796,13 +796,13 @@ blocktype name {
 	trailing <literal>/</literal> after the regexp. So as an
 	example, if you want to use regexp matching the domain
 	<literal>example.com</literal> you could have a realm block
-	named <literal>/@example\\.com$</literal>. Optionally this can
-	also be written <literal>/@example\\.com$/</literal>. If you
+	named <literal>/@example\.com$</literal>. Optionally this can
+	also be written <literal>/@example\.com$/</literal>. If you
 	want to match all domains under the <literal>.com</literal>
-	top domain, you could do <literal>/@.*\\.com$</literal>. Note
+	top domain, you could do <literal>/@.*\.com$</literal>. Note
 	that since the matching is done on the entire attribute value,
 	you can also use rules like
-	<literal>/^[a-k].*@example\\.com$/</literal> to get some of
+	<literal>/^[a-k].*@example\.com$/</literal> to get some of
 	the users in this domain to use one server, while other users
 	could be matched by another realm block and use another
 	server.
@@ -849,7 +849,7 @@ blocktype name {
 	same time you might want to send all other requests to some
 	default server. After the realms for the subdomains, you would
 	then have two realm definitions. One with the name
-	<literal>/@.*\\.bv$</literal> with no servers, followed by one
+	<literal>/@.*\.bv$</literal> with no servers, followed by one
 	with the name <literal>*</literal> with the default server
 	defined. This may also be useful for blocking particular
 	usernames.
