@@ -1,5 +1,5 @@
 /* Copyright (c) 2007-2009, UNINETT AS
- * Copyright (c) 2016, NORDUnet A/S */
+ * Copyright (c) 2016-2017, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
 #include <sys/socket.h>
@@ -20,7 +20,7 @@ void port_set(struct sockaddr *sa, uint16_t port);
 
 void printfchars(char *prefixfmt, char *prefix, char *charfmt, uint8_t *chars, int len);
 void disable_DF_bit(int socket, struct addrinfo *res);
-int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only);
+int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse);
 int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout);
 
 

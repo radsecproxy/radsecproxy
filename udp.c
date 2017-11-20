@@ -1,5 +1,5 @@
 /* Copyright (c) 2007-2009, UNINETT AS
- * Copyright (c) 2012, NORDUnet A/S */
+ * Copyright (c) 2012-2013, 2017, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
 #include <signal.h>
@@ -320,7 +320,7 @@ void addserverextraudp(struct clsrvconf *conf) {
     switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
     case AF_INET:
 	if (client4_sock < 0) {
-	    client4_sock = bindtoaddr(srcres, AF_INET, 0, 0);
+	    client4_sock = bindtoaddr(srcres, AF_INET, 0);
 	    if (client4_sock < 0)
 		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}
@@ -328,7 +328,7 @@ void addserverextraudp(struct clsrvconf *conf) {
 	break;
     case AF_INET6:
 	if (client6_sock < 0) {
-	    client6_sock = bindtoaddr(srcres, AF_INET6, 0, 1);
+	    client6_sock = bindtoaddr(srcres, AF_INET6, 0);
 	    if (client6_sock < 0)
 		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
 	}

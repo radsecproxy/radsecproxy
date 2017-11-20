@@ -123,7 +123,7 @@ void disable_DF_bit(int socket, struct addrinfo *res) {
     }
 }
 
-int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
+int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse) {
     int s, on = 1;
     struct addrinfo *res;
 
@@ -142,7 +142,7 @@ int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse, int v6only) {
 	    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "Failed to set SO_REUSEADDR");
 #ifdef IPV6_V6ONLY
-	if (v6only)
+	if (family == AF_INET6)
 	    if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "Failed to set IPV6_V6ONLY");
 #endif
@@ -204,7 +204,7 @@ int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout
     }
 
     for (res = addrinfo; res; res = res->ai_next) {
-	s = bindtoaddr(src, res->ai_family, 1, 1);
+	s = bindtoaddr(src, res->ai_family, 1);
 	if (s < 0) {
 	    debug(DBG_WARN, "connecttoserver: socket failed");
 	    continue;
