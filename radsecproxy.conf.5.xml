@@ -590,7 +590,7 @@ blocktype name {
     </para>
     <para>
       The <literal>tcpKeepalive</literal> option enables TCP keepalives. If
-      keepalives are not answered withing 30s the connections is considered
+      keepalives are not answered within 30s the connection is considered
       lost.
     </para>
     <para>
