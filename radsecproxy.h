@@ -132,6 +132,7 @@ struct clsrvconf {
     uint8_t dupinterval;
     uint8_t certnamecheck;
     uint8_t addttl;
+    uint8_t keepalive;
     uint8_t loopprevention;
     struct rewrite *rewritein;
     struct rewrite *rewriteout;

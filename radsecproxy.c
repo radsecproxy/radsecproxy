@@ -2725,6 +2725,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 #endif
 	    "DuplicateInterval", CONF_LINT, &dupinterval,
 	    "addTTL", CONF_LINT, &addttl,
+        "tcpKeepalive", CONF_BLN, &conf->keepalive,
 	    "rewrite", CONF_STR, &rewriteinalias,
 	    "rewriteIn", CONF_STR, &conf->confrewritein,
 	    "rewriteOut", CONF_STR, &conf->confrewriteout,
@@ -2908,6 +2909,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
 			  "addTTL", CONF_LINT, &addttl,
+              "tcpKeepalive", CONF_BLN, &conf->keepalive,
 			  "rewrite", CONF_STR, &rewriteinalias,
 			  "rewriteIn", CONF_STR, &conf->confrewritein,
 			  "rewriteOut", CONF_STR, &conf->confrewriteout,

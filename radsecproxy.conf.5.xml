@@ -510,6 +510,7 @@ blocktype name {
       <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
       <literal>duplicateInterval</literal>, <literal>AddTTL</literal>,
+      <literal>tcpKeepalive</literal>
       <literal>fticksVISCOUNTRY</literal>,
       <literal>fticksVISINST</literal>, <literal>rewrite</literal>,
       <literal>rewriteIn</literal>, <literal>rewriteOut</literal>, and
@@ -586,6 +587,11 @@ blocktype name {
       <literal>AddTTL</literal> option used in the basic config. See
       that for details. Any value configured here overrides the basic
       one when sending messages to this client.
+    </para>
+    <para>
+      The <literal>tcpKeepalive</literal> option enables TCP keepalives. If
+      keepalives are not answered within 30s the connection is considered
+      lost.
     </para>
     <para>
       The <literal>fticksVISCOUNTRY</literal> option configures
@@ -682,7 +688,8 @@ blocktype name {
       <literal>type</literal>, <literal>secret</literal>,
       <literal>tls</literal>, <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
-      <literal>AddTTL</literal>, <literal>rewrite</literal>,
+      <literal>AddTTL</literal>, <literal>tcpKeepalive</literal>,
+      <literal>rewrite</literal>,
       <literal>rewriteIn</literal>, <literal>rewriteOut</literal>,
       <literal>statusServer</literal>, <literal>retryCount</literal>,
       <literal>dynamicLookupCommand</literal> and
@@ -704,7 +711,8 @@ blocktype name {
       <literal>type</literal>, <literal>secret</literal>,
       <literal>tls</literal>, <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
-      <literal>AddTTL</literal>, <literal>rewrite</literal>,
+      <literal>AddTTL</literal>, <literal>tcpKeepalive</literal>,
+      <literal>rewrite</literal>, 
       <literal>rewriteIn</literal> and <literal>rewriteOut</literal>
       are just as specified for the <literal>client block</literal>
       above, except that <literal>defaultServer</literal> (and not

@@ -118,8 +118,11 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 
 	if (server->sock >= 0)
 	    close(server->sock);
-	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) >= 0)
+	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) >= 0) {
+        if (server->conf->keepalive)
+            enable_keepalive(server->sock);
 	    break;
+	}
     }
     server->connectionok = 1;
     gettimeofday(&server->lastconnecttry, NULL);
@@ -221,8 +224,10 @@ void *tcpclientrd(void *arg) {
     for (;;) {
 	/* yes, lastconnecttry is really necessary */
 	lastconnecttry = server->lastconnecttry;
-	buf = radtcpget(server->sock, 0);
+	buf = radtcpget(server->sock, server->dynamiclookuparg ? IDLE_TIMEOUT : 0);
 	if (!buf) {
+        if (server->dynamiclookuparg)
+		break;
 	    tcpconnect(server, &lastconnecttry, 0, "tcpclientrd");
 	    continue;
 	}
@@ -230,6 +235,9 @@ void *tcpclientrd(void *arg) {
 	replyh(server, buf);
     }
     server->clientrdgone = 1;
+    pthread_mutex_lock(&server->newrq_mutex);
+    pthread_cond_signal(&server->newrq_cond);
+    pthread_mutex_unlock(&server->newrq_mutex);
     return NULL;
 }
 
@@ -328,6 +336,8 @@ void *tcpservernew(void *arg) {
     if (conf) {
 	client = addclient(conf, 1);
 	if (client) {
+        if(conf->keepalive)
+            enable_keepalive(s);
 	    client->sock = s;
 	    client->addr = addr_copy((struct sockaddr *)&from);
 	    tcpserverrd(client);

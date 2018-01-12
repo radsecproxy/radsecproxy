@@ -130,6 +130,9 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
 	    continue;
 
+    if (server->conf->keepalive)
+        enable_keepalive(server->sock);
+
 	SSL_free(server->ssl);
 	server->ssl = NULL;
 	ctx = tlsgetctx(handle, server->conf->tlsconf);
@@ -422,7 +425,7 @@ void *tlsservernew(void *arg) {
 	cert = verifytlscert(ssl);
 	if (!cert)
 	    goto exit;
-        accepted_tls = conf->tlsconf;
+    accepted_tls = conf->tlsconf;
     }
 
     while (conf) {
@@ -430,6 +433,8 @@ void *tlsservernew(void *arg) {
             X509_free(cert);
             client = addclient(conf, 1);
             if (client) {
+                if (conf->keepalive)
+                    enable_keepalive(s);
                 client->ssl = ssl;
                 client->addr = addr_copy((struct sockaddr *)&from);
                 tlsserverrd(client);
