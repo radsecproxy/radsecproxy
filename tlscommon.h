@@ -33,6 +33,7 @@ X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 int addmatchcertattr(struct clsrvconf *conf);
+void tlsreloadcrls();
 #endif
 
 /* Local Variables: */

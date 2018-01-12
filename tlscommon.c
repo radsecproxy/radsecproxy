@@ -335,6 +335,32 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
     return NULL;
 }
 
+void tlsreloadcrls() {
+    struct tls *conf;
+    struct hash_entry *entry;
+    struct timeval now;
+
+    gettimeofday(&now, NULL);
+
+    for (entry = hash_first(tlsconfs); entry; entry = hash_next(entry)) {
+	conf = (struct tls *)entry->data;
+#ifdef RADPROT_TLS
+	if (conf->tlsctx) {
+	    if (conf->tlsexpiry)
+		conf->tlsexpiry = now.tv_sec + conf->cacheexpiry;
+	    tlsaddcacrl(conf->tlsctx, conf);
+	}
+#endif
+#ifdef RADPROT_DTLS
+	if (conf->dtlsctx) {
+	    if (conf->dtlsexpiry)
+		conf->dtlsexpiry = now.tv_sec + conf->cacheexpiry;
+	    tlsaddcacrl(conf->dtlsctx, conf);
+	}
+#endif
+    }
+}
+
 X509 *verifytlscert(SSL *ssl) {
     X509 *cert;
     unsigned long error;
