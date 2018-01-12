@@ -1,3 +1,8 @@
+2018-??-?? 1.6.10
+	Bug fixes:
+	- Don't forget about good dynamically discovered (TLS) connections
+	(RADSECPROXY-69).
+	
 2017-08-02 1.6.9
 	Misc:
 	- Use a listen(2) backlog of 128 (RADSECPROXY-72).
