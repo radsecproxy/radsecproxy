@@ -111,8 +111,8 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	    pthread_mutex_unlock(&server->lock);
 	    return 0;
 	}
-	if (server->connectionok) {
-	    server->connectionok = 0;
+	if (server->state == RSP_SERVER_STATE_CONNECTED) {
+	    server->state = RSP_SERVER_STATE_RECONNECTING;
 	    sleep(2);
 	} else if (elapsed < 1)
 	    sleep(2);
@@ -158,7 +158,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 	X509_free(cert);
     }
     debug(DBG_WARN, "tlsconnect: TLS connection to %s up", server->conf->name);
-    server->connectionok = 1;
+    server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
     return 1;
@@ -254,7 +254,7 @@ int clientradputtls(struct server *server, unsigned char *rad) {
     unsigned long error;
     struct clsrvconf *conf = server->conf;
 
-    if (!server->connectionok)
+    if (server->state != RSP_SERVER_STATE_CONNECTED)
 	return 0;
     len = RADLEN(rad);
     if ((cnt = SSL_write(server->ssl, rad, len)) <= 0) {

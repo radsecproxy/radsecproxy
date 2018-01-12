@@ -707,7 +707,7 @@ int hasdynamicserver(struct list *srvconfs) {
     struct list_node *entry;
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry))
-        if (((struct clsrvconf *)entry->data)->dynamiclookupcommand)
+        if (((struct clsrvconf *)entry->data)->servers->dynamiclookuparg)
 	    return 1;
     return 0;
 }
@@ -1260,11 +1260,11 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
 	server = (struct clsrvconf *)entry->data;
 	if (!server->servers)
 	    return server;
-        if (server->servers->dynfailing)
+        if (server->servers->state == RSP_SERVER_STATE_FAILING)
             continue;
 	if (!first)
 	    first = server;
-	if (!server->servers->connectionok && !server->servers->dynstartup)
+	if (server->servers->state == RSP_SERVER_STATE_STARTUP || server->servers->state == RSP_SERVER_STATE_RECONNECTING)
 	    continue;
 	if (!server->servers->lostrqs)
 	    return server;
@@ -1560,7 +1560,6 @@ void replyh(struct server *server, unsigned char *buf) {
     struct tlv *attr;
     struct list_node *node;
 
-    server->connectionok = 1;
     server->lostrqs = 0;
 
     rqout = server->requests + buf[1];
@@ -1753,10 +1752,10 @@ void *clientwr(void *arg) {
 
 #define ZZZ 900
 
+    server->state = RSP_SERVER_STATE_STARTUP;
     if (server->dynamiclookuparg && !dynamicconfig(server)) {
 	dynconffail = 1;
-	server->dynstartup = 0;
-	server->dynfailing = 1;
+	server->state = RSP_SERVER_STATE_FAILING;
 	debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, sleeping %ds",
               __func__, server->conf->name, server->dynamiclookuparg, ZZZ);
 	sleep(ZZZ);
@@ -1767,6 +1766,7 @@ void *clientwr(void *arg) {
      * dynamicconfig() above?  */
     if (!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype)) {
         debug(DBG_WARN, "%s: resolve failed, sleeping %ds", __func__, ZZZ);
+	server->state = RSP_SERVER_STATE_FAILING;
         sleep(ZZZ);
         goto errexit;
     }
@@ -1780,23 +1780,21 @@ void *clientwr(void *arg) {
 
     if (conf->pdef->connecter) {
 	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+	    server->state = RSP_SERVER_STATE_FAILING;
 	    if (server->dynamiclookuparg) {
-                server->dynstartup = 0;
-		server->dynfailing = 1;
                 debug(DBG_WARN, "%s: connect failed, sleeping %ds",
                       __func__, ZZZ);
 		sleep(ZZZ);
 	    }
 	    goto errexit;
 	}
-	server->connectionok = 1;
 	if (pthread_create(&clientrdth, &pthread_attr, conf->pdef->clientconnreader, (void *)server)) {
 	    debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
+	    server->state = RSP_SERVER_STATE_FAILING;
 	    goto errexit;
 	}
-    } else
-	server->connectionok = 1;
-    server->dynstartup = 0;
+    }
+    server->state = RSP_SERVER_STATE_CONNECTED;
 
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
@@ -1834,6 +1832,7 @@ void *clientwr(void *arg) {
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
 	    if (server->clientrdgone) {
+		server->state = RSP_SERVER_STATE_FAILING;
                 if (conf->pdef->connecter)
                     pthread_join(clientrdth, NULL);
 		goto errexit;
@@ -1885,7 +1884,7 @@ void *clientwr(void *arg) {
 	    conf->pdef->clientradput(server, rqout->rq->buf);
 	    pthread_mutex_unlock(rqout->lock);
 	}
-	if (conf->statusserver && server->connectionok) {
+	if (conf->statusserver && server->state == RSP_SERVER_STATE_CONNECTED) {
 	    secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - secs > STATUS_SERVER_PERIOD) {
@@ -1906,8 +1905,6 @@ errexit:
 	    free(conf);
 	else
 	    freeclsrvconf(conf);
-    } else {
-        conf->servers = NULL;
     }
     freeserver(server, 1);
     return NULL;
@@ -2188,7 +2185,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
              * the srvconfs list.  */
 	    if (addserver(srvconf)) {
 		srvconf->servers->dynamiclookuparg = stringcopy(realm->name, 0);
-		srvconf->servers->dynstartup = 1;
+		srvconf->servers->state = RSP_SERVER_STATE_STARTUP;
                 debug(DBG_DBG, "%s: new client writer for %s",
                       __func__, srvconf->servers->conf->name);
 		if (pthread_create(&clientth, &pthread_attr, clientwr, (void *)(srvconf->servers))) {

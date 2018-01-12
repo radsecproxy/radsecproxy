@@ -14,6 +14,8 @@ Changes between 1.6.8 and the master branch
 	aware that use of the DynamicLookupCommand configuration option
 	still enables code known to be buggy.
 	- Use a listen(2) backlog of 128 (RADSECPROXY-72).
+	- Replace several server status bits with a single state enum.
+	(RADSECPROXY-71)
 
 	Bug fixes:
 	- Detect the presence of docbook2x-man correctly.
@@ -25,6 +27,8 @@ Changes between 1.6.8 and the master branch
 	- Tie Access-Request log lines to response log lines (RADSECPROXY-60).
 	- Take lock on realm refcount before updating it (RADSECPROXY-77).
 	- Fix a couple of memory leaks and NULL ptr derefs in error cases.
+	- Don't forget about good dynamically discovered (TLS) connections
+	(RADSECPROXY-69).
 
 2016-09-21 1.6.8
 	Bug fixes:

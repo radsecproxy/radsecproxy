@@ -102,8 +102,8 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 	    pthread_mutex_unlock(&server->lock);
 	    return 0;
 	}
-	if (server->connectionok) {
-	    server->connectionok = 0;
+	if (server->state == RSP_SERVER_STATE_CONNECTED) {
+	    server->state = RSP_SERVER_STATE_RECONNECTING;
 	    sleep(2);
 	} else if (elapsed < 1)
 	    sleep(2);
@@ -124,7 +124,7 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 	    break;
 	}
     }
-    server->connectionok = 1;
+    server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
     return 1;
@@ -205,7 +205,7 @@ int clientradputtcp(struct server *server, unsigned char *rad) {
     size_t len;
     struct clsrvconf *conf = server->conf;
 
-    if (!server->connectionok)
+    if (server->state != RSP_SERVER_STATE_CONNECTED)
 	return 0;
     len = RADLEN(rad);
     if ((cnt = write(server->sock, rad, len)) <= 0) {
