@@ -2109,12 +2109,12 @@ struct list *addsrvconfs(char *value, char **names) {
 	}
 	if (!entry) {
 	    debug(DBG_ERR, "addsrvconfs failed for realm %s, no server named %s", value, names[n]);
-	    list_destroy(conflist);
+	    list_free(conflist);
 	    return NULL;
 	}
 	if (!list_push(conflist, conf)) {
 	    debug(DBG_ERR, "malloc failed");
-	    list_destroy(conflist);
+	    list_free(conflist);
 	    return NULL;
 	}
 	debug(DBG_DBG, "addsrvconfs: added server %s for realm %s", conf->name, value);
@@ -2198,6 +2198,7 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
 	realm = NULL;
 	goto exit;
     }
+	newrealmref(realm);
 
     realm->name = stringcopy(value, 0);
     if (!realm->name) {
@@ -2256,7 +2257,7 @@ exit:
 		newrealmref(realm);
 	freegconfmstr(accservers);
     }
-    return newrealmref(realm);
+    return realm;
 }
 
 struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
