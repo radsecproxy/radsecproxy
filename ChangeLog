@@ -30,6 +30,7 @@ Changes between 1.6.8 and the master branch
 	- Fix a couple of memory leaks and NULL ptr derefs in error cases.
 	- Don't forget about good dynamically discovered (TLS) connections
 	(RADSECPROXY-69).
+	- Fix refcounting in error cases when loading configuration (RADSECPROXY-42)
 
 2016-09-21 1.6.8
 	Bug fixes:
@@ -276,4 +277,3 @@ Changes between 1.6.8 and the master branch
 	Fixed crash when servers were configured after first realm block
 
 2007-09-21 1.0
-
