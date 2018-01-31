@@ -853,7 +853,7 @@ int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs) {
     uint32_t vendor;
     uint8_t *subattrs;
 
-    if (!removevendorattrs)
+    if (!removevendorattrs || attr->l <= 4)
 	return 0;
 
     memcpy(&vendor, attr->v, 4);
