@@ -2,7 +2,8 @@
 	Bug fixes:
 	- Don't forget about good dynamically discovered (TLS) connections
 	(RADSECPROXY-69).
-	
+	- Fix refcounting in error cases when loading configuration (RADSECPROXY-42)
+
 2017-08-02 1.6.9
 	Misc:
 	- Use a listen(2) backlog of 128 (RADSECPROXY-72).
@@ -259,4 +260,3 @@
 	Fixed crash when servers were configured after first realm block
 
 2007-09-21 1.0
-
