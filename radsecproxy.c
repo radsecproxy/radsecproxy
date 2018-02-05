@@ -1209,16 +1209,13 @@ void acclog(struct radmsg *msg, struct client *from) {
     uint8_t *username;
 
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
-    if (!attr) {
-	debug(DBG_INFO, "acclog: accounting-request from client %s (%s) without username attribute", from->conf->name, addr2string(from->addr));
-	return;
+    if (attr && (username = radattr2ascii(attr))) {
+        debug(DBG_INFO, "acclog: %s (id %d) from client %s (%s) with username: %s", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr), username);
+        free(username);
+    } else {
+            debug(DBG_INFO, "acclog: %s (id %d) from client %s (%s) without username attribute", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr));
     }
-    username = radattr2ascii(attr);
-    if (username) {
-	debug(DBG_INFO, "acclog: accounting-request from client %s (%s) with username: %s", from->conf->name, addr2string(from->addr), username);
-
-	free(username);
-    }
+    debug(DBG_INFO, "acclog: sending %s (id %d) to %s (%s)", radmsgtype2string(RAD_Accounting_Response), msg->id, from->conf->name, addr2string(from->addr));
 }
 
 void respond(struct request *rq, uint8_t code, char *message,
@@ -1462,7 +1459,7 @@ int radsrv(struct request *rq) {
 
     if (!to) {
 	if (realm->message && msg->code == RAD_Access_Request) {
-	    debug(DBG_INFO, "radsrv: sending reject to %s (%s) for %s", from->conf->name, addr2string(from->addr), userascii);
+	    debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr), userascii);
 	    respond(rq, RAD_Access_Reject, realm->message, 1);
 	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
 	    acclog(msg, from);
@@ -1894,7 +1891,7 @@ void *clientwr(void *arg) {
 		statsrvrq = createstatsrvrq();
 		if (statsrvrq) {
 		    statsrvrq->to = server;
-		    debug(DBG_DBG, "clientwr: sending status server to %s", conf->name);
+		    debug(DBG_DBG, "clientwr: sending %s to %s", radmsgtype2string(RAD_Status_Server), conf->name);
 		    sendrq(statsrvrq);
 		}
 	    }
