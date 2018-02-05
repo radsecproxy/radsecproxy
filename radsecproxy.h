@@ -36,6 +36,7 @@
 
 /* 27262 is vendor DANTE Ltd. */
 #define DEFAULT_TTL_ATTR "27262:1"
+#define DEFAULT_FTICKS_PREFIX "F-TICKS/eduroam/1.0"
 
 #define RAD_UDP 0
 #define RAD_TLS 1
@@ -69,6 +70,7 @@ struct options {
     char *pidfile;
     char *logdestination;
     char *ftickssyslogfacility;
+    char *fticksprefix;
     char *ttlattr;
     uint32_t ttlattrtype[2];
     uint8_t addttl;

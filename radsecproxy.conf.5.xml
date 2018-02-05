@@ -2,7 +2,7 @@
 "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
 <refentry>
   <refentryinfo>
-    <date>2016-03-23</date>
+    <date>2018-02-02</date>
   </refentryinfo>
   <refmeta>
     <refentrytitle>radsecproxy.conf</refentrytitle>
@@ -192,10 +192,7 @@ blocktype name {
 	    needs FTicksKey to be set.
 	  </para>
 	  <para>
-	    See <literal>radsecproxy.conf-example</literal> for
-	    details.  Note that radsecproxy has to be configured with
-	    F-Ticks support (<literal>--enable-fticks</literal>) for
-	    this option to have any effect.
+	    See <literal>radsecproxy.conf-example</literal> for details.
 	  </para>
 	</listitem>
       </varlistentry>
@@ -226,10 +223,7 @@ blocktype name {
 	  </para>
 	  </para>
 	  <para>
-	    See <literal>radsecproxy.conf-example</literal> for
-	    details.  Note that radsecproxy has to be configured with
-	    F-Ticks support (<literal>--enable-fticks</literal>) for
-	    this option to have any effect.
+	    See <literal>radsecproxy.conf-example</literal> for details.
 	  </para>
 	</listitem>
       </varlistentry>
@@ -242,11 +236,6 @@ blocktype name {
 	    when producing HMAC's as an effect of specifying
 	    VendorKeyHashed or FullyKeyHashed for the FTicksMAC
 	    option.
-	  </para>
-	  <para>
-	    Note that radsecproxy has to be configured with F-Ticks
-	    support (<literal>--enable-fticks</literal>) for this
-	    option to have any effect.
 	  </para>
 	</listitem>
       </varlistentry>
@@ -269,6 +258,19 @@ blocktype name {
 	  </para>
 	</listitem>
       </varlistentry>
+
+	  <varlistentry>
+	    <term><literal>FTicksPrefix</literal></term>
+	    <listitem>
+	  <para>
+	    The FTicksPrefix option is used to set the prefix printed in
+		F-Ticks messages.  This allows for use of F-Ticks messages in
+		non-eduroam environments. If no FTicksPrefix option is given, it
+		defaults to the prefix used for eduroam
+		(<literal>F-TICKS/eduroam/1.0</literal>)
+	  </para>
+	  </listitem>
+	  </varlistentry>
 
       <varlistentry>
         <term><literal>ListenUDP</literal></term>
@@ -380,7 +382,7 @@ blocktype name {
         </listitem>
       </varlistentry>
       <varlistentry>
-        <term><literal>AddTTL</literal></term>
+        <term><literal>AddTTL  </literal></term>
         <listitem>
 	  <para>
 	    If a TTL attribute is present, the proxy will decrement
@@ -712,7 +714,7 @@ blocktype name {
       <literal>tls</literal>, <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
       <literal>AddTTL</literal>, <literal>tcpKeepalive</literal>,
-      <literal>rewrite</literal>, 
+      <literal>rewrite</literal>,
       <literal>rewriteIn</literal> and <literal>rewriteOut</literal>
       are just as specified for the <literal>client block</literal>
       above, except that <literal>defaultServer</literal> (and not
