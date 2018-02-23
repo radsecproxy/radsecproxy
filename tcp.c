@@ -14,7 +14,7 @@
 #endif
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/select.h>
+#include <poll.h>
 #include <ctype.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
@@ -134,23 +134,21 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 /* returns 0 on timeout, -1 on error and num if ok */
 int tcpreadtimeout(int s, unsigned char *buf, int num, int timeout) {
     int ndesc, cnt, len;
-    fd_set readfds;
-    struct timeval timer;
+    struct pollfd fds[1];
 
     if (s < 0)
 	return -1;
     /* make socket non-blocking? */
     for (len = 0; len < num; len += cnt) {
-	FD_ZERO(&readfds);
-	FD_SET(s, &readfds);
-	if (timeout) {
-	    timer.tv_sec = timeout;
-	    timer.tv_usec = 0;
-	}
-	ndesc = select(s + 1, &readfds, NULL, NULL, timeout ? &timer : NULL);
+        fds[0].fd = s;
+        fds[0].events = POLLIN;
+	ndesc = poll(fds, 1, timeout? timeout * 1000 : -1);
 	if (ndesc < 1)
 	    return ndesc;
 
+    if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL) ) {
+        return -1;
+    }
 	cnt = read(s, buf + len, num - len);
 	if (cnt <= 0)
 	    return -1;

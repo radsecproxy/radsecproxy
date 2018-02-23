@@ -14,7 +14,6 @@
 #endif
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/select.h>
 #include <ctype.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
@@ -137,7 +136,6 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *p;
     struct list_node *node;
-    fd_set readfds;
     struct client *c = NULL;
     struct timeval now;
 
@@ -146,10 +144,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    free(rad);
 	    rad = NULL;
 	}
-	FD_ZERO(&readfds);
-        FD_SET(s, &readfds);
-	if (select(s + 1, &readfds, NULL, NULL, NULL) < 1)
-	    continue;
+
 	cnt = recvfrom(s, buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
 	if (cnt == -1) {
 	    debug(DBG_WARN, "radudpget: recv failed");

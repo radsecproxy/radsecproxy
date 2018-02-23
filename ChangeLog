@@ -17,6 +17,7 @@ Changes between 1.6.9 and the master branch
 	still enables code known to be buggy.
 	- Replace several server status bits with a single state enum.
 	(RADSECPROXY-71)
+	- Use poll instead of select to allow > 1000 concurrent connections.
 
 	Bug fixes:
 	- Detect the presence of docbook2x-man correctly.

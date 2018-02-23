@@ -14,7 +14,7 @@
 #endif
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/select.h>
+#include <poll.h>
 #include <ctype.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
@@ -168,8 +168,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 /* returns 0 on timeout, -1 on error and num if ok */
 int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout) {
     int s, ndesc, cnt, len;
-    fd_set readfds;
-    struct timeval timer;
+    struct pollfd fds[1];
 
     s = SSL_get_fd(ssl);
     if (s < 0)
@@ -177,15 +176,13 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout) {
     /* make socket non-blocking? */
     for (len = 0; len < num; len += cnt) {
 	if (SSL_pending(ssl) == 0) {
-            FD_ZERO(&readfds);
-            FD_SET(s, &readfds);
-            if (timeout) {
-                timer.tv_sec = timeout;
-                timer.tv_usec = 0;
-            }
-	    ndesc = select(s + 1, &readfds, NULL, NULL, timeout ? &timer : NULL);
-            if (ndesc < 1)
-                return ndesc;
+        fds[0].fd = s;
+        fds[0].events = POLLIN;
+	    ndesc = poll(fds, 1, timeout ? timeout * 1000 : -1);
+        if (ndesc < 1)
+            return ndesc;
+        if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL))
+            return -1;
 	}
 
 	cnt = SSL_read(ssl, buf + len, num - len);

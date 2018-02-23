@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <sys/select.h>
+#include <poll.h>
 #include <stdarg.h>
 #include "debug.h"
 #include "util.h"
@@ -177,10 +177,9 @@ int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse) {
     return -1;
 }
 
-int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, struct timeval *timeout) {
-    int origflags, error = 0, r = -1;
-    fd_set writefds;
-    socklen_t len;
+int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, int timeout) {
+    int origflags, r = -1;
+    struct pollfd fds[1];
 
     origflags = fcntl(s, F_GETFL, 0);
     if (origflags == -1) {
@@ -198,14 +197,17 @@ int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, st
     if (errno != EINPROGRESS)
 	goto exit;
 
-    FD_ZERO(&writefds);
-    FD_SET(s, &writefds);
-    if (select(s + 1, NULL, &writefds, NULL, timeout) < 1)
+    fds[0].fd = s;
+    fds[0].events = POLLOUT;
+    if (poll(fds, 1, timeout * 1000) < 1)
 	goto exit;
 
-    len = sizeof(error);
-    if (!getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&error, &len) && !error)
-	r = 0;
+    if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL) ) {
+        debug(DBG_WARN, "Connection failed or refused");
+    } else if(fds[0].revents & POLLOUT) {
+        debug(DBG_DBG, "Connection up");
+        r = 0;
+    }
 
 exit:
     if (fcntl(s, F_SETFL, origflags) == -1)
@@ -216,14 +218,11 @@ exit:
 int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout) {
     int s;
     struct addrinfo *res;
-    struct timeval to;
 
     s = -1;
     if (timeout) {
 	if (addrinfo && addrinfo->ai_next && timeout > 5)
 	    timeout = 5;
-	to.tv_sec = timeout;
-	to.tv_usec = 0;
     }
 
     for (res = addrinfo; res; res = res->ai_next) {
@@ -233,7 +232,7 @@ int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout
 	    continue;
 	}
 	if ((timeout
-	     ? connectnonblocking(s, res->ai_addr, res->ai_addrlen, &to)
+	     ? connectnonblocking(s, res->ai_addr, res->ai_addrlen, timeout)
 	     : connect(s, res->ai_addr, res->ai_addrlen)) == 0)
 	    break;
 	debug(DBG_WARN, "connecttoserver: connect failed");

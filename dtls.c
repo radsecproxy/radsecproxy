@@ -14,7 +14,7 @@
 #endif
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/select.h>
+#include <poll.h>
 #include <ctype.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
@@ -444,8 +444,8 @@ void *udpdtlsserverrd(void *arg) {
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
     struct dtlsservernewparams *params;
-    fd_set readfds;
-    struct timeval timeout, lastexpiry;
+    struct pollfd fds[1];
+    struct timeval lastexpiry;
     pthread_t dtlsserverth;
     struct hash *sessioncache;
     struct sessioncacheentry *cacheentry;
@@ -456,11 +456,9 @@ void *udpdtlsserverrd(void *arg) {
     gettimeofday(&lastexpiry, NULL);
 
     for (;;) {
-	FD_ZERO(&readfds);
-        FD_SET(s, &readfds);
-	memset(&timeout, 0, sizeof(struct timeval));
-	timeout.tv_sec = 60;
-	ndesc = select(s + 1, &readfds, NULL, NULL, &timeout);
+    fds[0].fd = s;
+    fds[0].events = POLLIN;
+	ndesc = poll(fds, 1, 60000);
 	if (ndesc < 1) {
 	    cacheexpire(sessioncache, &lastexpiry);
 	    continue;
@@ -622,13 +620,8 @@ void *udpdtlsclientrd(void *arg) {
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *conf;
-    fd_set readfds;
 
     for (;;) {
-	FD_ZERO(&readfds);
-        FD_SET(s, &readfds);
-	if (select(s + 1, &readfds, NULL, NULL, NULL) < 1)
-	    continue;
 	cnt = recvfrom(s, buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
 	if (cnt == -1) {
 	    debug(DBG_WARN, "udpdtlsclientrd: recv failed");
