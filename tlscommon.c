@@ -617,6 +617,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 	debug(DBG_ERR, "conftls_cb: malloc failed");
 	goto errexit;
     }
+    pthread_mutex_init(&conf->lock, NULL);
 
     if (!tlsconfs)
 	tlsconfs = hash_create();

@@ -215,7 +215,8 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
     if (conf->pdef->addclient)
 	conf->pdef->addclient(new);
     else
-	new->replyq = newqueue();
+    new->replyq = newqueue();
+    pthread_mutex_init(&new->lock, NULL);
     list_push(conf->clients, new);
     if (lock)
 	pthread_mutex_unlock(conf->lock);
@@ -261,6 +262,7 @@ void removelockedclient(struct client *client) {
 	removeclientrqs(client);
 	removequeue(client->replyq);
 	list_removedata(conf->clients, client);
+    pthread_mutex_destroy(&client->lock);
 	free(client->addr);
 	free(client);
     }

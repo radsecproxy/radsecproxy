@@ -157,6 +157,7 @@ struct client {
     struct clsrvconf *conf;
     int sock;
     SSL *ssl;
+	pthread_mutex_t lock;
     struct request *rqs[MAX_REQUESTS];
     struct gqueue *replyq;
     struct gqueue *rbios; /* for dtls */
