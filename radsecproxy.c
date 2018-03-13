@@ -3133,6 +3133,7 @@ void getmainconfig(const char *configfile) {
 	    "addTTL", CONF_LINT, &addttl,
 	    "LogLevel", CONF_LINT, &loglevel,
 	    "LogDestination", CONF_STR, &options.logdestination,
+        "LogThreadId", CONF_BLN, &options.logtid,
 	    "LoopPrevention", CONF_BLN, &options.loopprevention,
 	    "Client", CONF_CBK, confclient_cb, NULL,
 	    "Server", CONF_CBK, confserver_cb, NULL,
@@ -3325,6 +3326,8 @@ int radsecproxy_main(int argc, char **argv) {
     	}
     }
     free(options.logdestination);
+    if (options.logtid)
+        debug_tid_on();
 
     if (!list_first(clconfs))
 	debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");

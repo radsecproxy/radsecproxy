@@ -9,6 +9,7 @@ Changes between 1.6.9 and the master branch
 	(RADSECPROXY-66, RADSECPROXY-74).
 	- Reload TLS certificate CRLs on SIGHUP (RADSECPROXY-78).
 	- Make use of SO_KEEPALIVE for tcp sockets (RADSECPROXY-12).
+	- Optionally include the thread-id in log messages
 
 	Misc:
 	- libnettle is now an unconditional dependency.

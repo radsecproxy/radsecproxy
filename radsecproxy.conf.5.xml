@@ -2,7 +2,7 @@
 "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
 <refentry>
   <refentryinfo>
-    <date>2016-03-23</date>
+    <date>2018-03-13</date>
   </refentryinfo>
   <refmeta>
     <refentrytitle>radsecproxy.conf</refentrytitle>
@@ -177,6 +177,15 @@ blocktype name {
 	  </para>
         </listitem>
       </varlistentry>
+	  <varlistentry>
+        <term><literal>LogThreadId</literal></term>
+        <listitem>
+	  <para>
+		This can be set to <literal>on</literal> to include the
+		thread-id in the log messages (useful for debugging).
+	  </para>
+		</listitem>
+	  </varlistentry>
 
       <varlistentry>
         <term><literal>FTicksReporting</literal></term>
@@ -712,7 +721,7 @@ blocktype name {
       <literal>tls</literal>, <literal>certificateNameCheck</literal>,
       <literal>matchCertificateAttribute</literal>,
       <literal>AddTTL</literal>, <literal>tcpKeepalive</literal>,
-      <literal>rewrite</literal>, 
+      <literal>rewrite</literal>,
       <literal>rewriteIn</literal> and <literal>rewriteOut</literal>
       are just as specified for the <literal>client block</literal>
       above, except that <literal>defaultServer</literal> (and not

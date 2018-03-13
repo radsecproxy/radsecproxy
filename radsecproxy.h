@@ -73,6 +73,7 @@ struct options {
     uint32_t ttlattrtype[2];
     uint8_t addttl;
     uint8_t loglevel;
+	uint8_t logtid;
     uint8_t loopprevention;
     enum rsp_fticks_reporting_type fticks_reporting;
     enum rsp_fticks_mac_type fticks_mac;

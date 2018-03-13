@@ -15,6 +15,7 @@
 #include <syslog.h>
 #include <errno.h>
 #include <assert.h>
+#include <pthread.h>
 #include "debug.h"
 #include "util.h"
 
@@ -25,6 +26,7 @@ static FILE *debug_file = NULL;
 static int debug_syslogfacility = 0;
 static int fticks_syslogfacility = 0;
 static uint8_t debug_timestamp = 0;
+static uint8_t debug_tid = 0;
 
 void debug_init(char *ident) {
     debug_file = stderr;
@@ -54,6 +56,10 @@ void debug_set_level(uint8_t level) {
 
 void debug_timestamp_on() {
     debug_timestamp = 1;
+}
+
+void debug_tid_on() {
+    debug_tid = 1;
 }
 
 uint8_t debug_get_level() {
@@ -142,8 +148,16 @@ void debug_reopen_log() {
 
 void debug_logit(uint8_t level, const char *format, va_list ap) {
     struct timeval now;
-    char *timebuf;
+    char *timebuf, *tidbuf;
     int priority;
+
+    if (debug_tid) {
+        tidbuf = malloc((3*sizeof(pthread_t)+5)+strlen(format));
+        sprintf(tidbuf, "(%ld) %s", pthread_self(), format);
+        format = tidbuf;
+    } else
+        tidbuf = NULL;
+
 
     if (debug_syslogfacility) {
 	switch (level) {
@@ -177,6 +191,7 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
 	vfprintf(debug_file, format, ap);
 	fprintf(debug_file, "\n");
     }
+    free(tidbuf);
 }
 
 void debug(uint8_t level, char *format, ...) {
