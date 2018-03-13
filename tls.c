@@ -178,6 +178,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock) {
     int s, ndesc, cnt, len;
     struct pollfd fds[1];
+    unsigned long error;
 
     if (lock)
         pthread_mutex_lock(lock);
@@ -219,6 +220,9 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
                     debug(DBG_DBG, "sslreadtimeout: got ssl shutdown");
                     SSL_shutdown(ssl);
                 default:
+                    while ((error = ERR_get_error()))
+                        debug(DBG_ERR, "sslreadtimeout: SSL: %s", ERR_error_string(error, NULL));
+
                     if (lock)
                         pthread_mutex_unlock(lock);
                     return -1;
