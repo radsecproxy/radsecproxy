@@ -232,26 +232,32 @@ void removeclientrqs_sendrq_freeserver_lock(uint8_t wantlock) {
 	pthread_mutex_unlock(&lock);
 }
 
-void removeclientrqs(struct client *client) {
+void removeclientrq(struct client *client, int i) {
     struct request *rq;
     struct rqout *rqout;
-    int i;
 
-    removeclientrqs_sendrq_freeserver_lock(1);
-    for (i = 0; i < MAX_REQUESTS; i++) {
 	rq = client->rqs[i];
 	if (!rq)
-	    continue;
-	if (rq->to) {
-	    rqout = rq->to->requests + rq->newid;
-	    pthread_mutex_lock(rqout->lock);
-	    if (rqout->rq == rq) /* still pointing to our request */
-		freerqoutdata(rqout);
-	    pthread_mutex_unlock(rqout->lock);
-	}
-	freerq(rq);
+        return;
+
+    removeclientrqs_sendrq_freeserver_lock(1);
+    if (rq->to) {
+        rqout = rq->to->requests + rq->newid;
+        pthread_mutex_lock(rqout->lock);
+        if (rqout->rq == rq) /* still pointing to our request */
+            freerqoutdata(rqout);
+        pthread_mutex_unlock(rqout->lock);
     }
+    client->rqs[i] = NULL;
+    freerq(rq);
     removeclientrqs_sendrq_freeserver_lock(0);
+}
+
+void removeclientrqs(struct client *client) {
+    int i;
+
+    for (i = 0; i < MAX_REQUESTS; i++)
+        removeclientrq(client, i);
 }
 
 void removelockedclient(struct client *client) {
@@ -390,17 +396,24 @@ unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
 }
 
 struct request *newrqref(struct request *rq) {
-    if (rq)
-	rq->refcount++;
+    if (rq) {
+        pthread_mutex_lock(&rq->refmutex);
+        rq->refcount++;
+        pthread_mutex_unlock(&rq->refmutex);
+    }
     return rq;
 }
 
 void freerq(struct request *rq) {
     if (!rq)
 	return;
+    pthread_mutex_lock(&rq->refmutex);
     debug(DBG_DBG, "freerq: called with refcount %d", rq->refcount);
-    if (--rq->refcount)
-	return;
+    if (--rq->refcount) {
+        pthread_mutex_unlock(&rq->refmutex);
+        return;
+    }
+    pthread_mutex_unlock(&rq->refmutex);
     if (rq->origusername)
 	free(rq->origusername);
     if (rq->buf)
@@ -409,6 +422,7 @@ void freerq(struct request *rq) {
 	free(rq->replybuf);
     if (rq->msg)
 	radmsg_free(rq->msg);
+    pthread_mutex_destroy(&rq->refmutex);
     free(rq);
 }
 
@@ -1325,6 +1339,7 @@ struct request *newrequest() {
     }
     memset(rq, 0, sizeof(struct request));
     rq->refcount = 1;
+    pthread_mutex_init(&rq->refmutex, NULL);
     gettimeofday(&rq->created, NULL);
     return rq;
 }
@@ -1339,8 +1354,7 @@ purgedupcache(struct client *client) {
     for (i = 0; i < MAX_REQUESTS; i++) {
 	r = client->rqs[i];
 	if (r && now.tv_sec - r->created.tv_sec > r->from->conf->dupinterval) {
-	    freerq(r);
-	    client->rqs[i] = NULL;
+        removeclientrq(client, i);
 	}
     }
 }
@@ -1362,7 +1376,7 @@ int addclientrq(struct request *rq) {
 		return 0;
 	    }
 	}
-	freerq(r);
+    removeclientrq(rq->from, rq->rqid);
     }
     rq->from->rqs[rq->rqid] = newrqref(rq);
     return 1;
@@ -2021,10 +2035,11 @@ void freerealm(struct realm *realm) {
 	return;
     debug(DBG_DBG, "freerealm: called with refcount %d", realm->refcount);
     pthread_mutex_lock(&realm->refmutex);
-    --realm->refcount;
+    if (--realm->refcount) {
+        pthread_mutex_unlock(&realm->refmutex);
+        return;
+    }
     pthread_mutex_unlock(&realm->refmutex);
-    if (realm->refcount)
-	return;
 
     free(realm->name);
     free(realm->message);

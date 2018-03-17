@@ -90,6 +90,7 @@ struct commonprotoopts {
 struct request {
     struct timeval created;
     uint32_t refcount;
+	pthread_mutex_t refmutex;
     uint8_t *buf, *replybuf;
     struct radmsg *msg;
     struct client *from;
