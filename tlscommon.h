@@ -28,6 +28,7 @@ struct tls {
 };
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
+void sslinit();
 struct tls *tlsgettls(char *alt1, char *alt2);
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
 X509 *verifytlscert(SSL *ssl);

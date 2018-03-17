@@ -5,7 +5,8 @@ Changes between 1.6.9 and the master branch
 	- 3-clause BSD license only, no GPL.
 
 	Enhancements:
-	- Support the use of OpenSSL version 1.1 series (RADSECPROXY-66).
+	- Support the use of OpenSSL version 1.1 and 1.0 series
+	(RADSECPROXY-66, RADSECPROXY-74).
 	- Reload TLS certificate CRLs on SIGHUP (RADSECPROXY-78).
 	- Make use of SO_KEEPALIVE for tcp sockets (RADSECPROXY-12).
 

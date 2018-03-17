@@ -1971,12 +1971,9 @@ void createlisteners(uint8_t type) {
 	createlistener(type, NULL);
 }
 
-void sslinit() {
+void randinit() {
     time_t t;
     pid_t pid;
-
-    SSL_load_error_strings();
-    SSL_library_init();
 
     while (!RAND_status()) {
 	t = time(NULL);
@@ -3306,7 +3303,11 @@ int radsecproxy_main(int argc, char **argv) {
 	protodefs[i] = protoinits[i](i);
 
     /* needed even if no TLS/DTLS transport */
+    randinit();
+
+#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     sslinit();
+#endif
 
     getargs(argc, argv, &foreground, &pretend, &loglevel, &configfile, &pidfile);
     if (loglevel)

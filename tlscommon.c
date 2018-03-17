@@ -34,6 +34,44 @@
 
 static struct hash *tlsconfs = NULL;
 
+/* callbacks for making OpenSSL < 1.1 thread safe */
+#if OPENSSL_VERSION_NUMBER < 0x10100000
+static pthread_mutex_t *ssl_locks = NULL;
+
+unsigned long ssl_thread_id() {
+    return (unsigned long)pthread_self();
+}
+
+void ssl_locking_callback(int mode, int type, const char *file, int line) {
+    if (mode & CRYPTO_LOCK)
+       pthread_mutex_lock(&ssl_locks[type]);
+    else
+       pthread_mutex_unlock(&ssl_locks[type]);
+}
+#endif
+
+void sslinit() {
+#if OPENSSL_VERSION_NUMBER < 0x10100000
+    int i;
+
+    SSL_library_init();
+
+    ssl_locks = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
+    if (!ssl_locks)
+        debugx(1, DBG_ERR, "malloc failed");
+
+    for (i = 0; i < CRYPTO_num_locks(); i++) {
+        pthread_mutex_init(&ssl_locks[i], NULL);
+    }
+    CRYPTO_set_id_callback(ssl_thread_id);
+    CRYPTO_set_locking_callback(ssl_locking_callback);
+#else
+    OPENSSL_init_ssl(0, NULL);
+#endif
+
+    SSL_load_error_strings();
+}
+
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
     int pwdlen = strlen(userdata);
     if (rwflag != 0 || pwdlen > size) /* not for decryption or too large */
