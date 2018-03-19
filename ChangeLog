@@ -1,4 +1,4 @@
-Changes between 1.6.8 and the master branch
+Changes between 1.6.9 and the master branch
 
 	License and copyright changes:
 	- Copyright SWITCH
@@ -6,7 +6,8 @@ Changes between 1.6.8 and the master branch
 
 	Enhancements:
 	- Support the use of OpenSSL version 1.1 series (RADSECPROXY-66).
-	- Reload TLS certificate CRLs on SIGHUP
+	- Reload TLS certificate CRLs on SIGHUP (RADSECPROXY-78).
+	- Make use of SO_KEEPALIVE for tcp sockets (RADSECPROXY-12).
 
 	Misc:
 	- libnettle is now an unconditional dependency.
@@ -14,7 +15,6 @@ Changes between 1.6.8 and the master branch
 	- Experimental code for dynamic discovery has been removed. Be
 	aware that use of the DynamicLookupCommand configuration option
 	still enables code known to be buggy.
-	- Use a listen(2) backlog of 128 (RADSECPROXY-72).
 	- Replace several server status bits with a single state enum.
 	(RADSECPROXY-71)
 
@@ -22,15 +22,22 @@ Changes between 1.6.8 and the master branch
 	- Detect the presence of docbook2x-man correctly.
 	- Make clang less unhappy.
 	- Don't use a smaller pthread stack size than what's allowed.
-	- Don't follow NULL the pointer at debug level 5 (RADSECPROXY-68).
 	- Avoid a deadlock situation with dynamic servers (RADSECPROXY-73).
-	- Completely reload CAs and CRLs with cacheExpiry (RADSECPROXY-50).
-	- Tie Access-Request log lines to response log lines (RADSECPROXY-60).
-	- Take lock on realm refcount before updating it (RADSECPROXY-77).
-	- Fix a couple of memory leaks and NULL ptr derefs in error cases.
 	- Don't forget about good dynamically discovered (TLS) connections
 	(RADSECPROXY-69).
 	- Fix refcounting in error cases when loading configuration (RADSECPROXY-42)
+	- Fix potential crash when rewriting malformed vendor attributes.
+
+2017-08-02 1.6.9
+		Misc:
+		- Use a listen(2) backlog of 128 (RADSECPROXY-72).
+
+		Bug fixes:
+		- Don't follow NULL the pointer at debug level 5 (RADSECPROXY-68).
+		- Completely reload CAs and CRLs with cacheExpiry (RADSECPROXY-50).
+		- Tie Access-Request log lines to response log lines (RADSECPROXY-60).
+		- Fix a couple of memory leaks and NULL ptr derefs in error cases.
+		- Take lock on realm refcount before updating it (RADSECPROXY-77).
 
 2016-09-21 1.6.8
 	Bug fixes:
