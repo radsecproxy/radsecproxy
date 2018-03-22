@@ -3161,6 +3161,7 @@ void getmainconfig(const char *configfile) {
 	    "FTicksMAC", CONF_STR, &fticks_mac_str,
 	    "FTicksKey", CONF_STR, &fticks_key_str,
 	    "FTicksSyslogFacility", CONF_STR, &options.ftickssyslogfacility,
+        "FTicksPrefix", CONF_STR, &options.fticksprefix,
             "IPv4Only", CONF_BLN, &options.ipv4only,
             "IPv6Only", CONF_BLN, &options.ipv6only,
 	    NULL
@@ -3180,6 +3181,8 @@ void getmainconfig(const char *configfile) {
     if (!setttlattr(&options, DEFAULT_TTL_ATTR))
     	debugx(1, DBG_ERR, "Failed to set TTLAttribute, exiting");
 
+    if (!options.fticksprefix)
+        options.fticksprefix = DEFAULT_FTICKS_PREFIX;
     fticks_configure(&options, &fticks_reporting_str, &fticks_mac_str,
 		     &fticks_key_str);
 
