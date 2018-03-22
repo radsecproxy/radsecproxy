@@ -139,15 +139,15 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
         if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
             continue;
 
-         pthread_mutex_lock(&server->conf->tlsconf->lock);
-         if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))){
-             pthread_mutex_unlock(&server->conf->tlsconf->lock);
-             continue;
-         }
+        pthread_mutex_lock(&server->conf->tlsconf->lock);
+        if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))){
+            pthread_mutex_unlock(&server->conf->tlsconf->lock);
+            continue;
+        }
 
-         server->ssl = SSL_new(ctx);
-         pthread_mutex_unlock(&server->conf->tlsconf->lock);
-         if (!server->ssl)
+        server->ssl = SSL_new(ctx);
+        pthread_mutex_unlock(&server->conf->tlsconf->lock);
+        if (!server->ssl)
             continue;
 
         SSL_set_fd(server->ssl, server->sock);
@@ -179,6 +179,7 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
     int s, ndesc, cnt, len;
     struct pollfd fds[1];
     unsigned long error;
+    uint8_t want_write = 0;
 
     if (lock)
         pthread_mutex_lock(lock);
@@ -198,6 +199,10 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
 
             fds[0].fd = s;
             fds[0].events = POLLIN;
+            if (want_write) {
+                fds[0].events |= POLLOUT;
+                want_write = 0;
+            }
             ndesc = poll(fds, 1, timeout ? timeout * 1000 : -1);
             if (ndesc < 1)
                 return ndesc;
@@ -211,8 +216,9 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
         cnt = SSL_read(ssl, buf + len, num - len);
         if (cnt <= 0) {
             switch (SSL_get_error(ssl, cnt)) {
-                case SSL_ERROR_WANT_READ:
                 case SSL_ERROR_WANT_WRITE:
+                    want_write = 1;
+                case SSL_ERROR_WANT_READ:
                     cnt = 0;
                     continue;
                 case SSL_ERROR_ZERO_RETURN:
@@ -239,7 +245,6 @@ unsigned char *radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock) {
     int cnt, len;
     unsigned char buf[4], *rad;
 
-    for (;;) {
 	cnt = sslreadtimeout(ssl, buf, 4, timeout, lock);
 	if (cnt < 1) {
 	    debug(DBG_DBG, cnt ? "radtlsget: connection lost" : "radtlsget: timeout");
@@ -247,14 +252,14 @@ unsigned char *radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock) {
 	}
 
 	len = RADLEN(buf);
-	if (len < 4) {
-	    debug(DBG_ERR, "radtlsget: length too small");
-	    continue;
+	if (len < 20) {
+	    debug(DBG_ERR, "radtlsget: length too small, malformed packet! closing conneciton!");
+        return NULL;
 	}
 	rad = malloc(len);
 	if (!rad) {
 	    debug(DBG_ERR, "radtlsget: malloc failed");
-	    continue;
+	    return NULL;
 	}
 	memcpy(rad, buf, 4);
 
@@ -265,13 +270,6 @@ unsigned char *radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock) {
 	    return NULL;
 	}
 
-	if (len >= 20)
-	    break;
-
-	free(rad);
-	debug(DBG_WARN, "radtlsget: packet smaller than minimum radius size");
-    }
-
     debug(DBG_DBG, "radtlsget: got %d bytes", len);
     return rad;
 }
@@ -280,6 +278,11 @@ int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
     int ret;
     unsigned long error;
     struct pollfd fds[1];
+
+    if (!buf || !num) {
+            debug(DBG_ERR, "dosslwrite: was called with empty buffer!");
+            return -1;
+    }
 
     if(!may_block) {
         fds[0].fd = SSL_get_fd(ssl);
