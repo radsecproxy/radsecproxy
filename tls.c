@@ -176,7 +176,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 /* timeout in seconds, 0 means no timeout (blocking), returns when num bytes have been read, or timeout */
 /* returns 0 on timeout, -1 on error and num if ok */
 int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock) {
-    int s, ndesc, cnt, len;
+    int s, ndesc, cnt = 0, len;
     struct pollfd fds[1];
     unsigned long error;
     uint8_t want_write = 0;

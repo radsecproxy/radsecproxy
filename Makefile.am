@@ -60,7 +60,7 @@ EXTRA_DIST = \
 
 ####################
 radsecproxy.conf.5: $(srcdir)/radsecproxy.conf.5.xml
-	docbook2x-man $<
+	$(DOCBOOK2X_MAN) $<
 
 html: radsecproxy.html radsecproxy-hash.html radsecproxy.conf.html
 
