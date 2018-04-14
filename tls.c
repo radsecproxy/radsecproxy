@@ -356,12 +356,15 @@ void *tlsclientrd(void *arg) {
 	}
     }
     debug(DBG_INFO, "tlsclientrd: exiting for %s", server->conf->name);
+    pthread_mutex_lock(&server->lock);
+    server->state = RSP_SERVER_STATE_FAILING;
     SSL_shutdown(server->ssl);
     shutdown(server->sock, SHUT_RDWR);
     close(server->sock);
 
     /* Wake up clientwr(). */
     server->clientrdgone = 1;
+    pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
