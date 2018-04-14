@@ -377,6 +377,8 @@ void tlsreloadcrls() {
     struct hash_entry *entry;
     struct timeval now;
 
+    debug (DBG_NOTICE, "reloading CRLs");
+
     gettimeofday(&now, NULL);
 
     for (entry = hash_first(tlsconfs); entry; entry = hash_next(entry)) {

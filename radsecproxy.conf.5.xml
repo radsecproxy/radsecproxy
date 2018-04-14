@@ -186,6 +186,47 @@ blocktype name {
 	  </para>
 		</listitem>
 	  </varlistentry>
+	  <varlistentry>
+		<term><literal>LogFullUsername</literal></term>
+		<listitem>
+	  <para>
+	    This can be set to <literal>off</literal> to only log the
+	    realm in Access-Accept/Reject log messages (for privacy).
+	  </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+        <term><literal>LogMAC</literal></term>
+        <listitem>
+	  <para>
+	    The LogMAC option can be used to control if and how
+	    Calling-Station-Id (the users Ethernet MAC address) is
+	    being logged.  It can be set to one of
+	    <literal>Static</literal>, <literal>Original</literal>,
+	    <literal>VendorHashed</literal>,
+	    <literal>VendorKeyHashed</literal>,
+	    <literal>FullyHashed</literal> or
+	    <literal>FullyKeyHashed</literal>.
+	    The default value for LogMAC is <literal>Original</literal>.
+	</para>
+	  <para>
+	    See <literal>radsecproxy.conf-example</literal> for details.
+	  </para>
+	</listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term><literal>LogKey</literal></term>
+        <listitem>
+	  <para>
+	    The LogKey option is used to specify the key to use
+	    when producing HMAC's as an effect of specifying
+	    VendorKeyHashed or FullyKeyHashed for the LogMAC
+	    option.
+	  </para>
+	</listitem>
+      </varlistentry>
+
 
       <varlistentry>
         <term><literal>FTicksReporting</literal></term>
@@ -210,29 +251,16 @@ blocktype name {
         <term><literal>FTicksMAC</literal></term>
         <listitem>
 	  <para>
-	    The FTicksMAC option can be used to control if and how
-	    Calling-Station-Id (the users Ethernet MAC address) is
-	    being logged.  It can be set to one of
-	    <literal>Static</literal>, <literal>Original</literal>,
-	    <literal>VendorHashed</literal>,
-	    <literal>VendorKeyHashed</literal>,
-	    <literal>FullyHashed</literal> or
-	    <literal>FullyKeyHashed</literal>.
-	  </para>
-	  <para>
-	    The default value for FTicksMAC is
-	    <literal>VendorKeyHashed</literal>.  This means that
-	    FTicksKey has to be set.
-	  <para>
+	    The FTicksMAC option has the same function as LogMAC for FTicks.
+		The default for FTicksMAC is <literal>VendorKeyHashed</literal> which
+	    needs FTicksKey to be set.
+	</para>
+	<para>
 	    Before chosing any of <literal>Original</literal>,
 	    <literal>FullyHashed</literal> or
 	    <literal>VendorHashed</literal>, consider the implications
 	    for user privacy when MAC addresses are collected.  How
 	    will the logs be stored, transferred and accessed?
-	  </para>
-	  </para>
-	  <para>
-	    See <literal>radsecproxy.conf-example</literal> for details.
 	  </para>
 	</listitem>
       </varlistentry>
@@ -241,10 +269,7 @@ blocktype name {
         <term><literal>FTicksKey</literal></term>
         <listitem>
 	  <para>
-	    The FTicksKey option is used to specify the key to use
-	    when producing HMAC's as an effect of specifying
-	    VendorKeyHashed or FullyKeyHashed for the FTicksMAC
-	    option.
+	    The FTicksKey option has the same function as LogKey for Fticks.
 	  </para>
 	</listitem>
       </varlistentry>

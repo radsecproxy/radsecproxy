@@ -69,6 +69,7 @@
 #include "tls.h"
 #include "dtls.h"
 #include "fticks.h"
+#include "fticks_hashmac.h"
 
 static struct options options;
 static struct list *clconfs, *srvconfs;
@@ -1409,7 +1410,7 @@ int radsrv(struct request *rq) {
     rq->buf = NULL;
 
     if (!msg) {
-	debug(DBG_INFO, "radsrv: message validation failed, ignoring packet");
+	debug(DBG_NOTICE, "radsrv: ignoring request from %s (%s), validation failed.", from->conf->name, addr2string(from->addr));
 	freerq(rq);
 	return 0;
     }
@@ -1568,7 +1569,7 @@ void replyh(struct server *server, unsigned char *buf) {
     struct rqout *rqout;
     int sublen, ttlres;
     unsigned char *subattrs;
-    uint8_t *username, *stationid, *replymsg;
+    uint8_t *username, *logusername, *stationid, *replymsg, *logstationid;
     struct radmsg *msg = NULL;
     struct tlv *attr;
     struct list_node *node;
@@ -1591,7 +1592,7 @@ void replyh(struct server *server, unsigned char *buf) {
     free(buf);
     buf = NULL;
     if (!msg) {
-        debug(DBG_INFO, "replyh: message validation failed, ignoring packet");
+        debug(DBG_NOTICE, "replyh: ignoring message from server %s, validation failed", server->conf->name);
 	goto errunlock;
     }
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge
@@ -1651,38 +1652,62 @@ void replyh(struct server *server, unsigned char *buf) {
     if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response) {
 	username = radattr2ascii(radmsg_gettype(rqout->rq->msg, RAD_Attr_User_Name));
 	if (username) {
+        if (options.logfullusername) {
+            logusername = username;
+        } else {
+            logusername = (uint8_t *)strchr((char *)username, '@');
+        }
 	    stationid = radattr2ascii(radmsg_gettype(rqout->rq->msg, RAD_Attr_Calling_Station_Id));
 	    replymsg = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Reply_Message));
-	    if (stationid) {
-		if (replymsg) {
-		    debug(DBG_NOTICE,
-			  "%s for user %s stationid %s from %s (%s) to %s (%s)",
-			  radmsgtype2string(msg->code), username, stationid,
-			  server->conf->name, replymsg, from->conf->name,
-			  addr2string(from->addr));
-		    free(replymsg);
-		} else
-		    debug(DBG_NOTICE,
-			  "%s for user %s stationid %s from %s to %s (%s)",
-			  radmsgtype2string(msg->code), username, stationid,
-			  server->conf->name, from->conf->name,
-			  addr2string(from->addr));
-		free(stationid);
-	    } else {
-		if (replymsg) {
-		    debug(DBG_NOTICE, "%s for user %s from %s (%s) to %s (%s)",
-			  radmsgtype2string(msg->code), username,
-			  server->conf->name, replymsg, from->conf->name,
-			  addr2string(from->addr));
-		    free(replymsg);
-		} else
-		    debug(DBG_NOTICE, "%s for user %s from %s to %s (%s)",
-			  radmsgtype2string(msg->code), username,
-			  server->conf->name, from->conf->name,
-			  addr2string(from->addr));
-	    }
-	    free(username);
-	}
+	    if (stationid && options.log_mac != RSP_MAC_STATIC) {
+            logstationid = calloc(64, sizeof(char));
+            switch (options.log_mac) {
+                case RSP_MAC_VENDOR_HASHED:
+                case RSP_MAC_VENDOR_KEY_HASHED:
+                    memcpy(logstationid, stationid, 9);
+                    fticks_hashmac(stationid, options.log_mac == RSP_MAC_VENDOR_KEY_HASHED ?
+                        options.log_key : NULL, 32, logstationid+9);
+                    break;
+                case RSP_MAC_FULLY_HASHED:
+                case RSP_MAC_FULLY_KEY_HASHED:
+                    fticks_hashmac(stationid, options.log_mac == RSP_MAC_FULLY_KEY_HASHED ?
+                        options.log_key : NULL, 32, logstationid);
+                    break;
+                case RSP_MAC_ORIGINAL:
+                default:
+                    strncpy((char *)logstationid, (char *)stationid, 64-1);
+            }
+            if (replymsg) {
+                debug(DBG_NOTICE, "%s for user %s stationid %s from %s (%s) to %s (%s)",
+                    radmsgtype2string(msg->code), logusername, logstationid,
+                    server->conf->name, replymsg, from->conf->name,
+                    addr2string(from->addr));
+                free(replymsg);
+            } else {
+                debug(DBG_NOTICE, "%s for user %s stationid %s from %s to %s (%s)",
+                    radmsgtype2string(msg->code), logusername, logstationid,
+                    server->conf->name, from->conf->name,
+                    addr2string(from->addr));
+            }
+            free(stationid);
+            if (options.log_mac != RSP_MAC_STATIC &&
+                options.log_mac != RSP_MAC_ORIGINAL)
+                free(logstationid);
+        } else {
+            if (replymsg) {
+                debug(DBG_NOTICE, "%s for user %s from %s (%s) to %s (%s)",
+                    radmsgtype2string(msg->code), logusername,
+                    server->conf->name, replymsg, from->conf->name,
+                    addr2string(from->addr));
+                free(replymsg);
+            } else
+                debug(DBG_NOTICE, "%s for user %s from %s to %s (%s)",
+                    radmsgtype2string(msg->code), logusername,
+                    server->conf->name, from->conf->name,
+                    addr2string(from->addr));
+            }
+            free(username);
+        }
     }
 
     if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)
@@ -3100,6 +3125,8 @@ void getmainconfig(const char *configfile) {
     struct gconffile *cfs;
     char **listenargs[RAD_PROTOCOUNT];
     char *sourcearg[RAD_PROTOCOUNT];
+    char *log_mac_str = NULL;
+    char *log_key_str = NULL;
     uint8_t *fticks_reporting_str = NULL;
     uint8_t *fticks_mac_str = NULL;
     uint8_t *fticks_key_str = NULL;
@@ -3109,6 +3136,7 @@ void getmainconfig(const char *configfile) {
     memset(&options, 0, sizeof(options));
     memset(&listenargs, 0, sizeof(listenargs));
     memset(&sourcearg, 0, sizeof(sourcearg));
+    options.logfullusername = 1;
 
     clconfs = list_create();
     if (!clconfs)
@@ -3150,6 +3178,9 @@ void getmainconfig(const char *configfile) {
 	    "LogLevel", CONF_LINT, &loglevel,
 	    "LogDestination", CONF_STR, &options.logdestination,
         "LogThreadId", CONF_BLN, &options.logtid,
+        "LogMAC", CONF_STR, &log_mac_str,
+        "LogKey", CONF_STR, &log_key_str,
+        "LogFullUsername", CONF_BLN, &options.logfullusername,
 	    "LoopPrevention", CONF_BLN, &options.loopprevention,
 	    "Client", CONF_CBK, confclient_cb, NULL,
 	    "Server", CONF_CBK, confserver_cb, NULL,
@@ -3174,6 +3205,32 @@ void getmainconfig(const char *configfile) {
 	    debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %d, must be 1, 2, 3, 4 or 5", configfile, loglevel);
 	options.loglevel = (uint8_t)loglevel;
     }
+    if (log_mac_str != NULL) {
+        if (strcasecmp(log_mac_str, "Static") == 0)
+            options.log_mac = RSP_MAC_STATIC;
+        else if (strcasecmp(log_mac_str, "Original") == 0)
+            options.log_mac = RSP_MAC_ORIGINAL;
+        else if (strcasecmp(log_mac_str, "VendorHashed") == 0)
+            options.log_mac = RSP_MAC_VENDOR_HASHED;
+        else if (strcasecmp(log_mac_str, "VendorKeyHashed") == 0)
+            options.log_mac = RSP_MAC_VENDOR_KEY_HASHED;
+        else if (strcasecmp(log_mac_str, "FullyHashed") == 0)
+            options.log_mac = RSP_MAC_FULLY_HASHED;
+        else if (strcasecmp(log_mac_str, "FullyKeyHashed") == 0)
+            options.log_mac = RSP_MAC_FULLY_KEY_HASHED;
+        else {
+            debugx(1, DBG_ERR, "config error: invalid LogMAC value: %s", log_mac_str);
+        }
+        if (log_key_str != NULL) {
+            options.log_key = (uint8_t *)log_key_str;
+        } else if ((options.log_mac == RSP_MAC_VENDOR_KEY_HASHED
+                 || options.log_mac == RSP_MAC_FULLY_KEY_HASHED)) {
+            debugx(1, DBG_ERR, "config error: LogMAC %s requires LogKey to be set.", log_mac_str);
+        }
+    } else {
+        options.log_mac = RSP_MAC_ORIGINAL;
+    }
+
     if (addttl != LONG_MIN) {
 	if (addttl < 1 || addttl > 255)
 	    debugx(1, DBG_ERR, "error in %s, value of option addTTL is %d, must be 1-255", configfile, addttl);
@@ -3306,6 +3363,8 @@ int radsecproxy_main(int argc, char **argv) {
 
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
+
+    debug (DBG_NOTICE, "radsecproxy %s starting.", PACKAGE_VERSION);
 
     if (pthread_attr_init(&pthread_attr))
 	debugx(1, DBG_ERR, "pthread_attr_init failed");

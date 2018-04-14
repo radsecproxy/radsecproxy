@@ -50,13 +50,13 @@ enum rsp_fticks_reporting_type {
     RSP_FTICKS_REPORTING_FULL
 };
 
-enum rsp_fticks_mac_type {
-    RSP_FTICKS_MAC_STATIC = 0,
-    RSP_FTICKS_MAC_ORIGINAL,
-    RSP_FTICKS_MAC_VENDOR_HASHED,
-    RSP_FTICKS_MAC_VENDOR_KEY_HASHED, /* Default.  */
-    RSP_FTICKS_MAC_FULLY_HASHED,
-    RSP_FTICKS_MAC_FULLY_KEY_HASHED
+enum rsp_mac_type {
+    RSP_MAC_STATIC = 0,
+    RSP_MAC_ORIGINAL,
+    RSP_MAC_VENDOR_HASHED,
+    RSP_MAC_VENDOR_KEY_HASHED, /* Default.  */
+    RSP_MAC_FULLY_HASHED,
+    RSP_MAC_FULLY_KEY_HASHED
 };
 
 enum rsp_server_state {
@@ -76,9 +76,12 @@ struct options {
     uint8_t addttl;
     uint8_t loglevel;
 	uint8_t logtid;
+	uint8_t logfullusername;
     uint8_t loopprevention;
+	enum rsp_mac_type log_mac;
+	uint8_t *log_key;
     enum rsp_fticks_reporting_type fticks_reporting;
-    enum rsp_fticks_mac_type fticks_mac;
+    enum rsp_mac_type fticks_mac;
     uint8_t *fticks_key;
     uint8_t ipv4only;
     uint8_t ipv6only;

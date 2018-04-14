@@ -10,6 +10,7 @@ Changes between 1.6.9 and the master branch
 	- Reload TLS certificate CRLs on SIGHUP (RADSECPROXY-78).
 	- Make use of SO_KEEPALIVE for tcp sockets (RADSECPROXY-12).
 	- Optionally include the thread-id in log messages
+	- Allow hashing MAC addresses in the log (same as for F-Ticks)
 	- radsecproxy-hash: allow MAC addresses to be passed on command line
 
 	Misc:

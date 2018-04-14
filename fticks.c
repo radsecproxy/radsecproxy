@@ -19,7 +19,7 @@ fticks_configure(struct options *options,
 
     /* Set defaults.  */
     options->fticks_reporting = RSP_FTICKS_REPORTING_NONE;
-    options->fticks_mac = RSP_FTICKS_MAC_VENDOR_KEY_HASHED;
+    options->fticks_mac = RSP_MAC_VENDOR_KEY_HASHED;
 
     if (reporting != NULL) {
 	if (strcasecmp(reporting, "None") == 0)
@@ -38,17 +38,17 @@ fticks_configure(struct options *options,
 
     if (mac != NULL) {
 	if (strcasecmp(mac, "Static") == 0)
-	    options->fticks_mac = RSP_FTICKS_MAC_STATIC;
+	    options->fticks_mac = RSP_MAC_STATIC;
 	else if (strcasecmp(mac, "Original") == 0)
-	    options->fticks_mac = RSP_FTICKS_MAC_ORIGINAL;
+	    options->fticks_mac = RSP_MAC_ORIGINAL;
 	else if (strcasecmp(mac, "VendorHashed") == 0)
-	    options->fticks_mac = RSP_FTICKS_MAC_VENDOR_HASHED;
+	    options->fticks_mac = RSP_MAC_VENDOR_HASHED;
 	else if (strcasecmp(mac, "VendorKeyHashed") == 0)
-	    options->fticks_mac = RSP_FTICKS_MAC_VENDOR_KEY_HASHED;
+	    options->fticks_mac = RSP_MAC_VENDOR_KEY_HASHED;
 	else if (strcasecmp(mac, "FullyHashed") == 0)
-	    options->fticks_mac = RSP_FTICKS_MAC_FULLY_HASHED;
+	    options->fticks_mac = RSP_MAC_FULLY_HASHED;
 	else if (strcasecmp(mac, "FullyKeyHashed") == 0)
-	    options->fticks_mac = RSP_FTICKS_MAC_FULLY_KEY_HASHED;
+	    options->fticks_mac = RSP_MAC_FULLY_KEY_HASHED;
 	else {
 	    debugx(1, DBG_ERR,
 		   "config error: invalid FTicksMAC value: %s", mac);
@@ -58,13 +58,13 @@ fticks_configure(struct options *options,
 
     if (*keyp != NULL) {
 	options->fticks_key = *keyp;
-	if (options->fticks_mac != RSP_FTICKS_MAC_VENDOR_KEY_HASHED
-	    && options->fticks_mac != RSP_FTICKS_MAC_FULLY_KEY_HASHED)
+	if (options->fticks_mac != RSP_MAC_VENDOR_KEY_HASHED
+	    && options->fticks_mac != RSP_MAC_FULLY_KEY_HASHED)
 	    debugx(1, DBG_WARN, "config warning: FTicksKey not used");
     }
     else if (options->fticks_reporting != RSP_FTICKS_REPORTING_NONE
-	     && (options->fticks_mac == RSP_FTICKS_MAC_VENDOR_KEY_HASHED
-		 || options->fticks_mac == RSP_FTICKS_MAC_FULLY_KEY_HASHED)) {
+	     && (options->fticks_mac == RSP_MAC_VENDOR_KEY_HASHED
+		 || options->fticks_mac == RSP_MAC_FULLY_KEY_HASHED)) {
 	debugx(1, DBG_ERR,
 	       "config error: FTicksMAC values VendorKeyHashed and "
 	       "FullyKeyHashed require an FTicksKey");
@@ -117,7 +117,7 @@ fticks_log(const struct options *options,
     }
 
     memset(macout, 0, sizeof(macout));
-    if (options->fticks_mac == RSP_FTICKS_MAC_STATIC) {
+    if (options->fticks_mac == RSP_MAC_STATIC) {
 	strncpy((char *) macout, "undisclosed", sizeof(macout) - 1);
     }
     else {
@@ -126,14 +126,14 @@ fticks_log(const struct options *options,
 	if (macin) {
 	    switch (options->fticks_mac)
 	    {
-	    case RSP_FTICKS_MAC_ORIGINAL:
+	    case RSP_MAC_ORIGINAL:
 		memcpy(macout, macin, sizeof(macout));
 		break;
-	    case RSP_FTICKS_MAC_VENDOR_HASHED:
+	    case RSP_MAC_VENDOR_HASHED:
 		memcpy(macout, macin, 9);
 		fticks_hashmac(macin, NULL, sizeof(macout) - 9, macout + 9);
 		break;
-	    case RSP_FTICKS_MAC_VENDOR_KEY_HASHED:
+	    case RSP_MAC_VENDOR_KEY_HASHED:
 		memcpy(macout, macin, 9);
 		/* We are hashing the first nine octets too for easier
 		 * correlation between vendor-key-hashed and
@@ -144,10 +144,10 @@ fticks_log(const struct options *options,
 		fticks_hashmac(macin, options->fticks_key,
 			       sizeof(macout) - 9, macout + 9);
 		break;
-	    case RSP_FTICKS_MAC_FULLY_HASHED:
+	    case RSP_MAC_FULLY_HASHED:
 		fticks_hashmac(macin, NULL, sizeof(macout), macout);
 		break;
-	    case RSP_FTICKS_MAC_FULLY_KEY_HASHED:
+	    case RSP_MAC_FULLY_KEY_HASHED:
 		fticks_hashmac(macin, options->fticks_key, sizeof(macout),
 			       macout);
 		break;

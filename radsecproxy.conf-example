@@ -38,32 +38,34 @@
 # its matching client configuration block has to contain the
 # fticksVISCOUNTRY option.
 
-# You can optionally specify FTicksMAC in order to determine if and
+# You can optionally specify Log MAC and FTicksMAC in order to determine if and
 # how Calling-Station-Id (users Ethernet MAC address) is being logged.
 #   Static          -- Use a static string as a placeholder for
-#                      Calling-Station-Id.
-#   Original        -- Log Calling-Station-Id as-is.
+#                      Calling-Station-Id in F-Ticks, of omit it in normal log.
+#   Original        -- Log Calling-Station-Id as-is. This is the default for log.
 #   VendorHashed    -- Keep first three segments as-is, hash the rest.
-#   VendorKeyHashed -- Like VendorHashed but salt with F-Ticks-Key.    This
-#   		       is the default.
+#   VendorKeyHashed -- Like VendorHashed but salt with F-Ticks-Key or Log-key
+#                      respectively. This is the default for F-Ticks.
 #   FullyHashed     -- Hash the entire string.
 #   FullyKeyHashed  -- Like FullyHashed but salt with F-Ticks-Key.
 
-# In order to use FTicksMAC with one of VendorKeyHashed or
-# FullyKeyHashed, specify a key with FTicksKey.
-# FTicksKey <key>
+# In order to use LogMAC or FTicksMAC with one of VendorKeyHashed or
+# FullyKeyHashed, specify a key with LogKey or FTicksKey.
+#LogKey <key>
+#FTicksKey <key>
 
-# Default F-Ticks configuration:
+# Default Log andF-Ticks configuration:
+#LogMAC Original
 #FTicksReporting None
 #FTicksMAC Static
 
-# You can optionally specify FTicksSyslogFacility to use a dedicated 
+# You can optionally specify FTicksSyslogFacility to use a dedicated
 # syslog facility for F-Ticks messages. This allows for easier filtering
 # of F-Ticks messages.
 # F-Ticks messages are always logged using the log level LOG_DEBUG.
 # Note that specifying a file (using the file:/// prefix) is not supported.
 #FTicksSyslogFacility	log_local1
-#FTicksSyslogFacility	x-syslog:///log_local1 
+#FTicksSyslogFacility	x-syslog:///log_local1
 
 # There is an option for doing some simple loop prevention.  Note that
 # the LoopPrevention directive can be used in server blocks too,
@@ -149,7 +151,7 @@ client 127.0.0.1 {
 #	Might do rewriting of incoming messages using rewrite block example
 #	rewriteIn example
 #	Can also do rewriting of outgoing messages
-#	rewriteOut example	
+#	rewriteOut example
 }
 client 127.0.0.1 {
 	type	tcp
@@ -170,7 +172,7 @@ server 127.0.0.1 {
 #	Might do rewriting of incoming messages using rewrite block example
 #	rewriteIn example
 #	Can also do rewriting of outgoing messages
-#	rewriteOut example	
+#	rewriteOut example
 #       Might override loop prevention here too:
 #       LoopPrevention off
 }
