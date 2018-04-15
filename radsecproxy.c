@@ -170,11 +170,11 @@ void removequeue(struct gqueue *q) {
     struct list_node *entry;
 
     if (!q)
-	return;
+        return;
     pthread_mutex_lock(&q->mutex);
     for (entry = list_first(q->entries); entry; entry = list_next(entry))
-	freerq((struct request *)entry);
-    list_destroy(q->entries);
+        freerq((struct request *)entry->data);
+            list_free(q->entries);
     pthread_cond_destroy(&q->cond);
     pthread_mutex_unlock(&q->mutex);
     pthread_mutex_destroy(&q->mutex);

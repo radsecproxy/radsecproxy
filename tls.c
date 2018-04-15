@@ -396,6 +396,8 @@ void *tlsserverwr(void *arg) {
         pthread_mutex_lock(&client->lock);
         if (!client->ssl) {
             /* ssl might have changed while waiting */
+            if (reply)
+                freerq(reply);
             pthread_mutex_unlock(&client->lock);
             debug(DBG_DBG, "tlsserverwr: exiting as requested");
             pthread_exit(NULL);
