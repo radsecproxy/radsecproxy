@@ -22,6 +22,7 @@
 #include <pthread.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <assert.h>
 #include "radsecproxy.h"
 #include "hostport.h"
 
@@ -138,6 +139,8 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 
         if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
             continue;
+        if (server->conf->keepalive)
+            enable_keepalive(server->sock);
 
         pthread_mutex_lock(&server->conf->tlsconf->lock);
         if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))){
@@ -180,22 +183,19 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
     struct pollfd fds[1];
     unsigned long error;
     uint8_t want_write = 0;
+    assert(lock);
 
-    if (lock)
-        pthread_mutex_lock(lock);
-
+    pthread_mutex_lock(lock);
     s = SSL_get_fd(ssl);
     if (s < 0){
-        if (lock)
-            pthread_mutex_unlock(lock);
+        pthread_mutex_unlock(lock);
         return -1;
     }
 
     /* make socket non-blocking? */
     for (len = 0; len < num; len += cnt) {
         if (SSL_pending(ssl) == 0) {
-            if (lock)
-                pthread_mutex_unlock(lock);
+            pthread_mutex_unlock(lock);
 
             fds[0].fd = s;
             fds[0].events = POLLIN;
@@ -206,11 +206,14 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
             ndesc = poll(fds, 1, timeout ? timeout * 1000 : -1);
             if (ndesc < 1)
                 return ndesc;
-            if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL))
-                return -1;
-
-            if (lock)
+            if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
                 pthread_mutex_lock(lock);
+                SSL_shutdown(ssl);
+                pthread_mutex_unlock(lock);
+                return -1;
+            }
+
+            pthread_mutex_lock(lock);
         }
 
         cnt = SSL_read(ssl, buf + len, num - len);
@@ -222,21 +225,18 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
                     cnt = 0;
                     continue;
                 case SSL_ERROR_ZERO_RETURN:
-                    /* remote end sent close_notify, send one back */
                     debug(DBG_DBG, "sslreadtimeout: got ssl shutdown");
-                    SSL_shutdown(ssl);
                 default:
                     while ((error = ERR_get_error()))
                         debug(DBG_ERR, "sslreadtimeout: SSL: %s", ERR_error_string(error, NULL));
-
-                    if (lock)
-                        pthread_mutex_unlock(lock);
+                    /* ensure ssl connection is shutdown */
+                    SSL_shutdown(ssl);
+                    pthread_mutex_unlock(lock);
                     return -1;
             }
         }
     }
-    if (lock)
-        pthread_mutex_unlock(lock);
+    pthread_mutex_unlock(lock);
     return cnt;
 }
 
@@ -311,8 +311,16 @@ int clientradputtls(struct server *server, unsigned char *rad) {
     int cnt;
     size_t len;
     struct clsrvconf *conf = server->conf;
+    struct timespec timeout;
 
-    pthread_mutex_lock(&server->lock);
+    timeout.tv_sec = 0;
+    timeout.tv_nsec = 1000000;
+
+    if (server->state != RSP_SERVER_STATE_CONNECTED)
+        return 0;
+
+    if (pthread_mutex_timedlock(&server->lock, &timeout))
+        return 0;
     if (server->state != RSP_SERVER_STATE_CONNECTED) {
         pthread_mutex_unlock(&server->lock);
         return 0;
@@ -337,13 +345,17 @@ void *tlsclientrd(void *arg) {
     for (;;) {
 	/* yes, lastconnecttry is really necessary */
 	lastconnecttry = server->lastconnecttry;
-	buf = radtlsget(server->ssl, server->dynamiclookuparg ? IDLE_TIMEOUT : 0, &server->lock);
+	buf = radtlsget(server->ssl, 10, &server->lock);
 	if (!buf) {
-	    if (server->dynamiclookuparg)
-		break;
-	    tlsconnect(server, &lastconnecttry, 0, "tlsclientrd");
-	    continue;
-	}
+        if (SSL_get_shutdown(server->ssl) || server->lostrqs) {
+            if (server->lostrqs)
+                debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
+            if (server->dynamiclookuparg)
+                break;
+            tlsconnect(server, &lastconnecttry, 0, "tlsclientrd");
+        }
+        continue;
+    }
 
 	replyh(server, buf);
 

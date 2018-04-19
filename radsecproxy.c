@@ -1790,6 +1790,7 @@ void *clientwr(void *arg) {
 	gettimeofday(&server->lastrcv, NULL);
 	gettimeofday(&laststatsrv, NULL);
     }
+    gettimeofday(&server->lastreply, NULL);
 
     if (conf->pdef->connecter) {
 	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
