@@ -287,9 +287,9 @@ int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
     if(!may_block) {
         fds[0].fd = SSL_get_fd(ssl);
         fds[0].events = POLLOUT;
-        if (!poll(fds, 1, 0)) {
-            debug(DBG_DBG, "dosslwrite: SSL not ready or buffer full; avoid blocking...");
-            return 0;
+        if (poll(fds, 1, 0) <= 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            debug(DBG_DBG, "dosslwrite: socket not ready or buffer full; avoid blocking...");
+            return -1;
         }
     }
 

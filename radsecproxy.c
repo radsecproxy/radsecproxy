@@ -1895,7 +1895,8 @@ void *clientwr(void *arg) {
 	    if (!timeout.tv_sec || rqout->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rqout->expiry.tv_sec;
 	    rqout->tries++;
-	    conf->pdef->clientradput(server, rqout->rq->buf);
+	    if (!conf->pdef->clientradput(server, rqout->rq->buf))
+            server->lostrqs++;
 	    pthread_mutex_unlock(rqout->lock);
 	}
 	if (conf->statusserver && server->state == RSP_SERVER_STATE_CONNECTED) {
