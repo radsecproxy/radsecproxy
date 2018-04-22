@@ -354,18 +354,18 @@ void *tlsclientrd(void *arg) {
                 break;
             tlsconnect(server, &lastconnecttry, 0, "tlsclientrd");
         }
+        if (server->dynamiclookuparg) {
+            gettimeofday(&now, NULL);
+            if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
+                debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
+                break;
+            }
+        }
         continue;
     }
 
 	replyh(server, buf);
 
-	if (server->dynamiclookuparg) {
-	    gettimeofday(&now, NULL);
-	    if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
-		debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
-		break;
-	    }
-	}
     }
     debug(DBG_INFO, "tlsclientrd: exiting for %s", server->conf->name);
     pthread_mutex_lock(&server->lock);
