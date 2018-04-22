@@ -2567,8 +2567,7 @@ int setttlattr(struct options *opts, char *defaultattr) {
 
 void freeclsrvconf(struct clsrvconf *conf) {
     assert(conf);
-    assert(conf->name);
-    debug(DBG_DBG, "%s: freeing %p (%s)", __func__, conf, conf->name);
+    debug(DBG_DBG, "%s: freeing %p (%s)", __func__, conf, conf->name ? conf->name : "incomplete");
     free(conf->name);
     if (conf->hostsrc)
 	freegconfmstr(conf->hostsrc);
