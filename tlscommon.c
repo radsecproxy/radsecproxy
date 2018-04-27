@@ -3,6 +3,8 @@
 /* See LICENSE for licensing information. */
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
+#define _GNU_SOURCE
+#include <stdio.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -455,7 +457,7 @@ static int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
 
 static int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *regex) {
     int loc, i, l, n, r = 0;
-    char *s, *v;
+    char *s, *v, *fail = NULL, *tmp;
     X509_EXTENSION *ex;
     STACK_OF(GENERAL_NAME) *alt;
     GENERAL_NAME *gn;
@@ -493,16 +495,24 @@ static int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *reg
 		debug(DBG_ERR, "malloc failed");
 		continue;
 	    }
-	    if (regexec(regex, s, 0, NULL, 0)) {
-		free(s);
-		continue;
+        debug(DBG_DBG, "subjectaltnameregex: matching %s", s);
+        if (regexec(regex, s, 0, NULL, 0)) {
+            tmp = fail;
+            asprintf(&fail, "%s%s%s", tmp ? tmp : "", tmp ? ", " : "", s);
+            free(tmp);
+            free(s);
+            continue;
 	    }
 	    free(s);
 	}
 	r = 1;
 	break;
     }
+    if (r!=1)
+        debug(DBG_WARN, "subjectaltnameregex: no matching Subject Alt Name %s found! (%s)",
+            type == GEN_DNS ? "DNS" : "URI", fail);
     GENERAL_NAMES_free(alt);
+    free(fail);
     return r;
 }
 
@@ -585,28 +595,34 @@ int certnamecheck(X509 *cert, struct list *hostports) {
 }
 
 int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
+    char *subject;
+    int ok = 1;
+
+    subject = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
+    debug(DBG_DBG, "verifyconfcert: verify certificate for host %s, subject %s", conf->name, subject);
     if (conf->certnamecheck) {
-	if (!certnamecheck(cert, conf->hostports)) {
-	    debug(DBG_WARN, "verifyconfcert: certificate name check failed");
-	    return 0;
-	}
-	debug(DBG_WARN, "verifyconfcert: certificate name check ok");
+        debug(DBG_DBG, "verifyconfcert: verify hostname");
+        if (!certnamecheck(cert, conf->hostports)) {
+            debug(DBG_DBG, "verifyconfcert: certificate name check failed for host %s", conf->name);
+            ok = 0;
+        }
     }
     if (conf->certcnregex) {
-	if (cnregexp(cert, NULL, conf->certcnregex) < 1) {
-	    debug(DBG_WARN, "verifyconfcert: CN not matching regex");
-	    return 0;
-	}
-	debug(DBG_DBG, "verifyconfcert: CN matching regex");
+        debug(DBG_DBG, "verifyconfcert: matching CN regex %s", conf->matchcertattr);
+        if (cnregexp(cert, NULL, conf->certcnregex) < 1) {
+            debug(DBG_WARN, "verifyconfcert: CN not matching regex for host %s (%s)", conf->name, subject);
+            ok = 0;
+        }
     }
     if (conf->certuriregex) {
-	if (subjectaltnameregexp(cert, GEN_URI, NULL, conf->certuriregex) < 1) {
-	    debug(DBG_WARN, "verifyconfcert: subjectaltname URI not matching regex");
-	    return 0;
-	}
-	debug(DBG_DBG, "verifyconfcert: subjectaltname URI matching regex");
+        debug(DBG_DBG, "verifyconfcert: matching subjectaltname URI regex %s", conf->matchcertattr);
+        if (subjectaltnameregexp(cert, GEN_URI, NULL, conf->certuriregex) < 1) {
+            debug(DBG_WARN, "verifyconfcert: subjectaltname URI not matching regex for host %s (%s)", conf->name, subject);
+            ok = 0;
+        }
     }
-    return 1;
+    free(subject);
+    return ok;
 }
 
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {

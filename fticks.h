@@ -8,7 +8,7 @@ int fticks_configure(struct options *options,
 void fticks_log(const struct options *options,
 		const struct client *client,
 		const struct radmsg *msg,
-		const struct rqout *rqout);
+		const struct request *rq);
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

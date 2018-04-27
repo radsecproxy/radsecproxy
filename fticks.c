@@ -87,7 +87,7 @@ void
 fticks_log(const struct options *options,
 	   const struct client *client,
 	   const struct radmsg *msg,
-	   const struct rqout *rqout)
+	   const struct request *rq)
 {
     uint8_t *username = NULL;
     uint8_t *realm = NULL;
@@ -95,7 +95,7 @@ fticks_log(const struct options *options,
     uint8_t *macin = NULL;
     uint8_t macout[2*32+1]; /* Room for ASCII representation of SHA256.  */
 
-    username = radattr2ascii(radmsg_gettype(rqout->rq->msg,
+    username = radattr2ascii(radmsg_gettype(rq->msg,
 					    RAD_Attr_User_Name));
     if (username != NULL) {
 	realm = (uint8_t *) strrchr((char *) username, '@');
@@ -121,7 +121,7 @@ fticks_log(const struct options *options,
 	strncpy((char *) macout, "undisclosed", sizeof(macout) - 1);
     }
     else {
-	macin = radattr2ascii(radmsg_gettype(rqout->rq->msg,
+	macin = radattr2ascii(radmsg_gettype(rq->msg,
 					     RAD_Attr_Calling_Station_Id));
 	if (macin) {
 	    switch (options->fticks_mac)

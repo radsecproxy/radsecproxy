@@ -1219,18 +1219,76 @@ uint8_t *radattr2ascii(struct tlv *attr) {
     return a;
 }
 
-void acclog(struct radmsg *msg, struct client *from) {
-    struct tlv *attr;
-    uint8_t *username;
+void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
+    uint8_t *username, *logusername, *stationid, *logstationid, *replymsg;
+    char *servername;
 
-    attr = radmsg_gettype(msg, RAD_Attr_User_Name);
-    if (attr && (username = radattr2ascii(attr))) {
-        debug(DBG_INFO, "acclog: %s (id %d) from client %s (%s) with username: %s", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr), username);
-        free(username);
-    } else {
-            debug(DBG_INFO, "acclog: %s (id %d) from client %s (%s) without username attribute", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr));
+    servername = server ? server->conf->name : "_self_";
+
+    if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response) {
+    username = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_User_Name));
+    if (username) {
+        if (options.logfullusername) {
+            logusername = username;
+        } else {
+            logusername = (uint8_t *)strchr((char *)username, '@');
+        }
+        stationid = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Calling_Station_Id));
+        replymsg = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Reply_Message));
+        if (stationid && options.log_mac != RSP_MAC_STATIC) {
+            logstationid = calloc(64, sizeof(char));
+            switch (options.log_mac) {
+                case RSP_MAC_VENDOR_HASHED:
+                case RSP_MAC_VENDOR_KEY_HASHED:
+                    memcpy(logstationid, stationid, 9);
+                    fticks_hashmac(stationid, options.log_mac == RSP_MAC_VENDOR_KEY_HASHED ?
+                        options.log_key : NULL, 32, logstationid+9);
+                    break;
+                case RSP_MAC_FULLY_HASHED:
+                case RSP_MAC_FULLY_KEY_HASHED:
+                    fticks_hashmac(stationid, options.log_mac == RSP_MAC_FULLY_KEY_HASHED ?
+                        options.log_key : NULL, 32, logstationid);
+                    break;
+                case RSP_MAC_ORIGINAL:
+                default:
+                    strncpy((char *)logstationid, (char *)stationid, 64-1);
+            }
+            if (replymsg) {
+                debug(DBG_NOTICE, "%s for user %s stationid %s from %s (%s) to %s (%s)",
+                    radmsgtype2string(msg->code), logusername, logstationid,
+                    servername, replymsg, rq->from->conf->name,
+                    addr2string(rq->from->addr));
+                free(replymsg);
+            } else {
+                debug(DBG_NOTICE, "%s for user %s stationid %s from %s to %s (%s)",
+                    radmsgtype2string(msg->code), logusername, logstationid,
+                    servername, rq->from->conf->name,
+                    addr2string(rq->from->addr));
+            }
+            free(stationid);
+            if (options.log_mac != RSP_MAC_STATIC &&
+                options.log_mac != RSP_MAC_ORIGINAL)
+                free(logstationid);
+            } else {
+                if (replymsg) {
+                    debug(DBG_NOTICE, "%s for user %s from %s (%s) to %s (%s)",
+                        radmsgtype2string(msg->code), logusername,
+                        servername, replymsg, rq->from->conf->name,
+                        addr2string(rq->from->addr));
+                    free(replymsg);
+                } else
+                    debug(DBG_NOTICE, "%s for user %s from %s to %s (%s)",
+                        radmsgtype2string(msg->code), logusername,
+                        servername, rq->from->conf->name,
+                        addr2string(rq->from->addr));
+            }
+            free(username);
+        } else {
+            debug(DBG_NOTICE, "%s (response to %s) from %s to %s (%s)", radmsgtype2string(msg->code),
+                radmsgtype2string(rq->msg->code), servername,
+                rq->from->conf->name, addr2string(rq->from->addr));
+        }
     }
-    debug(DBG_INFO, "acclog: sending %s (id %d) to %s (%s)", radmsgtype2string(RAD_Accounting_Response), msg->id, from->conf->name, addr2string(from->addr));
 }
 
 void respond(struct request *rq, uint8_t code, char *message,
@@ -1260,9 +1318,11 @@ void respond(struct request *rq, uint8_t code, char *message,
         }
     }
 
+    replylog(msg, NULL, rq);
+    debug(DBG_DBG, "respond: sending %s (id %d) to %s (%s)", radmsgtype2string(msg->code), msg->id, rq->from->conf->name, addr2string(rq->from->addr));
+
     radmsg_free(rq->msg);
     rq->msg = msg;
-    debug(DBG_DBG, "respond: sending %s to %s (%s)", radmsgtype2string(msg->code), rq->from->conf->name, addr2string(rq->from->addr));
     sendreply(newrqref(rq));
 }
 
@@ -1448,7 +1508,6 @@ int radsrv(struct request *rq) {
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
 	if (msg->code == RAD_Accounting_Request) {
-	    acclog(msg, from);
 	    respond(rq, RAD_Accounting_Response, NULL, 1);
 	} else
 	    debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
@@ -1477,7 +1536,6 @@ int radsrv(struct request *rq) {
 	    debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr), userascii);
 	    respond(rq, RAD_Access_Reject, realm->message, 1);
 	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
-	    acclog(msg, from);
 	    respond(rq, RAD_Accounting_Response, NULL, 1);
 	}
 	goto exit;
@@ -1569,7 +1627,6 @@ void replyh(struct server *server, unsigned char *buf) {
     struct rqout *rqout;
     int sublen, ttlres;
     unsigned char *subattrs;
-    uint8_t *username, *logusername, *stationid, *replymsg, *logstationid;
     struct radmsg *msg = NULL;
     struct tlv *attr;
     struct list_node *node;
@@ -1606,7 +1663,7 @@ void replyh(struct server *server, unsigned char *buf) {
 
     if (rqout->rq->msg->code == RAD_Status_Server) {
 	freerqoutdata(rqout);
-	debug(DBG_DBG, "replyh: got status server response from %s", server->conf->name);
+	debug(DBG_NOTICE, "replyh: got status server response from %s", server->conf->name);
 	goto errunlock;
     }
 
@@ -1649,70 +1706,11 @@ void replyh(struct server *server, unsigned char *buf) {
 	goto errunlock;
     }
 
-    if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response) {
-	username = radattr2ascii(radmsg_gettype(rqout->rq->msg, RAD_Attr_User_Name));
-	if (username) {
-        if (options.logfullusername) {
-            logusername = username;
-        } else {
-            logusername = (uint8_t *)strchr((char *)username, '@');
-        }
-	    stationid = radattr2ascii(radmsg_gettype(rqout->rq->msg, RAD_Attr_Calling_Station_Id));
-	    replymsg = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Reply_Message));
-	    if (stationid && options.log_mac != RSP_MAC_STATIC) {
-            logstationid = calloc(64, sizeof(char));
-            switch (options.log_mac) {
-                case RSP_MAC_VENDOR_HASHED:
-                case RSP_MAC_VENDOR_KEY_HASHED:
-                    memcpy(logstationid, stationid, 9);
-                    fticks_hashmac(stationid, options.log_mac == RSP_MAC_VENDOR_KEY_HASHED ?
-                        options.log_key : NULL, 32, logstationid+9);
-                    break;
-                case RSP_MAC_FULLY_HASHED:
-                case RSP_MAC_FULLY_KEY_HASHED:
-                    fticks_hashmac(stationid, options.log_mac == RSP_MAC_FULLY_KEY_HASHED ?
-                        options.log_key : NULL, 32, logstationid);
-                    break;
-                case RSP_MAC_ORIGINAL:
-                default:
-                    strncpy((char *)logstationid, (char *)stationid, 64-1);
-            }
-            if (replymsg) {
-                debug(DBG_NOTICE, "%s for user %s stationid %s from %s (%s) to %s (%s)",
-                    radmsgtype2string(msg->code), logusername, logstationid,
-                    server->conf->name, replymsg, from->conf->name,
-                    addr2string(from->addr));
-                free(replymsg);
-            } else {
-                debug(DBG_NOTICE, "%s for user %s stationid %s from %s to %s (%s)",
-                    radmsgtype2string(msg->code), logusername, logstationid,
-                    server->conf->name, from->conf->name,
-                    addr2string(from->addr));
-            }
-            free(stationid);
-            if (options.log_mac != RSP_MAC_STATIC &&
-                options.log_mac != RSP_MAC_ORIGINAL)
-                free(logstationid);
-        } else {
-            if (replymsg) {
-                debug(DBG_NOTICE, "%s for user %s from %s (%s) to %s (%s)",
-                    radmsgtype2string(msg->code), logusername,
-                    server->conf->name, replymsg, from->conf->name,
-                    addr2string(from->addr));
-                free(replymsg);
-            } else
-                debug(DBG_NOTICE, "%s for user %s from %s to %s (%s)",
-                    radmsgtype2string(msg->code), logusername,
-                    server->conf->name, from->conf->name,
-                    addr2string(from->addr));
-            }
-            free(username);
-        }
-    }
+    replylog(msg, server, rqout->rq);
 
     if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)
-	if (options.fticks_reporting && from->conf->fticks_viscountry != NULL)
-	    fticks_log(&options, from, msg, rqout);
+    if (options.fticks_reporting && from->conf->fticks_viscountry != NULL)
+        fticks_log(&options, from, msg, rqout->rq);
 
     msg->id = (char)rqout->rq->rqid;
     memcpy(msg->auth, rqout->rq->rqauth, 16);
@@ -3364,8 +3362,6 @@ int radsecproxy_main(int argc, char **argv) {
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
 
-    debug (DBG_NOTICE, "radsecproxy %s starting.", PACKAGE_VERSION);
-
     if (pthread_attr_init(&pthread_attr))
 	debugx(1, DBG_ERR, "pthread_attr_init failed");
     if (pthread_attr_setstacksize(&pthread_attr, PTHREAD_STACK_SIZE))
@@ -3406,6 +3402,8 @@ int radsecproxy_main(int argc, char **argv) {
     free(options.logdestination);
     if (options.logtid)
         debug_tid_on();
+
+    debug(DBG_NOTICE, "radsecproxy %s starting.", PACKAGE_VERSION);
 
     if (!list_first(clconfs))
 	debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");
