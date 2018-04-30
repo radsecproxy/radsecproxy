@@ -119,8 +119,8 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
 	if (server->sock >= 0)
 	    close(server->sock);
 	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) >= 0) {
-        if (server->conf->keepalive)
-            enable_keepalive(server->sock);
+            if (server->conf->keepalive)
+                enable_keepalive(server->sock);
 	    break;
 	}
     }
