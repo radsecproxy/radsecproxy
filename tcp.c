@@ -336,8 +336,8 @@ void *tcpservernew(void *arg) {
     if (conf) {
 	client = addclient(conf, 1);
 	if (client) {
-        if(conf->keepalive)
-            enable_keepalive(s);
+            if(conf->keepalive)
+                enable_keepalive(s);
 	    client->sock = s;
 	    client->addr = addr_copy((struct sockaddr *)&from);
 	    tcpserverrd(client);
