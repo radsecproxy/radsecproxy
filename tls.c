@@ -172,6 +172,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
     debug(DBG_WARN, "tlsconnect: TLS connection to %s up", server->conf->name);
     server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->lastconnecttry, NULL);
+    server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     return 1;
 }
