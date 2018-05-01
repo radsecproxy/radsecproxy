@@ -13,17 +13,28 @@ void
 usage()
 {
   fprintf(stderr,
-	  "usage: radsecproxy-hash [-h] [-k key] [-t type]\n"
+	  "usage: radsecproxy-hash [-h] [-k key] [mac]...\n"
 #if defined(READ_CONFIG)
 	  "   -c configfile\tuse configuration from CONFIGFILE\n"
 #endif
 	  "   -h\t\t\tdisplay this help and exit\n"
 	  "   -k key\t\tuse KEY for HMAC\n"
-	  "   -t type\t\tprint digest of type TYPE [hash|hmac]\n");
+      "      mac\t\tMAC address to hash. Read from stdin if omittedn.\n");
   exit(1);
 }
 
 #define MYNAME "radsecproxy-hash"
+
+void
+print_hash(uint8_t *mac, uint8_t *key) {
+    uint8_t buf[64+1];
+
+    if (fticks_hashmac(mac, key, sizeof(buf), buf) != 0) {
+        fprintf(stderr, "%s: out of memory\n", MYNAME);
+        exit(3);
+    }
+    puts((const char *) buf);
+}
 
 int
 main(int argc, char *argv[])
@@ -32,12 +43,10 @@ main(int argc, char *argv[])
 #if defined(READ_CONFIG)
   char *config = NULL;
 #endif
-  uint8_t buf[64+1];
   char mac[80+1];
   uint8_t *key = NULL;
-  enum { TYPE_HASH, TYPE_HMAC } type = TYPE_HASH;
 
-  while ((opt = getopt(argc, argv, "hk:t:")) != -1) {
+  while ((opt = getopt(argc, argv, "hk:")) != -1) {
     switch (opt) {
 #if defined(READ_CONFIG)
     case 'c':
@@ -49,38 +58,19 @@ main(int argc, char *argv[])
     case 'k':
       key = (uint8_t *) optarg;
       break;
-    case 't':
-      if (strcmp(optarg, "hash") == 0)
-	type = TYPE_HASH;
-      else if (strcmp(optarg, "hmac") == 0)
-	type = TYPE_HMAC;
-      else
-	usage();
-      break;
     default:
       usage();
     }
   }
 
-  while (fgets(mac, sizeof(mac), stdin) != NULL) {
-    if (type == TYPE_HASH) {
-      if (fticks_hashmac((uint8_t *) mac, NULL, sizeof(buf), buf) != 0) {
-	fprintf(stderr, "%s: out of memory\n", MYNAME);
-	return 3;
+  if (optind < argc) {
+      while (optind < argc) {
+          print_hash((uint8_t *)argv[optind++], key);
       }
-    }
-    else if (type == TYPE_HMAC) {
-      if (key == NULL) {
-	fprintf(stderr, "%s: generating HMAC requires a key, use `-k'\n",
-		MYNAME);
-	return 2;
+  } else {
+      while (fgets(mac, sizeof(mac), stdin) != NULL) {
+          print_hash((uint8_t *)mac, key);
       }
-      if (fticks_hashmac((uint8_t *) mac, key, sizeof(buf), buf) != 0) {
-	fprintf(stderr, "%s: out of memory\n", MYNAME);
-	return 3;
-      }
-    }
-    puts((const char *) buf);
   }
 
   return 0;
