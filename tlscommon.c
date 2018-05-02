@@ -36,6 +36,11 @@
 
 static struct hash *tlsconfs = NULL;
 
+#define COOKIE_SECRET_LENGTH 16
+static unsigned char cookie_secret[COOKIE_SECRET_LENGTH];
+static uint8_t cookie_secret_initialized = 0;
+
+
 /* callbacks for making OpenSSL < 1.1 thread safe */
 #if OPENSSL_VERSION_NUMBER < 0x10100000
 static pthread_mutex_t *ssl_locks = NULL;
@@ -136,6 +141,88 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
     return ok;
 }
 
+static int cookie_calculate_hash(struct sockaddr *peer, time_t time, uint8_t *result, unsigned int *resultlength) {
+    uint8_t *buf;
+    int length;
+
+    length = SOCKADDRP_SIZE(peer) + sizeof(time_t);
+    buf = OPENSSL_malloc(length);
+    if (!buf) {
+        debug(DBG_ERR, "cookie_calculate_hash: malloc failed");
+        return 0;
+    }
+
+    memcpy(buf, &time, sizeof(time_t));
+    memcpy(buf+sizeof(time_t), peer, SOCKADDRP_SIZE(peer));
+
+    HMAC(EVP_sha256(), (const void*) cookie_secret, COOKIE_SECRET_LENGTH,
+         buf, length, result, resultlength);
+    OPENSSL_free(buf);
+    return 1;
+}
+
+static int cookie_generate_cb(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len) {
+    struct sockaddr_storage peer;
+    struct timeval now;
+    uint8_t result[EVP_MAX_MD_SIZE];
+    unsigned int resultlength;
+
+    if (!cookie_secret_initialized) {
+        if (!RAND_bytes(cookie_secret, COOKIE_SECRET_LENGTH))
+            debugx(1,DBG_ERR, "cookie_generate_cg: error generating random secret");
+        cookie_secret_initialized = 1;
+    }
+
+    BIO_dgram_get_peer(SSL_get_rbio(ssl), &peer);
+    gettimeofday(&now, NULL);
+    if (!cookie_calculate_hash((struct sockaddr *)&peer, now.tv_sec, result, &resultlength))
+        return 0;
+
+    memcpy(cookie, &now.tv_sec, sizeof(time_t));
+    memcpy(cookie + sizeof(time_t), result, resultlength);
+    *cookie_len = resultlength + sizeof(time_t);
+
+    return 1;
+}
+
+static int cookie_verify_cb(SSL *ssl, unsigned char *cookie, unsigned int cookie_len) {
+    struct sockaddr_storage peer;
+    struct timeval now;
+    time_t cookie_time;
+    uint8_t result[EVP_MAX_MD_SIZE];
+    unsigned int resultlength;
+
+    if (!cookie_secret_initialized)
+        return 0;
+
+    if (cookie_len < sizeof(time_t)) {
+        debug(DBG_DBG, "cookie_verify_cb: cookie too short. ignoring.");
+        return 0;
+    }
+
+    gettimeofday(&now, NULL);
+    cookie_time = *(time_t *)cookie;
+    if (now.tv_sec - cookie_time > 5) {
+        debug(DBG_DBG, "cookie_verify_cb: cookie invalid or older than 5s. ignoring.");
+        return 0;
+    }
+
+    BIO_dgram_get_peer(SSL_get_rbio(ssl), &peer);
+    if (!cookie_calculate_hash((struct sockaddr *)&peer, cookie_time, result, &resultlength))
+        return 0;
+
+    if (resultlength + sizeof(time_t) != cookie_len) {
+        debug(DBG_DBG, "cookie_verify_cb: invalid cookie length. ignoring.");
+        return 0;
+    }
+
+    if (memcmp(cookie + sizeof(time_t), result, resultlength)) {
+        debug(DBG_DBG, "cookie_verify_cb: cookie not valid. ignoring.");
+        return 0;
+    }
+    return 1;
+}
+
 #ifdef DEBUG
 static void ssl_info_callback(const SSL *ssl, int where, int ret) {
     const char *s;
@@ -222,6 +309,8 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
 
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
+    SSL_CTX_set_cookie_generate_cb(ctx, cookie_generate_cb);
+    SSL_CTX_set_cookie_verify_cb(ctx, cookie_verify_cb);
 
     if (conf->crlcheck || conf->vpm) {
 	x509_s = SSL_CTX_get_cert_store(ctx);

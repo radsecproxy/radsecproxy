@@ -24,6 +24,7 @@ struct tls {
     X509_VERIFY_PARAM *vpm;
     SSL_CTX *tlsctx;
     SSL_CTX *dtlsctx;
+	SSL *dtlssslprep;
     pthread_mutex_t lock;
 };
 

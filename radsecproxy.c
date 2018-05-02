@@ -68,7 +68,6 @@
 #include "udp.h"
 #include "tcp.h"
 #include "tls.h"
-#include "dtls.h"
 #include "fticks.h"
 #include "fticks_hashmac.h"
 
@@ -183,16 +182,6 @@ void removequeue(struct gqueue *q) {
     free(q);
 }
 
-void freebios(struct gqueue *q) {
-    BIO *bio;
-
-    pthread_mutex_lock(&q->mutex);
-    while ((bio = (BIO *)list_shift(q->entries)))
-	BIO_free(bio);
-    pthread_mutex_unlock(&q->mutex);
-    removequeue(q);
-}
-
 struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
     struct client *new = NULL;
 
@@ -304,8 +293,6 @@ void freeserver(struct server *server, uint8_t destroymutex) {
 	}
 	free(server->requests);
     }
-    if (server->rbios)
-	freebios(server->rbios);
     free(server->dynamiclookuparg);
     if (server->ssl) {
         SSL_free(server->ssl);
@@ -334,10 +321,6 @@ int addserver(struct clsrvconf *conf) {
     memset(conf->servers, 0, sizeof(struct server));
     conf->servers->conf = conf;
 
-#ifdef RADPROT_DTLS
-    if (conf->type == RAD_DTLS)
-	conf->servers->rbios = newqueue();
-#endif
     conf->pdef->setsrcres();
 
     conf->servers->sock = -1;
@@ -1967,6 +1950,15 @@ void createlistener(uint8_t type, char *arg) {
 	    if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "createlistener: IPV6_V6ONLY");
 #endif
+    if (res->ai_socktype == SOCK_DGRAM) {
+        if (res->ai_family == AF_INET6) {
+            if (setsockopt(s, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof(on)) == -1)
+                debugerrno(errno, DBG_WARN, "craetelistener: IPV6_RECVPKTINFO");
+        } else if (res->ai_family == AF_INET) {
+            if (setsockopt(s, IPPROTO_IP, IP_PKTINFO, &on, sizeof(on)) == -1)
+                debugerrno(errno, DBG_WARN, "createlistener: IP_PKTINFO");
+        }
+    }
 	if (bind(s, res->ai_addr, res->ai_addrlen)) {
 	    debugerrno(errno, DBG_WARN, "createlistener: bind failed");
 	    close(s);

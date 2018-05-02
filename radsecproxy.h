@@ -10,6 +10,9 @@
 #include "tlv11.h"
 #include "radmsg.h"
 #include "gconfig.h"
+#ifdef RADPROT_DTLS
+#include "dtls.h"
+#endif
 
 #define DEBUG_LEVEL 2
 
@@ -167,7 +170,6 @@ struct client {
 	pthread_mutex_t lock;
     struct request *rqs[MAX_REQUESTS];
     struct gqueue *replyq;
-    struct gqueue *rbios; /* for dtls */
     struct sockaddr *addr;
     time_t expiry; /* for udp */
 };
@@ -190,7 +192,6 @@ struct server {
     uint8_t newrq;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
-    struct gqueue *rbios; /* for dtls */
 };
 
 struct realm {
@@ -256,7 +257,6 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock);
 void removelockedclient(struct client *client);
 void removeclient(struct client *client);
 struct gqueue *newqueue();
-void freebios(struct gqueue *q);
 struct request *newrequest();
 void freerq(struct request *rq);
 int radsrv(struct request *rq);
