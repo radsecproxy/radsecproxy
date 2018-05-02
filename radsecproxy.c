@@ -1223,6 +1223,7 @@ uint8_t *radattr2ascii(struct tlv *attr) {
 void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     uint8_t *username, *logusername = NULL, *stationid, *replymsg, *tmp;
     char *servername, *logstationid = NULL;
+    uint8_t level = DBG_NOTICE;
 
     servername = server ? server->conf->name : "_self_";
     username = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_User_Name));
@@ -1261,18 +1262,20 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     }
 
     if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response) {
+        if (msg->code == RAD_Accounting_Response)
+            level = DBG_INFO;
         if (logusername) {
-            debug(DBG_NOTICE, "%s for user %s %s from %s%s to %s (%s)",
+            debug(level, "%s for user %s %s from %s%s to %s (%s)",
                 radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "",
                 servername, replymsg ? (char *)replymsg : "", rq->from->conf->name,
                 addr2string(rq->from->addr));
         } else {
-            debug(DBG_NOTICE, "%s (response to %s) from %s to %s (%s)", radmsgtype2string(msg->code),
+            debug(level, "%s (response to %s) from %s to %s (%s)", radmsgtype2string(msg->code),
                 radmsgtype2string(rq->msg->code), servername,
                 rq->from->conf->name, addr2string(rq->from->addr));
         }
     } else if(msg->code == RAD_Access_Request) {
-        debug(DBG_NOTICE, "missing response to %s for user %s%s from %s (%s) to %s",
+        debug(level, "missing response to %s for user %s%s from %s (%s) to %s",
             radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "",
             rq->from->conf->name, addr2string(rq->from->addr), servername);
     }
