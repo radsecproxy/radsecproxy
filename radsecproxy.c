@@ -1232,25 +1232,25 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     }
     stationid = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Calling_Station_Id));
     if (stationid) {
-        logstationid = calloc(64, sizeof(char));
+        logstationid = calloc(128, sizeof(char));
         sprintf((char *)logstationid, " stationid ");
         switch (options.log_mac) {
             case RSP_MAC_VENDOR_HASHED:
             case RSP_MAC_VENDOR_KEY_HASHED:
                 memcpy(logstationid + 11, stationid, 9);
                 fticks_hashmac((uint8_t *)stationid, options.log_mac == RSP_MAC_VENDOR_KEY_HASHED ?
-                    options.log_key : NULL, 32, (uint8_t *)logstationid+20);
+                    options.log_key : NULL, 65, (uint8_t *)logstationid+20);
                 break;
             case RSP_MAC_FULLY_HASHED:
             case RSP_MAC_FULLY_KEY_HASHED:
                 fticks_hashmac((uint8_t *)stationid, options.log_mac == RSP_MAC_FULLY_KEY_HASHED ?
-                    options.log_key : NULL, 32, (uint8_t *)logstationid+11);
+                    options.log_key : NULL, 65, (uint8_t *)logstationid+11);
                 break;
             case RSP_MAC_STATIC:
                 sprintf(logstationid+11, "undisclosed");
             case RSP_MAC_ORIGINAL:
             default:
-                strncpy(logstationid+11, (char *)stationid, 64-12);
+                strncpy(logstationid+11, (char *)stationid, 128-12);
         }
         free(stationid);
     }
