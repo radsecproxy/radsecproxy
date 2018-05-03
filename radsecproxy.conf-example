@@ -28,6 +28,8 @@
 # LOG_LOCAL0, ..., LOG_LOCAL7
 #LogDestination         x-syslog:///
 #LogDestination         x-syslog:///log_local2
+# Optional log thread Id
+#LogThreadId on
 
 # For generating log entries conforming to the F-Ticks system, specify
 # FTicksReporting with one of the following values.
@@ -66,6 +68,9 @@
 # Note that specifying a file (using the file:/// prefix) is not supported.
 #FTicksSyslogFacility	log_local1
 #FTicksSyslogFacility	x-syslog:///log_local1
+# If you are using radsecproxy outside the eduroam context, and you want
+# F-Ticks messages to have your own prefix instead of eduroam, you can set:
+#FTicksPrefix <prefix>
 
 # There is an option for doing some simple loop prevention.  Note that
 # the LoopPrevention directive can be used in server blocks too,
@@ -194,9 +199,11 @@ server [2001:db8::1] {
 }
 server radius.example.com {
 	type	tls
-	secret	verysecret
+	secret	radsec
 	StatusServer on
 # statusserver is optional, can be on or off. Off is default
+	tcpKeepalive on
+# tcp and tls connections also support TCP keepalives.
 }
 #server radius.example.com {
 #	type	dtls

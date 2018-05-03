@@ -1,11 +1,11 @@
-.TH radsecproxy 1 "Sep 2015"
+.TH radsecproxy 1 "5 May 2018"
 
 .SH "NAME"
 radsecproxy - a generic RADIUS proxy that provides both RADIUS UDP and TCP/TLS (RadSec) transport.
 
 .SH "SYNOPSIS"
 .HP 12
-radsecproxy [\-c configfile] [\-d debuglevel] [\-f] [\-i pidfile] [\-p] [\-v]
+radsecproxy [\-c \fIconfigfile\fR] [\-d \fIdebuglevel\fR] [\-f] [\-i \fIpidfile\fR] [\-p] [\-v]
 .sp
 
 .SH "DESCRIPTION"
@@ -13,9 +13,7 @@ radsecproxy is a \fBgeneric RADIUS proxy\fR that in addition to to
 usual \fBRADIUS UDP\fR transport, also supports \fBTLS (RadSec)\fR. The
 aim is for the proxy to have sufficient features to be flexible,
 while at the same time to be small, efficient and easy to configure.
-Currently the executable on Linux is only about \fI48 KB\fR, and it uses
-about \fI64 KB\fR (depending on the number of peers) while running.
-.sp
+
 The proxy was initially made to be able to deploy \fBRadSec\fR (RADIUS
 over TLS) so that all RADIUS communication across network links
 could be done using TLS, without modifying existing RADIUS software.
@@ -23,7 +21,7 @@ This can be done by running this proxy on the same host as an existing
 RADIUS server or client, and configure the existing client/server to
 talk to localhost (the proxy) rather than other clients and servers
 directly.
-.sp
+
 There are however other situations where a RADIUS proxy might be
 useful. Some people deploy RADIUS topologies where they want to
 route RADIUS messages to the right server. The nodes that do purely
@@ -35,26 +33,21 @@ where some RADIUS nodes use only IPv4 and some only IPv6.
 .SH "OPTIONS"
 .TP
 .B \-f
-.sp
-\fIRun in foreground\fR
-.sp
+Run in foreground.
+.br
 By specifying this option, the proxy will run in foreground mode. That
 is, it won't detach. Also all logging will be done to stderr.
 
 .TP
-.B \-d <debug level>
-.sp
-\fIDebug level\fR
-.sp
+.B \-d \fIdebuglevel\fR
 This specifies the debug level. It must be set to 1, 2, 3, 4 or 5, where
 1 logs only serious errors, and 5 logs everything. The default is 2 which
 logs errors, warnings and a few informational messages.
 
 .TP
 .B \-p
-.sp
-\fIPretend\fR
-.sp
+Pretend
+.br
 The proxy reads configuration files and performs initialisation as
 usual, but exits prior to creating any sockets. It will return different
 exit codes depending on whether the configuration files are okay. This
@@ -63,25 +56,15 @@ instance is running.
 
 .TP
 .B \-v
-.sp
-\fIPrint version\fR
-.sp
-When this option is specified, the proxy will simply print version
-information and exit.
+Print version and exit.
 
 .TP
-.B \-c <config file path>
-.sp
-\fIConfig file path\fR
-.sp
+.B \-c \fIconfigfile\fR
 This option allows you to specify which config file to use. This is useful
 if you want to use a config file that is not in any of the default locations.
 
 .TP
-.B \-i <pid file path>
-.sp
-\fIPID file path\fR
-.sp
+.B \-i \fIpidfile\fR
 This option tells the proxy to create a PID file with the specified path.
 
 .SH "SIGNALS"
@@ -89,12 +72,14 @@ The proxy generally exits on all signals. The exceptions are listed below.
 
 .TP
 .B SIGHUP
-.sp
+.br
 When logging to a file, this signal forces a reopen of the log file.
+.br
+When using TLS or DTLS, reload certificate CRLs.
 
 .TP
 .B SIGPIPE
-.sp
+.br
 This signal is ignored.
 
 .SH "FILES"

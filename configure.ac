@@ -2,7 +2,7 @@ dnl Copyright (c) 2006-2010, UNINETT AS
 dnl Copyright (c) 2010-2013,2016, NORDUnet A/S
 dnl See LICENSE for licensing information.
 
-AC_INIT(radsecproxy, 1.7.1-alpha-dev, radsecproxy@lists.nordu.net)
+AC_INIT(radsecproxy, 1.7.1-rc1, radsecproxy@lists.nordu.net)
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
 AC_PROG_CC
@@ -19,7 +19,7 @@ AC_ARG_ENABLE(udp,
       exit -1
     fi
   ])
- 
+
 tcp=yes
 AC_ARG_ENABLE(tcp,
   [  --enable-tcp whether to enable TCP transport: yes/no; default yes ],
@@ -30,7 +30,7 @@ AC_ARG_ENABLE(tcp,
       exit -1
     fi
   ])
- 
+
 tls=yes
 AC_ARG_ENABLE(tls,
   [  --enable-tls whether to enable TLS (RadSec) transport: yes/no; default yes ],
@@ -41,7 +41,7 @@ AC_ARG_ENABLE(tls,
       exit -1
     fi
   ])
- 
+
 dtls=yes
 AC_ARG_ENABLE(dtls,
   [  --enable-dtls whether to enable DTLS transport: yes/no; default yes ],
@@ -89,7 +89,7 @@ if test "x$dtls" = "xyes" ; then
   echo "DTLS transport enabled"
   TARGET_CFLAGS="$TARGET_CFLAGS -DRADPROT_DTLS"
 fi
- 
+
 AC_ARG_VAR([DOCBOOK2X_MAN], [docbook2x-man program to use])
 if test -z "$DOCBOOK2X_MAN" ; then
   AC_SUBST([DOCBOOK2X_MAN], [docbook2x-man])

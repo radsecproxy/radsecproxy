@@ -1,4 +1,4 @@
-Changes between 1.6.9 and the master branch
+2018-05-03 1.7.1
 
 	License and copyright changes:
 	- Copyright SWITCH
@@ -11,17 +11,19 @@ Changes between 1.6.9 and the master branch
 	- Make use of SO_KEEPALIVE for tcp sockets (RADSECPROXY-12).
 	- Optionally include the thread-id in log messages
 	- Allow hashing MAC addresses in the log (same as for F-Ticks)
+	- Log certificate subject if rejected
+	- Log own responses (RADSECPROXY-61)
+	- Allow f-ticks prefix to be configured
 	- radsecproxy-hash: allow MAC addresses to be passed on command line
 
 	Misc:
 	- libnettle is now an unconditional dependency.
 	- FTicks support is now on by default and not optional.
-	- Experimental code for dynamic discovery has been removed. Be
-	aware that use of the DynamicLookupCommand configuration option
-	still enables code known to be buggy.
+	- Experimental code for dynamic discovery has been removed.
 	- Replace several server status bits with a single state enum.
 	(RADSECPROXY-71)
 	- Use poll instead of select to allow > 1000 concurrent connections.
+	- Implement locking for all SSL objects (openssl states it is not thread-safe)
 	- Rework DTLS code.
 
 	Bug fixes:
@@ -33,6 +35,7 @@ Changes between 1.6.9 and the master branch
 	(RADSECPROXY-69).
 	- Fix refcounting in error cases when loading configuration (RADSECPROXY-42)
 	- Fix potential crash when rewriting malformed vendor attributes.
+	- Properly cleanup expired requests from server output-queue.
 
 2017-08-02 1.6.9
 		Misc:

@@ -1,28 +1,28 @@
-.TH radsecproxy-hash 1 "29 Sep 2011"
+.TH radsecproxy-hash 1 "5 May 2018"
 
 .SH "NAME"
 radsecproxy-hash - print digests of Ethernet MAC addresses
 
 .SH "SYNOPSIS"
 .HP 12
-radsecproxy-hash [\-h] [\-k key] [mac]...
+radsecproxy-hash [\-h] [\-k \fIKEY\fR] [\fIMAC\fR...]
 .sp
 
 .SH "DESCRIPTION"
-Print the hash or hmac of Ethernet MAC addresses
+Print the hash or hmac of Ethernet \fIMAC\fR addresses
 
 .SH "OPTIONS"
 .TP
 .B \-h
-\fIdisplay help and exit\fR
+Display help and exit
 
 .TP
-.B \-k key
-\fIuse KEY for HMAC calculation\fR
+.B \-k \fIKEY\fR
+.br
+perform HMAC calculation using key \fIKEY\fR
 
 .TP
-.B mac
-\fIMAC address to hash. Read from stdin if omitted.\fR
+With no \fIMAC\fR, read from standard input
 
 
 .SH "SEE ALSO"
