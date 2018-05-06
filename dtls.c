@@ -424,14 +424,15 @@ void *dtlslistener(void *arg) {
             continue;
 
         if (getConnectionInfo(s, (struct sockaddr *)&from, sizeof(from), (struct sockaddr *)&to, sizeof(to)) < 0) {
-            debug(DBG_DBG, "udptlsserverrd: getConnectionInfo failed");
+            debug(DBG_DBG, "dtlslistener: getConnectionInfo failed");
             continue;
         }
 
         conf = find_clconf(handle, (struct sockaddr *)&from, NULL);
         if (!conf) {
-            debug(DBG_INFO, "udpdtlsserverrd: got UDP from unknown peer %s, ignoring", addr2string((struct sockaddr *)&from));
-            recv(s, buf, 1, 0);
+            debug(DBG_INFO, "dtlslistener: got UDP from unknown peer %s, ignoring", addr2string((struct sockaddr *)&from));
+            if (recv(s, buf, 4, 0) == -1)
+                debug(DBG_ERR, "dtlslistener: recv failed - %s", strerror(errno));
             continue;
         }
 

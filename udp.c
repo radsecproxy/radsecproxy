@@ -20,6 +20,7 @@
 #include <regex.h>
 #include <pthread.h>
 #include <assert.h>
+#include <errno.h>
 #include "radsecproxy.h"
 #include "hostport.h"
 
@@ -147,7 +148,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 
 	cnt = recvfrom(s, buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
 	if (cnt == -1) {
-	    debug(DBG_WARN, "radudpget: recv failed");
+	    debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
 	    continue;
 	}
 
@@ -156,21 +157,24 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    : find_srvconf(handle, (struct sockaddr *)&from, NULL);
 	if (!p) {
 	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from));
-	    recv(s, buf, 4, 0);
+	    if (recv(s, buf, 4, 0) == -1)
+            debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
 	    continue;
 	}
 
 	len = RADLEN(buf);
 	if (len < 20) {
 	    debug(DBG_WARN, "radudpget: length too small");
-	    recv(s, buf, 4, 0);
+        if (recv(s, buf, 4, 0) == -1)
+            debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
 	    continue;
 	}
 
 	rad = malloc(len);
 	if (!rad) {
 	    debug(DBG_ERR, "radudpget: malloc failed");
-	    recv(s, buf, 4, 0);
+        if (recv(s, buf, 4, 0) == -1)
+            debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
 	    continue;
 	}
 
