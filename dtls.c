@@ -378,7 +378,8 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
 
     debug(DBG_DBG, "udp packet from %s", addr2string(from));
 
-    getsockname(socket, to, &tolen);
+    if (getsockname(socket, to, &tolen))
+        return -1;
     while (offset < msghdr.msg_controllen) {
         ctrlhdr = (struct cmsghdr *)(controlbuf+offset);
         if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_PKTINFO) {

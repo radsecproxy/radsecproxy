@@ -200,7 +200,15 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
     new = calloc(1, sizeof(struct client));
     if (!new) {
 	debug(DBG_ERR, "malloc failed");
+    if (lock)
+        pthread_mutex_unlock(conf->lock);
 	return NULL;
+    }
+    if (!list_push(conf->clients, new)) {
+        free(new);
+        if (lock)
+            pthread_mutex_unlock(conf->lock);
+        return NULL;
     }
     new->conf = conf;
     if (conf->pdef->addclient)
@@ -208,7 +216,6 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
     else
     new->replyq = newqueue();
     pthread_mutex_init(&new->lock, NULL);
-    list_push(conf->clients, new);
     if (lock)
 	pthread_mutex_unlock(conf->lock);
     return new;
@@ -1231,6 +1238,7 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
                 break;
             case RSP_MAC_STATIC:
                 sprintf(logstationid+11, "undisclosed");
+                break;
             case RSP_MAC_ORIGINAL:
             default:
                 strncpy(logstationid+11, (char *)stationid, 128-12);
@@ -3027,12 +3035,12 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (!conf->secret) {
 	if (!conf->pdef->secretdefault) {
 	    debug(DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
-	    return 0;
+	    goto errexit;
 	}
 	conf->secret = stringcopy(conf->pdef->secretdefault, 0);
 	if (!conf->secret) {
 	    debug(DBG_ERR, "malloc failed");
-	    return 0;
+	    goto errexit;
 	}
     }
 

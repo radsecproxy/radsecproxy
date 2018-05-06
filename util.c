@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <stdarg.h>
+#include <assert.h>
 #include "debug.h"
 #include "util.h"
 
@@ -71,6 +72,7 @@ struct sockaddr *addr_copy(struct sockaddr *in) {
         ((struct sockaddr_in6 *)out)->sin6_addr = ((struct sockaddr_in6 *)in)->sin6_addr;
 	break;
     }
+    assert(out);
     out->sa_family = in->sa_family;
 #ifdef SIN6_LEN
     out->sa_len = in->sa_len;

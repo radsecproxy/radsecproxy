@@ -249,8 +249,8 @@ void fticks_debug(const char *format, ...) {
     else {
     	priority = LOG_DEBUG | fticks_syslogfacility;
     	vsyslog(priority, format, ap);
-    	va_end(ap);
     }
+    va_end(ap);
 }
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
