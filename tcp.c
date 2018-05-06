@@ -80,52 +80,58 @@ void tcpsetsrcres() {
 }
 
 int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {
-    struct timeval now;
+    struct timeval now, start = {0,0};
     time_t elapsed;
 
     debug(DBG_DBG, "tcpconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
-    if (when && memcmp(&server->lastconnecttry, when, sizeof(struct timeval))) {
-	/* already reconnected, nothing to do */
-	debug(DBG_DBG, "tcpconnect(%s): seems already reconnected", text);
-	pthread_mutex_unlock(&server->lock);
-	return 1;
-    }
+
+    if (server->state == RSP_SERVER_STATE_CONNECTED)
+        server->state = RSP_SERVER_STATE_RECONNECTING;
+
+    gettimeofday(&now, NULL);
+    if (when && (now.tv_sec - when->tv_sec) < 60 )
+        start.tv_sec = now.tv_sec - (60 - (now.tv_sec - when->tv_sec));
 
     for (;;) {
-	gettimeofday(&now, NULL);
-	elapsed = now.tv_sec - server->lastconnecttry.tv_sec;
-	if (timeout && server->lastconnecttry.tv_sec && elapsed > timeout) {
-	    debug(DBG_DBG, "tcpconnect: timeout");
-	    if (server->sock >= 0)
-		close(server->sock);
-	    pthread_mutex_unlock(&server->lock);
-	    return 0;
-	}
-	if (server->state == RSP_SERVER_STATE_CONNECTED) {
-	    server->state = RSP_SERVER_STATE_RECONNECTING;
-	    sleep(2);
-	} else if (elapsed < 1)
-	    sleep(2);
-	else if (elapsed < 60) {
-	    debug(DBG_INFO, "tcpconnect: sleeping %lds", elapsed);
-	    sleep(elapsed);
-	} else if (elapsed < 100000) {
-	    debug(DBG_INFO, "tcpconnect: sleeping %ds", 60);
-	    sleep(60);
-	} else
-	    server->lastconnecttry.tv_sec = now.tv_sec;  /* no sleep at startup */
+        if (server->sock >= 0)
+            close(server->sock);
+        server->sock = -1;
 
-	if (server->sock >= 0)
-	    close(server->sock);
-	if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) >= 0) {
+        /* no sleep at startup or at first try */
+        if (start.tv_sec) {
+            gettimeofday(&now, NULL);
+            elapsed = now.tv_sec - start.tv_sec;
+
+            if (timeout && elapsed > timeout) {
+                debug(DBG_DBG, "tlsconnect: timeout");
+                pthread_mutex_unlock(&server->lock);
+                return 0;
+            }
+
+            /* give up lock while sleeping for next try */
+            pthread_mutex_unlock(&server->lock);
+            if (elapsed < 1)
+                sleep(2);
+            else {
+                debug(DBG_INFO, "Next connection attempt in %lds", elapsed < 60 ? elapsed : 60);
+                sleep(elapsed < 60 ? elapsed : 60);
+            }
+            pthread_mutex_lock(&server->lock);
+            debug(DBG_INFO, "tlsconnect: retry connecting");
+        } else {
+            gettimeofday(&start, NULL);
+        }
+
+        if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
+            continue;
         if (server->conf->keepalive)
             enable_keepalive(server->sock);
-	    break;
-	}
+        break;
     }
     server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->lastconnecttry, NULL);
+    server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     return 1;
 }
