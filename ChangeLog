@@ -3,6 +3,7 @@
 	- Don't forget about good dynamically discovered (TLS) connections
 	(RADSECPROXY-69).
 	- Fix refcounting in error cases when loading configuration (RADSECPROXY-42)
+	- Fix wrong typecast
 
 2017-08-02 1.6.9
 	Misc:

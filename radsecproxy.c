@@ -203,7 +203,7 @@ void removequeue(struct gqueue *q) {
 	return;
     pthread_mutex_lock(&q->mutex);
     for (entry = list_first(q->entries); entry; entry = list_next(entry))
-	freerq((struct request *)entry);
+	freerq((struct request *)entry->data);
     list_destroy(q->entries);
     pthread_cond_destroy(&q->cond);
     pthread_mutex_unlock(&q->mutex);

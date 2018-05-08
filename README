@@ -1,5 +1,9 @@
 This is radsecproxy 1.6.9 from 2017-08-02.
 
+WARNING! This version of radsecproxy is known to be unstable when under
+high load. Random crashes can occur. Please upgrade to version 1.7 or later.
+(See https://github.com/radsecproxy/radsecproxy/releases)
+
 radsecproxy is a generic RADIUS proxy that supports both UDP and TLS
 (RadSec) RADIUS transports.  There is also experimental support for
 TCP and DTLS.
