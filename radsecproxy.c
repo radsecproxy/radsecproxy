@@ -1247,9 +1247,10 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     }
     replymsg = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Reply_Message));
     if (replymsg) {
-        asprintf((char **)&tmp, " (%s)", replymsg);
-        free(replymsg);
-        replymsg = tmp;
+        if (asprintf((char **)&tmp, " (%s)", replymsg) >= 0) {
+            free(replymsg);
+            replymsg = tmp;
+        }
     }
 
     if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Accounting_Response) {

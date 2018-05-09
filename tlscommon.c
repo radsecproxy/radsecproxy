@@ -587,8 +587,10 @@ static int subjectaltnameregexp(X509 *cert, int type, char *exact,  regex_t *reg
         debug(DBG_DBG, "subjectaltnameregex: matching %s", s);
         if (regexec(regex, s, 0, NULL, 0)) {
             tmp = fail;
-            asprintf(&fail, "%s%s%s", tmp ? tmp : "", tmp ? ", " : "", s);
-            free(tmp);
+            if (asprintf(&fail, "%s%s%s", tmp ? tmp : "", tmp ? ", " : "", s) >= 0)
+                free(tmp);
+            else
+                fail = tmp;
             free(s);
             continue;
 	    }
