@@ -25,6 +25,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <assert.h>
+#include <fcntl.h>
 #include "hash.h"
 #include "radsecproxy.h"
 
@@ -358,7 +359,7 @@ exit:
 
 int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, struct sockaddr *to, socklen_t tolen) {
     uint8_t controlbuf[128];
-    int offset = 0, ret, toaddrfound = 0;
+    int ret, toaddrfound = 0;
     struct cmsghdr *ctrlhdr;
     struct msghdr msghdr;
     struct in6_pktinfo *info6;
@@ -380,28 +381,26 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
 
     if (getsockname(socket, to, &tolen))
         return -1;
-    while (offset < msghdr.msg_controllen) {
-        ctrlhdr = (struct cmsghdr *)(controlbuf+offset);
+    for (ctrlhdr = CMSG_FIRSTHDR(&msghdr); ctrlhdr; ctrlhdr = CMSG_NXTHDR(&msghdr, ctrlhdr)) {
         if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_PKTINFO) {
-            debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, &((struct in_pktinfo *)(ctrlhdr->__cmsg_data))->ipi_addr, tmp, sizeof(tmp)));
+            debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, &((struct in_pktinfo *)CMSG_DATA(ctrlhdr))->ipi_addr, tmp, sizeof(tmp)));
 
-            ((struct sockaddr_in *)to)->sin_addr = ((struct in_pktinfo *)(ctrlhdr->__cmsg_data))->ipi_addr;
+            ((struct sockaddr_in *)to)->sin_addr = ((struct in_pktinfo *)CMSG_DATA(ctrlhdr))->ipi_addr;
             toaddrfound = 1;
         } else if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_RECVPKTINFO) {
-            info6 = (struct in6_pktinfo *)ctrlhdr->__cmsg_data;
+            info6 = (struct in6_pktinfo *)CMSG_DATA(ctrlhdr);
             debug(DBG_DBG, "udp packet to: %x", inet_ntop(AF_INET6, &info6->ipi6_addr, tmp, sizeof(tmp)));
 
             ((struct sockaddr_in6 *)to)->sin6_addr = info6->ipi6_addr;
             ((struct sockaddr_in6 *)to)->sin6_scope_id = info6->ipi6_ifindex;
             toaddrfound = 1;
         }
-        offset += ctrlhdr->cmsg_len;
     }
     return toaddrfound ? ret : -1;
 }
 
 void *dtlslistener(void *arg) {
-    int ndesc, s = *(int *)arg;
+    int ndesc, flags, s = *(int *)arg;
     unsigned char buf[4];
     struct sockaddr_storage from, to;
     struct dtlsservernewparams *params;
@@ -412,9 +411,12 @@ void *dtlslistener(void *arg) {
     SSL *ssl;
     SSL_CTX *ctx;
 
-
-
     debug(DBG_DBG, "dtlslistener: starting");
+
+    if ((flags = fcntl(s,F_GETFL)) == -1)
+        debugx(1, DBG_ERR, "dtlslistener: failed to get socket flags");
+    if (fcntl(s, F_SETFL, flags | O_NONBLOCK) == -1)
+        debugx(1, DBG_ERR, "dtlslistener: faild set set non-blocking");
 
     for (;;) {
         fds[0].fd = s;
@@ -438,6 +440,7 @@ void *dtlslistener(void *arg) {
 
         pthread_mutex_lock(&conf->tlsconf->lock);
         if (!conf->tlsconf->dtlssslprep) {
+            debug(DBG_DBG, "dtlslistener: no cached ssl object for this context, create new");
             ctx = tlsgetctx(handle, conf->tlsconf);
             if (!ctx) {
                 pthread_mutex_unlock(&conf->tlsconf->lock);
@@ -453,10 +456,11 @@ void *dtlslistener(void *arg) {
             SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
             conf->tlsconf->dtlssslprep = ssl;
         } else {
+            debug(DBG_DBG, "dtlslistener: reusing cached ssl object");
             BIO_set_fd(SSL_get_rbio(conf->tlsconf->dtlssslprep), s, BIO_NOCLOSE);
         }
 
-        if(DTLSv1_listen(ssl, &from)) {
+        if(DTLSv1_listen(conf->tlsconf->dtlssslprep, &from) > 0) {
             params = malloc(sizeof(struct dtlsservernewparams));
             memcpy(&params->addr, &from, sizeof(from));
             memcpy(&params->bind, &to, sizeof(to));
