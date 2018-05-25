@@ -1211,9 +1211,10 @@ uint8_t *radattr2ascii(struct tlv *attr) {
 }
 
 void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
-    uint8_t *username, *logusername = NULL, *stationid, *replymsg, *tmp;
+    uint8_t *username, *logusername = NULL, *stationid, *replymsg, *tmpmsg;
     char *servername, *logstationid = NULL;
     uint8_t level = DBG_NOTICE;
+    char tmp[INET6_ADDRSTRLEN];
 
     servername = server ? server->conf->name : "_self_";
     username = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_User_Name));
@@ -1247,9 +1248,9 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     }
     replymsg = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Reply_Message));
     if (replymsg) {
-        if (asprintf((char **)&tmp, " (%s)", replymsg) >= 0) {
+        if (asprintf((char **)&tmpmsg, " (%s)", replymsg) >= 0) {
             free(replymsg);
-            replymsg = tmp;
+            replymsg = tmpmsg;
         }
     }
 
@@ -1260,16 +1261,16 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
             debug(level, "%s for user %s %s from %s%s to %s (%s)",
                 radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "",
                 servername, replymsg ? (char *)replymsg : "", rq->from->conf->name,
-                addr2string(rq->from->addr));
+                addr2string(rq->from->addr, tmp, sizeof(tmp)));
         } else {
             debug(level, "%s (response to %s) from %s to %s (%s)", radmsgtype2string(msg->code),
                 radmsgtype2string(rq->msg->code), servername,
-                rq->from->conf->name, addr2string(rq->from->addr));
+                rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
         }
     } else if(msg->code == RAD_Access_Request) {
         debug(level, "missing response to %s for user %s%s from %s (%s) to %s",
             radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "",
-            rq->from->conf->name, addr2string(rq->from->addr), servername);
+            rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)), servername);
     }
     free(username);
     free(logstationid);
@@ -1281,6 +1282,7 @@ void respond(struct request *rq, uint8_t code, char *message,
 {
     struct radmsg *msg;
     struct tlv *attr;
+    char tmp[INET6_ADDRSTRLEN];
 
     msg = radmsg_init(code, rq->msg->id, rq->msg->auth);
     if (!msg) {
@@ -1304,7 +1306,7 @@ void respond(struct request *rq, uint8_t code, char *message,
     }
 
     replylog(msg, NULL, rq);
-    debug(DBG_DBG, "respond: sending %s (id %d) to %s (%s)", radmsgtype2string(msg->code), msg->id, rq->from->conf->name, addr2string(rq->from->addr));
+    debug(DBG_DBG, "respond: sending %s (id %d) to %s (%s)", radmsgtype2string(msg->code), msg->id, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
 
     radmsg_free(rq->msg);
     rq->msg = msg;
@@ -1408,6 +1410,7 @@ purgedupcache(struct client *client) {
 int addclientrq(struct request *rq) {
     struct request *r;
     struct timeval now;
+    char tmp[INET6_ADDRSTRLEN];
 
     r = rq->from->rqs[rq->rqid];
     if (r) {
@@ -1415,10 +1418,10 @@ int addclientrq(struct request *rq) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - r->created.tv_sec < r->from->conf->dupinterval) {
 		if (r->replybuf) {
-		    debug(DBG_INFO, "addclientrq: already sent reply to request with id %d from %s, resending", rq->rqid, addr2string(r->from->addr));
+		    debug(DBG_INFO, "addclientrq: already sent reply to request with id %d from %s, resending", rq->rqid, addr2string(r->from->addr, tmp, sizeof(tmp)));
 		    sendreply(newrqref(r));
 		} else
-		    debug(DBG_INFO, "addclientrq: already got request with id %d from %s, ignoring", rq->rqid, addr2string(r->from->addr));
+		    debug(DBG_INFO, "addclientrq: already got request with id %d from %s, ignoring", rq->rqid, addr2string(r->from->addr, tmp, sizeof(tmp)));
 		return 0;
 	    }
 	}
@@ -1449,13 +1452,14 @@ int radsrv(struct request *rq) {
     struct server *to = NULL;
     struct client *from = rq->from;
     int ttlres;
+    char tmp[INET6_ADDRSTRLEN];
 
     msg = buf2radmsg(rq->buf, (uint8_t *)from->conf->secret, NULL);
     free(rq->buf);
     rq->buf = NULL;
 
     if (!msg) {
-	debug(DBG_NOTICE, "radsrv: ignoring request from %s (%s), validation failed.", from->conf->name, addr2string(from->addr));
+	debug(DBG_NOTICE, "radsrv: ignoring request from %s (%s), validation failed.", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
 	freerq(rq);
 	return 0;
     }
@@ -1486,7 +1490,7 @@ int radsrv(struct request *rq) {
 
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {
-	debug(DBG_INFO, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr));
+	debug(DBG_INFO, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
 	goto exit;
     }
 
@@ -1507,7 +1511,7 @@ int radsrv(struct request *rq) {
     userascii = radattr2ascii(attr);
     if (!userascii)
 	goto rmclrqexit;
-    debug(DBG_INFO, "radsrv: got %s (id %d) with username: %s from client %s (%s)", radmsgtype2string(msg->code), msg->id, userascii, from->conf->name, addr2string(from->addr));
+    debug(DBG_INFO, "radsrv: got %s (id %d) with username: %s from client %s (%s)", radmsgtype2string(msg->code), msg->id, userascii, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
 
     /* will return with lock on the realm */
     to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
@@ -1518,7 +1522,7 @@ int radsrv(struct request *rq) {
 
     if (!to) {
 	if (realm->message && msg->code == RAD_Access_Request) {
-	    debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr), userascii);
+	    debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), userascii);
 	    respond(rq, RAD_Access_Reject, realm->message, 1);
 	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
 	    respond(rq, RAD_Accounting_Response, NULL, 1);
@@ -1530,7 +1534,7 @@ int radsrv(struct request *rq) {
 	 || (to->conf->loopprevention == UCHAR_MAX && options.loopprevention == 1))
 	&& !strcmp(from->conf->name, to->conf->name)) {
 	debug(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s, discarding",
-	      from->conf->name, addr2string(from->addr), to->conf->name);
+	      from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
 	goto exit;
     }
 
@@ -1615,6 +1619,7 @@ void replyh(struct server *server, unsigned char *buf) {
     struct radmsg *msg = NULL;
     struct tlv *attr;
     struct list_node *node;
+    char tmp[INET6_ADDRSTRLEN];
 
     server->lostrqs = 0;
 
@@ -1716,7 +1721,7 @@ void replyh(struct server *server, unsigned char *buf) {
     if (ttlres == -1 && (options.addttl || from->conf->addttl))
 	addttlattr(msg, options.ttlattrtype, from->conf->addttl ? from->conf->addttl : options.addttl);
 
-    debug(DBG_DBG, "replyh: passing %s (id %d) to client %s (%s)", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr));
+    debug(DBG_DBG, "replyh: passing %s (id %d) to client %s (%s)", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
 
     radmsg_free(rqout->rq->msg);
     rqout->rq->msg = msg;

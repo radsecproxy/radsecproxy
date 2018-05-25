@@ -139,6 +139,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     struct list_node *node;
     struct client *c = NULL;
     struct timeval now;
+    char tmp[INET6_ADDRSTRLEN];
 
     for (;;) {
 	if (rad) {
@@ -156,7 +157,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	    ? find_clconf(handle, (struct sockaddr *)&from, NULL)
 	    : find_srvconf(handle, (struct sockaddr *)&from, NULL);
 	if (!p) {
-	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from));
+	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 	    if (recv(s, buf, 4, 0) == -1)
             debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
 	    continue;
@@ -179,7 +180,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 	}
 
 	cnt = recv(s, rad, len, MSG_TRUNC);
-	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from));
+	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 
 	if (cnt < len) {
 	    debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
@@ -204,7 +205,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
 		if (c->expiry >= now.tv_sec)
 		    continue;
 
-		debug(DBG_DBG, "radudpget: removing expired client (%s)", addr2string(c->addr));
+		debug(DBG_DBG, "radudpget: removing expired client (%s)", addr2string(c->addr, tmp, sizeof(tmp)));
 		removeudpclientfromreplyq(c);
 		c->replyq = NULL; /* stop removeclient() from removing common udp replyq */
 		removelockedclient(c);
@@ -242,11 +243,12 @@ int clientradputudp(struct server *server, unsigned char *rad) {
     size_t len;
     struct clsrvconf *conf = server->conf;
     struct addrinfo *ai;
+    char tmp[INET6_ADDRSTRLEN];
 
     len = RADLEN(rad);
     ai = ((struct hostportres *)list_first(conf->hostports)->data)->addrinfo;
     if (sendto(server->sock, rad, len, 0, ai->ai_addr, ai->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, addr2string(ai->ai_addr), port_get(ai->ai_addr));
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, addr2string(ai->ai_addr, tmp, sizeof(tmp)), port_get(ai->ai_addr));
 	return 1;
     }
 

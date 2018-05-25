@@ -185,8 +185,9 @@ void *dtlsserverwr(void *arg) {
     struct client *client = (struct client *)arg;
     struct gqueue *replyq;
     struct request *reply;
+    char tmp[INET6_ADDRSTRLEN];
 
-    debug(DBG_DBG, "dtlsserverwr: starting for %s", addr2string(client->addr));
+    debug(DBG_DBG, "dtlsserverwr: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
     replyq = client->replyq;
     for (;;) {
         pthread_mutex_lock(&replyq->mutex);
@@ -227,7 +228,7 @@ void *dtlsserverwr(void *arg) {
             }
         }
         debug(DBG_DBG, "dtlsserverwr: sent %d bytes, Radius packet of length %d to %s",
-            cnt, RADLEN(reply->replybuf), addr2string(client->addr));
+            cnt, RADLEN(reply->replybuf), addr2string(client->addr, tmp, sizeof(tmp)));
         pthread_mutex_unlock(&client->lock);
         freerq(reply);
     }
@@ -237,8 +238,9 @@ void dtlsserverrd(struct client *client) {
     struct request *rq;
     uint8_t *buf;
     pthread_t dtlsserverwrth;
+    char tmp[INET6_ADDRSTRLEN];
 
-    debug(DBG_DBG, "dtlsserverrd: starting for %s", addr2string(client->addr));
+    debug(DBG_DBG, "dtlsserverrd: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
 
     if (pthread_create(&dtlsserverwrth, &pthread_attr, dtlsserverwr, (void *)client)) {
 	debug(DBG_ERR, "dtlsserverrd: pthread_create failed");
@@ -248,10 +250,10 @@ void dtlsserverrd(struct client *client) {
     for (;;) {
 	buf = raddtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock);
 	if (!buf) {
-	    debug(DBG_ERR, "dtlsserverrd: connection from %s lost", addr2string(client->addr));
+	    debug(DBG_ERR, "dtlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
 	    break;
 	}
-	debug(DBG_DBG, "dtlsserverrd: got Radius message from %s", addr2string(client->addr));
+	debug(DBG_DBG, "dtlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
 	rq = newrequest();
 	if (!rq) {
 	    free(buf);
@@ -260,7 +262,7 @@ void dtlsserverrd(struct client *client) {
 	rq->buf = buf;
 	rq->from = client;
 	if (!radsrv(rq)) {
-	    debug(DBG_ERR, "dtlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr));
+	    debug(DBG_ERR, "dtlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
 	    break;
 	}
     }
@@ -274,7 +276,7 @@ void dtlsserverrd(struct client *client) {
     pthread_mutex_unlock(&client->replyq->mutex);
     debug(DBG_DBG, "dtlsserverrd: waiting for writer to end");
     pthread_join(dtlsserverwrth, NULL);
-    debug(DBG_DBG, "dtlsserverrd: reader for %s exiting", addr2string(client->addr));
+    debug(DBG_DBG, "dtlsserverrd: reader for %s exiting", addr2string(client->addr, tmp, sizeof(tmp)));
 }
 
 void *dtlsservernew(void *arg) {
@@ -288,8 +290,9 @@ void *dtlsservernew(void *arg) {
     unsigned long error;
     struct timeval timeout;
     struct addrinfo tmpsrvaddr;
+    char tmp[INET6_ADDRSTRLEN];
 
-    debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr));
+    debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
 
     if (!srcres)
         dtlssetsrcres();
@@ -377,7 +380,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
     if ((ret = recvmsg(socket, &msghdr, MSG_PEEK | MSG_TRUNC)) < 0)
         return ret;
 
-    debug(DBG_DBG, "udp packet from %s", addr2string(from));
+    debug(DBG_DBG, "udp packet from %s", addr2string(from, tmp, sizeof(tmp)));
 
     if (getsockname(socket, to, &tolen))
         return -1;
@@ -410,6 +413,7 @@ void *dtlslistener(void *arg) {
     struct clsrvconf *conf;
     SSL *ssl;
     SSL_CTX *ctx;
+    char tmp[INET6_ADDRSTRLEN];
 
     debug(DBG_DBG, "dtlslistener: starting");
 
@@ -432,7 +436,7 @@ void *dtlslistener(void *arg) {
 
         conf = find_clconf(handle, (struct sockaddr *)&from, NULL);
         if (!conf) {
-            debug(DBG_INFO, "dtlslistener: got UDP from unknown peer %s, ignoring", addr2string((struct sockaddr *)&from));
+            debug(DBG_INFO, "dtlslistener: got UDP from unknown peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
             if (recv(s, buf, 4, 0) == -1)
                 debug(DBG_ERR, "dtlslistener: recv failed - %s", strerror(errno));
             continue;

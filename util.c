@@ -80,12 +80,10 @@ struct sockaddr *addr_copy(struct sockaddr *in) {
     return out;
 }
 
-const char *addr2string(struct sockaddr *addr) {
+const char *addr2string(struct sockaddr *addr, char *buf, size_t len) {
     struct sockaddr_in6 *sa6;
     struct sockaddr_in sa4;
-    static char addr_buf[2][INET6_ADDRSTRLEN];
-    static int i = 0;
-    i = !i;
+
     if (addr->sa_family == AF_INET6) {
 	sa6 = (struct sockaddr_in6 *)addr;
 	if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) {
@@ -96,12 +94,12 @@ const char *addr2string(struct sockaddr *addr) {
 	    addr = (struct sockaddr *)&sa4;
 	}
     }
-    if (getnameinfo(addr, SOCKADDRP_SIZE(addr), addr_buf[i], sizeof(addr_buf[i]),
+    if (getnameinfo(addr, SOCKADDRP_SIZE(addr), buf, len,
                     NULL, 0, NI_NUMERICHOST)) {
         debug(DBG_WARN, "getnameinfo failed");
         return "getnameinfo_failed";
     }
-    return addr_buf[i];
+    return buf;
 }
 
 /* Disable the "Don't Fragment" bit for UDP sockets. It is set by default, which may cause an "oversized"

@@ -389,8 +389,9 @@ void *tlsserverwr(void *arg) {
     struct client *client = (struct client *)arg;
     struct gqueue *replyq;
     struct request *reply;
+    char tmp[INET6_ADDRSTRLEN];
 
-    debug(DBG_DBG, "tlsserverwr: starting for %s", addr2string(client->addr));
+    debug(DBG_DBG, "tlsserverwr: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
     replyq = client->replyq;
     for (;;) {
         pthread_mutex_lock(&replyq->mutex);
@@ -418,7 +419,7 @@ void *tlsserverwr(void *arg) {
 
         if ((cnt = dosslwrite(client->ssl, reply->replybuf, RADLEN(reply->replybuf), 0)) > 0) {
             debug(DBG_DBG, "tlsserverwr: sent %d bytes, Radius packet of length %d to %s",
-                cnt, RADLEN(reply->replybuf), addr2string(client->addr));
+                cnt, RADLEN(reply->replybuf), addr2string(client->addr, tmp, sizeof(tmp)));
         }
         pthread_mutex_unlock(&client->lock);
     	freerq(reply);
@@ -429,8 +430,9 @@ void tlsserverrd(struct client *client) {
     struct request *rq;
     uint8_t *buf;
     pthread_t tlsserverwrth;
+    char tmp[INET6_ADDRSTRLEN];
 
-    debug(DBG_DBG, "tlsserverrd: starting for %s", addr2string(client->addr));
+    debug(DBG_DBG, "tlsserverrd: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
 
     if (pthread_create(&tlsserverwrth, &pthread_attr, tlsserverwr, (void *)client)) {
 	debug(DBG_ERR, "tlsserverrd: pthread_create failed");
@@ -440,10 +442,10 @@ void tlsserverrd(struct client *client) {
     for (;;) {
 	buf = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock);
 	if (!buf) {
-	    debug(DBG_ERR, "tlsserverrd: connection from %s lost", addr2string(client->addr));
+	    debug(DBG_ERR, "tlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
 	    break;
 	}
-	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr));
+	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
 	rq = newrequest();
 	if (!rq) {
 	    free(buf);
@@ -452,7 +454,7 @@ void tlsserverrd(struct client *client) {
 	rq->buf = buf;
 	rq->from = client;
 	if (!radsrv(rq)) {
-	    debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr));
+	    debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
 	    break;
 	}
     }
@@ -466,7 +468,7 @@ void tlsserverrd(struct client *client) {
     pthread_mutex_unlock(&client->replyq->mutex);
     debug(DBG_DBG, "tlsserverrd: waiting for writer to end");
     pthread_join(tlsserverwrth, NULL);
-    debug(DBG_DBG, "tlsserverrd: reader for %s exiting", addr2string(client->addr));
+    debug(DBG_DBG, "tlsserverrd: reader for %s exiting", addr2string(client->addr, tmp, sizeof(tmp)));
 }
 
 void *tlsservernew(void *arg) {
@@ -481,6 +483,7 @@ void *tlsservernew(void *arg) {
     unsigned long error;
     struct client *client;
     struct tls *accepted_tls = NULL;
+    char tmp[INET6_ADDRSTRLEN];
 
     s = *(int *)arg;
     free(arg);
@@ -488,7 +491,7 @@ void *tlsservernew(void *arg) {
 	debug(DBG_DBG, "tlsservernew: getpeername failed, exiting");
 	goto exit;
     }
-    debug(DBG_WARN, "tlsservernew: incoming TLS connection from %s", addr2string((struct sockaddr *)&from));
+    debug(DBG_WARN, "tlsservernew: incoming TLS connection from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 
     conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
     if (conf) {
