@@ -341,18 +341,18 @@ void *tcpservernew(void *arg) {
 
     conf = find_clconf(handle, (struct sockaddr *)&from, NULL);
     if (conf) {
-	client = addclient(conf, 1);
-	if (client) {
-        if(conf->keepalive)
-            enable_keepalive(s);
-	    client->sock = s;
-	    client->addr = addr_copy((struct sockaddr *)&from);
-	    tcpserverrd(client);
-	    removeclient(client);
-	} else
-	    debug(DBG_WARN, "tcpservernew: failed to create new client instance");
+        client = addclient(conf, 1);
+        if (client) {
+            if(conf->keepalive)
+                enable_keepalive(s);
+            client->sock = s;
+            client->addr = addr_copy((struct sockaddr *)&from);
+            tcpserverrd(client);
+            removeclient(client);
+        } else
+            debug(DBG_WARN, "tcpservernew: failed to create new client instance");
     } else
-	debug(DBG_WARN, "tcpservernew: ignoring request, no matching TCP client");
+        debug(DBG_WARN, "tcpservernew: ignoring request, no matching TCP client");
 
 exit:
     shutdown(s, SHUT_RDWR);

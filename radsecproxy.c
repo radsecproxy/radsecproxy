@@ -199,10 +199,10 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
 
     new = calloc(1, sizeof(struct client));
     if (!new) {
-	debug(DBG_ERR, "malloc failed");
-    if (lock)
-        pthread_mutex_unlock(conf->lock);
-	return NULL;
+        debug(DBG_ERR, "malloc failed");
+        if (lock)
+            pthread_mutex_unlock(conf->lock);
+        return NULL;
     }
     if (!list_push(conf->clients, new)) {
         free(new);

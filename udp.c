@@ -142,100 +142,100 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
     char tmp[INET6_ADDRSTRLEN];
 
     for (;;) {
-	if (rad) {
-	    free(rad);
-	    rad = NULL;
-	}
+        if (rad) {
+            free(rad);
+            rad = NULL;
+        }
 
-	cnt = recvfrom(s, buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
-	if (cnt == -1) {
-	    debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
-	    continue;
-	}
-
-	p = client
-	    ? find_clconf(handle, (struct sockaddr *)&from, NULL)
-	    : find_srvconf(handle, (struct sockaddr *)&from, NULL);
-	if (!p) {
-	    debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
-	    if (recv(s, buf, 4, 0) == -1)
+        cnt = recvfrom(s, buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
+        if (cnt == -1) {
             debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
-	    continue;
-	}
+            continue;
+        }
 
-	len = RADLEN(buf);
-	if (len < 20) {
-	    debug(DBG_WARN, "radudpget: length too small");
-        if (recv(s, buf, 4, 0) == -1)
-            debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
-	    continue;
-	}
+        p = client
+            ? find_clconf(handle, (struct sockaddr *)&from, NULL)
+            : find_srvconf(handle, (struct sockaddr *)&from, NULL);
+        if (!p) {
+            debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
+            if (recv(s, buf, 4, 0) == -1)
+                debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
+            continue;
+        }
 
-	rad = malloc(len);
-	if (!rad) {
-	    debug(DBG_ERR, "radudpget: malloc failed");
-        if (recv(s, buf, 4, 0) == -1)
-            debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
-	    continue;
-	}
+        len = RADLEN(buf);
+        if (len < 20) {
+            debug(DBG_WARN, "radudpget: length too small");
+            if (recv(s, buf, 4, 0) == -1)
+                debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
+            continue;
+        }
 
-	cnt = recv(s, rad, len, MSG_TRUNC);
-	debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
+        rad = malloc(len);
+        if (!rad) {
+            debug(DBG_ERR, "radudpget: malloc failed");
+            if (recv(s, buf, 4, 0) == -1)
+                debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
+            continue;
+        }
 
-	if (cnt < len) {
-	    debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
-	    continue;
-	}
-	if (cnt > len)
-	    debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
+        cnt = recv(s, rad, len, MSG_TRUNC);
+        debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 
-	if (client) {
-	    *client = NULL;
-	    pthread_mutex_lock(p->lock);
-	    for (node = list_first(p->clients); node;) {
-		c = (struct client *)node->data;
-		node = list_next(node);
-		if (s != c->sock)
-		    continue;
-		gettimeofday(&now, NULL);
-		if (!*client && addr_equal((struct sockaddr *)&from, c->addr)) {
-		    c->expiry = now.tv_sec + 60;
-		    *client = c;
-		}
-		if (c->expiry >= now.tv_sec)
-		    continue;
+        if (cnt < len) {
+            debug(DBG_WARN, "radudpget: packet smaller than length field in radius header");
+            continue;
+        }
+        if (cnt > len)
+            debug(DBG_DBG, "radudpget: packet was padded with %d bytes", cnt - len);
 
-		debug(DBG_DBG, "radudpget: removing expired client (%s)", addr2string(c->addr, tmp, sizeof(tmp)));
-		removeudpclientfromreplyq(c);
-		c->replyq = NULL; /* stop removeclient() from removing common udp replyq */
-		removelockedclient(c);
-		break;
-	    }
-	    if (!*client) {
-		fromcopy = addr_copy((struct sockaddr *)&from);
-		if (!fromcopy) {
-		    pthread_mutex_unlock(p->lock);
-		    continue;
-		}
-		c = addclient(p, 0);
-		if (!c) {
-		    free(fromcopy);
-		    pthread_mutex_unlock(p->lock);
-		    continue;
-		}
-		c->sock = s;
-		c->addr = fromcopy;
-		gettimeofday(&now, NULL);
-		c->expiry = now.tv_sec + 60;
-		*client = c;
-	    }
-	    pthread_mutex_unlock(p->lock);
-	} else if (server)
-	    *server = p->servers;
-	break;
+        if (client) {
+            *client = NULL;
+            pthread_mutex_lock(p->lock);
+            for (node = list_first(p->clients); node;) {
+                c = (struct client *)node->data;
+                node = list_next(node);
+                if (s != c->sock)
+                    continue;
+                gettimeofday(&now, NULL);
+                if (!*client && addr_equal((struct sockaddr *)&from, c->addr)) {
+                    c->expiry = now.tv_sec + 60;
+                    *client = c;
+                }
+                if (c->expiry >= now.tv_sec)
+                    continue;
+
+                debug(DBG_DBG, "radudpget: removing expired client (%s)", addr2string(c->addr, tmp, sizeof(tmp)));
+                removeudpclientfromreplyq(c);
+                c->replyq = NULL; /* stop removeclient() from removing common udp replyq */
+                removelockedclient(c);
+                break;
+            }
+            if (!*client) {
+                fromcopy = addr_copy((struct sockaddr *)&from);
+                if (!fromcopy) {
+                    pthread_mutex_unlock(p->lock);
+                    continue;
+                }
+                c = addclient(p, 0);
+                if (!c) {
+                    free(fromcopy);
+                    pthread_mutex_unlock(p->lock);
+                    continue;
+                }
+                c->sock = s;
+                c->addr = fromcopy;
+                gettimeofday(&now, NULL);
+                c->expiry = now.tv_sec + 60;
+                *client = c;
+            }
+            pthread_mutex_unlock(p->lock);
+        } else if (server)
+            *server = p->servers;
+        break;
     }
     if (port)
-	*port = port_get((struct sockaddr *)&from);
+        *port = port_get((struct sockaddr *)&from);
     return rad;
 }
 

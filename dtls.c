@@ -464,7 +464,11 @@ void *dtlslistener(void *arg) {
             BIO_set_fd(SSL_get_rbio(conf->tlsconf->dtlssslprep), s, BIO_NOCLOSE);
         }
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000
         if(DTLSv1_listen(conf->tlsconf->dtlssslprep, &from) > 0) {
+#else
+        if(DTLSv1_listen(conf->tlsconf->dtlssslprep, (BIO_ADDR *)&from) > 0) {
+#endif
             params = malloc(sizeof(struct dtlsservernewparams));
             memcpy(&params->addr, &from, sizeof(from));
             memcpy(&params->bind, &to, sizeof(to));
