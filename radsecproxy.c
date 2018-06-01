@@ -1258,7 +1258,7 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
         if (msg->code == RAD_Accounting_Response)
             level = DBG_INFO;
         if (logusername) {
-            debug(level, "%s for user %s %s from %s%s to %s (%s)",
+            debug(level, "%s for user %s%s from %s%s to %s (%s)",
                 radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "",
                 servername, replymsg ? (char *)replymsg : "", rq->from->conf->name,
                 addr2string(rq->from->addr, tmp, sizeof(tmp)));
