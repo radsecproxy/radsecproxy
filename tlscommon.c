@@ -72,11 +72,10 @@ void sslinit() {
     }
     CRYPTO_set_id_callback(ssl_thread_id);
     CRYPTO_set_locking_callback(ssl_locking_callback);
+    SSL_load_error_strings();
 #else
     OPENSSL_init_ssl(0, NULL);
 #endif
-
-    SSL_load_error_strings();
 }
 
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
@@ -332,7 +331,6 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
 static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     SSL_CTX *ctx = NULL;
     unsigned long error;
-    long sslversion = SSLeay();
 
     switch (type) {
 #ifdef RADPROT_TLS
@@ -370,6 +368,8 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 	return NULL;
     }
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    long sslversion = SSLeay();
     if (sslversion < 0x00908100L ||
         (sslversion >= 0x10000000L && sslversion < 0x10000020L)) {
         debug(DBG_WARN, "%s: %s seems to be of a version with a "
@@ -378,6 +378,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 	      __func__, SSLeay_version(SSLEAY_VERSION), ctx);
         SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
     }
+#endif
 
     if (conf->certkeypwd) {
 	SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
