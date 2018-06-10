@@ -369,6 +369,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     }
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
+    {
     long sslversion = SSLeay();
     if (sslversion < 0x00908100L ||
         (sslversion >= 0x10000000L && sslversion < 0x10000020L)) {
@@ -377,6 +378,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 	      "1.0.0b).  Disabling OpenSSL session caching for context %p.",
 	      __func__, SSLeay_version(SSLEAY_VERSION), ctx);
         SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
+    }
     }
 #endif
 
