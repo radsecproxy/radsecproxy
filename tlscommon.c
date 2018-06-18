@@ -172,7 +172,7 @@ static int cookie_generate_cb(SSL *ssl, unsigned char *cookie, unsigned int *coo
         cookie_secret_initialized = 1;
     }
 
-    if(BIO_dgram_get_peer(SSL_get_rbio(ssl), &peer) < 0)
+    if (BIO_dgram_get_peer(SSL_get_rbio(ssl), &peer) <= 0)
         return 0;
     gettimeofday(&now, NULL);
     if (!cookie_calculate_hash((struct sockaddr *)&peer, now.tv_sec, result, &resultlength))
@@ -211,7 +211,8 @@ static int cookie_verify_cb(SSL *ssl, const unsigned char *cookie, unsigned int 
         return 0;
     }
 
-    BIO_dgram_get_peer(SSL_get_rbio(ssl), &peer);
+    if (BIO_dgram_get_peer(SSL_get_rbio(ssl), &peer) <= 0)
+        return 0;
     if (!cookie_calculate_hash((struct sockaddr *)&peer, cookie_time, result, &resultlength))
         return 0;
 

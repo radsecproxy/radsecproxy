@@ -315,7 +315,8 @@ void *dtlsservernew(void *arg) {
     }
     timeout.tv_sec = 5;
     timeout.tv_usec = 0;
-    BIO_ctrl(SSL_get_rbio(params->ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
+    if (BIO_ctrl(SSL_get_rbio(params->ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout) == -1)
+        debug(DBG_WARN, "dtlsservernew: BIO_CTRL_DGRAM_SET_RECV_TIMEOUT failed");
 
     conf = find_clconf(handle, (struct sockaddr *)&params->addr, NULL);
     if (!conf)
@@ -573,8 +574,8 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
         }
         socktimeout.tv_sec = 5;
         socktimeout.tv_usec = 0;
-        BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &socktimeout);
-
+        if (BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &socktimeout) == -1)
+            debug(DBG_WARN, "dtlsconnect: BIO_CTRL_DGRAM_SET_RECV_TIMEOUT failed");
         debug(DBG_DBG, "dtlsconnect: DTLS: ok");
 
         cert = verifytlscert(server->ssl);
