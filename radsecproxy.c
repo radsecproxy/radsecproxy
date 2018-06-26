@@ -2911,7 +2911,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     struct clsrvconf *conf, *resconf;
     char *conftype = NULL, *rewriteinalias = NULL;
     long int retryinterval = LONG_MIN, retrycount = LONG_MIN, addttl = LONG_MIN;
-    uint8_t ipv4only = 0, ipv6only = 0;
+    uint8_t ipv4only = 0, ipv6only = 0, confmerged = 0;
 
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
@@ -3023,14 +3023,15 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 
     if (resconf) {
-	if (!mergesrvconf(resconf, conf))
-	    goto errexit;
-	free(conf);
-	conf = resconf;
-	if (conf->dynamiclookupcommand) {
-	    free(conf->dynamiclookupcommand);
-	    conf->dynamiclookupcommand = NULL;
-	}
+        if (!mergesrvconf(resconf, conf))
+            goto errexit;
+        free(conf);
+        conf = resconf;
+        confmerged = 1;
+        if (conf->dynamiclookupcommand) {
+            free(conf->dynamiclookupcommand);
+            conf->dynamiclookupcommand = NULL;
+        }
     }
 
     if (resconf || !conf->dynamiclookupcommand) {
@@ -3062,7 +3063,9 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 errexit:
     free(conftype);
     free(rewriteinalias);
-    freeclsrvconf(conf);
+    /* if conf was merged into resconf, don't free it */
+    if (!confmerged)
+        freeclsrvconf(conf);
     return 0;
 }
 

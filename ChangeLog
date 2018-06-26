@@ -36,6 +36,7 @@
 	- Fix refcounting in error cases when loading configuration (RADSECPROXY-42)
 	- Fix potential crash when rewriting malformed vendor attributes.
 	- Properly cleanup expired requests from server output-queue.
+	- Fix crash when dynamic discovered server doesn't resolve.
 
 2017-08-02 1.6.9
 		Misc:
