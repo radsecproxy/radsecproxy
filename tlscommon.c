@@ -544,7 +544,7 @@ static int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
 	v = (char *)ASN1_STRING_get0_data(gn->d.ia5);
 	l = ASN1_STRING_length(gn->d.ia5);
 	if (((family == AF_INET && l == sizeof(struct in_addr)) || (family == AF_INET6 && l == sizeof(struct in6_addr)))
-	    && !memcmp(v, &addr, l)) {
+	    && !memcmp(v, addr, l)) {
 	    r = 1;
 	    break;
 	}
