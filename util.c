@@ -178,7 +178,8 @@ int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse) {
 }
 
 int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, int timeout) {
-    int origflags, r = -1;
+    int origflags, r = -1, sockerr = 0;
+    socklen_t errlen = sizeof(sockerr);
     struct pollfd fds[1];
 
     origflags = fcntl(s, F_GETFL, 0);
@@ -202,8 +203,15 @@ int connectnonblocking(int s, const struct sockaddr *addr, socklen_t addrlen, in
     if (poll(fds, 1, timeout * 1000) < 1)
 	goto exit;
 
-    if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL) ) {
-        debug(DBG_WARN, "Connection failed or refused");
+    if (fds[0].revents & POLLERR) {
+        if(!getsockopt(s, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
+            debug(DBG_WARN, "Connection failed: %s", strerror(sockerr));
+        else
+            debug(DBG_WARN, "Connection failed: unknown error");
+    } else if (fds[0].revents & POLLHUP) {
+            debug(DBG_WARN, "Connect error: hang up");
+    } else if (fds[0].revents & POLLNVAL) {
+            debug(DBG_WARN, "Connect error: fd not open");
     } else if(fds[0].revents & POLLOUT) {
         debug(DBG_DBG, "Connection up");
         r = 0;
