@@ -1,4 +1,4 @@
-2018-05-03 1.7.1
+2018-07-05 1.7.1
 
 	License and copyright changes:
 	- Copyright SWITCH
@@ -39,15 +39,15 @@
 	- Fix crash when dynamic discovered server doesn't resolve.
 
 2017-08-02 1.6.9
-		Misc:
-		- Use a listen(2) backlog of 128 (RADSECPROXY-72).
+	Misc:
+	- Use a listen(2) backlog of 128 (RADSECPROXY-72).
 
-		Bug fixes:
-		- Don't follow NULL the pointer at debug level 5 (RADSECPROXY-68).
-		- Completely reload CAs and CRLs with cacheExpiry (RADSECPROXY-50).
-		- Tie Access-Request log lines to response log lines (RADSECPROXY-60).
-		- Fix a couple of memory leaks and NULL ptr derefs in error cases.
-		- Take lock on realm refcount before updating it (RADSECPROXY-77).
+	Bug fixes:
+	- Don't follow NULL the pointer at debug level 5 (RADSECPROXY-68).
+	- Completely reload CAs and CRLs with cacheExpiry (RADSECPROXY-50).
+	- Tie Access-Request log lines to response log lines (RADSECPROXY-60).
+	- Fix a couple of memory leaks and NULL ptr derefs in error cases.
+	- Take lock on realm refcount before updating it (RADSECPROXY-77).
 
 2016-09-21 1.6.8
 	Bug fixes:
