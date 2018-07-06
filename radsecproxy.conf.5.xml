@@ -256,7 +256,7 @@ blocktype name {
 	    needs FTicksKey to be set.
 	</para>
 	<para>
-	    Before chosing any of <literal>Original</literal>,
+	    Before choosing any of <literal>Original</literal>,
 	    <literal>FullyHashed</literal> or
 	    <literal>VendorHashed</literal>, consider the implications
 	    for user privacy when MAC addresses are collected.  How
