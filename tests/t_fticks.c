@@ -2,6 +2,7 @@
 /* See LICENSE for licensing information. */
 
 #include <stdio.h>
+#include <string.h>
 #include <errno.h>
 #include "../radsecproxy.h"
 #include "../fticks_hashmac.h"
