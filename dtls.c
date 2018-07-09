@@ -158,7 +158,7 @@ unsigned char *raddtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock) {
 
     len = RADLEN(buf);
     if (len < 20) {
-        debug(DBG_ERR, "raddtlsget: length too small, malformed packet! closing conneciton!");
+        debug(DBG_ERR, "raddtlsget: length too small, malformed packet! closing connection!");
         return NULL;
     }
     rad = malloc(len);
@@ -421,7 +421,7 @@ void *dtlslistener(void *arg) {
     if ((flags = fcntl(s,F_GETFL)) == -1)
         debugx(1, DBG_ERR, "dtlslistener: failed to get socket flags");
     if (fcntl(s, F_SETFL, flags | O_NONBLOCK) == -1)
-        debugx(1, DBG_ERR, "dtlslistener: faild set set non-blocking");
+        debugx(1, DBG_ERR, "dtlslistener: failed to set non-blocking");
 
     for (;;) {
         fds[0].fd = s;
