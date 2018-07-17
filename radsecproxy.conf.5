@@ -1,0 +1,840 @@
+.TH radsecproxy.conf 5 2018-07-05 "radsecproxy 1.7.1" ""
+
+.SH NAME
+radsecproxy.conf \- Radsec proxy configuration file
+
+.SH DESCRIPTION
+When the proxy server starts, it will first check the command line arguments,
+and then read the configuration file. Normally radsecproxy will read the
+configuration file \fI/usr/local/etc/radsecproxy.conf\fR. The command line
+\fB\-c\fR option can be used to instead read an alternate file (see
+\fBradsecproxy\fR(1) for details).
+
+If the configuration file can not be found, the proxy will exit with an error
+message. Note that there is also an include facility so that any configuration
+file may include other configuration files. The proxy will also exit on
+configuration errors.
+
+.SH "CONFIGURATION SYNTAX"
+When the configuration file is processed, whitespace (spaces and tabs) are
+generally ignored. For each line, leading and trailing whitespace are ignored.
+A line is ignored if it is empty, only consists of whitespace, or if the first
+non-whitespace character is a #. The configuration is generally case
+insensitive, but in some cases the option values (see below) are not.
+
+There are two types of configuration structures than can be used. The first and
+simplest are lines on the format \fIoption value\fR. That is, an option name,
+see below for a list of valid options, followed by whitespace (at least one
+space or tab character), followed by a value. Note that if the value contains
+whitespace, then it must be quoted using "" or ''. Any whitespace in front of
+the option or after the value will be ignored.
+
+The other type of structure is a block. A block spans at least two lines, and
+has the format:
+.RS
+.nf
+
+blocktype name {
+	option value
+	option value
+	...
+}
+
+.fi
+.RE
+
+That is, some blocktype, see below for a list of the different block types, and
+then enclosed in braces you have zero or more lines that each have the
+previously described \fIoption value\fR format. Different block types have
+different rules for which options can be specified, they are listed below. The
+rules regarding white space, comments and quotes are as above. Hence you may do
+things like:
+.RS
+.nf
+
+blocktype name {
+#    option value
+    option "value with space"
+    ...
+}
+
+.fi
+.RE
+
+Option value characters can also be written in hex. This is done by writing the
+character % followed by two hexadecimal digits. If a % is used without two
+following hexadecimal digits, the % and the following characters are used as
+written. If you want to write a % and not use this decoding, you may of course
+write % in hex; i.e., %25.
+
+Some options allow or require the use of regular expressions, denoted as
+\fIregex\fR. The POSIX extended RE system is used, see
+.BR re_format (7).
+
+There is one special option that can be used both as a basic option and inside
+all blocks. That is the option \fIInclude\fR where the value specifies files to
+be included. The value can be a single file, or it can use normal shell globbing
+to specify multiple files, e.g.:
+
+.RS
+include /usr/local/etc/radsecproxy.conf.d/*.conf
+.RE
+
+The files are sorted alphabetically. Included files are read in the order they
+are specified, when reaching the end of a file, the next file is read. When
+reaching the end of the last included file, the proxy returns to read the next
+line following the \fIInclude\fR option. Included files may again include other
+files.
+
+.SH "BASIC OPTIONS"
+The following basic options may be specified in the configuration file. Note
+that blocktypes and options inside blocks are discussed later. Note that none of
+these options are required, and indeed in many cases they are not needed. Note
+that you should specify each at most once. The behaviour with multiple
+occurrences is undefined.
+
+.BI "PidFile " file
+.RS
+The PidFile option specifies the name of a \fIfile\fR to which the process id
+(PID) will be written. This is overridden by the \fB\-i\fR command line option.
+There is no default value for the PidFile option.
+.RE
+
+.BR "LogLevel " "1-5"
+.RS
+This option specifies the debug level. It must be set to 1, 2, 3, 4 or 5, where
+1 logs only serious errors, and 5 logs everything. The default is 2 which logs
+errors, warnings and a few informational messages. Note that the command line
+option \fB\-d\fR overrides this.
+.RE
+
+.BI "LogDestination (" file | syslog )
+.RS
+This specifies where the log messages should go. By default the messages go to
+syslog with facility \fBLOG_DAEMON\fR. Using this option you can specify another
+syslog facility, or you may specify that logging should be to a particular file,
+not using syslog. The value must be either a file or syslog URL. The file URL is
+the standard one, specifying a local file that should be used. For syslog, you
+must use the syntax:
+.BR "x\-syslog:///FACILITY" " where " FACILITY " must be one of "
+.BR LOG_DAEMON ,
+.BR LOG_MAIL ,
+.BR LOG_USER ,
+.BR LOG_LOCAL0 ,
+.BR LOG_LOCAL1 ,
+.BR LOG_LOCAL2 ,
+.BR LOG_LOCAL3 ,
+.BR LOG_LOCAL4 ,
+.BR LOG_LOCAL5 ,
+.BR LOG_LOCAL6 or
+.BR LOG_LOCAL7 .
+You may omit the facility from the URL to specify logging to the default
+facility, but this is not very useful since this is the default log
+destination. Note that this option is ignored if \fB\-f\fR is specified on the
+command line.
+.RE
+
+.BR "LogThreadId (" on | off )
+.RS
+This can be set to on to include the thread-id in the log messages (useful for
+debugging).
+.RE
+
+
+.BR "LogFullUsername (" on | off )
+.RS
+This can be set to off to only log the realm in Access-Accept/Reject log
+messages (for privacy).
+.RE
+
+.BI "LogMAC " opt
+.RS
+The LogMAC option can be used to control if and how Calling-Station-Id (the
+users Ethernet MAC address) is being logged. It can be set to one of
+.BR Static ,
+.BR Original ,
+.BR VendorHashed ,
+.BR VendorKeyHashed ,
+.BR FullyHashed
+or
+.BR FullyKeyHashed .
+The default value for LogMAC is \fBOriginal\fR.
+
+See \fIradsecproxy.conf\-example\fR for details.
+.RE
+
+.BI "LogKey " key
+.RS
+The LogKey option is used to specify the \fIkey\fR to use when producing HMAC's as an
+effect of specifying \fBVendorKeyHashed\fR or \fBFullyKeyHashed\fR for the
+LogMAC option.
+.RE
+
+.BI "FTicksReporting " fticks
+.RS
+The FTicksReporting option is used to enable F-Ticks logging and can be set to
+.BR None ,
+.BR Basic
+or
+.BR Full.
+Its default value is \fBNone\fR. If FTicksReporting is set to anything other
+than \fBNone\fR, note that the default value for \fBFTicksMAC\fR needs
+\fBFTicksKey\fR to be set.
+
+See \fIradsecproxy.conf\-example\fR for details.
+.RE
+
+.BI "FTicksMAC " opt
+.RS
+The FTicksMAC option has the same function as LogMAC for FTicks. The default for
+FTicksMAC is \fBVendorKeyHashed\fR which needs \fBFTicksKey\fR to be set.
+
+Before chosing any of
+.BR Original ,
+.BR FullyHashed
+or
+.BR VendorHashed ,
+consider the implications for user privacy when MAC addresses are collected. How
+will the logs be stored, transferred and accessed?
+.RE
+
+.BI "FTicksKey " key
+.RS
+The FTicksKey option has the same function as LogKey for Fticks.
+.RE
+
+.BI "FTicksSyslogFacility " syslog
+.RS
+The FTicksSyslogFacility option is used to specify a dedicated syslog facility
+for F-Ticks messages. This allows for easier filtering of F-Ticks messages. If
+no FTicksSyslogFacility option is given, F-Ticks messages are written to what
+the \fBLogDestination\fR option specifies.
+
+F-Ticks messages are always logged using the log level \fBLOG_DEBUG\fR. Note
+that specifying a file in FTicksSyslogFacility (using the file:/// prefix) is
+not supported.
+.RE
+
+.BI "FTicksPrefix " prefix
+.RS
+The FTicksPrefix option is used to set the \fIprefix\fR printed in F-Ticks
+messages. This allows for use of F-Ticks messages in non-eduroam environments.
+If no FTicksPrefix option is given, it defaults to the prefix used for eduroam
+(\*(T<F\-TICKS/eduroam/1.0\*(T>)
+
+.RE
+
+.BI "ListenUDP (" address | \fR* )[\fR: port ]
+.br
+.BI "ListenTCP (" address | \fR* )[\fR: port ]
+.br
+.BI "ListenTLS (" address | \fR* )[\fR: port ]
+.br
+.BI "ListenDTLS (" address | \fR* )[\fR: port ]
+.RS
+Listen for the address and port for the respective protocol.
+Normally the proxy will listen to the standard ports if configured to handle
+clients with the respective protocol. The default ports are 1812 for \fBUDP\fR
+and \fBTCP\fR and 2083 for \fBTLS\fR and \fBDTLS\fR. On most systems it will do this
+for all of the system's IP addresses (both IPv4 and IPv6). On some systems
+however, it may respond to only IPv4 or only IPv6. To specify an alternate port
+you may use a value on the form *:\fIport\fR where \fIport\fR is any valid port
+number. If you also want to specify a specific \fIaddress\fR you can do e.g.
+192.168.1.1:1812 or [2001:db8::1]:1812. The port may be omitted if you want the
+default one. Note that you must use brackets around the IPv6 address. These
+options may be specified multiple times to listen to multiple addresses and/or
+ports for each protocol.
+.RE
+
+.BI "SourceUDP (" address | \fR* )[\fR: port ]
+.br
+.BI "SourceTCP (" address | \fR* )[\fR: port ]
+.br
+.BI "SourceTLS (" address | \fR* )[\fR: port ]
+.br
+.BI "SourceDTLS (" address | \fR* )[\fR: port ]
+.RS
+This can be used to specify source address and/or source port that the proxy
+will use for connecting to clients to send messages (e.g. Access Request). The
+same syntax as for \fBListen...\fR applies.
+.RE
+
+.BI "TTLAttribute (" attr | vendor : attr )
+.RS
+This can be used to change the default TTL attribute. Only change this if you
+know what you are doing. The syntax is either a numerical value denoting the TTL
+attribute, or two numerical values separated by column specifying a vendor
+attribute.
+.RE
+
+.BR "AddTTL " "1-255"
+.RS
+If a TTL attribute is present, the proxy will decrement the value and discard
+the message if zero. Normally the proxy does nothing if no TTL attribute is
+present. If you use the AddTTL option with a value 1-255, the proxy will, when
+forwarding a message with no TTL attribute, add one with the specified value.
+Note that this option can also be specified for a client/server which will
+override this setting when forwarding a message to that client/server.
+.RE
+
+.BR "LoopPrevention (" on | off )
+.RS
+When this is enabled (on), a request will never be sent to a server named the
+same as the client it was received from. I.e., the names of the client block and
+the server block are compared. Note that this only gives limited protection
+against loops. It can be used as a basic option and inside server blocks where
+it overrides the basic setting.
+.RE
+
+.BR "IPv4Only (" on | off )
+.br
+.BR "IPv6Only (" on | off )
+.RS
+Enabling IPv4Only or IPv6Only (on) makes radsecproxy resolve DNS names to the
+corresponding address family only, and not the other. This is done for both
+clients and servers. At most one of IPv4Only and IPv6Only can be enabled.
+Note that this can be overridden in client and server blocks, see below.
+.RE
+
+.BI "Include " file
+.RS
+This is not a normal configuration option; it can be specified multiple times.
+It can both be used as a basic option and inside blocks. For the full
+description, see the configuration syntax section above.
+.RE
+
+.SH BLOCKS
+There are five types of blocks, they are
+.BR client ,
+.BR server ,
+.BR realm ,
+.BR tls
+and
+.BR rewrite .
+At least one instance of each of \fBclient\fR and \fBrealm\fR is required for
+the proxy to do anything useful, and it will exit if none are configured. The
+\fBtls\fR block is required if at least one TLS/DTLS client or server is
+configured. Note that there can be multiple blocks for each type. For each type,
+the block names should be unique. The behaviour with multiple occurrences of the
+same name for the same block type is undefined. Also note that some block option
+values may reference a block by name, in which case the block name must be
+previously defined. Hence the order of the blocks may be significant.
+
+.SH "CLIENT BLOCK"
+.nf
+.BI "client (" name | fqdn |( address [/ length ])) "\fR {"
+	...
+}
+.fi
+.PP
+The client block is used to configure a client. That is, tell the proxy about a
+client, and what parameters should be used for that client. The name of the
+client block must (with one exception, see below) be either the IP \fIaddress\fR
+(IPv4 or IPv6) of the client, an IP prefix (IPv4 or IPv6) on the form
+IpAddress/PrefixLength, or a domain name (\fIFQDN\fR). The way an FQDN is
+resolved into an IP address may be influenced by the use of the \fBIPv4Only\fR
+and \fBIPv6Only\fR options. Note that literal IPv6 addresses must be enclosed in
+brackets.
+
+If a domain name is specified, then this will be resolved immediately to all the
+addresses associated with the name, and the proxy will not care about any
+possible DNS changes that might occur later. Hence there is no dependency on DNS
+after startup. However, if the name can not be resolved, startup will fail.
+
+When some client later sends a request to the proxy, the proxy will look at the
+IP address the request comes from, and then go through all the addresses of each
+of the configured clients (in the order they are defined), to determine which
+(if any) of the clients this is.
+
+In the case of TLS/DTLS, the name of the client must match the FQDN or IP
+address in the client certificate. Note that this is not required when the
+client name is an IP prefix.
+
+The allowed options in a client block are:
+
+.BI "host (" fqdn |( address [/ length ]))
+.RS
+Alternatively of specifying the FQDN or address in the block name,  the
+\fBhost\fR option may be used. In that case, the value of the \fBhost\fR option
+is used as described above, while the name of the block is only used as a
+descriptive name for the administrator. The host option may be used multiple
+times, and can be a mix of addresses, FQDNs and prefixes.
+.RE
+
+.BR "IPv4Only (" on | off )
+.br
+.BR "IPv6Only (" on | off )
+.RS
+Enabling IPv4Only or IPv6Only (on) makes radsecproxy resolve DNS names to the
+corresponding address family only, and not the other. At most one of IPv4Only
+and IPv6Only can be enabled. Note that this will override the global option for
+this client.
+.RE
+
+.BI "Type " type
+.RS
+Specify the \fItype\fR (protocol) of the client. Available options are
+.BR UDP ,
+.BR TCP ,
+.BR TLS
+and
+.BR DTLS .
+.RE
+
+.BI "Secret " secret
+.RS
+Use \fIsecret\fR as the shared RADIUS key with this client. If the secret
+contains whitespace, the value must be quoted. This option is optional for
+TLS/DTLS and if omitted will default to "radsec". (Note that using a secret
+other than "radsec" for TLS is a violation of the standard (RFC 6614) and that
+the proposed standard for DTLS stipulates that the secret must be
+"radius/dtls".)
+.RE
+
+.BI "TLS " tls
+.RS
+For a TLS/DTLS client you may also specify the \fBtls\fR option. The option
+value must be the name of a previously defined TLS block. If this option is not
+specified, the TLS block with the name \fBdefaultClient\fR or \fBdefault\fR will
+be used if defined (in that order). If the specified TLS block name does not
+exist, or the option is not specified and none of the defaults exist, the proxy
+will exit with an error.
+.RE
+
+.BR "CertificateNameCheck (" on | off )
+.RS
+For a TLS/DTLS client, disable the default behaviour of matching CN or
+SubjectAltName against the specified hostname or IP address.
+.RE
+
+\fBMatchCertificateAttribute ((\fR CN \fB|\fR SubjectAltName:URI \fB) :\fR/\fIregexp\fR/\fB )\fR
+.RS
+Perform additional validation of certificate attributes. Currently only matching
+of CN and SubjectAltName type URI is supported. Note that currently this option
+can only be specified once in a client block.
+.RE
+
+.BI "DuplicateInterval " seconds
+.RS
+Specify for how many \fIseconds\fR duplicate checking should be done. If a proxy
+receives a new request within a few seconds of a previous one, it may be treated
+the same if from the same client, with the same authenticator etc. The proxy
+will then ignore the new request (if it is still processing the previous one),
+or returned a copy of the previous reply.
+.RE
+
+.BR "AddTTL " 1-255
+.RS
+The AddTTL option has the same meaning as the option used in the basic config.
+See the \fBBASIC OPTIONS\fR section for details. Any value configured here
+overrides the basic one when sending messages to this client.
+.RE
+
+.BR "TCPKeepalive (" on | off )
+.RS
+Enable TCP keepalive (default is off). If
+keepalives are not answered within 30s the connection is considered
+lost.
+.RE
+
+.BI "FticksVISCOUNTRY " cc
+.RS
+Sets this client to be eligible to F-Ticks logging as defined by the
+\fBFTicksReporting\fR basic option, and specifies the country to be reported.
+The country should be specified by the two-letter country code.
+.RE
+
+.BI "FticksVISINST " institution
+.RS
+Set the institution to report in F-Ticks logging. If this option is omitted, the
+name of the client block is used.
+.RE
+
+.BI "Rewrite " rewrite
+.RS
+This option is deprecated. Use \fBrewriteIn\fR instead.
+.RE
+
+.BI "RewriteIn " rewrite
+.br
+.BI "RewriteOut " rewrite
+.RS
+Apply the operations in the specified \fIrewrite\fR block on incoming (request)
+or outgoing (response) messages from this client. Rewriting incoming messages is
+done before, outgoing after other processing. If the \fBRewriteIn\fR is not
+configured, the rewrite blocks \fBdefaultClient\fR or \fBdefault\fR will be
+applied if defined. No default blocks are appied for \fBRewriteOut\fR.
+.RE
+
+.BI "RewriteAttribute User-Name:/" regex / replace /
+.RS
+Rewrite the User-Name attribute in a client request for the request forwarded by
+the proxy. The User-Name attribute is written back to the original value if a
+matching response is later sent back to the client. Example usage:
+
+RewriteAttribute User-Name:/^(.*)@local$/\e1@example.com/
+
+
+.SH "SERVER BLOCK"
+.nf
+.BI "server (" name |(( fqdn | address )[\fR: port ])) "\fR {"
+	...
+}
+.fi
+.PP
+The server block is used to configure a server. That is, tell the proxy about a
+server, and what parameters should be used when communicating with that server.
+The name of the server block must (with one exception, see below) be either the
+IP address (IPv4 or IPv6) of the server, or a domain name (FQDN). If a domain
+name is specified, then this will be resolved immediately to all the addresses
+associated with the name, and the proxy will not care about any possible DNS
+changes that might occur later. Hence there is no dependency on DNS after
+startup. If the domain name resolves to multiple addresses, then for UDP/DTLS
+the first address is used. For TCP/TLS, the proxy will loop through the
+addresses until it can connect to one of them. The way an FQDN is resolved into
+an IP address may be influenced by the use of the \fBIPv4Only\fR and
+\fBIPv6Only\fR options.
+
+In the case of TLS/DTLS, the name of the server must match the FQDN or IP
+address in the server certificate.
+
+Note that the \fIfqdn\fR or \fIaddress\fR may include a \fIport\fR number
+(separated with a column). This port number will then override the default port
+or a port option in the server block. Also note that literal IPv6 addresses must
+be enclosed in brackets.
+
+The allowed options in a server block are:
+
+.BI "Host (" fqdn | address )[\fR: port ]
+.RS
+Alternatively of specifying the FQDN or address in the block name the \fBhost\fR
+option may be used. In that case, the value of the \fBhost\fR option is used as
+described above, while the name of the block is only used as a descriptive name
+for the administrator. Note that multiple host options may be used. This will
+then be treated as multiple names/addresses for the same server. When initiating
+a TCP/TLS connection, all addresses of all names may be attempted, but there is
+no failover between the different host values. For failover use separate server
+blocks.
+.RE
+
+.BI "Port " port
+.RS
+Specify the \fIport\fR (UDP/TCP) to connect to. If omitted, UDP and TCP will
+default to 1812 while TLS and DTLS will default to 2083.
+.RE
+
+.BI "DynamicLookupCommand " command
+.RS
+Execude the \fIcommand\fR to dynamically configure a server. The executable file
+should be given with full path and will be invoked with the name of the realm as
+its first and only argument. It should either print a valid \fBserver {...}\fR
+option on stdout and exit with a code of 0 or print nothing and exit with a
+non-zero exit code.
+
+If the command exited with 0 an provided a valid server config, it will be combined
+with the statements in this server block, with the values returned by the command
+taking preference.
+
+An example of a shell script resolving the DNS NAPTR records
+for the realm and then the SRV records for each NAPTR matching
+\&'x-eduroam:radius.tls' is provided in \fItools/naptr\-eduroam.sh\fR.
+.RE
+
+.BR "StatusServer (" on | off )
+.RS
+Enable the use of status-server messages for this server (default off).  If
+statusserver is enabled, the proxy will send regular status-server messages to
+the server to verify that it is alive. Status tracking of the server will solely
+depend on status-server message and ignore lost requests. This should only be
+enabled if the server supports it.
+.RE
+
+.BI "RetryCount " count
+.RS
+Set how many times the proxy should retry sending a request to the server. Default is 2 retries.
+Please note that Radius retries are normally done by the NAS.
+.RE
+
+.BI "RetryInterfval " interval
+.RS
+Set the interval between each retry. Default is 5s.
+.RE
+
+.BI "Rewrite " rewrite
+.RS
+This option is deprecated. Use \fBrewriteIn\fR instead.
+.RE
+
+.BI "RewriteOut " rewrite
+.br
+.BI "RewriteIn " rewrite
+.RS
+Apply the operations in the specified \fIrewrite\fR block on outgoing (request)
+or incoming (response) messages to/from this server. Rewriting outgoing messages is
+done after, incoming before other processing. If the \fBRewriteIn\fR is not
+configured, the rewrite blocks \fBdefaultServer\fR or \fBdefault\fR will be
+applied if defined. No default blocks are appied for \fBRewriteOut\fR.
+.RE
+
+.BR "LoopPrevention (" on | off)
+.RS
+This overrides the global \fBLoopPrevention\fR option for this server.
+See section
+\fBBASIC OPTIONS\fR for details on this option.
+.RE
+
+The meaning and syntax of the following options are exactly the same as for the client
+block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
+
+.BR "IPv4Only (" on | off )
+.br
+.BR "IPv6Only (" on | off )
+.br
+.BI "Type " type
+.br
+.BI "Secret " secret
+.br
+.BI "TLS " tls
+.br
+.BR "CertificateNameCheck (" on | off )
+.br
+\fBmatchCertificateAttribute ((\fR CN \fB|\fR SubjectAltName:URI \fB) :\fR/\fIregexp\fR/\fB )\fR
+.br
+.BR "AddTTL " 1-255
+.br
+.BR "TCPKeepalive (" on | off )
+
+
+.SH "REALM BLOCK"
+.nf
+.BI "realm (" \fR* | realm |\fR/ regex\fR/ ) "\fR {"
+	...
+}
+.fi
+.PP
+When the proxy receives an Access-Request it needs to figure out to which server
+it should be forwarded. This is done by looking at the Username attribute in the
+request, and matching that against the names of the defined realm blocks. The
+proxy will match against the blocks in the order they are specified, using the
+first match if any. If no realm matches, the proxy will simply ignore the
+request. Each realm block specifies what the server should do when a match is
+found.
+
+The allowed options in a realm block are:
+
+.BI "Server " server
+.br
+.BI "AccountingServer " server
+.RS
+Specify the \fIserver\fR to which requests for this realm should be forwarded.
+\fIserver\fR references a previously defined \fBserver\fR block (see the
+\fBSERVER BLOCK\fR section). Each \fBserver\fR and \fBaccountingServer\fR can be
+specified multiple times, or omitted completely. If no \fBserver\fR is
+configured, the proxy will deny all Access-Requests for this realm. If no
+\fBaccountingServer\fR is configured, the proxy will silently ignore all
+Accounting-Requests for this realm. See the \fBSERVER SELECTION\fR section below
+for details.
+.RE
+
+.BR "AccountingResponse (" on | off )
+.RS
+Enable sending Accounting-Response instead of ignoring Accounting-Requests when
+no \fBaccoutingServer\fR are configured.
+.RE
+
+.BI "ReplyMessage " message
+.RS
+Specify a message to be sent back to the client if a Access-Request is denied
+because no \fBserver\fR are configured.
+.RE
+
+.SS "REALM BLOCK NAMES AND MATCHING"
+In the general case the proxy will look for a \fB@\fR in the username attribute,
+and try to do an exact, case insensitive match between what comes after the @
+and the name of the realm block. So if you get a request with the attribute
+value anonymous@example.com, the proxy will go through the realm names in the
+order they are specified, looking for a realm block named example.com.
+
+There are two exceptions to this, one is the realm name \fB*\fR which means
+match everything. Hence if you have a realm block named *, then it will always
+match. This should then be the last realm block defined, since any blocks after
+this would never be checked. This is useful for having a default.
+
+The other exception is regular expression matching. If the realm name starts
+with a \fB/\fR, the name is treated as an regular expression. A case insensitive
+regexp match will then be done using this regexp on the value of the entire
+Username attribute. Optionally you may also have a trailing / after the regexp.
+So as an example, if you want to use regexp matching the domain example.com you
+could have a realm block named /@example\e.com$/. If you want to match all
+domains under the \.com top domain, you could do /@.*\e.com$/. Note that since
+the matching is done on the entire attribute value, you can also use rules like
+/^[a\-k].*@example\e.com$/ to get some of the users in this domain to use one
+server, while other users could be matched by another realm block and use
+another server.
+
+.SS "SERVER SELECTION"
+
+Normally requests will be forwarded to the first server option defined. If there
+are multiple server options, the proxy will do fail-over and use the second
+server if the first is down. If the two first are down, it will try the third
+etc. If the first server comes back up, it will go back to using that one.
+Detection of servers being up or down is based on the use of StatusServer (if
+enabled), and that TCP/TLS/DTLS connections are up. Otherwise unanswered
+requests are used to detect unresponsive servers. AccountingServers are treated
+the same, but independently of the other servers.
+
+If there is no \fBServer\fR option, the proxy will if \fBReplyMessage\fR is
+specified, reply back to the client with an Access Reject message. The message
+contains a replyMessage attribute with the value as specified by the
+\fBReplyMessage\fR option. Note that this is different from having no match
+since then the request is simply ignored.  This can be used to catch all
+undefined sub-domains or even all undefined realms by configuring either a regex
+match like /@.*\e.example\e.com/ or the realm \fB*\fR with no server option.
+Another use-case is to block a specific pattern in the username or realm part
+using  a regex.
+
+If there is no \fBAccountingServer\fR option, the proxy will normally do
+nothing, ignoring accounting requests. If instead \fBAccountingResponse\fR is
+set to on, the proxy will log some of the accounting information and send an
+Accounting-Response back. This stops clients from retransmitting
+Accounting-Request messages when a realm has no accountingServer configured.
+
+.SH "TLS BLOCK"
+.nf
+.BI "tls " name "\fR {"
+	...
+}
+.fi
+.PP
+The TLS block specifies TLS configuration options and you need at least one of
+these if you have clients or servers using TLS/DTLS. As discussed in the client
+and server block descriptions, a client or server block may reference a
+particular TLS block by name. There are also however the special TLS block names
+\fBdefault\fR, \fBdefaultClient\fR and \fBdefaultServer\fR which are used as
+defaults if the client or server block does not reference a TLS block. Also note
+that a TLS block must be defined before the client or server block that would
+use it. If you want the same TLS configuration for all TLS/DTLS clients and
+servers, you need just a single tls block named \fBdefault\fR, and the client
+and servers need not refer to it. If you want all TLS/DTLS clients to use one
+config, and all TLS/DTLS servers to use another, then you would be fine only
+defining two TLS blocks named \fBdefaultClient\fR and \fBdefaultServer\fR. If
+you want different clients (or different servers) to have different TLS
+parameters, then you may need to create other TLS blocks with other names, and
+reference those from the client or server definitions.
+
+As both clients and servers need to present and verify a certificate, both a
+certificate as well as a CA to verify the peers certificate  must be configured.
+
+The allowed options in a tls block are:
+
+.BI "CACertificateFile " file
+.RS
+The CA certificate file used to verify the peers certificate.
+.RE
+
+.BI "CACertificatePath " path
+.RS
+The path to search for CA or intermediate certificates.
+.RE
+
+.BI "CertificateFile " file
+.RS
+The server certificate this proxy will use. The file may also contain a
+certificate chain.
+.RE
+
+.BI "CertificateKeyFile " file
+.RS
+The private-key file for the server certificate specified in
+\fBCACertificateFile\fR.
+.RE
+
+.BI "CertificateKeyPassword " password
+.RS
+The password to decrypt the private-key.
+.RE
+
+.BI "PolicyOID " oid
+.RS
+Require the peers certificate to adhere to the policy specified by \fIoid\fR.
+This can be specified multiple times.
+.RE
+
+.BR "CRLCheck (" on | off )
+.RS
+Enable checking peer certificate against the CRL (default off).
+.RE
+
+.BI "CacheExpiry " seconds
+.RS
+Specify how many \fIseconds\fR the CA and CRL information should be cached. By
+default, the CA and CRL are loaded at startup and cached indefinetely. after the
+configured time, the CA CRL are re-read. Alternatively, reloading the CA and CRL
+can be triggered by sending a SIGHUP to the radsecproxy process. This option may
+be set to zero to disable caching.
+.RE
+
+
+.SH "REWRITE BLOCK"
+.nf
+.BI "rewrite " name "\fR {"
+	...
+}
+.fi
+.PP
+The rewrite block specifies rules that may rewrite RADIUS messages. It can be
+used to add, remove and modify specific attributes from messages received from
+and sent to clients and servers. As discussed in the client and server block
+descriptions, a client or server block may reference a particular rewrite block
+by name. There are however also the special rewrite block names \fBdefault\fR,
+\fBdefaultClient\fR and \fBdefaultServer\fR which are used as defaults if the
+client or server block does not reference a block. Also note that a rewrite
+block must be defined before the client or server block that would use it. If
+you want the same rewrite rules for input from all clients and servers, you need
+just a single rewrite block named \fBdefault\fR, and the client and servers need
+not refer to it. If you want all clients to use one config, and all servers to
+use another, then you would be fine only defining two rewrite blocks named
+\fBdefaultClient\fR and \fBdefaultServer\fR. Note that these defaults are only
+used for rewrite on input. No rewriting is done on output unless explicitly
+specified using the \fBRewriteOut\fR option.
+
+All options can be specified multiple times. The allowed options in a rewrite
+block are:
+
+.BI "AddAttribute " attribute \fR: value
+.RS
+Add an \fIattribute\fR to the radius mesage and set it to \fIvalue\fR. The
+\fIattribute\fR must be specified using the numerical attribute id. The
+\fIvalue\fR can either be numerical, a string, or a hex value. See the
+\fBCONFIGURATION SYNTAX\fR section for details.
+.RE
+
+.BI "AddVendorAttribute " vendor \fR: subattribute \fR: value
+.RS
+Add a vendor attribute to the radius message, specified by \fIvendor\fR and
+\fIsubattribute\fR. Both \fIvendor\fR and \fIsubattribute\fR must be specified
+as numerical values. The format of \fIvalue\fR is the same as for \fBaddAttibute\fR above.
+.RE
+
+.BI "RemoveAttribute " attribute
+.RS
+Remove all attributes with the given id.
+.RE
+
+.BI "RemoveVendorAttribute " vendor [\fR: subattribute ]
+.RS
+Remove all vendor attributes that match the given \fIvendor\fR and
+\fIsubattribute\fR. If the \fIsubattribute\fR is omitted, all attributes with
+the given vendor id are removed.
+.RE
+
+.BI "ModifyAttribute " attribute \fR:/ regex \fR/ replace \fR/
+.RS
+Modify the given \fIattribute\fR using the \fIregex\fR \fIreplace\fR pattern. As
+above, \fIattribute\fR must be specified by a numerical value. Example usage:
+
+modifyAttribute 1:/^(.*)@local$/\e1@example.com/
+.RE
+.SH "SEE ALSO"
+\fBradsecproxy\fR(1),
+.URL https://tools.ietf.org/html/rfc6614 " 	  Transport Layer Security (TLS) Encryption for RADIUS 	"

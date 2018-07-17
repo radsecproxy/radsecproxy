@@ -4,10 +4,6 @@
 
 AUTOMAKE_OPTIONS = foreign
 
-if HAVE_DOCBOOK2X_MAN
-GENMANPAGES = radsecproxy.conf.5
-endif
-
 SUBDIRS = tests
 
 sbin_PROGRAMS = radsecproxy
@@ -59,8 +55,6 @@ EXTRA_DIST = \
 	tools/README tools/naptr-eduroam.sh tools/radsec-dynsrv.sh
 
 ####################
-radsecproxy.conf.5: $(srcdir)/radsecproxy.conf.5.xml
-	$(DOCBOOK2X_MAN) $<
 
 html: radsecproxy.html radsecproxy-hash.html radsecproxy.conf.html
 
@@ -68,6 +62,3 @@ html: radsecproxy.html radsecproxy-hash.html radsecproxy.conf.html
 	groff -mandoc -Thtml $< >$@
 %.html: %.5
 	groff -mandoc -Thtml $< >$@
-
-clean-local:
-	-rm $(GENMANPAGES)
