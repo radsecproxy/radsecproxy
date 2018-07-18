@@ -3228,6 +3228,7 @@ void getmainconfig(const char *configfile) {
                  || options.log_mac == RSP_MAC_FULLY_KEY_HASHED)) {
             debugx(1, DBG_ERR, "config error: LogMAC %s requires LogKey to be set.", log_mac_str);
         }
+        free(log_mac_str);
     } else {
         options.log_mac = RSP_MAC_ORIGINAL;
     }
