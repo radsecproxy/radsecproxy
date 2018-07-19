@@ -82,6 +82,66 @@ void tlssetsrcres() {
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
 
+int sslconnecttimeout(SSL *ssl, int timeout) {
+    int socket, origflags, ndesc, r = -1, sockerr = 0;
+    socklen_t errlen = sizeof(sockerr);
+    struct pollfd fds[1];
+    uint8_t want_write = 1;
+
+    socket = SSL_get_fd(ssl);
+    origflags = fcntl(socket, F_GETFL, 0);
+    if (origflags == -1) {
+        debugerrno(errno, DBG_WARN, "Failed to get flags");
+        return -1;
+    }
+    if (fcntl(socket, F_SETFL, origflags | O_NONBLOCK) == -1) {
+        debugerrno(errno, DBG_WARN, "Failed to set O_NONBLOCK");
+        return -1;
+    }
+
+    while (r < 1) {
+        fds[0].fd = socket;
+        fds[0].events = POLLIN;
+        if (want_write) {
+            fds[0].events |= POLLOUT;
+            want_write = 0;
+        }
+        if ((ndesc = poll(fds, 1, timeout * 1000)) < 1) {
+            if (ndesc == 0)
+                debug(DBG_DBG, "sslconnecttimeout: timeout during SSL_connect");
+            else
+                debugerrno(errno, DBG_DBG, "sslconnecttimeout: poll error");
+            break;
+        }
+
+        if (fds[0].revents & POLLERR) {
+            if(!getsockopt(socket, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
+                debug(DBG_WARN, "TLS Connection failed: %s", strerror(sockerr));
+            else
+                debug(DBG_WARN, "TLS Connection failed: unknown error");
+        } else if (fds[0].revents & POLLHUP) {
+                debug(DBG_WARN, "TLS Connect error: hang up");
+        } else if (fds[0].revents & POLLNVAL) {
+                debug(DBG_WARN, "TLS Connect error: fd not open");
+        } else {
+            r = SSL_connect(ssl);
+            if (r <= 0) {
+                switch (SSL_get_error(ssl, r)) {
+                    case SSL_ERROR_WANT_WRITE:
+                        want_write = 1;
+                    case SSL_ERROR_WANT_READ:
+                        continue;
+                }
+            }
+        }
+        break;
+    }
+
+    if (fcntl(socket, F_SETFL, origflags) == -1)
+        debugerrno(errno, DBG_WARN, "Failed to set original flags back");
+    return r;
+}
+
 int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval now, start = {0,0};
     time_t elapsed;
@@ -151,7 +211,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
             continue;
 
         SSL_set_fd(server->ssl, server->sock);
-        if (SSL_connect(server->ssl) <= 0) {
+        if (sslconnecttimeout(server->ssl, 5) <= 0) {
             while ((error = ERR_get_error()))
                 debug(DBG_ERR, "tlsconnect: TLS: %s", ERR_error_string(error, NULL));
             continue;
@@ -468,6 +528,66 @@ void tlsserverrd(struct client *client) {
     debug(DBG_DBG, "tlsserverrd: reader for %s exiting", addr2string(client->addr, tmp, sizeof(tmp)));
 }
 
+int sslaccepttimeout (SSL *ssl, int timeout) {
+    int socket, origflags, ndesc, r = -1, sockerr = 0;
+    socklen_t errlen = sizeof(sockerr);
+    struct pollfd fds[1];
+    uint8_t want_write = 0;
+
+    socket = SSL_get_fd(ssl);
+    origflags = fcntl(socket, F_GETFL, 0);
+    if (origflags == -1) {
+        debugerrno(errno, DBG_WARN, "Failed to get flags");
+        return -1;
+    }
+    if (fcntl(socket, F_SETFL, origflags | O_NONBLOCK) == -1) {
+        debugerrno(errno, DBG_WARN, "Failed to set O_NONBLOCK");
+        return -1;
+    }
+
+    while (r < 1) {
+        fds[0].fd = socket;
+        fds[0].events = POLLIN;
+        if (want_write) {
+            fds[0].events |= POLLOUT;
+            want_write = 0;
+        }
+        if ((ndesc = poll(fds, 1, timeout * 1000)) < 1) {
+            if (ndesc == 0)
+                debug(DBG_DBG, "sslaccepttimeout: timeout during SSL_accept");
+            else
+                debugerrno(errno, DBG_DBG, "sslaccepttimeout: poll error");
+            break;
+        }
+
+        if (fds[0].revents & POLLERR) {
+            if(!getsockopt(socket, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
+                debug(DBG_WARN, "TLS Accept failed: %s", strerror(sockerr));
+            else
+                debug(DBG_WARN, "TLS Accept failed: unknown error");
+        } else if (fds[0].revents & POLLHUP) {
+                debug(DBG_WARN, "TLS Accept error: hang up");
+        } else if (fds[0].revents & POLLNVAL) {
+                debug(DBG_WARN, "TLS Accept error: fd not open");
+        } else {
+            r = SSL_accept(ssl);
+            if (r <= 0) {
+                switch (SSL_get_error(ssl, r)) {
+                    case SSL_ERROR_WANT_WRITE:
+                        want_write = 1;
+                    case SSL_ERROR_WANT_READ:
+                        continue;
+                }
+            }
+        }
+        break;
+    }
+
+    if (fcntl(socket, F_SETFL, origflags) == -1)
+        debugerrno(errno, DBG_WARN, "Failed to set original flags back");
+    return r;
+}
+
 void *tlsservernew(void *arg) {
     int s;
     struct sockaddr_storage from;
@@ -505,7 +625,7 @@ void *tlsservernew(void *arg) {
             goto exit;
 
         SSL_set_fd(ssl, s);
-        if (SSL_accept(ssl) <= 0) {
+        if (sslaccepttimeout(ssl, 30) <= 0) {
             while ((error = ERR_get_error()))
                 debug(DBG_ERR, "tlsservernew: SSL: %s", ERR_error_string(error, NULL));
             debug(DBG_ERR, "tlsservernew: SSL_accept failed");
