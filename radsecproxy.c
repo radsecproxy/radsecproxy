@@ -68,6 +68,7 @@
 #include "udp.h"
 #include "tcp.h"
 #include "tls.h"
+#include "dtls.h"
 #include "fticks.h"
 #include "fticks_hashmac.h"
 

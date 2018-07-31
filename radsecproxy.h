@@ -10,9 +10,6 @@
 #include "tlv11.h"
 #include "radmsg.h"
 #include "gconfig.h"
-#ifdef RADPROT_DTLS
-#include "dtls.h"
-#endif
 
 #define DEBUG_LEVEL 2
 
