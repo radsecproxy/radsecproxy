@@ -1414,7 +1414,7 @@ int addclientrq(struct request *rq) {
 
     r = rq->from->rqs[rq->rqid];
     if (r) {
-	if (rq->udpport == r->udpport && !memcmp(rq->rqauth, r->rqauth, 16)) {
+	if (!memcmp(rq->rqauth, r->rqauth, 16)) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - r->created.tv_sec < r->from->conf->dupinterval) {
 		if (r->replybuf) {

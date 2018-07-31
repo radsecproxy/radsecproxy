@@ -61,19 +61,16 @@ struct sockaddr *addr_copy(struct sockaddr *in) {
 	out = malloc(sizeof(struct sockaddr_in));
         if (out == NULL)
             return NULL;
-        memset(out, 0, sizeof(struct sockaddr_in));
-        ((struct sockaddr_in *)out)->sin_addr = ((struct sockaddr_in *)in)->sin_addr;
+        *(struct sockaddr_in *)out = *(struct sockaddr_in *)in;
 	break;
     case AF_INET6:
 	out = malloc(sizeof(struct sockaddr_in6));
         if (out == NULL)
             return NULL;
-        memset(out, 0, sizeof(struct sockaddr_in6));
-        ((struct sockaddr_in6 *)out)->sin6_addr = ((struct sockaddr_in6 *)in)->sin6_addr;
+        *(struct sockaddr_in6 *)out = *(struct sockaddr_in6 *)in;
 	break;
     }
     assert(out);
-    out->sa_family = in->sa_family;
 #ifdef SIN6_LEN
     out->sa_len = in->sa_len;
 #endif

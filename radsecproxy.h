@@ -108,7 +108,6 @@ struct request {
     uint8_t rqauth[16];
     uint8_t newid;
     int udpsock; /* only for UDP */
-    uint16_t udpport; /* only for UDP */
 };
 
 /* requests that our client will send */
