@@ -246,7 +246,8 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 /* timeout in seconds, 0 means no timeout (blocking), returns when num bytes have been read, or timeout */
 /* returns 0 on timeout, -1 on error and num if ok */
 int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock) {
-    int s, ndesc, cnt = 0, len;
+    int s, ndesc, cnt = 0, len, sockerr = 0;
+    socklen_t errlen = sizeof(sockerr);
     struct pollfd fds[1];
     unsigned long error;
     uint8_t want_write = 0;
@@ -270,16 +271,26 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
                 want_write = 0;
             }
             ndesc = poll(fds, 1, timeout ? timeout * 1000 : -1);
-            if (ndesc < 1)
+            if (ndesc == 0)
                 return ndesc;
-            if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                pthread_mutex_lock(lock);
+
+            pthread_mutex_lock(lock);
+            if (ndesc < 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                if (fds[0].revents & POLLERR) {
+                    if(!getsockopt(s, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
+                        debug(DBG_INFO, "TLS Connection lost: %s", strerror(sockerr));
+                    else
+                        debug(DBG_INFO, "TLS Connection lost: unknown error");
+                } else if (fds[0].revents & POLLHUP) {
+                    debug(DBG_INFO, "TLS Connection lost: hang up");
+                } else if (fds[0].revents & POLLNVAL) {
+                    debug(DBG_INFO, "TLS Connection error: fd not open");
+                }
+
                 SSL_shutdown(ssl);
                 pthread_mutex_unlock(lock);
                 return -1;
             }
-
-            pthread_mutex_lock(lock);
         }
 
         cnt = SSL_read(ssl, buf + len, num - len);
@@ -295,6 +306,11 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
                 default:
                     while ((error = ERR_get_error()))
                         debug(DBG_ERR, "sslreadtimeout: SSL: %s", ERR_error_string(error, NULL));
+                    if (cnt == 0)
+                        debug(DBG_INFO, "sslreadtimeout: connection closed by remote host");
+                    else {
+                        debugerrno(errno, DBG_ERR, "sslreadtimeout: connection lost");
+                    }
                     /* ensure ssl connection is shutdown */
                     SSL_shutdown(ssl);
                     pthread_mutex_unlock(lock);
@@ -312,14 +328,15 @@ unsigned char *radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock) {
     unsigned char buf[4], *rad;
 
 	cnt = sslreadtimeout(ssl, buf, 4, timeout, lock);
-	if (cnt < 1) {
-	    debug(DBG_DBG, cnt ? "radtlsget: connection lost" : "radtlsget: timeout");
-	    return NULL;
-	}
+	if (cnt < 1)
+        return NULL;
 
 	len = RADLEN(buf);
 	if (len < 20) {
 	    debug(DBG_ERR, "radtlsget: length too small, malformed packet! closing conneciton!");
+        pthread_mutex_lock(lock);
+        SSL_shutdown(ssl);
+        pthread_mutex_unlock(lock);
         return NULL;
 	}
 	rad = malloc(len);
@@ -331,7 +348,6 @@ unsigned char *radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock) {
 
 	cnt = sslreadtimeout(ssl, rad + 4, len - 4, timeout, lock);
 	if (cnt < 1) {
-	    debug(DBG_DBG, cnt ? "radtlsget: connection lost" : "radtlsget: timeout");
 	    free(rad);
 	    return NULL;
 	}
@@ -406,7 +422,9 @@ void *tlsclientrd(void *arg) {
 	buf = radtlsget(server->ssl, 10, &server->lock);
 	if (!buf) {
         if (SSL_get_shutdown(server->ssl) || server->lostrqs) {
-            if (server->lostrqs)
+            if (SSL_get_shutdown(server->ssl))
+                debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
+            else if (server->lostrqs)
                 debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
             if (server->dynamiclookuparg)
                 break;
