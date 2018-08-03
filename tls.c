@@ -9,9 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
-#ifdef SYS_SOLARIS9
 #include <fcntl.h>
-#endif
 #include <sys/time.h>
 #include <sys/types.h>
 #include <poll.h>
@@ -90,12 +88,15 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
     X509 *cert;
     SSL_CTX *ctx = NULL;
     unsigned long error;
+    int origflags;
 
     debug(DBG_DBG, "tlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
 
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
+
+    pthread_mutex_unlock(&server->lock);
 
     gettimeofday(&now, NULL);
     if (when && (now.tv_sec - when->tv_sec) < 60 )
@@ -118,19 +119,15 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 
             if (timeout && elapsed > timeout) {
                 debug(DBG_DBG, "tlsconnect: timeout");
-                pthread_mutex_unlock(&server->lock);
                 return 0;
             }
 
-            /* give up lock while sleeping for next try */
-            pthread_mutex_unlock(&server->lock);
             if (elapsed < 1)
                 sleep(2);
             else {
                 debug(DBG_INFO, "Next connection attempt in %lds", elapsed < 60 ? elapsed : 60);
                 sleep(elapsed < 60 ? elapsed : 60);
             }
-            pthread_mutex_lock(&server->lock);
             debug(DBG_INFO, "tlsconnect: retry connecting");
         } else {
             gettimeofday(&start, NULL);
@@ -170,6 +167,15 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
         X509_free(cert);
     }
     debug(DBG_WARN, "tlsconnect: TLS connection to %s up", server->conf->name);
+
+    origflags = fcntl(server->sock, F_GETFL, 0);
+    if (origflags == -1) {
+        debugerrno(errno, DBG_WARN, "Failed to get flags");
+    } else if (fcntl(server->sock, F_SETFL, origflags | O_NONBLOCK) == -1) {
+        debugerrno(errno, DBG_WARN, "Failed to set O_NONBLOCK");
+    }
+
+    pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->lastconnecttry, NULL);
     server->lostrqs = 0;
@@ -193,7 +199,6 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
         return -1;
     }
 
-    /* make socket non-blocking? */
     for (len = 0; len < num; len += cnt) {
         if (SSL_pending(ssl) == 0) {
             pthread_mutex_unlock(lock);
@@ -312,16 +317,8 @@ int clientradputtls(struct server *server, unsigned char *rad) {
     int cnt;
     size_t len;
     struct clsrvconf *conf = server->conf;
-    struct timespec timeout;
 
-    timeout.tv_sec = 0;
-    timeout.tv_nsec = 1000000;
-
-    if (server->state != RSP_SERVER_STATE_CONNECTED)
-        return 0;
-
-    if (pthread_mutex_timedlock(&server->lock, &timeout))
-        return 0;
+    pthread_mutex_lock(&server->lock);
     if (server->state != RSP_SERVER_STATE_CONNECTED) {
         pthread_mutex_unlock(&server->lock);
         return 0;
