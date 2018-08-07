@@ -476,8 +476,8 @@ void sendrq(struct request *rq) {
 		}
 	    }
 	    if (i == to->nextid) {
-		debug(DBG_INFO, "sendrq: no room in queue, dropping request");
-		goto errexit;
+            debug(DBG_WARN, "sendrq: no room in queue for server %s, dropping request", to->conf->name);
+            goto errexit;
 	    }
 	}
     }
@@ -1415,7 +1415,7 @@ int addclientrq(struct request *rq) {
 
     r = rq->from->rqs[rq->rqid];
     if (r) {
-	if (rq->udpport == r->udpport && !memcmp(rq->rqauth, r->rqauth, 16)) {
+	if (!memcmp(rq->rqauth, r->rqauth, 16)) {
 	    gettimeofday(&now, NULL);
 	    if (now.tv_sec - r->created.tv_sec < r->from->conf->dupinterval) {
 		if (r->replybuf) {
@@ -1910,8 +1910,10 @@ void *clientwr(void *arg) {
 	    if (!timeout.tv_sec || rqout->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rqout->expiry.tv_sec;
 	    rqout->tries++;
-	    if (!conf->pdef->clientradput(server, rqout->rq->buf))
+	    if (!conf->pdef->clientradput(server, rqout->rq->buf)) {
+            debug(DBG_WARN, "clientwr: could not send request to server %s", conf->name);
             server->lostrqs++;
+        }
 	    pthread_mutex_unlock(rqout->lock);
 	}
 	if (conf->statusserver && server->state == RSP_SERVER_STATE_CONNECTED) {

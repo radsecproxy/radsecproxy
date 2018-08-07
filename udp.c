@@ -106,10 +106,12 @@ static int addr_equal(struct sockaddr *a, struct sockaddr *b) {
     case AF_INET:
 	return !memcmp(&((struct sockaddr_in*)a)->sin_addr,
 		       &((struct sockaddr_in*)b)->sin_addr,
-		       sizeof(struct in_addr));
+		       sizeof(struct in_addr)) &&
+               (((struct sockaddr_in*)a)->sin_port == ((struct sockaddr_in*)b)->sin_port);
     case AF_INET6:
 	return IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6*)a)->sin6_addr,
-				  &((struct sockaddr_in6*)b)->sin6_addr);
+				  &((struct sockaddr_in6*)b)->sin6_addr) &&
+                  (((struct sockaddr_in6*)a)->sin6_port == ((struct sockaddr_in6*)b)->sin6_port);
     default:
 	/* Must not reach */
 	return 0;
@@ -129,7 +131,7 @@ uint16_t port_get(struct sockaddr *sa) {
 /* exactly one of client and server must be non-NULL */
 /* return who we received from in *client or *server */
 /* return from in sa if not NULL */
-unsigned char *radudpget(int s, struct client **client, struct server **server, uint16_t *port) {
+unsigned char *radudpget(int s, struct client **client, struct server **server) {
     int cnt, len;
     unsigned char buf[4], *rad = NULL;
     struct sockaddr_storage from;
@@ -234,8 +236,6 @@ unsigned char *radudpget(int s, struct client **client, struct server **server, 
             *server = p->servers;
         break;
     }
-    if (port)
-        *port = port_get((struct sockaddr *)&from);
     return rad;
 }
 
@@ -263,7 +263,7 @@ void *udpclientrd(void *arg) {
 
     for (;;) {
 	server = NULL;
-	buf = radudpget(*s, NULL, &server, NULL);
+	buf = radudpget(*s, NULL, &server);
 	replyh(server, buf);
     }
 }
@@ -278,8 +278,9 @@ void *udpserverrd(void *arg) {
 	    sleep(5); /* malloc failed */
 	    continue;
 	}
-	rq->buf = radudpget(*sp, &rq->from, NULL, &rq->udpport);
+	rq->buf = radudpget(*sp, &rq->from, NULL);
 	rq->udpsock = *sp;
+    gettimeofday(&rq->created, NULL);
 	radsrv(rq);
     }
     free(sp);
@@ -303,7 +304,6 @@ void *udpserverwr(void *arg) {
 	    memcpy(&to, reply->from->addr, SOCKADDRP_SIZE(reply->from->addr));
 	pthread_mutex_unlock(&replyq->mutex);
 	if (reply->from) {
-	    port_set((struct sockaddr *)&to, reply->udpport);
 	    if (sendto(reply->udpsock, reply->replybuf, RADLEN(reply->replybuf), 0, (struct sockaddr *)&to, SOCKADDR_SIZE(to)) < 0)
 		debug(DBG_WARN, "udpserverwr: send failed");
 	}
