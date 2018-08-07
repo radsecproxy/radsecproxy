@@ -11,9 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
-#ifdef SYS_SOLARIS9
 #include <fcntl.h>
-#endif
 #include <sys/time.h>
 #include <sys/types.h>
 #include <poll.h>
@@ -97,7 +95,8 @@ void dtlssetsrcres() {
 }
 
 int dtlsread(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock) {
-    int len, cnt;
+    int len, cnt, sockerr = 0;
+    socklen_t errlen = sizeof(sockerr);
     struct pollfd fds[1];
     unsigned long error;
     assert(lock);
@@ -112,16 +111,26 @@ int dtlsread(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t
             pthread_mutex_unlock(lock);
 
             cnt = poll(fds, 1, timeout? timeout * 1000 : -1);
-            if (cnt < 1)
+            if (cnt == 0)
                 return cnt;
-            if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                pthread_mutex_lock(lock);
+
+            pthread_mutex_lock(lock);
+            if (cnt < 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                if (fds[0].revents & POLLERR) {
+                    if(!getsockopt(BIO_get_fd(SSL_get_rbio(ssl), NULL), SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
+                        debug(DBG_INFO, "DTLS Connection lost: %s", strerror(sockerr));
+                    else
+                        debug(DBG_INFO, "DTLS Connection lost: unknown error");
+                } else if (fds[0].revents & POLLHUP) {
+                    debug(DBG_INFO, "DTLS Connection lost: hang up");
+                } else if (fds[0].revents & POLLNVAL) {
+                    debug(DBG_INFO, "DTLS Connection error: fd not open");
+                }
+
                 SSL_shutdown(ssl);
                 pthread_mutex_unlock(lock);
                 return -1;
             }
-
-            pthread_mutex_lock(lock);
         }
 
         cnt = SSL_read(ssl, buf + len, num - len);
@@ -136,6 +145,11 @@ int dtlsread(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t
                 default:
                     while ((error = ERR_get_error()))
                         debug(DBG_ERR, "dtlsread: SSL: %s", ERR_error_string(error, NULL));
+                    if (cnt == 0)
+                        debug(DBG_INFO, "sslreadtimeout: connection closed by remote host");
+                    else {
+                        debugerrno(errno, DBG_ERR, "sslreadtimeout: connection lost");
+                    }
                     /* snsure ssl connection is shutdown */
                     SSL_shutdown(ssl);
                     pthread_mutex_unlock(lock);
@@ -151,14 +165,15 @@ unsigned char *raddtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock) {
     unsigned char buf[4], *rad;
 
     cnt = dtlsread(ssl, buf, 4, timeout, lock);
-    if (cnt < 1) {
-        debug(DBG_DBG, cnt ? "raddtlsget: connection lost" : "raddtlsget: timeout");
+    if (cnt < 1)
         return NULL;
-    }
 
     len = RADLEN(buf);
     if (len < 20) {
         debug(DBG_ERR, "raddtlsget: length too small, malformed packet! closing connection!");
+        pthread_mutex_lock(lock);
+        SSL_shutdown(ssl);
+        pthread_mutex_unlock(lock);
         return NULL;
     }
     rad = malloc(len);
@@ -170,7 +185,6 @@ unsigned char *raddtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock) {
 
     cnt = dtlsread(ssl, rad + 4, len - 4, timeout, lock);
     if (cnt < 1) {
-        debug(DBG_DBG, cnt ? "raddtlsget: connection lost" : "raddtlsget: timeout");
         free(rad);
         return NULL;
     }
@@ -307,7 +321,7 @@ void *dtlsservernew(void *arg) {
     BIO_set_fd(SSL_get_rbio(params->ssl), s, BIO_NOCLOSE);
     BIO_ctrl(SSL_get_rbio(params->ssl), BIO_CTRL_DGRAM_SET_CONNECTED, 0,(struct sockaddr *)&params->addr);
 
-    if (SSL_accept(params->ssl) <= 0) {
+    if (sslaccepttimeout(params->ssl, 30) <= 0) {
         while ((error = ERR_get_error()))
             debug(DBG_ERR, "dtlsservernew: SSL: %s", ERR_error_string(error, NULL));
         debug(DBG_ERR, "dtlsservernew: SSL_accept failed");
@@ -574,7 +588,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
         bio = BIO_new_dgram(server->sock, BIO_CLOSE);
         BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, hp->addrinfo->ai_addr);
         SSL_set_bio(server->ssl, bio, bio);
-        if (SSL_connect(server->ssl) <= 0) {
+        if (sslconnecttimeout(server->ssl, 5) <= 0) {
             while ((error = ERR_get_error()))
                 debug(DBG_ERR, "tlsconnect: DTLS: %s", ERR_error_string(error, NULL));
             continue;
@@ -650,7 +664,9 @@ void *dtlsclientrd(void *arg) {
     buf = raddtlsget(server->ssl, 5, &server->lock);
 	if (!buf) {
         if(SSL_get_shutdown(server->ssl) || server->lostrqs) {
-            if (server->lostrqs)
+            if (SSL_get_shutdown(server->ssl))
+                debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
+            else if (server->lostrqs)
                 debug (DBG_WARN, "dtlsclientrd: server %s did not respond, closing connection.", server->conf->name);
     	    dtlsconnect(server, &lastconnecttry, 0, "dtlsclientrd");
             server->lostrqs = 0;
