@@ -146,9 +146,9 @@ int dtlsread(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t
                     while ((error = ERR_get_error()))
                         debug(DBG_ERR, "dtlsread: SSL: %s", ERR_error_string(error, NULL));
                     if (cnt == 0)
-                        debug(DBG_INFO, "sslreadtimeout: connection closed by remote host");
+                        debug(DBG_INFO, "dtlsread: connection closed by remote host");
                     else {
-                        debugerrno(errno, DBG_ERR, "sslreadtimeout: connection lost");
+                        debugerrno(errno, DBG_ERR, "dtlsread: connection lost");
                     }
                     /* snsure ssl connection is shutdown */
                     SSL_shutdown(ssl);
@@ -518,6 +518,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
 
+    pthread_mutex_unlock(&server->lock);
 
     hp = (struct hostportres *)list_first(server->conf->hostports)->data;
 
@@ -546,12 +547,9 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 
             if (timeout && elapsed > timeout) {
                 debug(DBG_DBG, "tlsconnect: timeout");
-                pthread_mutex_unlock(&server->lock);
                 return 0;
             }
 
-            /* give up lock while sleeping for next try */
-            pthread_mutex_unlock(&server->lock);
             if (elapsed < 1)
                 sleep(2);
             else {
@@ -560,7 +558,6 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
             }
             if (initialdelay)
                 initialdelay = 0;
-            pthread_mutex_lock(&server->lock);
             debug(DBG_INFO, "tlsconnect: retry connecting");
         } else {
             gettimeofday(&start, NULL);
@@ -609,6 +606,8 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
         X509_free(cert);
     }
     debug(DBG_WARN, "dtlsconnect: DTLS connection to %s port %s up", hp->host, hp->port);
+
+    pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->lastconnecttry, NULL);
     pthread_mutex_unlock(&server->lock);
@@ -620,16 +619,8 @@ int clientradputdtls(struct server *server, unsigned char *rad) {
     size_t len;
     unsigned long error;
     struct clsrvconf *conf = server->conf;
-    struct timespec timeout;
 
-    timeout.tv_sec = 0;
-    timeout.tv_nsec = 1000000;
-
-    if (server->state != RSP_SERVER_STATE_CONNECTED)
-        return 0;
-
-    if (pthread_mutex_timedlock(&server->lock, &timeout))
-        return 0;
+    pthread_mutex_lock(&server->lock);
     if (server->state != RSP_SERVER_STATE_CONNECTED) {
         pthread_mutex_unlock(&server->lock);
         return 0;

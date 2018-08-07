@@ -494,7 +494,7 @@ void tlsserverrd(struct client *client) {
 }
 
 void *tlsservernew(void *arg) {
-    int s;
+    int s, origflags;
     struct sockaddr_storage from;
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *conf;
@@ -540,6 +540,13 @@ void *tlsservernew(void *arg) {
         if (!cert)
             goto exit;
         accepted_tls = conf->tlsconf;
+    }
+
+    origflags = fcntl(s, F_GETFL, 0);
+    if (origflags == -1) {
+        debugerrno(errno, DBG_WARN, "Failed to get flags");
+    } else if (fcntl(s, F_SETFL, origflags | O_NONBLOCK) == -1) {
+        debugerrno(errno, DBG_WARN, "Failed to set O_NONBLOCK");
     }
 
     while (conf) {
