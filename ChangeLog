@@ -1,3 +1,14 @@
+changes since 1.7.1
+
+	Compile fixes:
+	- fix compile issues on some platforms (#14)
+	- fix compile issue when dtls disabled (#16)
+
+	Bug fixes:
+	- fix request might be dropped if udp client uses multiple source ports
+	- fix tls output might drop requests under high load
+
+
 2018-07-05 1.7.1
 
 	License and copyright changes:
