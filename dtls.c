@@ -496,6 +496,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
     struct hostportres *hp;
     unsigned long error;
     BIO *bio;
+    uint8_t initialdelay = 0;
 
     debug(DBG_DBG, "dtlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -507,11 +508,14 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
     hp = (struct hostportres *)list_first(server->conf->hostports)->data;
 
     gettimeofday(&now, NULL);
-    if (when && (now.tv_sec - when->tv_sec) < 60 )
-        start.tv_sec = now.tv_sec - (60 - (now.tv_sec - when->tv_sec));
+    if (when && (now.tv_sec - when->tv_sec) < 30 ) {
+        elapsed = 30 - (now.tv_sec - when->tv_sec);
+        initialdelay = 1;
+        start.tv_sec = now.tv_sec + elapsed;
+    }
 
     for (;;) {
-        /* ensure preioius connection is properly closed */
+        /* ensure previous connection is properly closed */
         if (server->ssl)
             SSL_shutdown(server->ssl);
         if (server->sock >= 0)
@@ -523,7 +527,8 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
         /* no sleep at startup or at first try */
         if (start.tv_sec) {
             gettimeofday(&now, NULL);
-            elapsed = now.tv_sec - start.tv_sec;
+            if (!initialdelay)
+                elapsed = now.tv_sec - start.tv_sec;
 
             if (timeout && elapsed > timeout) {
                 debug(DBG_DBG, "tlsconnect: timeout");
@@ -539,6 +544,8 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
                 debug(DBG_INFO, "Next connection attempt in %lds", elapsed < 60 ? elapsed : 60);
                 sleep(elapsed < 60 ? elapsed : 60);
             }
+            if (initialdelay)
+                initialdelay = 0;
             pthread_mutex_lock(&server->lock);
             debug(DBG_INFO, "tlsconnect: retry connecting");
         } else {
