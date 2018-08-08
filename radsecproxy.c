@@ -1279,7 +1279,7 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
 }
 
 void respond(struct request *rq, uint8_t code, char *message,
-             int copy_proxystate_flag)
+             int copy_proxystate_flag, int add_msg_auth)
 {
     struct radmsg *msg;
     struct tlv *attr;
@@ -1287,17 +1287,27 @@ void respond(struct request *rq, uint8_t code, char *message,
 
     msg = radmsg_init(code, rq->msg->id, rq->msg->auth);
     if (!msg) {
-	debug(DBG_ERR, "respond: malloc failed");
-	return;
+        debug(DBG_ERR, "respond: malloc failed");
+        return;
+    }
+
+    if (add_msg_auth) {
+        attr = maketlv(RAD_Attr_Message_Authenticator, 16, NULL);
+        if (!attr || !radmsg_add(msg, attr)) {
+            freetlv(attr);
+            radmsg_free(msg);
+            debug(DBG_ERR, "respond: malloc failed");
+            return;
+        }
     }
     if (message && *message) {
-	attr = maketlv(RAD_Attr_Reply_Message, strlen(message), message);
-	if (!attr || !radmsg_add(msg, attr)) {
-	    freetlv(attr);
-	    radmsg_free(msg);
-	    debug(DBG_ERR, "respond: malloc failed");
-	    return;
-	}
+        attr = maketlv(RAD_Attr_Reply_Message, strlen(message), message);
+        if (!attr || !radmsg_add(msg, attr)) {
+            freetlv(attr);
+            radmsg_free(msg);
+            debug(DBG_ERR, "respond: malloc failed");
+            return;
+        }
     }
     if (copy_proxystate_flag) {
         if (radmsg_copy_attrs(msg, rq->msg, RAD_Attr_Proxy_State) < 0) {
@@ -1480,7 +1490,7 @@ int radsrv(struct request *rq) {
 	goto exit;
 
     if (msg->code == RAD_Status_Server) {
-	respond(rq, RAD_Access_Accept, NULL, 0);
+	respond(rq, RAD_Access_Accept, NULL, 1, 0);
 	goto exit;
     }
 
@@ -1498,7 +1508,7 @@ int radsrv(struct request *rq) {
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
 	if (msg->code == RAD_Accounting_Request) {
-	    respond(rq, RAD_Accounting_Response, NULL, 1);
+	    respond(rq, RAD_Accounting_Response, NULL, 1, 0);
 	} else
 	    debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
 	goto exit;
@@ -1524,9 +1534,9 @@ int radsrv(struct request *rq) {
     if (!to) {
 	if (realm->message && msg->code == RAD_Access_Request) {
 	    debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), userascii);
-	    respond(rq, RAD_Access_Reject, realm->message, 1);
+	    respond(rq, RAD_Access_Reject, realm->message, 1, 1);
 	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
-	    respond(rq, RAD_Accounting_Response, NULL, 1);
+	    respond(rq, RAD_Accounting_Response, NULL, 1, 0);
 	}
 	goto exit;
     }
