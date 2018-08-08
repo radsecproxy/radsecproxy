@@ -186,6 +186,7 @@ struct server {
     struct timeval lastrcv;
     struct rqout *requests;
     uint8_t newrq;
+	uint8_t conreset;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
 };

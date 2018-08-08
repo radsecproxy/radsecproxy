@@ -358,6 +358,7 @@ int addserver(struct clsrvconf *conf) {
 	goto errexit;
     }
     conf->servers->newrq = 0;
+    conf->servers->conreset = 0;
     if (pthread_mutex_init(&conf->servers->newrq_mutex, NULL)) {
 	debugerrno(errno, DBG_ERR, "mutex init failed");
 	pthread_mutex_destroy(&conf->servers->lock);
@@ -1768,7 +1769,7 @@ void *clientwr(void *arg) {
     pthread_t clientrdth;
     int i, dynconffail = 0;
     time_t secs;
-    uint8_t rnd;
+    uint8_t rnd, do_resend = 0;
     struct timeval now, laststatsrv;
     struct timespec timeout;
     struct request *statsrvrq;
@@ -1852,6 +1853,11 @@ void *clientwr(void *arg) {
 	    debug(DBG_DBG, "clientwr: got new request");
 	    server->newrq = 0;
 	}
+    if (server->conreset) {
+        debug(DBG_DBG, "clientwr: connection reset; resending all aoutstanding requests");
+        do_resend = 1;
+        server->conreset = 0;
+    }
 #if 0
 	else
 	    debug(DBG_DBG, "clientwr: request timer expired, processing request queue");
@@ -1879,13 +1885,16 @@ void *clientwr(void *arg) {
 	    if (i == MAX_REQUESTS)
 		break;
 
-	    gettimeofday(&now, NULL);
-            if (now.tv_sec < rqout->expiry.tv_sec) {
-		if (!timeout.tv_sec || rqout->expiry.tv_sec < timeout.tv_sec)
-		    timeout.tv_sec = rqout->expiry.tv_sec;
-                pthread_mutex_unlock(rqout->lock);
-		continue;
-	    }
+        gettimeofday(&now, NULL);
+        if (do_resend) {
+            if (rqout->tries > 0)
+                rqout->tries--;
+        } else if (now.tv_sec < rqout->expiry.tv_sec) {
+            if (!timeout.tv_sec || rqout->expiry.tv_sec < timeout.tv_sec)
+                timeout.tv_sec = rqout->expiry.tv_sec;
+            pthread_mutex_unlock(rqout->lock);
+            continue;
+        }
 
 	    if (rqout->tries == (*rqout->rq->buf == RAD_Status_Server ? 1 : conf->retrycount + 1)) {
 		debug(DBG_DBG, "clientwr: removing expired packet from queue");
@@ -1916,6 +1925,7 @@ void *clientwr(void *arg) {
         }
 	    pthread_mutex_unlock(rqout->lock);
 	}
+    do_resend = 0;
 	if (conf->statusserver && server->state == RSP_SERVER_STATE_CONNECTED) {
 	    secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
 	    gettimeofday(&now, NULL);

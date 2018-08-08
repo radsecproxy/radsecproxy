@@ -140,6 +140,10 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
     gettimeofday(&server->lastconnecttry, NULL);
     server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
+    pthread_mutex_lock(&server->newrq_mutex);
+    server->conreset = 1;
+    pthread_cond_signal(&server->newrq_cond);
+    pthread_mutex_unlock(&server->newrq_mutex);
     return 1;
 }
 
