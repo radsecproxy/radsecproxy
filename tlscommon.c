@@ -659,7 +659,7 @@ static int cnregexp(X509 *cert, char *exact, regex_t *regex) {
 int certnamecheck(X509 *cert, struct list *hostports) {
     struct list_node *entry;
     struct hostportres *hp;
-    int r;
+    int r = 0;
     uint8_t type = 0; /* 0 for DNS, AF_INET for IPv4, AF_INET6 for IPv6 */
     struct in6_addr addr;
 
@@ -676,7 +676,10 @@ int certnamecheck(X509 *cert, struct list *hostports) {
 	else
 	    type = 0;
 
-	r = type ? subjectaltnameaddr(cert, type, &addr) : subjectaltnameregexp(cert, GEN_DNS, hp->host, NULL);
+    if (type)
+        r = subjectaltnameaddr(cert, type, &addr);
+    if (!r)
+        r = subjectaltnameregexp(cert, GEN_DNS, hp->host, NULL);
 	if (r) {
 	    if (r > 0) {
 		debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", type ? "address" : "host", hp->host);
