@@ -11,6 +11,7 @@ changes since 1.7.1
 	Bug fixes:
 	- fix request might be dropped if udp client uses multiple source ports
 	- fix tls output might drop requests under high load
+	- Check for IP literals in Certificate SubjectAltName:DNS records
 
 
 2018-07-05 1.7.1
