@@ -197,7 +197,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 /* timeout in seconds, 0 means no timeout (blocking), returns when num bytes have been read, or timeout */
 /* returns 0 on timeout, -1 on error and num if ok */
 int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock) {
-    int s, ndesc, cnt = 0, len, sockerr = 0;
+    int ndesc, cnt = 0, len, sockerr = 0;
     socklen_t errlen = sizeof(sockerr);
     struct pollfd fds[1];
     unsigned long error;
@@ -205,22 +205,17 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
     assert(lock);
 
     pthread_mutex_lock(lock);
-    s = SSL_get_fd(ssl);
-    if (s < 0){
-        pthread_mutex_unlock(lock);
-        return -1;
-    }
 
     for (len = 0; len < num; len += cnt) {
         if (SSL_pending(ssl) == 0) {
-            pthread_mutex_unlock(lock);
-
-            fds[0].fd = s;
+            fds[0].fd = SSL_get_fd(ssl);
             fds[0].events = POLLIN;
             if (want_write) {
                 fds[0].events |= POLLOUT;
                 want_write = 0;
             }
+            pthread_mutex_unlock(lock);
+
             ndesc = poll(fds, 1, timeout ? timeout * 1000 : -1);
             if (ndesc == 0)
                 return ndesc;
@@ -228,7 +223,7 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
             pthread_mutex_lock(lock);
             if (ndesc < 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
                 if (fds[0].revents & POLLERR) {
-                    if(!getsockopt(s, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
+                    if(!getsockopt(SSL_get_fd(ssl), SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
                         debug(DBG_INFO, "TLS Connection lost: %s", strerror(sockerr));
                     else
                         debug(DBG_INFO, "TLS Connection lost: unknown error");

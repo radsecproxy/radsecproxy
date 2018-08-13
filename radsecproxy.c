@@ -436,6 +436,28 @@ void freerqoutdata(struct rqout *rqout) {
     memset(&rqout->expiry, 0, sizeof(struct timeval));
 }
 
+int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
+    if (!to->requests[id].rq) {
+        pthread_mutex_lock(to->requests[id].lock);
+        if (!to->requests[id].rq) {
+            rq->newid = id;
+            rq->msg->id = id;
+            rq->buf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
+            if (!rq->buf) {
+                pthread_mutex_unlock(to->requests[id].lock);
+                debug(DBG_ERR, "sendrq: radmsg2buf failed");
+                return 0;
+            }
+            debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", id, to->conf->name);
+            to->requests[id].rq = rq;
+            pthread_mutex_unlock(to->requests[id].lock);
+            return 1;
+        }
+    }
+    pthread_mutex_unlock(to->requests[id].lock);
+    return 0;
+}
+
 void sendrq(struct request *rq) {
     int i, start;
     struct server *to;
@@ -443,64 +465,42 @@ void sendrq(struct request *rq) {
     removeclientrqs_sendrq_freeserver_lock(1);
     to = rq->to;
     if (!to)
-	goto errexit;
+        goto errexit;
 
     start = to->conf->statusserver ? 1 : 0;
     pthread_mutex_lock(&to->newrq_mutex);
     if (start && rq->msg->code == RAD_Status_Server) {
-	pthread_mutex_lock(to->requests[0].lock);
-	if (to->requests[0].rq) {
-	    pthread_mutex_unlock(to->requests[0].lock);
-	    debug(DBG_INFO, "sendrq: status server already in queue, dropping request");
-	    goto errexit;
-	}
-	i = 0;
-    } else {
-	if (!to->nextid)
-	    to->nextid = start;
-	/* might simplify if only try nextid, might be ok */
-	for (i = to->nextid; i < MAX_REQUESTS; i++) {
-	    if (!to->requests[i].rq) {
-		pthread_mutex_lock(to->requests[i].lock);
-		if (!to->requests[i].rq)
-		    break;
-		pthread_mutex_unlock(to->requests[i].lock);
-	    }
-	}
-	if (i == MAX_REQUESTS) {
-	    for (i = start; i < to->nextid; i++) {
-		if (!to->requests[i].rq) {
-		    pthread_mutex_lock(to->requests[i].lock);
-		    if (!to->requests[i].rq)
-			break;
-		    pthread_mutex_unlock(to->requests[i].lock);
-		}
-	    }
-	    if (i == to->nextid) {
-            debug(DBG_WARN, "sendrq: no room in queue for server %s, dropping request", to->conf->name);
+        if (!_internal_sendrq(to, 0, rq)) {
+            debug(DBG_INFO, "sendrq: status server already in queue, dropping request");
             goto errexit;
-	    }
-	}
-    }
-    rq->newid = (uint8_t)i;
-    rq->msg->id = (uint8_t)i;
-    rq->buf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
-    if (!rq->buf) {
-	pthread_mutex_unlock(to->requests[i].lock);
-	debug(DBG_ERR, "sendrq: radmsg2buf failed");
-	goto errexit;
-    }
+        }
+    } else {
+        if (!to->nextid)
+            to->nextid = start;
+        /* might simplify if only try nextid, might be ok */
+        for (i = to->nextid; i < MAX_REQUESTS; i++) {
+            if (_internal_sendrq(to, i, rq))
+                break;
+        }
+        if (i == MAX_REQUESTS) {
+            for (i = start; i < to->nextid; i++) {
+                if (_internal_sendrq(to, i, rq))
+                    break;
+            }
+            if (i == to->nextid) {
+                debug(DBG_WARN, "sendrq: no room in queue for server %s, dropping request", to->conf->name);
+                goto errexit;
+            }
+        }
 
-    debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", i, to->conf->name);
-    to->requests[i].rq = rq;
-    pthread_mutex_unlock(to->requests[i].lock);
-    if (i >= start) /* i is not reserved for statusserver */
-	to->nextid = i + 1;
+        if (i >= start) /* i is not reserved for statusserver */
+            to->nextid = i + 1;
+    }
 
     if (!to->newrq) {
-	to->newrq = 1;
-	debug(DBG_DBG, "sendrq: signalling client writer");
-	pthread_cond_signal(&to->newrq_cond);
+        to->newrq = 1;
+        debug(DBG_DBG, "sendrq: signalling client writer");
+        pthread_cond_signal(&to->newrq_cond);
     }
 
     pthread_mutex_unlock(&to->newrq_mutex);
@@ -509,7 +509,7 @@ void sendrq(struct request *rq) {
 
 errexit:
     if (rq->from)
-	rmclientrq(rq, rq->msg->id);
+        rmclientrq(rq, rq->rqid);
     freerq(rq);
     if (to)
         pthread_mutex_unlock(&to->newrq_mutex);
@@ -730,8 +730,8 @@ void _internal_removeserversubrealms(struct list *realmlist, struct clsrvconf *s
 
     for (entry = list_first(realmlist); entry;) {
 	realm = newrealmref((struct realm *)entry->data);
+    entry = list_next(entry);
 	pthread_mutex_lock(&realm->mutex);
-	entry = list_next(entry);
 
 	if (realm->srvconfs) {
 	    srvconfs = realm->srvconfs;
@@ -1999,7 +1999,6 @@ void createlistener(uint8_t type, char *arg) {
 	if (bind(s, res->ai_addr, res->ai_addrlen)) {
 	    debugerrno(errno, DBG_WARN, "createlistener: bind failed");
 	    close(s);
-	    s = -1;
 	    continue;
 	}
 
