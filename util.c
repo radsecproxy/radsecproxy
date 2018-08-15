@@ -125,6 +125,9 @@ void enable_keepalive(int socket) {
     int optval;
     socklen_t optlen = sizeof(optval);
 
+#if !defined(TCP_KEEPCNT) || !defined(TCP_KEEPIDLE) || !defined(TCP_KEEPINTVL)
+    debug(DBG_NOTICE, "TCP Keepalive feature might be limited on this platform");
+#else
     optval = 3;
     if(setsockopt(socket, SOL_TCP, TCP_KEEPCNT, &optval, optlen) < 0) {
         debug(DBG_ERR, "enable_keepalive: setsockopt TCP_KEEPCNT failed");
@@ -137,6 +140,7 @@ void enable_keepalive(int socket) {
     if(setsockopt(socket, SOL_TCP, TCP_KEEPINTVL, &optval, optlen) < 0) {
         debug(DBG_ERR, "enable_keepalive: setsockopt TCP_KEEPINTVL failed");
     }
+#endif
     optval = 1;
     if(setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen) < 0) {
         debug(DBG_ERR, "enable_keepalive: setsockopt SO_KEEPALIVE failed");

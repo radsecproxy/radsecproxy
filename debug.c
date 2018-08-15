@@ -5,6 +5,10 @@
 #ifndef SYS_SOLARIS9
 #include <stdint.h>
 #endif
+#ifdef __linux__
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -148,16 +152,30 @@ void debug_reopen_log() {
 
 void debug_logit(uint8_t level, const char *format, va_list ap) {
     struct timeval now;
-    char *timebuf, *tidbuf;
+    char *timebuf, *tidbuf, *tmp = NULL;
     int priority;
 
     if (debug_tid) {
-        tidbuf = malloc((3*sizeof(pthread_t)+5)+strlen(format));
-        sprintf(tidbuf, "(%ld) %s", pthread_self(), format);
-        format = tidbuf;
-    } else
-        tidbuf = NULL;
+#ifdef __linux__
+        pid_t tid = syscall(SYS_gettid);
+        tidbuf = malloc(3*sizeof(tid)+1);
+        sprintf(tidbuf, "%u", tid);
+#else
+        pthread_t tid = pthread_self();
+        uint8_t *ptid = (uint8_t *)&tid;
+        int i;
 
+        tidbuf = malloc((2*sizeof(tid)+1));
+        tmp = tidbuf;
+        for (i = sizeof(tid)-1; i >= 0; i--) {
+            tmp += sprintf(tmp, "%02x", ptid[i]);
+        }
+#endif
+        tmp = malloc(strlen(tidbuf) + strlen(format) + 4);
+        sprintf(tmp, "(%s) %s", tidbuf, format);
+        format = tmp;
+        free(tidbuf);
+    }
 
     if (debug_syslogfacility) {
 	switch (level) {
@@ -191,7 +209,7 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
 	vfprintf(debug_file, format, ap);
 	fprintf(debug_file, "\n");
     }
-    free(tidbuf);
+    free(tmp);
 }
 
 void debug(uint8_t level, char *format, ...) {

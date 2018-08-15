@@ -34,6 +34,12 @@
 #endif
 #endif
 
+/* For systems that only support RFC 2292 Socket API, but not RFC 3542
+ * like Cygwin */
+#ifndef IPV6_RECVPKTINFO
+#define IPV6_RECVPKTINFO IPV6_PKTINFO
+#endif
+
 /* 27262 is vendor DANTE Ltd. */
 #define DEFAULT_TTL_ATTR "27262:1"
 #define DEFAULT_FTICKS_PREFIX "F-TICKS/eduroam/1.0"

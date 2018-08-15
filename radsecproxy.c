@@ -77,8 +77,13 @@ static struct list *clconfs, *srvconfs;
 static struct list *realms;
 static struct hash *rewriteconfs;
 
+#ifdef __CYGWIN__
+extern int __declspec(dllimport) optind;
+extern char __declspec(dllimport) *optarg;
+#else
 extern int optind;
 extern char *optarg;
+#endif
 static const struct protodefs *protodefs[RAD_PROTOCOUNT];
 
 /* minimum required declarations to avoid reordering code */
