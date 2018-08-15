@@ -1,21 +1,22 @@
 changes since 1.7.1
-
 	Misc:
-	- always copy proxy-state in own responses
-	- authenticate own access-reject responses
+	- Always copy proxy-state attributes in own responses
+	- Authenticate own access-reject responses
+	- Retry outstanding requests after connection reset
 
 	Compile fixes:
-	- fix compile issues on some platforms (#14)
-	- fix compile issue when dtls disabled (#16)
+	- Fix compile issues on some platforms (#14)
+	- Fix compile issue when dtls disabled (#16)
+	- Fix compile issue on Cygwin (#18)
+	- Fix radsecproxy.conf manpage not installed when docbook2x not available
 
 	Bug fixes:
-	- fix request might be dropped if udp client uses multiple source ports
-	- fix tls output might drop requests under high load
+	- Fix request might be dropped if udp client uses multiple source ports
+	- Fix tls output might drop requests under high load
 	- Check for IP literals in Certificate SubjectAltName:DNS records
-
+	- Fix tls connection might hang during SSL_connect and SSL_accept
 
 2018-07-05 1.7.1
-
 	License and copyright changes:
 	- Copyright SWITCH
 	- 3-clause BSD license only, no GPL.
