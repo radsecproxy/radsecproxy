@@ -663,35 +663,35 @@ int certnamecheck(X509 *cert, struct list *hostports) {
     struct in6_addr addr;
 
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
-	hp = (struct hostportres *)entry->data;
-	if (hp->prefixlen != 255) {
-	    /* we disable the check for prefixes */
-	    return 1;
-	}
-	if (inet_pton(AF_INET, hp->host, &addr))
-	    type = AF_INET;
-	else if (inet_pton(AF_INET6, hp->host, &addr))
-	    type = AF_INET6;
-	else
-	    type = 0;
+        hp = (struct hostportres *)entry->data;
+        if (hp->prefixlen != 255) {
+            /* we disable the check for prefixes */
+            return 1;
+        }
+        if (inet_pton(AF_INET, hp->host, &addr))
+            type = AF_INET;
+        else if (inet_pton(AF_INET6, hp->host, &addr))
+            type = AF_INET6;
+        else
+            type = 0;
 
-    if (type)
-        r = subjectaltnameaddr(cert, type, &addr);
-    if (!r)
-        r = subjectaltnameregexp(cert, GEN_DNS, hp->host, NULL);
-	if (r) {
-	    if (r > 0) {
-		debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", type ? "address" : "host", hp->host);
-		return 1;
-	    }
-	    debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", type ? "address" : "host", hp->host);
-	} else {
-	    if (cnregexp(cert, hp->host, NULL)) {
-		debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
-		return 1;
-	    }
-	    debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
-	}
+        if (type)
+            r = subjectaltnameaddr(cert, type, &addr);
+        if (!r)
+            r = subjectaltnameregexp(cert, GEN_DNS, hp->host, NULL);
+        if (r) {
+            if (r > 0) {
+                debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", type ? "address" : "host", hp->host);
+                return 1;
+            }
+            debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", type ? "address" : "host", hp->host);
+        } else {
+            if (cnregexp(cert, hp->host, NULL)) {
+                debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
+                return 1;
+            }
+            debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
+        }
     }
     return 0;
 }
