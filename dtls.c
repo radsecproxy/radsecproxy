@@ -504,13 +504,12 @@ void *dtlslistener(void *arg) {
 
 int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
     struct timeval socktimeout, now, start = {0,0};
-    time_t elapsed;
+    time_t wait;
     X509 *cert;
     SSL_CTX *ctx = NULL;
     struct hostportres *hp;
     unsigned long error;
     BIO *bio;
-    uint8_t initialdelay = 0;
 
     debug(DBG_DBG, "dtlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -524,9 +523,8 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 
     gettimeofday(&now, NULL);
     if (when && (now.tv_sec - when->tv_sec) < 30 ) {
-        elapsed = 30 - (now.tv_sec - when->tv_sec);
-        initialdelay = 1;
-        start.tv_sec = now.tv_sec + elapsed;
+        /* last connection was less than 30s ago. Delay next attempt */
+        start.tv_sec = now.tv_sec + 30 - (now.tv_sec - when->tv_sec);
     }
 
     for (;;) {
@@ -542,22 +540,20 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
         /* no sleep at startup or at first try */
         if (start.tv_sec) {
             gettimeofday(&now, NULL);
-            if (!initialdelay)
-                elapsed = now.tv_sec - start.tv_sec;
+            wait = abs(now.tv_sec - start.tv_sec);
+            wait = wait > 60 ? 60 : wait;
 
-            if (timeout && elapsed > timeout) {
+            if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
                 debug(DBG_DBG, "tlsconnect: timeout");
                 return 0;
             }
 
-            if (elapsed < 1)
+            if (wait < 1)
                 sleep(2);
             else {
-                debug(DBG_INFO, "Next connection attempt in %lds", elapsed < 60 ? elapsed : 60);
-                sleep(elapsed < 60 ? elapsed : 60);
+                debug(DBG_INFO, "Next connection attempt in %lds", wait);
+                sleep(wait);
             }
-            if (initialdelay)
-                initialdelay = 0;
             debug(DBG_INFO, "tlsconnect: retry connecting");
         } else {
             gettimeofday(&start, NULL);
