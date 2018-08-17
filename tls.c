@@ -128,10 +128,10 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
             if (wait < 1)
                 sleep(2);
             else {
-                debug(DBG_INFO, "Next connection attempt in %lds", wait);
+                debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
                 sleep(wait);
             }
-            debug(DBG_INFO, "tlsconnect: retry connecting");
+            debug(DBG_INFO, "tlsconnect: retry connecting to %s", server->conf->name);
         } else {
             gettimeofday(&start, NULL);
         }
@@ -156,7 +156,8 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
         SSL_set_fd(server->ssl, server->sock);
         if (sslconnecttimeout(server->ssl, 5) <= 0) {
             while ((error = ERR_get_error()))
-                debug(DBG_ERR, "tlsconnect: TLS: %s", ERR_error_string(error, NULL));
+                debug(DBG_ERR, "tlsconnect: SSL connect to %s failed: %s", server->conf->name, ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlsconnect: SSL connect to %s failed", server->conf->name, ERR_error_string(error, NULL));
             continue;
         }
 
@@ -527,7 +528,7 @@ void *tlsservernew(void *arg) {
         SSL_set_fd(ssl, s);
         if (sslaccepttimeout(ssl, 30) <= 0) {
             while ((error = ERR_get_error()))
-                debug(DBG_ERR, "tlsservernew: SSL: %s", ERR_error_string(error, NULL));
+                debug(DBG_ERR, "tlsservernew: SSL accept from %s failed: %s", conf->name, ERR_error_string(error, NULL));
             debug(DBG_ERR, "tlsservernew: SSL_accept failed");
             goto exit;
         }

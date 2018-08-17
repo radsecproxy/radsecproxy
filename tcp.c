@@ -117,11 +117,11 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
             if (wait < 1)
                 sleep(2);
             else {
-                debug(DBG_INFO, "Next connection attempt in %lds", wait);
+                debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
                 sleep(wait);
             }
             pthread_mutex_lock(&server->lock);
-            debug(DBG_INFO, "tlsconnect: retry connecting");
+            debug(DBG_INFO, "tlsconnect: retry connecting to %s", server->conf->name);
         } else {
             gettimeofday(&start, NULL);
         }

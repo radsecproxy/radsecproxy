@@ -308,6 +308,10 @@ void *dtlsservernew(void *arg) {
 
     debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
 
+    conf = find_clconf(handle, (struct sockaddr *)&params->addr, NULL);
+    if (!conf)
+        goto exit;
+
     if (!srcres)
         dtlssetsrcres();
     memcpy(&tmpsrvaddr, srcres, sizeof(struct addrinfo));
@@ -323,7 +327,7 @@ void *dtlsservernew(void *arg) {
 
     if (sslaccepttimeout(params->ssl, 30) <= 0) {
         while ((error = ERR_get_error()))
-            debug(DBG_ERR, "dtlsservernew: SSL: %s", ERR_error_string(error, NULL));
+            debug(DBG_ERR, "dtlsservernew: SSL accept from %s failed: %s", conf->name, ERR_error_string(error, NULL));
         debug(DBG_ERR, "dtlsservernew: SSL_accept failed");
         goto exit;
     }
@@ -331,10 +335,6 @@ void *dtlsservernew(void *arg) {
     timeout.tv_usec = 0;
     if (BIO_ctrl(SSL_get_rbio(params->ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout) == -1)
         debug(DBG_WARN, "dtlsservernew: BIO_CTRL_DGRAM_SET_RECV_TIMEOUT failed");
-
-    conf = find_clconf(handle, (struct sockaddr *)&params->addr, NULL);
-    if (!conf)
-        goto exit;
 
     cert = verifytlscert(params->ssl);
     if (!cert)
@@ -551,10 +551,10 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
             if (wait < 1)
                 sleep(2);
             else {
-                debug(DBG_INFO, "Next connection attempt in %lds", wait);
+                debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
                 sleep(wait);
             }
-            debug(DBG_INFO, "tlsconnect: retry connecting");
+            debug(DBG_INFO, "tlsconnect: retry connecting to %s", server->conf->name);
         } else {
             gettimeofday(&start, NULL);
         }
@@ -583,14 +583,14 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
         SSL_set_bio(server->ssl, bio, bio);
         if (sslconnecttimeout(server->ssl, 5) <= 0) {
             while ((error = ERR_get_error()))
-                debug(DBG_ERR, "tlsconnect: DTLS: %s", ERR_error_string(error, NULL));
+                debug(DBG_ERR, "dtlsconnect: SSL connect to %s failed: %s", server->conf->name, ERR_error_string(error, NULL));
+            debug(DBG_ERR, "dtlsconnect: SSL connect to %s failed", server->conf->name, ERR_error_string(error, NULL));
             continue;
         }
         socktimeout.tv_sec = 5;
         socktimeout.tv_usec = 0;
         if (BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &socktimeout) == -1)
             debug(DBG_WARN, "dtlsconnect: BIO_CTRL_DGRAM_SET_RECV_TIMEOUT failed");
-        debug(DBG_DBG, "dtlsconnect: DTLS: ok");
 
         cert = verifytlscert(server->ssl);
         if (!cert)
@@ -601,7 +601,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
         }
         X509_free(cert);
     }
-    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s port %s up", hp->host, hp->port);
+    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s up", server->conf->name);
 
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
