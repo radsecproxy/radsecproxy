@@ -300,7 +300,7 @@ void *dtlsservernew(void *arg) {
     struct list_node *cur = NULL;
     X509 *cert = NULL;
     struct tls *accepted_tls = NULL;
-    int s;
+    int s = -1;
     unsigned long error;
     struct timeval timeout;
     struct addrinfo tmpsrvaddr;
