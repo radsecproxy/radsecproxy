@@ -23,3 +23,6 @@ radsecproxy
 radsecproxy-conf
 radsecproxy-hash
 radsecproxy.conf.5
+tests/t_fticks
+tests/*.log
+tests/*.trs
