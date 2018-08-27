@@ -1,4 +1,4 @@
-changes since 1.7.1
+2018-08-27 1.7.2-rc1
 	Misc:
 	- Always copy proxy-state attributes in own responses
 	- Authenticate own access-reject responses
