@@ -156,7 +156,8 @@ blocktype name {
 	    specify another syslog facility, or you may specify that
 	    logging should be to a particular file, not using
 	    syslog. The value must be either a file or syslog URL. The
-	    file URL is the standard one, specifying a local file that
+	    file URL is the standard one <literlal>file:///var/log/radius.log
+	    </literal>, specifying a local file that
 	    should be used. For syslog, you must use the syntax:
 	    <literal>x-syslog:///FACILITY</literal> where
 	    <literal>FACILITY</literal> must be one of
