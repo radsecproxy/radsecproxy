@@ -2,12 +2,12 @@
 "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
 <refentry>
   <refentryinfo>
-    <date>2018-08-27</date>
+    <date>2018-09-03</date>
   </refentryinfo>
   <refmeta>
     <refentrytitle>radsecproxy.conf</refentrytitle>
     <manvolnum>5</manvolnum>
-    <refmiscinfo>radsecproxy 1.7.2-rc1</refmiscinfo>
+    <refmiscinfo>radsecproxy 1.7.2</refmiscinfo>
   </refmeta>
   <refnamediv>
     <refname>
@@ -156,7 +156,7 @@ blocktype name {
 	    specify another syslog facility, or you may specify that
 	    logging should be to a particular file, not using
 	    syslog. The value must be either a file or syslog URL. The
-	    file URL is the standard one <literlal>file:///var/log/radius.log
+	    file URL is the standard one <literal>file:///var/log/radius.log
 	    </literal>, specifying a local file that
 	    should be used. For syslog, you must use the syntax:
 	    <literal>x-syslog:///FACILITY</literal> where
