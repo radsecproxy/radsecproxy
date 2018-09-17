@@ -72,6 +72,13 @@ enum rsp_server_state {
     RSP_SERVER_STATE_FAILING
 };
 
+enum rsp_statsrv {
+	RSP_STATSRV_OFF = 0,
+	RSP_STATSRV_ON,
+	RSP_STATSRV_MINIMAL,
+	RSP_STATSRV_AUTO
+};
+
 struct options {
     char *pidfile;
     char *logdestination;
@@ -145,7 +152,7 @@ struct clsrvconf {
     char *confrewriteusername;
     struct modattr *rewriteusername;
     char *dynamiclookupcommand;
-    uint8_t statusserver;
+    enum rsp_statsrv statusserver;
     uint8_t retryinterval;
     uint8_t retrycount;
     uint8_t dupinterval;
