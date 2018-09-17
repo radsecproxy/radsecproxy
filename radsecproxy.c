@@ -1818,11 +1818,9 @@ void *clientwr(void *arg) {
 
     memset(&timeout, 0, sizeof(struct timespec));
 
-    if (conf->statusserver != RSP_STATSRV_OFF) {
-	gettimeofday(&server->lastrcv, NULL);
-	gettimeofday(&laststatsrv, NULL);
-    }
     gettimeofday(&server->lastreply, NULL);
+    server->lastrcv = server->lastreply;
+    laststatsrv = server->lastreply;
 
     if (conf->pdef->connecter) {
 	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
@@ -1841,9 +1839,6 @@ void *clientwr(void *arg) {
 	}
     }
     server->state = RSP_SERVER_STATE_CONNECTED;
-
-    if (conf->statusserver == RSP_STATSRV_AUTO)
-        statusserver_requested = 1;
 
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
@@ -1929,7 +1924,7 @@ void *clientwr(void *arg) {
                 }
             } else {
                 if (conf->statusserver == RSP_STATSRV_AUTO && *rqout->rq->buf == RAD_Status_Server) {
-                    if (server->lastrcv.tv_sec >= laststatsrv.tv_sec) {
+                    if (server->lastreply.tv_sec >= laststatsrv.tv_sec) {
                         debug(DBG_DBG, "clientwr: status server autodetect faild, disabling status server for %s", conf->name);
                         conf->statusserver = RSP_STATSRV_OFF;
                     }
@@ -1956,11 +1951,10 @@ void *clientwr(void *arg) {
 	}
     do_resend = 0;
     if (server->state == RSP_SERVER_STATE_CONNECTED && !conf->statusserver == RSP_STATSRV_OFF) {
-        secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
         gettimeofday(&now, NULL);
-        if ((conf->statusserver == RSP_STATSRV_ON && now.tv_sec - secs > STATUS_SERVER_PERIOD) ||
-            ((conf->statusserver == RSP_STATSRV_MINIMAL || conf->statusserver == RSP_STATSRV_AUTO) &&
-            statusserver_requested && now.tv_sec - laststatsrv.tv_sec > STATUS_SERVER_PERIOD)) {
+        if ((conf->statusserver == RSP_STATSRV_ON && now.tv_sec - (laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec) > STATUS_SERVER_PERIOD) ||
+            (conf->statusserver == RSP_STATSRV_MINIMAL && statusserver_requested && now.tv_sec - laststatsrv.tv_sec > STATUS_SERVER_PERIOD) ||
+            (conf->statusserver == RSP_STATSRV_AUTO && server->lastreply.tv_sec >= laststatsrv.tv_sec)) {
 
             laststatsrv = now;
             statsrvrq = createstatsrvrq();
