@@ -244,7 +244,7 @@ static int prefixmatch(void *a1, void *a2, uint8_t len) {
     return (((uint8_t *)a1)[l] & mask[r]) == (((uint8_t *)a2)[l] & mask[r]);
 }
 
-int addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t checkport) {
+int _internal_addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t prefixlen, uint8_t checkport) {
     struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
     struct addrinfo *res;
@@ -255,34 +255,58 @@ int addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t checkp
         sa6 = (struct sockaddr_in6 *)addr;
         if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) {
             a4 = (struct in_addr *)&sa6->sin6_addr.s6_addr[12];
-	    sa6 = NULL;
-	}
+            sa6 = NULL;
+        }
     } else
-	a4 = &((struct sockaddr_in *)addr)->sin_addr;
+        a4 = &((struct sockaddr_in *)addr)->sin_addr;
 
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
-	hp = (struct hostportres *)entry->data;
-	for (res = hp->addrinfo; res; res = res->ai_next)
-	    if (hp->prefixlen == 255) {
-		if ((a4 && res->ai_family == AF_INET &&
-		     !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4) &&
-		     (!checkport || ((struct sockaddr_in *)res->ai_addr)->sin_port ==
-		      ((struct sockaddr_in *)addr)->sin_port)) ||
-		    (sa6 && res->ai_family == AF_INET6 &&
-		     !memcmp(&sa6->sin6_addr,
-			     &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16) &&
-		     (!checkport || ((struct sockaddr_in6 *)res->ai_addr)->sin6_port ==
-		      ((struct sockaddr_in6 *)addr)->sin6_port)))
-		    return 1;
-	    } else {
-		if ((a4 && res->ai_family == AF_INET &&
-		     prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, hp->prefixlen)) ||
-		    (sa6 && res->ai_family == AF_INET6 &&
-		     prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, hp->prefixlen)))
-		    return 1;
-	    }
+        hp = (struct hostportres *)entry->data;
+        for (res = hp->addrinfo; res; res = res->ai_next) {
+            if (hp->prefixlen >= (res->ai_family == AF_INET ? 32 : 128) && prefixlen >= (a4 ? 32 : 128)) {
+                if ((a4 && res->ai_family == AF_INET &&
+                    !memcmp(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, 4) &&
+                    (!checkport || ((struct sockaddr_in *)res->ai_addr)->sin_port ==
+                    ((struct sockaddr_in *)addr)->sin_port)) ||
+
+                    (sa6 && res->ai_family == AF_INET6 &&
+                    !memcmp(&sa6->sin6_addr,
+                    &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16) &&
+                    (!checkport || ((struct sockaddr_in6 *)res->ai_addr)->sin6_port ==
+                    ((struct sockaddr_in6 *)addr)->sin6_port)))
+
+                    return 1;
+            } else if (hp->prefixlen <= prefixlen) {
+                if ((a4 && res->ai_family == AF_INET &&
+                    prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, hp->prefixlen)) ||
+                    (sa6 && res->ai_family == AF_INET6 &&
+                    prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, hp->prefixlen)))
+
+                    return 1;
+            }
+        }
     }
     return 0;
+}
+
+int hostportmatches(struct list *hostports, struct list *matchhostports, uint8_t checkport) {
+    struct list_node *entry;
+    struct hostportres *match;
+    struct addrinfo *res;
+
+    for (entry = list_first(matchhostports); entry; entry = list_next(entry)) {
+        match = (struct hostportres *)entry->data;
+
+        for (res = match->addrinfo; res; res = res->ai_next) {
+            if (_internal_addressmatches(hostports, res->ai_addr, match->prefixlen, checkport))
+                return 1;
+        }
+    }
+    return 0;
+}
+
+int addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t checkport) {
+    return _internal_addressmatches(hostports, addr, 255, checkport);
 }
 
 int connecttcphostlist(struct list *hostports,  struct addrinfo *src) {
