@@ -344,15 +344,18 @@ after startup. However, if the name can not be resolved, startup will fail.
 When some client later sends a request to the proxy, the proxy will look at the
 IP address the request comes from, and then go through all the addresses of each
 of the configured clients (in the order they are defined), to determine which
-(if any) of the clients this is.
+(if any) of the clients this is. When using the IpAddress/PrefixLength form,
+this might mask clients defined later, which then will never be matched.
 
 In the case of TLS/DTLS, the name of the client must match the FQDN or IP
 address in the client certificate. Note that this is not required when the
-client name is an IP prefix.
+client name is an IP prefix. If overlapping clients are defined (see section
+above), they will be searched for matching \fBMatchCertificateAttribute\fR, but
+they must reference the same tls block.
 
 The allowed options in a client block are:
 
-.BI "host (" fqdn |( address [/ length ]))
+.BI "Host (" fqdn |( address [/ length ]))
 .RS
 Alternatively of specifying the FQDN or address in the block name,  the
 \fBhost\fR option may be used. In that case, the value of the \fBhost\fR option
