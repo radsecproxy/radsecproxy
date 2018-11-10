@@ -2512,13 +2512,14 @@ struct rewrite *getrewrite(char *alt1, char *alt2) {
     return NULL;
 }
 
-void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, char **addvattrs, char **modattrs)
+void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs,
+                char **addvattrs, char **modattrs, char **supattrs, char** supvattrs)
 {
     struct rewrite *rewrite = NULL;
     int i, n;
     uint8_t *rma = NULL;
     uint32_t *p, *rmva = NULL;
-    struct list *adda = NULL, *moda = NULL;
+    struct list *adda = NULL, *moda = NULL, *supa = NULL;
     struct tlv *a;
     struct modattr *m;
 
@@ -2591,7 +2592,36 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	freegconfmstr(modattrs);
     }
 
-    if (rma || rmva || adda || moda) {
+    if (supattrs) {
+	supa = list_create();
+	if (!supa)
+	    debugx(1, DBG_ERR, "malloc failed");
+	for (i = 0; supattrs[i]; i++) {
+	    a = extractattr(supattrs[i], 0);
+	    if (!a)
+		debugx(1, DBG_ERR, "addrewrite: adding invalid attribute %s", supattrs[i]);
+	    if (!list_push(supa, a))
+		debugx(1, DBG_ERR, "malloc failed");
+	}
+	freegconfmstr(supattrs);
+    }
+
+    if (supvattrs) {
+	if (!supa)
+	    supa = list_create();
+	if (!supa)
+	    debugx(1, DBG_ERR, "malloc failed");
+	for (i = 0; supvattrs[i]; i++) {
+	    a = extractattr(supvattrs[i], 1);
+	    if (!a)
+		debugx(1, DBG_ERR, "addrewrite: adding invalid vendor attribute %s", supvattrs[i]);
+	    if (!list_push(supa, a))
+		debugx(1, DBG_ERR, "malloc failed");
+	}
+	freegconfmstr(supvattrs);
+    }
+
+    if (rma || rmva || adda || moda || supa) {
 	rewrite = malloc(sizeof(struct rewrite));
 	if (!rewrite)
 	    debugx(1, DBG_ERR, "malloc failed");
@@ -2599,6 +2629,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs, c
 	rewrite->removevendorattrs = rmva;
 	rewrite->addattrs = adda;
 	rewrite->modattrs = moda;
+    rewrite->supattrs = supa;
     }
 
     if (!hash_insert(rewriteconfs, value, strlen(value), rewrite))
@@ -3133,6 +3164,7 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
     char **rmattrs = NULL, **rmvattrs = NULL;
     char **addattrs = NULL, **addvattrs = NULL;
     char **modattrs = NULL;
+    char **supattrs = NULL, **supvattrs = NULL;
 
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
 
@@ -3142,10 +3174,12 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
 			  "addAttribute", CONF_MSTR, &addattrs,
 			  "addVendorAttribute", CONF_MSTR, &addvattrs,
 			  "modifyAttribute", CONF_MSTR, &modattrs,
+              "supplementAttribute", CONF_MSTR, &supattrs,
+              "supplementVendorAttriute", CONF_MSTR, &supvattrs,
 			  NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
-    addrewrite(val, rmattrs, rmvattrs, addattrs, addvattrs, modattrs);
+    addrewrite(val, rmattrs, rmvattrs, addattrs, addvattrs, modattrs, supattrs, supvattrs);
     return 1;
 }
 

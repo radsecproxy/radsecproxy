@@ -222,6 +222,7 @@ struct rewrite {
     uint32_t *removevendorattrs;
     struct list *addattrs;
     struct list *modattrs;
+    struct list *supattrs;
 };
 
 struct protodefs {
