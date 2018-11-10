@@ -2770,10 +2770,11 @@ int config_hostaf(const char *desc, int ipv4only, int ipv6only, int *af) {
 }
 
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    struct clsrvconf *conf;
+    struct clsrvconf *conf, *existing;
     char *conftype = NULL, *rewriteinalias = NULL;
     long int dupinterval = LONG_MIN, addttl = LONG_MIN;
     uint8_t ipv4only = 0, ipv6only = 0;
+    struct list_node *entry;
 
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -2884,6 +2885,19 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	conf->secret = stringcopy(conf->pdef->secretdefault, 0);
 	if (!conf->secret)
 	    debugx(1, DBG_ERR, "malloc failed");
+    }
+
+    if (conf->tlsconf) {
+        for (entry = list_first(clconfs); entry; entry = list_next(entry)) {
+            existing = (struct clsrvconf *)entry->data;
+
+            if (existing->type == conf->type &&
+                existing->tlsconf != conf->tlsconf &&
+                hostportmatches(existing->hostports, conf->hostports, 0)) {
+
+                debugx(1, DBG_ERR, "error in block %s, overlapping clients must reference the same tls block", block);
+            }
+        }
     }
 
     conf->lock = malloc(sizeof(pthread_mutex_t));
