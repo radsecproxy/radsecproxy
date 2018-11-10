@@ -543,13 +543,18 @@ for the realm and then the SRV records for each NAPTR matching
 \&'x-eduroam:radius.tls' is provided in \fItools/naptr\-eduroam.sh\fR.
 .RE
 
-.BR "StatusServer (" on | off )
+.BR "StatusServer (" on | off | minimal | auto )
 .RS
-Enable the use of status-server messages for this server (default off).  If
-statusserver is enabled, the proxy will send regular status-server messages to
-the server to verify that it is alive. Status tracking of the server will solely
-depend on status-server message and ignore lost requests. This should only be
-enabled if the server supports it.
+Enable the use of status-server messages for this server (default \fBoff\fR).  If
+statusserver is enabled (\fBon\fR), the proxy will send regular status-server
+messages to the server to verify that it is alive. Status tracking of the server
+will solely depend on status-server message and ignore lost requests. This
+should only be enabled if the server supports it. With the option \fBminimal\fR
+status-server messages are only sent when regular requests have been lost and no
+other replies have been received.
+
+The option \fBauto\fR tries to detect whether the other server supports
+status-server. If so, status-server messages are enabled in \fBminimal\fR mode.
 .RE
 
 .BI "RetryCount " count

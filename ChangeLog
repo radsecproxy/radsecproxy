@@ -1,4 +1,8 @@
 changes since 1.7.2
+	New features:
+	- Autodetect status-server capability of servers
+	- Minimalistic status-server
+
 	Misc:
 	- No longer require docbook2x tools, but include plain manpages
 	- Fail on startup if overlapping clients with different tls blocks
