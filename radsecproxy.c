@@ -1670,7 +1670,7 @@ void replyh(struct server *server, unsigned char *buf) {
 
     if (rqout->rq->msg->code == RAD_Status_Server) {
 	freerqoutdata(rqout);
-	debug(DBG_NOTICE, "replyh: got status server response from %s", server->conf->name);
+	debug(DBG_INFO, "replyh: got status server response from %s", server->conf->name);
 	goto errunlock;
     }
 
