@@ -937,6 +937,48 @@ int dorewriteadd(struct radmsg *msg, struct list *addattrs) {
     return 1;
 }
 
+int dorewritesup(struct radmsg *msg, struct list *supattrs) {
+    struct list_node *n, *p;
+    struct tlv *attr, *supattr;
+    uint8_t exist, *vendortype, *v;;
+
+    for (n = list_first(supattrs); n; n = list_next(n)) {
+        supattr = (struct tlv *)n->data;
+        exist = 0;
+        for(p = list_first(msg->attrs); p; p = list_next(p)) {
+            attr = (struct tlv *)p->data;
+            if (attr->t == supattr->t && attr->t != RAD_Attr_Vendor_Specific) {
+                exist = 1;
+                break;
+            } else if (supattr->t == RAD_Attr_Vendor_Specific && attr->t == RAD_Attr_Vendor_Specific &&
+                        memcmp (supattr->v, attr->v, 4)) {
+                if (!attrvalidate(attr->v+4, attr->l-4)) {
+                    debug(DBG_INFO, "dorewritesup: vendor attribute validation failed, no rewrite");
+                    return 0;
+                }
+                vendortype = (uint8_t *)supattr->v+4;
+                for (v=attr->v+4; v < attr->v + attr->l; v += *(v+1) + 2){
+                    if (*v == *vendortype) {
+                        exist = 1;
+                        break;
+                    }
+                }
+                if (exist) break;
+            }
+        }
+        if (!exist) {
+            supattr = copytlv(supattr);
+            if (!supattr)
+                return 0;
+            if (!radmsg_add(msg, supattr)) {
+                freetlv(supattr);
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
 int resizeattr(struct tlv *attr, uint8_t newlen) {
     uint8_t *newv;
 
@@ -3169,16 +3211,15 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
 
     if (!getgenericconfig(cf, block,
-			  "removeAttribute", CONF_MSTR, &rmattrs,
-			  "removeVendorAttribute", CONF_MSTR, &rmvattrs,
-			  "addAttribute", CONF_MSTR, &addattrs,
-			  "addVendorAttribute", CONF_MSTR, &addvattrs,
-			  "modifyAttribute", CONF_MSTR, &modattrs,
-              "supplementAttribute", CONF_MSTR, &supattrs,
-              "supplementVendorAttriute", CONF_MSTR, &supvattrs,
-			  NULL
-	    ))
-	debugx(1, DBG_ERR, "configuration error");
+        "removeAttribute", CONF_MSTR, &rmattrs,
+        "removeVendorAttribute", CONF_MSTR, &rmvattrs,
+        "addAttribute", CONF_MSTR, &addattrs,
+        "addVendorAttribute", CONF_MSTR, &addvattrs,
+        "modifyAttribute", CONF_MSTR, &modattrs,
+        "supplementAttribute", CONF_MSTR, &supattrs,
+        "supplementVendorAttriute", CONF_MSTR, &supvattrs,
+        NULL))
+        debugx(1, DBG_ERR, "configuration error");
     addrewrite(val, rmattrs, rmvattrs, addattrs, addvattrs, modattrs, supattrs, supvattrs);
     return 1;
 }
