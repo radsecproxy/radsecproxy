@@ -2,6 +2,8 @@
 /* Copyright (c) 2015, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
+#include "tlv11.h"
+
 #define RAD_Access_Request 1
 #define RAD_Access_Accept 2
 #define RAD_Access_Reject 3
@@ -32,6 +34,11 @@ struct radmsg {
     struct list *attrs;
 };
 
+#define ATTRTYPE(x) ((x)[0])
+#define ATTRLEN(x) ((x)[1])
+#define ATTRVAL(x) ((x) + 2)
+#define ATTRVALLEN(x) ((x)[1] - 2)
+
 void radmsg_free(struct radmsg *);
 struct radmsg *radmsg_init(uint8_t, uint8_t, uint8_t *);
 int radmsg_add(struct radmsg *, struct tlv *);
@@ -42,6 +49,9 @@ int radmsg_copy_attrs(struct radmsg *dst,
                       uint8_t type);
 uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *);
 struct radmsg *buf2radmsg(uint8_t *, uint8_t *, uint8_t *);
+uint8_t attrname2val(char *attrname);
+int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type);
+int attrvalidate(unsigned char *attrs, int length);
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

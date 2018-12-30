@@ -10,7 +10,6 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include "list.h"
-#include "tlv11.h"
 #include "radmsg.h"
 #include "debug.h"
 #include <pthread.h>
@@ -325,6 +324,51 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
         }
     }
     return msg;
+}
+
+/* should accept both names and numeric values, only numeric right now */
+uint8_t attrname2val(char *attrname) {
+    int val = 0;
+
+    val = atoi(attrname);
+    return val > 0 && val < 256 ? val : 0;
+}
+
+/* ATTRNAME is on the form vendor[:type].
+   If only vendor is found, TYPE is set to 256 and 1 is returned.
+   If type is >= 256, 1 is returned.
+   Otherwise, 0 is returned.
+*/
+/* should accept both names and numeric values, only numeric right now */
+int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
+    char *s;
+
+    *vendor = atoi(attrname);
+    s = strchr(attrname, ':');
+    if (!s) {			/* Only vendor was found.  */
+	*type = 256;
+	return 1;
+    }
+    *type = atoi(s + 1);
+    return *type < 256;
+}
+
+int attrvalidate(unsigned char *attrs, int length) {
+    while (length > 1) {
+	if (ATTRLEN(attrs) < 2) {
+	    debug(DBG_INFO, "attrvalidate: invalid attribute length %d", ATTRLEN(attrs));
+	    return 0;
+	}
+	length -= ATTRLEN(attrs);
+	if (length < 0) {
+	    debug(DBG_INFO, "attrvalidate: attribute length %d exceeds packet length", ATTRLEN(attrs));
+	    return 0;
+	}
+	attrs += ATTRLEN(attrs);
+    }
+    if (length)
+	debug(DBG_INFO, "attrvalidate: malformed packet? remaining byte after last attribute");
+    return 1;
 }
 
 /* Local Variables: */

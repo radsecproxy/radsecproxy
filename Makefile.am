@@ -22,6 +22,7 @@ librsp_a_SOURCES = \
 	list.c list.h \
 	radmsg.c radmsg.h \
 	radsecproxy.c radsecproxy.h \
+	rewrite.c rewrite.h \
 	tcp.c tcp.h \
 	tls.c tls.h \
 	tlscommon.c tlscommon.h \
