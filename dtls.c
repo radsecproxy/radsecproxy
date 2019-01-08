@@ -400,12 +400,24 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
     if (getsockname(socket, to, &tolen))
         return -1;
     for (ctrlhdr = CMSG_FIRSTHDR(&msghdr); ctrlhdr; ctrlhdr = CMSG_NXTHDR(&msghdr, ctrlhdr)) {
+#if defined(IP_PKTINFO)
         if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_PKTINFO) {
-            debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, &((struct in_pktinfo *)CMSG_DATA(ctrlhdr))->ipi_addr, tmp, sizeof(tmp)));
+            struct in_pktinfo *pktinfo = (struct in_pktinfo *)CMSG_DATA(ctrlhdr);
+            debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, &(pktinfo->ipi_addr), tmp, sizeof(tmp)));
 
-            ((struct sockaddr_in *)to)->sin_addr = ((struct in_pktinfo *)CMSG_DATA(ctrlhdr))->ipi_addr;
+            ((struct sockaddr_in *)to)->sin_addr = pktinfo->ipi_addr;
             toaddrfound = 1;
-        } else if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_RECVPKTINFO) {
+        }
+#elif defined(IP_RECVDSTADDR)
+        if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_RECVDSTADDR) {
+            struct in_addr *addr = (struct in_addr *)CMSG_DATA(ctrlhdr);
+            debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, addr, tmp, sizeof(tmp)));
+
+            ((struct sockaddr_in *)to)->sin_addr = *addr;
+            toaddrfound = 1;
+        }
+#endif
+        if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_RECVPKTINFO) {
             info6 = (struct in6_pktinfo *)CMSG_DATA(ctrlhdr);
             debug(DBG_DBG, "udp packet to: %x", inet_ntop(AF_INET6, &info6->ipi6_addr, tmp, sizeof(tmp)));
 
