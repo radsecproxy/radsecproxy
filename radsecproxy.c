@@ -1997,8 +1997,13 @@ void createlistener(uint8_t type, char *arg) {
             if (setsockopt(s, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "craetelistener: IPV6_RECVPKTINFO");
         } else if (res->ai_family == AF_INET) {
+#if defined(IP_PKTINFO)
             if (setsockopt(s, IPPROTO_IP, IP_PKTINFO, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "createlistener: IP_PKTINFO");
+#elif defined(IP_RECVDSTADDR)
+            if (setsockopt(s, IPPROTO_IP, IP_RECVDSTADDR, &on, sizeof(on)) == -1)
+                debugerrno(errno, DBG_WARN, "createlistener: IP_RECVDSTADDR");
+#endif
         }
     }
 	if (bind(s, res->ai_addr, res->ai_addrlen)) {
