@@ -2619,6 +2619,28 @@ errexit:
     return 0;
 }
 
+int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
+    char **rmattrs = NULL, **rmvattrs = NULL;
+    char **addattrs = NULL, **addvattrs = NULL;
+    char **modattrs = NULL;
+    char **supattrs = NULL, **supvattrs = NULL;
+
+    debug(DBG_DBG, "confrewrite_cb called for %s", block);
+
+    if (!getgenericconfig(cf, block,
+        "removeAttribute", CONF_MSTR, &rmattrs,
+        "removeVendorAttribute", CONF_MSTR, &rmvattrs,
+        "addAttribute", CONF_MSTR, &addattrs,
+        "addVendorAttribute", CONF_MSTR, &addvattrs,
+        "modifyAttribute", CONF_MSTR, &modattrs,
+        "supplementAttribute", CONF_MSTR, &supattrs,
+        "supplementVendorAttriute", CONF_MSTR, &supvattrs,
+        NULL))
+        debugx(1, DBG_ERR, "configuration error");
+    addrewrite(val, rmattrs, rmvattrs, addattrs, addvattrs, modattrs, supattrs, supvattrs);
+    return 1;
+}
+
 int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char **servers = NULL, **accservers = NULL, *msg = NULL;
     uint8_t accresp = 0;

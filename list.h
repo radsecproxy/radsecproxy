@@ -1,6 +1,9 @@
 /* Copyright (c) 2007,2009, UNINETT AS */
 /* See LICENSE for licensing information. */
 
+#ifndef _LIST_H
+#define _LIST_H
+
 #ifdef SYS_SOLARIS9
 #include <sys/inttypes.h>
 #else
@@ -43,6 +46,8 @@ struct list_node *list_next(struct list_node *node);
 
 /* returns number of nodes */
 uint32_t list_count(struct list *list);
+
+#endif /*_LIST_H*/
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
