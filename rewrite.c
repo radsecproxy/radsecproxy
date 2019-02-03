@@ -15,30 +15,6 @@
 
 static struct hash *rewriteconfs;
 
-/** Create vendor specific tlv with ATTR.  ATTR is consumed (freed) if
- * all is well with the new tlv, i.e. if the function returns
- * !NULL.  */
-static struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr){
-    struct tlv *newtlv = NULL;
-    uint8_t l, *v;
-
-    if (!attr)
-        return NULL;
-    l = attr->l + 6;
-    v = malloc(l);
-    if (v) {
-        vendor = htonl(vendor & 0x00ffffff); /* MSB=0 according to RFC 2865. */
-        memcpy(v, &vendor, 4);
-        tlv2buf(v + 4, attr);
-        v[5] += 2; /* Vendor length increased for type and length fields. */
-        newtlv = maketlv(RAD_Attr_Vendor_Specific, l, v);
-        free(v);
-        if (newtlv)
-            freetlv(attr);
-    }
-    return newtlv;
-}
-
 /** Extract attributes from string NAMEVAL, create a struct tlv and
  * return the tlv.  If VENDOR_FLAG, NAMEVAL is on the form
  * "<vendor>:<name>:<val>" and otherwise it's "<name>:<val>".  Return
@@ -325,8 +301,8 @@ int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs) {
     vendor = ntohl(vendor);
     while (*removevendorattrs && *removevendorattrs != vendor)
         removevendorattrs += 2;
-    if (!*removevendorattrs)
-        return 0;
+            if (!*removevendorattrs)
+                return 0;
 
     if (findvendorsubattr(removevendorattrs, vendor, 256))
         return 1; /* remove entire vendor attribute */

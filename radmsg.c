@@ -205,6 +205,18 @@ int _radsign(unsigned char *rad, unsigned char *sec) {
     return 1;
 }
 
+uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
+    p[0] = tlv->t;
+    p[1] = tlv->l+2;
+    if (tlv->l) {
+	if (tlv->v)
+	    memcpy(p+2, tlv->v, tlv->l);
+	else
+	    memset(p+2, 0, tlv->l);
+    }
+    return p;
+}
+
 uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
     struct list_node *node;
     struct tlv *tlv;
@@ -233,10 +245,9 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
     for (node = list_first(msg->attrs); node; node = list_next(node)) {
         tlv = (struct tlv *)node->data;
         p = tlv2buf(p, tlv);
-	p[-1] += 2;
-	if (tlv->t == RAD_Attr_Message_Authenticator && secret)
-	    msgauth = p;
-        p += tlv->l;
+        if (tlv->t == RAD_Attr_Message_Authenticator && secret)
+            msgauth = ATTRVAL(p);
+        p += tlv->l + 2;
     }
     if (msgauth && !_createmessageauth(buf, msgauth, secret)) {
 	free(buf);
@@ -369,6 +380,29 @@ int attrvalidate(unsigned char *attrs, int length) {
     if (length)
 	debug(DBG_INFO, "attrvalidate: malformed packet? remaining byte after last attribute");
     return 1;
+}
+
+/** Create vendor specific tlv with ATTR.  ATTR is consumed (freed) if
+ * all is well with the new tlv, i.e. if the function returns
+ * !NULL.  */
+struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr){
+    struct tlv *newtlv = NULL;
+    uint8_t l, *v;
+
+    if (!attr)
+        return NULL;
+    l = attr->l + 2 + 4;
+    v = malloc(l);
+    if (v) {
+        vendor = htonl(vendor & 0x00ffffff); /* MSB=0 according to RFC 2865. */
+        memcpy(v, &vendor, 4);
+        tlv2buf(v + 4, attr);
+        newtlv = maketlv(RAD_Attr_Vendor_Specific, l, v);
+        free(v);
+        if (newtlv)
+            freetlv(attr);
+    }
+    return newtlv;
 }
 
 /* Local Variables: */

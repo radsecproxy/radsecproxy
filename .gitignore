@@ -23,5 +23,6 @@ radsecproxy
 radsecproxy-conf
 radsecproxy-hash
 tests/t_fticks
+tests/t_rewrite
 tests/*.log
 tests/*.trs

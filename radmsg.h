@@ -55,6 +55,7 @@ struct radmsg *buf2radmsg(uint8_t *, uint8_t *, uint8_t *);
 uint8_t attrname2val(char *attrname);
 int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type);
 int attrvalidate(unsigned char *attrs, int length);
+struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr);
 
 #endif /*_RADMSG_H*/
 
