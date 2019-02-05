@@ -51,7 +51,7 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
 int radmsg_add(struct radmsg *msg, struct tlv *attr) {
     if (!msg || !msg->attrs)
         return 1;
-    if (!attr)
+    if (!attr || attr->l > RAD_Max_Attr_Value_Length)
         return 0;
     return list_push(msg->attrs, attr);
 }
@@ -389,7 +389,7 @@ struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr){
     struct tlv *newtlv = NULL;
     uint8_t l, *v;
 
-    if (!attr)
+    if (!attr || attr->l > (RAD_Max_Attr_Value_Length - 6))
         return NULL;
     l = attr->l + 2 + 4;
     v = malloc(l);

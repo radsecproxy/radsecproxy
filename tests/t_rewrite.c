@@ -57,7 +57,7 @@ void _reset_rewrite(struct rewrite *rewrite) {
 int
 main (int argc, char *argv[])
 {
-    int testcount = 6;
+    int testcount = 12;
     struct list *origattrs, *expectedattrs;
     struct rewrite rewrite;
     char *username = "user@realm";
@@ -188,6 +188,109 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - removevendorattrs sub-attribute\n", testcount++);
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test simple add */
+    {
+        char *value = "hello world";
+
+        list_push(rewrite.addattrs, maketlv(1, sizeof(value), value));
+        list_push(expectedattrs, maketlv(1,sizeof(value), value));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - addattribute simple\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test add with existing attributes*/
+    {
+        char *value = "hello world";
+        uint8_t value2 = 42;
+
+        list_push(rewrite.addattrs, maketlv(1, sizeof(value), value));
+        list_push(origattrs, maketlv(2, sizeof(value), value));
+        list_push(origattrs, maketlv(1, 1, &value2));
+
+        list_push(expectedattrs, maketlv(2,sizeof(value), value));
+        list_push(expectedattrs, maketlv(1,1, &value2));
+        list_push(expectedattrs, maketlv(1,sizeof(value), value));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - addattribute with existing attributes\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test add null*/
+    {
+        list_push(rewrite.addattrs, maketlv(1, 0, NULL));
+        list_push(expectedattrs, maketlv(1,0, NULL));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - addattribute null\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test add too big*/
+    {
+        uint8_t *value = malloc(254);
+        memset(value, 0, 254);
+
+        list_push(rewrite.addattrs, maketlv(1, 254, value));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 1))
+            printf("not ");
+        printf("ok %d - addattribute too big\n", testcount++);
+
+        free(value);
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test supplement non-existing*/
+    {
+        char *value = "hello world";
+
+        list_push(rewrite.supattrs, maketlv(1, sizeof(value), value));
+        list_push(expectedattrs, maketlv(1,sizeof(value), value));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - suppattrs non existing\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test supplement existing*/
+    {
+        char *value = "hello world";
+        char *value2 = "hello radsec";
+
+        list_push(rewrite.supattrs, maketlv(1, sizeof(value2), value2));
+        list_push(origattrs, maketlv(1,sizeof(value), value));
+        list_push(expectedattrs, maketlv(1,sizeof(value), value));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - suppattrs existing\n", testcount++);
+
         _list_clear(origattrs);
         _list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
