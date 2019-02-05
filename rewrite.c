@@ -268,9 +268,12 @@ struct rewrite *getrewrite(char *alt1, char *alt2) {
 int resizeattr(struct tlv *attr, uint8_t newlen) {
     uint8_t *newv;
 
+    if (newlen > RAD_Max_Attr_Value_Length)
+        return 0;
+
     if (newlen != attr->l) {
         newv = realloc(attr->v, newlen);
-        if (!newv)
+        if (newlen && !newv)
             return 0;
         attr->v = newv;
         attr->l = newlen;
@@ -324,6 +327,8 @@ int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs) {
         } else
             subattrs += alen;
     }
+    if (attr->l <= 4)
+        return 1;
     return 0;
 }
 

@@ -4,10 +4,12 @@ dnl See LICENSE for licensing information.
 
 AC_INIT(radsecproxy, 1.7.2, https://radsecproxy.github.io)
 AC_CANONICAL_TARGET
+AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE
 AC_PROG_CC
 AC_PROG_RANLIB
 AC_CHECK_FUNCS([mallopt])
+AC_REQUIRE_AUX_FILE([tap-driver.sh])
 
 udp=yes
 AC_ARG_ENABLE(udp,

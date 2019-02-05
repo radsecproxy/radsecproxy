@@ -37,18 +37,29 @@ _check_hash(const char *mac, const char *key, const char *hash, const char*hmac)
 int
 main (int argc, char *argv[])
 {
-  if (_check_hash(MAC1, KEY1, HASH1, HMAC1) != 0)
-    return 1;
-  /* Again, for good measure.  (Or rather to make sure there's no
-     state left.)  */
-  if (_check_hash(MAC1, KEY1, HASH1, HMAC1) != 0)
-    return 1;
-  if (_check_hash(MAC1_UC, KEY1, HASH1, HMAC1) != 0)
-    return 1;
-  if (_check_hash(MAC1_APPENDED, KEY1, HASH1, HMAC1) != 0)
-    return 1;
-  if (_check_hash(MAC1_WEIRD, KEY1, HASH1, HMAC1) != 0)
-    return 1;
+    int testcount = 5;
+    printf("1..%d\n", testcount);
+    testcount = 1;
+
+    if (_check_hash(MAC1, KEY1, HASH1, HMAC1) != 0)
+        printf("not ");
+    printf("ok %d - basic hash\n", testcount++);
+
+    /* Again, for good measure.  (Or rather to make sure there's no
+    state left.)  */
+    if (_check_hash(MAC1, KEY1, HASH1, HMAC1) != 0)
+        printf("not ");
+    printf("ok %d - hash stateless\n", testcount++);
+
+    if (_check_hash(MAC1_UC, KEY1, HASH1, HMAC1) != 0)
+        printf("not ");
+    printf("ok %d - hash uppercase\n", testcount++);
+    if (_check_hash(MAC1_APPENDED, KEY1, HASH1, HMAC1) != 0)
+        printf("not ");
+    printf("ok %d - hash appended\n", testcount++);
+    if (_check_hash(MAC1_WEIRD, KEY1, HASH1, HMAC1) != 0)
+        printf("not ");
+    printf("ok %d - hash weird\n", testcount++);
 
   return 0;
 }

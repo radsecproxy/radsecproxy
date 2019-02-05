@@ -7,6 +7,8 @@
 
 #include "tlv11.h"
 
+#define RAD_Max_Attr_Value_Length 253
+
 #define RAD_Access_Request 1
 #define RAD_Access_Accept 2
 #define RAD_Access_Reject 3
