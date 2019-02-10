@@ -57,7 +57,7 @@ void _reset_rewrite(struct rewrite *rewrite) {
 int
 main (int argc, char *argv[])
 {
-    int testcount = 12;
+    int testcount = 18;
     struct list *origattrs, *expectedattrs;
     struct rewrite rewrite;
     char *username = "user@realm";
@@ -78,8 +78,8 @@ main (int argc, char *argv[])
 
     /* test empty rewrite */
     {
-        list_push(origattrs, maketlv(RAD_Attr_User_Name, sizeof(username), username));
-        list_push(expectedattrs, maketlv(RAD_Attr_User_Name, sizeof(username), username));
+        list_push(origattrs, maketlv(RAD_Attr_User_Name, strlen(username), username));
+        list_push(expectedattrs, maketlv(RAD_Attr_User_Name, strlen(username), username));
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - empty rewrite\n", testcount++);
@@ -93,10 +93,10 @@ main (int argc, char *argv[])
         uint8_t removeattrs[] = {1,2,0};
 
         rewrite.removeattrs = removeattrs;
-        list_push(origattrs, maketlv(1, sizeof(username), username));
-        list_push(origattrs, maketlv(3, sizeof(username), username));
+        list_push(origattrs, maketlv(1, strlen(username), username));
+        list_push(origattrs, maketlv(3, strlen(username), username));
 
-        list_push(expectedattrs, maketlv(3, sizeof(username), username));
+        list_push(expectedattrs, maketlv(3, strlen(username), username));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -112,11 +112,11 @@ main (int argc, char *argv[])
         uint8_t value = 42;
 
         rewrite.removevendorattrs = removevendorattrs;
-        list_push(origattrs, maketlv(1, sizeof(username), username));
+        list_push(origattrs, maketlv(1, strlen(username), username));
         list_push(origattrs, makevendortlv(42, maketlv(1, 1, &value)));
         list_push(origattrs, makevendortlv(43, maketlv(1, 1, &value)));
 
-        list_push(expectedattrs, maketlv(1, sizeof(username), username));
+        list_push(expectedattrs, maketlv(1, strlen(username), username));
         list_push(expectedattrs, makevendortlv(43, maketlv(1, 1, &value)));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
@@ -197,8 +197,8 @@ main (int argc, char *argv[])
     {
         char *value = "hello world";
 
-        list_push(rewrite.addattrs, maketlv(1, sizeof(value), value));
-        list_push(expectedattrs, maketlv(1,sizeof(value), value));
+        list_push(rewrite.addattrs, maketlv(1, strlen(value), value));
+        list_push(expectedattrs, maketlv(1,strlen(value), value));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -214,13 +214,13 @@ main (int argc, char *argv[])
         char *value = "hello world";
         uint8_t value2 = 42;
 
-        list_push(rewrite.addattrs, maketlv(1, sizeof(value), value));
-        list_push(origattrs, maketlv(2, sizeof(value), value));
+        list_push(rewrite.addattrs, maketlv(1, strlen(value), value));
+        list_push(origattrs, maketlv(2, strlen(value), value));
         list_push(origattrs, maketlv(1, 1, &value2));
 
-        list_push(expectedattrs, maketlv(2,sizeof(value), value));
+        list_push(expectedattrs, maketlv(2,strlen(value), value));
         list_push(expectedattrs, maketlv(1,1, &value2));
-        list_push(expectedattrs, maketlv(1,sizeof(value), value));
+        list_push(expectedattrs, maketlv(1,strlen(value), value));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -266,8 +266,8 @@ main (int argc, char *argv[])
     {
         char *value = "hello world";
 
-        list_push(rewrite.supattrs, maketlv(1, sizeof(value), value));
-        list_push(expectedattrs, maketlv(1,sizeof(value), value));
+        list_push(rewrite.supattrs, maketlv(1, strlen(value), value));
+        list_push(expectedattrs, maketlv(1,strlen(value), value));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -283,9 +283,9 @@ main (int argc, char *argv[])
         char *value = "hello world";
         char *value2 = "hello radsec";
 
-        list_push(rewrite.supattrs, maketlv(1, sizeof(value2), value2));
-        list_push(origattrs, maketlv(1,sizeof(value), value));
-        list_push(expectedattrs, maketlv(1,sizeof(value), value));
+        list_push(rewrite.supattrs, maketlv(1, strlen(value2), value2));
+        list_push(origattrs, maketlv(1,strlen(value), value));
+        list_push(expectedattrs, maketlv(1,strlen(value), value));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -296,7 +296,158 @@ main (int argc, char *argv[])
         _reset_rewrite(&rewrite);
     }
 
+    /* test modify no match*/
+    {
+        char *value = "hello world";
+        char *value2 = "foo bar";
+        struct modattr *mod = malloc(sizeof(struct modattr));
+        regex_t regex;
 
+        mod->t = 1;
+        mod->regex = &regex;
+        mod->replacement = value2;
+        regcomp(mod->regex, "hello bar", REG_ICASE | REG_EXTENDED);
+
+        list_push(rewrite.modattrs, mod);
+        list_push(origattrs, maketlv(1,strlen(value), value));
+        list_push(expectedattrs, maketlv(1,strlen(value), value));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - modify attribute no match\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test modify match full replace*/
+    {
+        char *value = "hello world";
+        char *value2 = "foo bar";
+        struct modattr *mod = malloc(sizeof(struct modattr));
+        regex_t regex;
+
+        mod->t = 1;
+        mod->regex = &regex;
+        mod->replacement = value2;
+        regcomp(mod->regex, "hello world", REG_ICASE | REG_EXTENDED);
+
+        list_push(rewrite.modattrs, mod);
+        list_push(origattrs, maketlv(1,strlen(value), value));
+        list_push(expectedattrs, maketlv(1,strlen(value2), value2));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - modify attribute match full replace\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test modify match partial replace*/
+    {
+        char *value = "hello world";
+        char *value2 = "hello foo";
+        struct modattr *mod = malloc(sizeof(struct modattr));
+        regex_t regex;
+
+        mod->t = 1;
+        mod->regex = &regex;
+        mod->replacement = "\\1 foo";
+        regcomp(mod->regex, "(hello) world", REG_ICASE | REG_EXTENDED);
+
+        list_push(rewrite.modattrs, mod);
+        list_push(origattrs, maketlv(1,strlen(value), value));
+        list_push(expectedattrs, maketlv(1,strlen(value2), value2));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - modify attribute match full replace\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test modify max length*/
+    {
+        char *value = "hello radsecproxy..."; /*make this 20 chars long 8*/
+        char value2[254];
+        int i;
+        struct modattr *mod = malloc(sizeof(struct modattr));
+        regex_t regex;
+
+        for (i=0; i<253; i+=20){
+            memcpy(value2+i, value, 20);
+        }
+        memcpy(value2+i-20, "and another13\0", 14);
+
+        mod->t = 1;
+        mod->regex = &regex;
+        mod->replacement = "\\1\\1\\1\\1\\1\\1\\1\\1\\1\\1\\1\\1and another13";
+        regcomp(mod->regex, "(.*)", REG_ICASE | REG_EXTENDED);
+
+        list_push(rewrite.modattrs, mod);
+        list_push(origattrs, maketlv(1,strlen(value), value));
+        list_push(expectedattrs, maketlv(1,strlen(value2), value2));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - modify attribute max length\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test modify too long*/
+    {
+        char *value = "hello radsecproxy..."; /*make this 20 chars long 8*/
+        struct modattr *mod = malloc(sizeof(struct modattr));
+        regex_t regex;
+        mod->t = 1;
+        mod->regex = &regex;
+        mod->replacement = "\\1\\1\\1\\1\\1\\1\\1\\1\\1\\1\\1\\1and another14!";
+        regcomp(mod->regex, "(.*)", REG_ICASE | REG_EXTENDED);
+
+        list_push(rewrite.modattrs, mod);
+        list_push(origattrs, maketlv(1,strlen(value), value));
+        list_push(expectedattrs, maketlv(1,strlen(value), value));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 1))
+            printf("not ");
+        printf("ok %d - modify attribute too long\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test modify regex replace*/
+    {
+        char *value = "hello";
+        char *value2 = "hellohellohellohellohellohellohellohellohello";
+        struct modattr *mod = malloc(sizeof(struct modattr));
+        regex_t regex;
+        mod->t = 1;
+        mod->regex = &regex;
+        mod->replacement = "\\1\\2\\3\\4\\5\\6\\7\\8\\9";
+        regcomp(mod->regex, "(((((((((hello)))))))))", REG_ICASE | REG_EXTENDED);
+
+        list_push(rewrite.modattrs, mod);
+        list_push(origattrs, maketlv(1,strlen(value), value));
+        list_push(expectedattrs, maketlv(1,strlen(value2), value2));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - modify attribute regex replace\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
 
 
 
