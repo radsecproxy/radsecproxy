@@ -366,16 +366,20 @@ uint8_t hexdigit2int(char d) {
     return 0;
 }
 
-void unhex(char *s) {
+int unhex(char *s, uint8_t process_null) {
+    int len = 0;
     char *t;
     for (t = s; *t; s++) {
-	if (*t == '%' && isxdigit((int)t[1]) && isxdigit((int)t[2])) {
-	    *s = 16 * hexdigit2int(t[1]) + hexdigit2int(t[2]);
-	    t += 3;
-	} else
-	    *s = *t++;
+        if (*t == '%' && isxdigit((int)t[1]) && isxdigit((int)t[2]) &&
+            (process_null || !(t[1]=='0' && t[2]=='0'))) {
+            *s = 16 * hexdigit2int(t[1]) + hexdigit2int(t[2]);
+            t += 3;
+        } else
+            *s = *t++;
+        len++;
     }
     *s = '\0';
+    return len;
 }
 
 typedef int (*t_fptr)(struct gconffile **, void *, char *, char *, char *);
@@ -466,7 +470,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 		debug(DBG_ERR, "configuration error, option %s already set to %s", opt, *str);
 		goto errexit;
 	    }
-	    unhex(val);
+	    unhex(val,0);
 	    *str = val;
 	    break;
 	case CONF_MSTR:
@@ -479,7 +483,7 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 		debug(DBG_ERR, "malloc failed");
 		goto errexit;
 	    }
-	    unhex(val);
+	    unhex(val,0);
 	    newmstr[n] = val;
 	    newmstr[n + 1] = NULL;
 	    *mstr = newmstr;

@@ -1,7 +1,7 @@
 /* Copyright (c) 2019, SWITCH */
 /* See LICENSE for licensing information. */
 
-#include <pthread.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <regex.h>
@@ -25,6 +25,7 @@ static struct hash *rewriteconfs;
 struct tlv *extractattr(char *nameval, char vendor_flag) {
     int len, name = 0;
     int vendor = 0;	    /* Vendor 0 is reserved, see RFC 1700.  */
+    uint32_t ival=0;
     char *s, *s2;
     struct tlv *a;
 
@@ -41,9 +42,21 @@ struct tlv *extractattr(char *nameval, char vendor_flag) {
         name = atoi(s + 1);
         s = s2;
     }
-    len = strlen(s + 1);
-    if (len > 253)
-        return NULL;
+
+    s++;
+    if (isdigit(*s)) {
+        ival = atoi(s);
+        ival = htonl(ival);
+        len = 4;
+        s = (char *)&ival;
+    } else {
+        if (*s == '\'')
+            s++;
+
+        len = unhex(s,1);
+        if (len > 253)
+            return NULL;
+    }
 
     if (name < 1 || name > 255)
         return NULL;
@@ -51,7 +64,7 @@ struct tlv *extractattr(char *nameval, char vendor_flag) {
     if (!a)
         return NULL;
 
-    a->v = (uint8_t *)stringcopy(s + 1, 0);
+    a->v = (uint8_t *)stringcopy(s, len);
     if (!a->v) {
         free(a);
         return NULL;

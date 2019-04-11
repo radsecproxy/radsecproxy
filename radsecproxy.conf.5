@@ -61,11 +61,13 @@ blocktype name {
 .fi
 .RE
 
-Option value characters can also be written in hex. This is done by writing the
-character % followed by two hexadecimal digits. If a % is used without two
-following hexadecimal digits, the % and the following characters are used as
-written. If you want to write a % and not use this decoding, you may of course
-write % in hex; i.e., %25.
+Option value characters can also be written in hex for options requiring a
+string type value. This is done by writing the character % followed by two
+hexadecimal digits. If a % is used without two following hexadecimal digits, the
+% and the following characters are used as written. If you want to write a % and
+not use this decoding, you may of course write % in hex; i.e., %25. As %00 would
+terminate a string, this value is not converted in most cases, except when used
+with rewrite statements.
 
 Some options allow or require the use of regular expressions, denoted as
 \fIregex\fR. The POSIX extended RE system is used, see
@@ -808,8 +810,11 @@ block are:
 .RS
 Add an \fIattribute\fR to the radius mesage and set it to \fIvalue\fR. The
 \fIattribute\fR must be specified using the numerical attribute id. The
-\fIvalue\fR can either be numerical, a string, or a hex value. See the
-\fBCONFIGURATION SYNTAX\fR section for details.
+\fIvalue\fR can either be numerical, a string, or a hex value. If the value
+starts with a number, it is interpreted as a 32bit unsigned integer.  Use the '
+character at the start of the value to force string interpretation. When using
+hex value, it is recommended to also lead with ' to avoid unintended numeric
+interpretation. See the \fBCONFIGURATION SYNTAX\fR section for further details.
 .RE
 
 .BI "AddVendorAttribute " vendor \fR: subattribute \fR: value
