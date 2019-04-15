@@ -105,6 +105,18 @@ uint8_t *tlv2str(struct tlv *tlv) {
     return s;
 }
 
+struct tlv *resizetlv(struct tlv *tlv, uint8_t newlen) {
+    uint8_t *newv;
+    if (newlen != tlv->l) {
+        newv = realloc(tlv->v, newlen);
+        if (newlen && !newv)
+            return NULL;
+        tlv->v = newv;
+        tlv->l = newlen;
+    }
+    return tlv;
+}
+
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
 /* End: */

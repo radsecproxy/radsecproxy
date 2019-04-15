@@ -27,7 +27,6 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs,
 int dorewrite(struct radmsg *msg, struct rewrite *rewrite);
 struct modattr *extractmodattr(char *nameval);
 struct rewrite *getrewrite(char *alt1, char *alt2);
-int resizeattr(struct tlv *attr, uint8_t newlen);
 
 int dorewritemodattr(struct tlv *attr, struct modattr *modattr);
 int addvendorattr(struct radmsg *msg, uint32_t vendor, struct tlv *attr);

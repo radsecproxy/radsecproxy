@@ -278,22 +278,6 @@ struct rewrite *getrewrite(char *alt1, char *alt2) {
     return NULL;
 }
 
-int resizeattr(struct tlv *attr, uint8_t newlen) {
-    uint8_t *newv;
-
-    if (newlen > RAD_Max_Attr_Value_Length)
-        return 0;
-
-    if (newlen != attr->l) {
-        newv = realloc(attr->v, newlen);
-        if (newlen && !newv)
-            return 0;
-        attr->v = newv;
-        attr->l = newlen;
-    }
-    return 1;
-}
-
 int findvendorsubattr(uint32_t *attrs, uint32_t vendor, uint32_t subattr) {
     if (!attrs)
         return 0;
@@ -393,13 +377,8 @@ int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
         }
     }
     reslen += i - start;
-    if (reslen > 253) {
-        debug(DBG_INFO, "rewritten attribute length would be %d, max possible is 253, discarding message", reslen);
-        free(in);
-        return 0;
-    }
-
     if (!resizeattr(attr, reslen)) {
+        debug(DBG_INFO, "rewritten attribute to length %d failed, discarding message", reslen);
         free(in);
         return 0;
     }

@@ -405,6 +405,15 @@ struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr){
     return newtlv;
 }
 
+int resizeattr(struct tlv *attr, uint8_t newlen) {
+    if (newlen > RAD_Max_Attr_Value_Length)
+        return 0;
+
+    if (resizetlv(attr, newlen))
+        return 1;
+    return 0;
+}
+
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
 /* End: */

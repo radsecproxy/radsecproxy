@@ -58,6 +58,7 @@ uint8_t attrname2val(char *attrname);
 int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type);
 int attrvalidate(unsigned char *attrs, int length);
 struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr);
+int resizeattr(struct tlv *attr, uint8_t newlen);
 
 #endif /*_RADMSG_H*/
 
