@@ -1,7 +1,13 @@
 changes since 1.7.2
+	New features:
+	- Rewrite: supplement attribute (add attribute if not present) (#19)
+
 	Misc:
 	- No longer require docbook2x tools, but include plain manpages
 	- Fail on startup if overlapping clients with different tls blocks
+
+	Bug fixes:
+	- Handle %00 in config correctly (#31)
 
 2018-09-03 1.7.2
 	Misc:
