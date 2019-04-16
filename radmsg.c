@@ -120,7 +120,7 @@ int radmsg_copy_attrs(struct radmsg *dst,
     return n;
 }
 
-int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret) {
+int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret, int secret_len) {
     int result = 0;             /* Fail. */
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct hmac_md5_ctx hmacctx;
@@ -132,7 +132,7 @@ int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret) {
     memcpy(auth, authattr, 16);
     memset(authattr, 0, 16);
 
-    hmac_md5_set_key(&hmacctx, strlen((char *) secret), secret);
+    hmac_md5_set_key(&hmacctx, secret_len, secret);
     hmac_md5_update(&hmacctx, RADLEN(rad), rad);
     hmac_md5_digest(&hmacctx, sizeof(hash), hash);
 
@@ -149,7 +149,7 @@ out:
     return result;
 }
 
-int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
+int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec, int sec_len) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct md5_ctx mdctx;
     unsigned char hash[MD5_DIGEST_SIZE];
@@ -163,7 +163,7 @@ int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
     md5_update(&mdctx, 16, reqauth);
     if (len > 20)
         md5_update(&mdctx, len - 20, rad + 20);
-    md5_update(&mdctx, strlen((char *) sec), sec);
+    md5_update(&mdctx, sec_len, sec);
     md5_digest(&mdctx, sizeof(hash), hash);
 
     result = !memcmp(hash, rad + 4, 16);
@@ -172,7 +172,7 @@ int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec) {
     return result;
 }
 
-int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *secret) {
+int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *secret, int secret_len) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct hmac_md5_ctx hmacctx;
 
@@ -182,7 +182,7 @@ int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *
     pthread_mutex_lock(&lock);
 
     memset(authattrval, 0, 16);
-    hmac_md5_set_key(&hmacctx, strlen((char *) secret), secret);
+    hmac_md5_set_key(&hmacctx, secret_len, secret);
     hmac_md5_update(&hmacctx, RADLEN(rad), rad);
     hmac_md5_digest(&hmacctx, MD5_DIGEST_SIZE, authattrval);
 
@@ -190,7 +190,7 @@ int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *
     return 1;
 }
 
-int _radsign(unsigned char *rad, unsigned char *sec) {
+int _radsign(unsigned char *rad, unsigned char *sec, int sec_len) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct md5_ctx mdctx;
 
@@ -198,7 +198,7 @@ int _radsign(unsigned char *rad, unsigned char *sec) {
 
     md5_init(&mdctx);
     md5_update(&mdctx, RADLEN(rad), rad);
-    md5_update(&mdctx, strlen((char *) sec), sec);
+    md5_update(&mdctx, sec_len, sec);
     md5_digest(&mdctx, MD5_DIGEST_SIZE, rad + 4);
 
     pthread_mutex_unlock(&lock);
@@ -217,7 +217,7 @@ uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
     return p;
 }
 
-uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
+uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len) {
     struct list_node *node;
     struct tlv *tlv;
     int size;
@@ -249,12 +249,12 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
             msgauth = ATTRVAL(p);
         p += tlv->l + 2;
     }
-    if (msgauth && !_createmessageauth(buf, msgauth, secret)) {
+    if (msgauth && !_createmessageauth(buf, msgauth, secret, secret_len)) {
 	free(buf);
 	return NULL;
     }
     if (secret) {
-	if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(buf, secret)) {
+	if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(buf, secret, secret_len)) {
 	    free(buf);
 	    return NULL;
 	}
@@ -265,7 +265,7 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret) {
 }
 
 /* if secret set we also validate message authenticator if present */
-struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
+struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, int secret_len, uint8_t *rqauth) {
     struct radmsg *msg;
     uint8_t t, l, *v = NULL, *p, auth[16];
     uint16_t len;
@@ -277,13 +277,13 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
 
     if (secret && buf[0] == RAD_Accounting_Request) {
 	memset(auth, 0, 16);
-	if (!_validauth(buf, auth, secret)) {
+	if (!_validauth(buf, auth, secret, secret_len)) {
 	    debug(DBG_WARN, "buf2radmsg: Accounting-Request message authentication failed");
 	    return NULL;
 	}
     }
 
-    if (rqauth && secret && !_validauth(buf, rqauth, secret)) {
+    if (rqauth && secret && !_validauth(buf, rqauth, secret, secret_len)) {
 	debug(DBG_WARN, "buf2radmsg: Invalid auth, ignoring reply");
 	return NULL;
     }
@@ -315,7 +315,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, uint8_t *rqauth) {
 	if (t == RAD_Attr_Message_Authenticator && secret) {
 	    if (rqauth)
 		memcpy(buf + 4, rqauth, 16);
-	    if (l != 16 || !_checkmsgauth(buf, v, secret)) {
+	    if (l != 16 || !_checkmsgauth(buf, v, secret, secret_len)) {
 		debug(DBG_WARN, "buf2radmsg: message authentication failed");
 		if (rqauth)
 		    memcpy(buf + 4, msg->auth, 16);

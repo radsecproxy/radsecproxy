@@ -135,7 +135,9 @@ struct clsrvconf {
     int hostaf;
     char *portsrc;
     struct list *hostports;
-    char *secret;
+    char *confsecret;
+    uint8_t *secret;
+    int secret_len;
     char *tls;
     char *matchcertattr;
     regex_t *certcnregex;

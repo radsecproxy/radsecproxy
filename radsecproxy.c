@@ -446,7 +446,7 @@ int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
         if (!to->requests[id].rq) {
             rq->newid = id;
             rq->msg->id = id;
-            rq->buf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
+            rq->buf = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len);
             if (!rq->buf) {
                 pthread_mutex_unlock(to->requests[id].lock);
                 debug(DBG_ERR, "sendrq: radmsg2buf failed");
@@ -525,7 +525,7 @@ void sendreply(struct request *rq) {
     struct client *to = rq->from;
 
     if (!rq->replybuf)
-	rq->replybuf = radmsg2buf(rq->msg, (uint8_t *)to->conf->secret);
+	rq->replybuf = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len);
     radmsg_free(rq->msg);
     rq->msg = NULL;
     if (!rq->replybuf) {
@@ -551,7 +551,7 @@ void sendreply(struct request *rq) {
     pthread_mutex_unlock(&to->replyq->mutex);
 }
 
-static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, char *shared, uint8_t sharedlen, uint8_t *auth) {
+static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct md5_ctx mdctx;
     unsigned char hash[MD5_DIGEST_SIZE], *input;
@@ -562,7 +562,7 @@ static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, char *shared, u
     md5_init(&mdctx);
     input = auth;
     for (;;) {
-	md5_update(&mdctx, sharedlen, (uint8_t *) shared);
+	md5_update(&mdctx, sharedlen, shared);
         md5_update(&mdctx, 16, input);
         md5_digest(&mdctx, sizeof(hash), hash);
 	for (i = 0; i < 16; i++)
@@ -787,34 +787,34 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
     }
 }
 
-int pwdrecrypt(uint8_t *pwd, uint8_t len, char *oldsecret, char *newsecret, uint8_t *oldauth, uint8_t *newauth) {
+int pwdrecrypt(uint8_t *pwd, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
     if (len < 16 || len > 128 || len % 16) {
 	debug(DBG_WARN, "pwdrecrypt: invalid password length");
 	return 0;
     }
 
-    if (!pwdcrypt(0, pwd, len, oldsecret, strlen(oldsecret), oldauth)) {
+    if (!pwdcrypt(0, pwd, len, oldsecret, oldsecret_len, oldauth)) {
 	debug(DBG_WARN, "pwdrecrypt: cannot decrypt password");
 	return 0;
     }
 #ifdef DEBUG
     printfchars(NULL, "pwdrecrypt: password", "%02x ", pwd, len);
 #endif
-    if (!pwdcrypt(1, pwd, len, newsecret, strlen(newsecret), newauth)) {
+    if (!pwdcrypt(1, pwd, len, newsecret, newsecret_len, newauth)) {
 	debug(DBG_WARN, "pwdrecrypt: cannot encrypt password");
 	return 0;
     }
     return 1;
 }
 
-int msmpprecrypt(uint8_t *msmpp, uint8_t len, char *oldsecret, char *newsecret, uint8_t *oldauth, uint8_t *newauth) {
+int msmpprecrypt(uint8_t *msmpp, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
     if (len < 18)
 	return 0;
-    if (!msmppdecrypt(msmpp + 2, len - 2, (uint8_t *)oldsecret, strlen(oldsecret), oldauth, msmpp)) {
+    if (!msmppdecrypt(msmpp + 2, len - 2, oldsecret, oldsecret_len, oldauth, msmpp)) {
 	debug(DBG_WARN, "msmpprecrypt: failed to decrypt msppe key");
 	return 0;
     }
-    if (!msmppencrypt(msmpp + 2, len - 2, (uint8_t *)newsecret, strlen(newsecret), newauth, msmpp)) {
+    if (!msmppencrypt(msmpp + 2, len - 2, newsecret, newsecret_len, newauth, msmpp)) {
 	debug(DBG_WARN, "msmpprecrypt: failed to encrypt msppe key");
 	return 0;
     }
@@ -822,12 +822,12 @@ int msmpprecrypt(uint8_t *msmpp, uint8_t len, char *oldsecret, char *newsecret, 
 }
 
 int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct request *rq,
-	   char *oldsecret, char *newsecret) {
+	   uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len) {
     unsigned char *attr;
 
     for (attr = attrs; (attr = attrget(attr, length - (attr - attrs), type)); attr += ATTRLEN(attr)) {
 	debug(DBG_DBG, "msmppe: Got %s", attrtxt);
-	if (!msmpprecrypt(ATTRVAL(attr), ATTRVALLEN(attr), oldsecret, newsecret, rq->buf + 4, rq->rqauth))
+	if (!msmpprecrypt(ATTRVAL(attr), ATTRVALLEN(attr), oldsecret, oldsecret_len, newsecret, newsecret_len, rq->buf + 4, rq->rqauth))
 	    return 0;
     }
     return 1;
@@ -1224,7 +1224,7 @@ int radsrv(struct request *rq) {
     int ttlres;
     char tmp[INET6_ADDRSTRLEN];
 
-    msg = buf2radmsg(rq->buf, (uint8_t *)from->conf->secret, NULL);
+    msg = buf2radmsg(rq->buf, from->conf->secret, from->conf->secret_len, NULL);
     free(rq->buf);
     rq->buf = NULL;
 
@@ -1344,14 +1344,14 @@ int radsrv(struct request *rq) {
     attr = radmsg_gettype(msg, RAD_Attr_User_Password);
     if (attr) {
 	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attr->l);
-	if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, to->conf->secret, rq->rqauth, msg->auth))
+	if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len, rq->rqauth, msg->auth))
 	    goto rmclrqexit;
     }
 
     attr = radmsg_gettype(msg, RAD_Attr_Tunnel_Password);
     if (attr) {
 	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", attr->l);
-	if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, to->conf->secret, rq->rqauth, msg->auth))
+	if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len, rq->rqauth, msg->auth))
 	    goto rmclrqexit;
     }
 
@@ -1402,7 +1402,7 @@ void replyh(struct server *server, unsigned char *buf) {
 	goto errunlock;
     }
 
-    msg = buf2radmsg(buf, (uint8_t *)server->conf->secret, rqout->rq->msg->auth);
+    msg = buf2radmsg(buf, server->conf->secret, server->conf->secret_len, rqout->rq->msg->auth);
 #ifdef DEBUG
     printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
@@ -1456,9 +1456,9 @@ void replyh(struct server *server, unsigned char *buf) {
 	subattrs = attr->v + 4;
 	if (!attrvalidate(subattrs, sublen) ||
 	    !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, "MS MPPE Send Key",
-		    rqout->rq, server->conf->secret, from->conf->secret) ||
+		    rqout->rq, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len) ||
 	    !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Recv_Key, "MS MPPE Recv Key",
-		    rqout->rq, server->conf->secret, from->conf->secret))
+		    rqout->rq, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len))
 	    break;
     }
     if (node) {
@@ -2132,6 +2132,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
     if (conf->hostsrc)
 	freegconfmstr(conf->hostsrc);
     free(conf->portsrc);
+    free(conf->confsecret);
     free(conf->secret);
     free(conf->tls);
     free(conf->matchcertattr);
@@ -2225,7 +2226,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     if (!mergeconfstring(&dst->name, &src->name) ||
 	!mergeconfmstring(&dst->hostsrc, &src->hostsrc) ||
 	!mergeconfstring(&dst->portsrc, &src->portsrc) ||
-	!mergeconfstring(&dst->secret, &src->secret) ||
+	!mergeconfstring(&dst->confsecret, &src->confsecret) ||
 	!mergeconfstring(&dst->tls, &src->tls) ||
 	!mergeconfstring(&dst->matchcertattr, &src->matchcertattr) ||
 	!mergeconfstring(&dst->confrewritein, &src->confrewritein) ||
@@ -2287,7 +2288,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "host", CONF_MSTR, &conf->hostsrc,
             "IPv4Only", CONF_BLN, &ipv4only,
             "IPv6Only", CONF_BLN, &ipv6only,
-	    "secret", CONF_STR, &conf->secret,
+	    "secret", CONF_STR, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 	    "tls", CONF_STR, &conf->tls,
 	    "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
@@ -2376,13 +2377,15 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype))
 	debugx(1, DBG_ERR, "%s: resolve failed, exiting", __func__);
 
-    if (!conf->secret) {
+    if (!conf->confsecret) {
 	if (!conf->pdef->secretdefault)
 	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
-	conf->secret = stringcopy(conf->pdef->secretdefault, 0);
-	if (!conf->secret)
+	conf->confsecret = stringcopy(conf->pdef->secretdefault, 0);
+	if (!conf->confsecret)
 	    debugx(1, DBG_ERR, "malloc failed");
     }
+    conf->secret = (unsigned char *)stringcopy(conf->confsecret, 0);
+    conf->secret_len = unhex((char *)conf->secret, 1);
 
     if (conf->tlsconf) {
         for (entry = list_first(clconfs); entry; entry = list_next(entry)) {
@@ -2485,7 +2488,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                           "IPv4Only", CONF_BLN, &ipv4only,
                           "IPv6Only", CONF_BLN, &ipv6only,
 			  "port", CONF_STR, &conf->portsrc,
-			  "secret", CONF_STR, &conf->secret,
+			  "secret", CONF_STR, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 			  "tls", CONF_STR, &conf->tls,
 			  "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
@@ -2589,17 +2592,19 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             goto errexit;
     }
 
-    if (!conf->secret) {
+    if (!conf->confsecret) {
 	if (!conf->pdef->secretdefault) {
 	    debug(DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
 	    goto errexit;
 	}
-	conf->secret = stringcopy(conf->pdef->secretdefault, 0);
+	conf->confsecret = stringcopy(conf->pdef->secretdefault, 0);
 	if (!conf->secret) {
 	    debug(DBG_ERR, "malloc failed");
 	    goto errexit;
 	}
     }
+    conf->secret = (unsigned char *)stringcopy(conf->confsecret,0);
+    conf->secret_len = unhex((char *)conf->secret,1);
 
     if (resconf)
 	return 1;
