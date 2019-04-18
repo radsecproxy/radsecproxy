@@ -447,13 +447,13 @@ int dorewritesup(struct radmsg *msg, struct list *supattrs) {
                 exist = 1;
                 break;
             } else if (supattr->t == RAD_Attr_Vendor_Specific && attr->t == RAD_Attr_Vendor_Specific &&
-                        memcmp (supattr->v, attr->v, 4)) {
+                        memcmp (supattr->v, attr->v, 4)==0) {
                 if (!attrvalidate(attr->v+4, attr->l-4)) {
                     debug(DBG_INFO, "dorewritesup: vendor attribute validation failed, no rewrite");
                     return 0;
                 }
                 vendortype = (uint8_t *)supattr->v+4;
-                for (v=attr->v+4; v < attr->v + attr->l; v += *(v+1) + 2){
+                for (v=attr->v+4; v < attr->v + attr->l; v += *(v+1)){
                     if (*v == *vendortype) {
                         exist = 1;
                         break;

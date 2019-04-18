@@ -58,7 +58,7 @@ void _reset_rewrite(struct rewrite *rewrite) {
 int
 main (int argc, char *argv[])
 {
-    int testcount = 22;
+    int testcount = 23;
     struct list *origattrs, *expectedattrs;
     struct rewrite rewrite;
     char *username = "user@realm";
@@ -292,6 +292,26 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - suppattrs existing\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test supplement vendor*/
+    {
+        uint8_t value = 42;
+        uint8_t vendor_long1_in[] = {0,0,0,42,2,3,0,1,3,0};
+
+        list_push(rewrite.supattrs, makevendortlv(42, maketlv(1, 1, &value)));
+        list_push(rewrite.supattrs, makevendortlv(42, maketlv(3, 1, &value)));
+        list_push(origattrs, maketlv(26, sizeof(vendor_long1_in), vendor_long1_in));
+        list_push(expectedattrs, maketlv(26, sizeof(vendor_long1_in), vendor_long1_in));
+        list_push(expectedattrs, makevendortlv(42, maketlv(3, 1, &value)));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - suppattrs vendor\n", testcount++);
 
         _list_clear(origattrs);
         _list_clear(expectedattrs);

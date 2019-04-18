@@ -28,7 +28,7 @@ main (int argc, char *argv[])
 
     expected = maketlv(1,5,expectedvalue);
 
-    addrewrite(rewritename, NULL, NULL, addattrs,
+    addrewrite(rewritename, 0, NULL, NULL, addattrs,
                     NULL, NULL, NULL, NULL);
 
     result = getrewrite(rewritename, NULL);

@@ -842,6 +842,13 @@ the  attribute is not yet present on the message.  The format of \fIvalue\fR is
 the same as for \fBaddAttribute\fR above.
 .RE
 
+.BI "SupplementVendorAttribute " vendor \fR: subattribute \fR: value
+.RS
+Add a vendor attribute to the radius message only if the \fIsubattribute\fR of
+this \fIvendor\fR is not yet present on the message. The format of is the same
+as for \fBaddVendorAttribute\fR above.
+.RE
+
 .BI "ModifyAttribute " attribute \fR:/ regex \fR/ replace \fR/
 .RS
 Modify the given \fIattribute\fR using the \fIregex\fR \fIreplace\fR pattern. As
