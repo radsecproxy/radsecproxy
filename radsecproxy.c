@@ -2625,7 +2625,9 @@ errexit:
 }
 
 int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
+    uint8_t whitelist_mode = 0;
     char **rmattrs = NULL, **rmvattrs = NULL;
+    char **wlattrs = NULL, **wlvattrs = NULL;
     char **addattrs = NULL, **addvattrs = NULL;
     char **modattrs = NULL;
     char **supattrs = NULL, **supvattrs = NULL;
@@ -2633,8 +2635,11 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
 
     if (!getgenericconfig(cf, block,
+        "whitelistMode", CONF_BLN, &whitelist_mode,
         "removeAttribute", CONF_MSTR, &rmattrs,
         "removeVendorAttribute", CONF_MSTR, &rmvattrs,
+        "whitelistAttribute", CONF_MSTR, &wlattrs,
+        "whitelistVendorAttribute", CONF_MSTR, &wlvattrs,
         "addAttribute", CONF_MSTR, &addattrs,
         "addVendorAttribute", CONF_MSTR, &addvattrs,
         "modifyAttribute", CONF_MSTR, &modattrs,
@@ -2642,7 +2647,12 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
         "supplementVendorAttriute", CONF_MSTR, &supvattrs,
         NULL))
         debugx(1, DBG_ERR, "configuration error");
-    addrewrite(val, rmattrs, rmvattrs, addattrs, addvattrs, modattrs, supattrs, supvattrs);
+    addrewrite(val, whitelist_mode, whitelist_mode? wlattrs : rmattrs, whitelist_mode? wlvattrs : rmvattrs,
+                addattrs, addvattrs, modattrs, supattrs, supvattrs);
+
+    freegconfmstr(whitelist_mode? rmattrs : wlattrs);
+    freegconfmstr(whitelist_mode? rmvattrs : wlvattrs);
+
     return 1;
 }
 

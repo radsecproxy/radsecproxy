@@ -23,7 +23,7 @@ struct rewrite {
     struct list *supattrs; /*struct tlv*/
 };
 
-void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs,
+void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmvattrs, char **addattrs,
                 char **addvattrs, char **modattrs, char **supattrs, char** supvattrs);
 int dorewrite(struct radmsg *msg, struct rewrite *rewrite);
 struct modattr *extractmodattr(char *nameval);

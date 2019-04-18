@@ -139,7 +139,7 @@ struct modattr *extractmodattr(char *nameval) {
     return m;
 }
 
-void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs,
+void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmvattrs, char **addattrs,
                 char **addvattrs, char **modattrs, char **supattrs, char** supvattrs)
 {
     struct rewrite *rewrite = NULL;
@@ -252,6 +252,7 @@ void addrewrite(char *value, char **rmattrs, char **rmvattrs, char **addattrs,
         rewrite = malloc(sizeof(struct rewrite));
         if (!rewrite)
             debugx(1, DBG_ERR, "malloc failed");
+        rewrite->whitelist_mode = whitelist_mode;
         rewrite->removeattrs = rma;
         rewrite->removevendorattrs = rmva;
         rewrite->addattrs = adda;
