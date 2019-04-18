@@ -803,6 +803,17 @@ use another, then you would be fine only defining two rewrite blocks named
 used for rewrite on input. No rewriting is done on output unless explicitly
 specified using the \fBRewriteOut\fR option.
 
+The rewrite actions are performed in this sequence:
+.RS
+1. RemoveAttribute (or WhitelistAttribute)
+.br
+2. ModifyAttribute
+.br
+3. SupplementAttribute
+.br
+4. AddAttribute
+.RE
+
 All options can be specified multiple times. The allowed options in a rewrite
 block are:
 
@@ -821,7 +832,22 @@ interpretation. See the \fBCONFIGURATION SYNTAX\fR section for further details.
 .RS
 Add a vendor attribute to the radius message, specified by \fIvendor\fR and
 \fIsubattribute\fR. Both \fIvendor\fR and \fIsubattribute\fR must be specified
-as numerical values. The format of \fIvalue\fR is the same as for \fBaddAttibute\fR above.
+as numerical values. The format of \fIvalue\fR is the same as for \fBaddAttribute\fR above.
+.RE
+
+.BI "SupplementAttribute " attribute \fR: value
+.RS
+Add an \fIattribute\fR to the radius mesage and set it to \fIvalue\fR, only if
+the  attribute is not yet present on the message.  The format of \fIvalue\fR is
+the same as for \fBaddAttribute\fR above.
+.RE
+
+.BI "ModifyAttribute " attribute \fR:/ regex \fR/ replace \fR/
+.RS
+Modify the given \fIattribute\fR using the \fIregex\fR \fIreplace\fR pattern. As
+above, \fIattribute\fR must be specified by a numerical value. Example usage:
+
+modifyAttribute 1:/^(.*)@local$/\e1@example.com/
 .RE
 
 .BI "RemoveAttribute " attribute
@@ -836,13 +862,30 @@ Remove all vendor attributes that match the given \fIvendor\fR and
 the given vendor id are removed.
 .RE
 
-.BI "ModifyAttribute " attribute \fR:/ regex \fR/ replace \fR/
+.BR "WhitelistMode (" on | off )
 .RS
-Modify the given \fIattribute\fR using the \fIregex\fR \fIreplace\fR pattern. As
-above, \fIattribute\fR must be specified by a numerical value. Example usage:
-
-modifyAttribute 1:/^(.*)@local$/\e1@example.com/
+Enable whitelist mode. All attributes except those configured with
+\fBWhitelistAttrbiute\fR or \fBWhitelistVendorAttribute\fR will be removed.
+While whitelist mode is active, \fBRemoveAttribute\fR and
+\fBRemoveVendorAttribute\fR statements are ignored.
 .RE
+
+.BI "WhitelistAttribute " attribute
+.RS
+Do not remove attributes with the given id when \fBWhitelistMode\fR is on.
+Ignored otherwise.
+.RE
+
+.BI "WhitelistVendorAttribute " vendor [\fR: subattribute ]
+.RS
+Do not remove vendor attributes that match the given \fIvendor\fR and
+\fIsubattribute\fR when \fBWhitelistMode\fR is on. Ignored otherwise.
+
+If the \fIsubattribute\fR is omitted, the complete vendor attribute is
+whitelisted. Otherwise only the specified subattribute is kept but all other
+subattributes are removed.
+.RE
+
 .SH "SEE ALSO"
 \fBradsecproxy\fR(1),
 .URL https://tools.ietf.org/html/rfc6614 " 	  Transport Layer Security (TLS) Encryption for RADIUS 	"

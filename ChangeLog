@@ -1,6 +1,7 @@
 changes since 1.7.2
 	New features:
 	- Rewrite: supplement attribute (add attribute if not present) (#19)
+	- Rewrite whitelist mode
 
 	Misc:
 	- No longer require docbook2x tools, but include plain manpages
