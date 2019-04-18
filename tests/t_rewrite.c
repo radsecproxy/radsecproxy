@@ -47,6 +47,7 @@ void _list_clear(struct list *list) {
 }
 
 void _reset_rewrite(struct rewrite *rewrite) {
+    rewrite->whitelist_mode = 0;
     rewrite->removeattrs = NULL;
     rewrite->removevendorattrs = NULL;
     _list_clear(rewrite->addattrs);
@@ -57,7 +58,7 @@ void _reset_rewrite(struct rewrite *rewrite) {
 int
 main (int argc, char *argv[])
 {
-    int testcount = 18;
+    int testcount = 22;
     struct list *origattrs, *expectedattrs;
     struct rewrite rewrite;
     char *username = "user@realm";
@@ -67,6 +68,7 @@ main (int argc, char *argv[])
     origattrs=list_create();
     expectedattrs=list_create();
 
+    rewrite.whitelist_mode=0;
     rewrite.removeattrs = NULL;
     rewrite.removevendorattrs = NULL;
     rewrite.addattrs = list_create();
@@ -449,6 +451,103 @@ main (int argc, char *argv[])
         _reset_rewrite(&rewrite);
     }
 
+    /* test whitelist rewrite */
+    {
+        uint8_t whitelistattrs[] = {1,0};
+        rewrite.whitelist_mode=1;
+        rewrite.removeattrs = whitelistattrs;
+
+        list_push(origattrs, maketlv(1, strlen(username), username));
+        list_push(origattrs, maketlv(3, strlen(username), username));
+        list_push(origattrs, makevendortlv(42, maketlv(1, strlen(username), username)));
+
+        list_push(expectedattrs, maketlv(1, strlen(username), username));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - whitelistattrs\n", testcount++);
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+
+    }
+
+    /* test whitelist vendor rewrite */
+    {
+        uint32_t whitelistvendorattrs[] = {42,256,0};
+        uint8_t value = 42;
+        uint8_t vendor_nonrfc_in[] = {0,0,0,42,1,2,3,4};
+
+        rewrite.whitelist_mode=1;
+        rewrite.removevendorattrs = whitelistvendorattrs;
+        list_push(origattrs, maketlv(1, strlen(username), username));
+        list_push(origattrs, makevendortlv(42, maketlv(1, 1, &value)));
+        list_push(origattrs, makevendortlv(43, maketlv(1, 1, &value)));
+        list_push(origattrs, maketlv(26, sizeof(vendor_nonrfc_in), vendor_nonrfc_in));
+
+        list_push(expectedattrs, makevendortlv(42, maketlv(1, 1, &value)));
+        list_push(expectedattrs, maketlv(26, sizeof(vendor_nonrfc_in), vendor_nonrfc_in));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - whitelistvendorattrs\n", testcount++);
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test whitelist vendor rewrite subattribute*/
+    {
+        uint32_t whitelistvendorattrs[] = {42,1,0};
+        uint8_t value = 42;
+        uint8_t vendor_long1_in[] = {0,0,0,42,2,3,0,1,3,0};
+        uint8_t vendor_long1_out[] = {0,0,0,42,1,3,0};
+        uint8_t vendor_nonrfc_in[] = {0,0,0,42,1,2,3,4};
+
+        rewrite.whitelist_mode=1;
+        rewrite.removevendorattrs = whitelistvendorattrs;
+        list_push(origattrs, makevendortlv(42, maketlv(1, 1, &value)));
+        list_push(origattrs, makevendortlv(43, maketlv(1, 1, &value)));
+        list_push(origattrs, makevendortlv(42, maketlv(2, 1, &value)));
+        list_push(origattrs, maketlv(26, sizeof(vendor_long1_in), vendor_long1_in));
+        list_push(origattrs, maketlv(26, sizeof(vendor_nonrfc_in), vendor_nonrfc_in));
+
+        list_push(expectedattrs, makevendortlv(42, maketlv(1, 1, &value)));
+        list_push(expectedattrs, maketlv(26, sizeof(vendor_long1_out), vendor_long1_out));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - whitelistvendorattrs\n", testcount++);
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test whitelist vendor rewrite combined*/
+    {
+        uint32_t whitelistvendorattrs[] = {42,1,0};
+        uint8_t whitelistattrs[] = {1,0};
+        uint8_t value = 42;
+
+        rewrite.whitelist_mode=1;
+        rewrite.removeattrs = whitelistattrs;
+        rewrite.removevendorattrs = whitelistvendorattrs;
+        list_push(origattrs, maketlv(1, strlen(username), username));
+        list_push(origattrs, maketlv(3, strlen(username), username));
+        list_push(origattrs, makevendortlv(42, maketlv(1, 1, &value)));
+        list_push(origattrs, makevendortlv(43, maketlv(1, 1, &value)));
+        list_push(origattrs, makevendortlv(43, maketlv(2, 1, &value)));
+
+        list_push(expectedattrs, maketlv(1, strlen(username), username));
+        list_push(expectedattrs, makevendortlv(42, maketlv(1, 1, &value)));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - whitelistvendorattrs\n", testcount++);
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
 
 
     return 0;

@@ -15,6 +15,7 @@ struct modattr {
 };
 
 struct rewrite {
+    uint8_t whitelist_mode;
     uint8_t *removeattrs; /*NULL terminated*/
     uint32_t *removevendorattrs; /*NULL terminated*/
     struct list *addattrs; /*struct tlv*/

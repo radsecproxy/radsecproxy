@@ -289,7 +289,7 @@ int findvendorsubattr(uint32_t *attrs, uint32_t vendor, uint32_t subattr) {
 }
 
 /* returns 1 if entire element is to be removed, else 0 */
-int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs) {
+int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs, int inverted) {
     uint8_t alen, sublen;
     uint32_t vendor;
     uint8_t *subattrs;
@@ -318,18 +318,19 @@ int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs) {
     while (sublen > 1) {
         alen = ATTRLEN(subattrs);
         sublen -= alen;
-        if (findvendorsubattr(removevendorattrs, vendor, ATTRTYPE(subattrs))) {
+        if (!!findvendorsubattr(removevendorattrs, vendor, ATTRTYPE(subattrs)) != !!inverted) {
             memmove(subattrs, subattrs + alen, sublen);
             attr->l -= alen;
         } else
             subattrs += alen;
     }
-    if (attr->l <= 4)
+    if ((attr->l <= 4) != !!inverted)
         return 1;
     return 0;
 }
 
-void dorewriterm(struct radmsg *msg, uint8_t *rmattrs, uint32_t *rmvattrs) {
+/*if inverted is true, remove all attributes except those listed */
+void dorewriterm(struct radmsg *msg, uint8_t *rmattrs, uint32_t *rmvattrs, int inverted) {
     struct list_node *n, *p;
     struct tlv *attr;
 
@@ -337,8 +338,8 @@ void dorewriterm(struct radmsg *msg, uint8_t *rmattrs, uint32_t *rmvattrs) {
     n = list_first(msg->attrs);
     while (n) {
         attr = (struct tlv *)n->data;
-        if ((rmattrs && strchr((char *)rmattrs, attr->t)) ||
-            (rmvattrs && attr->t == RAD_Attr_Vendor_Specific && dovendorrewriterm(attr, rmvattrs))) {
+        if (((rmattrs && strchr((char *)rmattrs, attr->t)) ||
+            (rmvattrs && attr->t == RAD_Attr_Vendor_Specific && dovendorrewriterm(attr, rmvattrs, inverted))) != !!inverted) {
             list_removedata(msg->attrs, attr);
             freetlv(attr);
             n = p ? list_next(p) : list_first(msg->attrs);
@@ -478,7 +479,7 @@ int dorewrite(struct radmsg *msg, struct rewrite *rewrite) {
 
     if (rewrite) {
         if (rewrite->removeattrs || rewrite->removevendorattrs)
-            dorewriterm(msg, rewrite->removeattrs, rewrite->removevendorattrs);
+                dorewriterm(msg, rewrite->removeattrs, rewrite->removevendorattrs, rewrite->whitelist_mode);
         if (rewrite->modattrs)
             if (!dorewritemod(msg, rewrite->modattrs))
                 rv = 0;
