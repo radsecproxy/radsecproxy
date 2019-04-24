@@ -139,14 +139,29 @@ struct modattr *extractmodattr(char *nameval) {
     return m;
 }
 
+struct modattr *extractmodvattr(char *nameval) {
+    uint32_t vendor;
+    char *s;
+    struct modattr *modvattr;
+
+    s = strchr(nameval, ':');
+    vendor = atoi(nameval);
+    if (!s || !vendor || !strchr(s,':'))
+        return NULL;
+    modvattr = extractmodattr(s+1);
+    if (modvattr)
+        modvattr ->vendor = vendor;
+    return modvattr;
+}
+
 void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmvattrs, char **addattrs,
-                char **addvattrs, char **modattrs, char **supattrs, char** supvattrs)
+                char **addvattrs, char **modattrs, char **modvattrs, char **supattrs, char** supvattrs)
 {
     struct rewrite *rewrite = NULL;
     int i, n;
     uint8_t *rma = NULL;
     uint32_t *p, *rmva = NULL;
-    struct list *adda = NULL, *moda = NULL, *supa = NULL;
+    struct list *adda = NULL, *moda = NULL, *modva = NULL, *supa = NULL;
     struct tlv *a;
     struct modattr *m;
 
@@ -219,6 +234,20 @@ void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmva
         freegconfmstr(modattrs);
     }
 
+    if (modvattrs) {
+        modva = list_create();
+        if (!modva)
+            debugx(1, DBG_ERR, "malloc failed");
+        for (i = 0; modvattrs[i]; i++) {
+            m = extractmodvattr(modvattrs[i]);
+            if (!m)
+                debugx(1, DBG_ERR, "addrewrite: modifying invalid vendor attribute %s", modvattrs[i]);
+            if (!list_push(modva, m))
+                debugx(1, DBG_ERR, "malloc failed");
+        }
+        freegconfmstr(modvattrs);
+    }
+
     if (supattrs) {
         supa = list_create();
         if (!supa)
@@ -257,7 +286,7 @@ void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmva
         rewrite->removevendorattrs = rmva;
         rewrite->addattrs = adda;
         rewrite->modattrs = moda;
-        rewrite->modvattrs = NULL;
+        rewrite->modvattrs = modva;
         rewrite->supattrs = supa;
     }
 

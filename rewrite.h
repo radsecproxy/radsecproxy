@@ -26,7 +26,7 @@ struct rewrite {
 };
 
 void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmvattrs, char **addattrs,
-                char **addvattrs, char **modattrs, char **supattrs, char** supvattrs);
+                char **addvattrs, char **modattrs, char **modvattrs, char **supattrs, char** supvattrs);
 int dorewrite(struct radmsg *msg, struct rewrite *rewrite);
 struct modattr *extractmodattr(char *nameval);
 struct rewrite *getrewrite(char *alt1, char *alt2);

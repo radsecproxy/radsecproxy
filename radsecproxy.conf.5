@@ -857,6 +857,13 @@ above, \fIattribute\fR must be specified by a numerical value. Example usage:
 modifyAttribute 1:/^(.*)@local$/\e1@example.com/
 .RE
 
+.BI "ModifyVendorAttribute " vendor \fR: subattribute \fR:/ regex \fR/ replace \fR/
+.RS
+Modify the given \fIsubattribute\fR of given \fIvendor\fR using the \fIregex\fR
+\fIreplace\fR pattern.  Other than the added vendor, the same syntax as for
+\fBModifyAttribute\fR applies.
+.RE
+
 .BI "RemoveAttribute " attribute
 .RS
 Remove all attributes with the given id.

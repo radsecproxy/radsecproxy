@@ -2629,7 +2629,7 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
     char **rmattrs = NULL, **rmvattrs = NULL;
     char **wlattrs = NULL, **wlvattrs = NULL;
     char **addattrs = NULL, **addvattrs = NULL;
-    char **modattrs = NULL;
+    char **modattrs = NULL, **modvattrs = NULL;
     char **supattrs = NULL, **supvattrs = NULL;
 
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
@@ -2643,12 +2643,13 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
         "addAttribute", CONF_MSTR, &addattrs,
         "addVendorAttribute", CONF_MSTR, &addvattrs,
         "modifyAttribute", CONF_MSTR, &modattrs,
+        "modifyVendorAttribute", CONF_MSTR, &modvattrs,
         "supplementAttribute", CONF_MSTR, &supattrs,
         "supplementVendorAttriute", CONF_MSTR, &supvattrs,
         NULL))
         debugx(1, DBG_ERR, "configuration error");
     addrewrite(val, whitelist_mode, whitelist_mode? wlattrs : rmattrs, whitelist_mode? wlvattrs : rmvattrs,
-                addattrs, addvattrs, modattrs, supattrs, supvattrs);
+                addattrs, addvattrs, modattrs, modvattrs, supattrs, supvattrs);
 
     freegconfmstr(whitelist_mode? rmattrs : wlattrs);
     freegconfmstr(whitelist_mode? rmvattrs : wlvattrs);
