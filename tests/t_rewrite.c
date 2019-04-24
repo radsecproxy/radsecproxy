@@ -52,13 +52,14 @@ void _reset_rewrite(struct rewrite *rewrite) {
     rewrite->removevendorattrs = NULL;
     _list_clear(rewrite->addattrs);
     _list_clear(rewrite->modattrs);
+    _list_clear(rewrite->modvattrs);
     _list_clear(rewrite->supattrs);
 }
 
 int
 main (int argc, char *argv[])
 {
-    int testcount = 23;
+    int testcount = 25;
     struct list *origattrs, *expectedattrs;
     struct rewrite rewrite;
     char *username = "user@realm";
@@ -73,6 +74,7 @@ main (int argc, char *argv[])
     rewrite.removevendorattrs = NULL;
     rewrite.addattrs = list_create();
     rewrite.modattrs = list_create();
+    rewrite.modvattrs = list_create();
     rewrite.supattrs = list_create();
 
     printf("1..%d\n", testcount);
@@ -465,6 +467,64 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - modify attribute regex replace\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test modify vendor*/
+    {
+        struct modattr *mod = malloc(sizeof(struct modattr));
+        regex_t regex;
+        uint8_t vendorattrin[] =  {0,0,0,42,1,3,'b',1,3,'a',2,3,0,1,3,'a'};
+        uint8_t vendorattrout[] = {0,0,0,42,1,3,'b',1,4,'b','b',2,3,0,1,4,'b','b'};
+
+        mod->t = 1;
+        mod->vendor = 42;
+        mod->regex = &regex;
+        mod->replacement = "bb";
+        regcomp(mod->regex, "a", REG_ICASE | REG_EXTENDED);
+
+        list_push(rewrite.modvattrs, mod);
+        list_push(origattrs, maketlv(RAD_Attr_Vendor_Specific,sizeof(vendorattrin), vendorattrin));
+        list_push(expectedattrs, maketlv(RAD_Attr_Vendor_Specific,sizeof(vendorattrout), vendorattrout));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - modify vendor\n", testcount++);
+
+        _list_clear(origattrs);
+        _list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test modify vendor too long (total vendor attribute too long) */
+    {
+        struct modattr *mod = malloc(sizeof(struct modattr));
+        regex_t regex;
+        uint8_t vendorattrin[RAD_Max_Attr_Value_Length];
+
+        memset(vendorattrin, 0, RAD_Max_Attr_Value_Length);
+        vendorattrin[3] = 42;
+        vendorattrin[4] = 1;
+        vendorattrin[5] = 3;
+        vendorattrin[6] = 'a';
+        vendorattrin[7] = 2;
+        vendorattrin[8] = RAD_Max_Attr_Value_Length - 7;
+
+        mod->t = 1;
+        mod->vendor = 42;
+        mod->regex = &regex;
+        mod->replacement = "bb";
+        regcomp(mod->regex, "a", REG_ICASE | REG_EXTENDED);
+
+        list_push(rewrite.modvattrs, mod);
+        list_push(origattrs, maketlv(RAD_Attr_Vendor_Specific,sizeof(vendorattrin), vendorattrin));
+
+        if (_check_rewrite(origattrs, &rewrite, origattrs, 1))
+            printf("not ");
+        printf("ok %d - modify vendor too long\n", testcount++);
 
         _list_clear(origattrs);
         _list_clear(expectedattrs);

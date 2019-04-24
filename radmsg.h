@@ -52,6 +52,7 @@ struct list *radmsg_getalltype(const struct radmsg *msg, uint8_t type);
 int radmsg_copy_attrs(struct radmsg *dst,
                       const struct radmsg *src,
                       uint8_t type);
+uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv);
 uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *, int);
 struct radmsg *buf2radmsg(uint8_t *, uint8_t *, int, uint8_t *);
 uint8_t attrname2val(char *attrname);

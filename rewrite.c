@@ -257,6 +257,7 @@ void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmva
         rewrite->removevendorattrs = rmva;
         rewrite->addattrs = adda;
         rewrite->modattrs = moda;
+        rewrite->modvattrs = NULL;
         rewrite->supattrs = supa;
     }
 
@@ -406,14 +407,78 @@ int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
     return 1;
 }
 
-int dorewritemod(struct radmsg *msg, struct list *modattrs) {
-    struct list_node *n, *m;
+int replacesubtlv(struct tlv *vendortlv, uint8_t *p, struct tlv *newtlv) {
+    int size_diff;
+    uint8_t rem_size, *next_attr;
 
-    for (n = list_first(msg->attrs); n; n = list_next(n))
-        for (m = list_first(modattrs); m; m = list_next(m))
-            if (((struct tlv *)n->data)->t == ((struct modattr *)m->data)->t &&
-                !dorewritemodattr((struct tlv *)n->data, (struct modattr *)m->data))
+    size_diff = newtlv->l - ATTRLEN(p);
+    next_attr = p+ATTRLEN(p);
+    rem_size = (vendortlv->v + vendortlv->l) - next_attr;
+
+    if (size_diff < 0)
+        memmove(next_attr + size_diff, next_attr, rem_size);
+    if (!resizeattr(vendortlv, vendortlv->l+size_diff))
+        return 0;
+    if (size_diff > 0)
+        memmove(next_attr + size_diff, next_attr, rem_size);
+
+    tlv2buf(p, newtlv);
+    return 1;
+}
+
+int dorewritemodvattr(struct tlv *vendortlv, struct modattr *modvattr) {
+    uint8_t *p;
+    struct tlv *tmpattr;
+
+    if (vendortlv->l <= 4 || !attrvalidate(vendortlv->v+4, vendortlv->l-4))
+        return 0;
+    for (p = vendortlv->v+4; p < (vendortlv->v + vendortlv->l); p = p+ATTRLEN(p)) {
+        if (ATTRTYPE(p) == modvattr->t) {
+            tmpattr = maketlv(ATTRTYPE(p), ATTRVALLEN(p), ATTRVAL(p));
+            if (dorewritemodattr(tmpattr, modvattr)) {
+                int size_diff = tmpattr->l - ATTRVALLEN(p);
+                uint8_t *next_attr = p+ATTRLEN(p);
+                uint8_t rem_size = (vendortlv->v + vendortlv->l) - next_attr;
+
+                if (size_diff < 0)
+                    memmove(next_attr + size_diff, next_attr, rem_size);
+                if (!resizeattr(vendortlv, vendortlv->l+size_diff))
+                    return 0;
+                if (size_diff > 0)
+                    memmove(next_attr + size_diff, next_attr, rem_size);
+
+                tlv2buf(p, tmpattr);
+            } else {
+                freetlv(tmpattr);
                 return 0;
+            }
+            freetlv(tmpattr);
+        }
+    }
+    return 1;
+}
+
+int dorewritemod(struct radmsg *msg, struct list *modattrs, struct list *modvattrs) {
+    struct list_node *n, *m;
+    uint32_t vendor;
+
+    for (n = list_first(msg->attrs); n; n = list_next(n)) {
+        struct tlv *attr = (struct tlv *)n->data;
+        if (attr->t == RAD_Attr_Vendor_Specific) {
+            memcpy(&vendor, attr->v, 4);
+            vendor = ntohl(vendor);
+            for (m = list_first(modvattrs); m; m = list_next(m)) {
+                if (vendor == ((struct modattr *)m->data)->vendor &&
+                    !dorewritemodvattr(attr, (struct modattr*)m->data))
+                    return 0;
+            }
+        } else {
+            for (m = list_first(modattrs); m; m = list_next(m))
+                if (((struct tlv *)n->data)->t == ((struct modattr *)m->data)->t &&
+                    !dorewritemodattr((struct tlv *)n->data, (struct modattr *)m->data))
+                    return 0;
+        }
+    }
     return 1;
 }
 
@@ -480,9 +545,9 @@ int dorewrite(struct radmsg *msg, struct rewrite *rewrite) {
 
     if (rewrite) {
         if (rewrite->removeattrs || rewrite->removevendorattrs)
-                dorewriterm(msg, rewrite->removeattrs, rewrite->removevendorattrs, rewrite->whitelist_mode);
-        if (rewrite->modattrs)
-            if (!dorewritemod(msg, rewrite->modattrs))
+            dorewriterm(msg, rewrite->removeattrs, rewrite->removevendorattrs, rewrite->whitelist_mode);
+        if (rewrite->modattrs || rewrite->modvattrs)
+            if (!dorewritemod(msg, rewrite->modattrs, rewrite->modvattrs))
                 rv = 0;
         if (rewrite->supattrs)
             if (!dorewritesup(msg, rewrite->supattrs))

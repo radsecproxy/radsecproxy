@@ -10,6 +10,7 @@
 
 struct modattr {
     uint8_t t;
+    uint32_t vendor;
     char *replacement;
     regex_t *regex;
 };
@@ -20,6 +21,7 @@ struct rewrite {
     uint32_t *removevendorattrs; /*NULL terminated*/
     struct list *addattrs; /*struct tlv*/
     struct list *modattrs; /*struct modattr*/
+    struct list *modvattrs; /*struct modattr*/
     struct list *supattrs; /*struct tlv*/
 };
 
