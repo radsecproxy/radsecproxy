@@ -15,6 +15,7 @@
 #include <poll.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <sys/time.h>
 #include "debug.h"
 #include "util.h"
 
@@ -249,6 +250,32 @@ int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout
 	s = -1;
     }
     return s;
+}
+
+time_t connect_wait(struct timeval attempt_start, struct timeval last_success, int firsttry) {
+    struct timeval now;
+
+    gettimeofday(&now, NULL);
+
+    if (attempt_start.tv_sec < last_success.tv_sec ||
+        attempt_start.tv_sec > now.tv_sec) {
+        debug(DBG_WARN, "connect_wait: invalid timers detected!");
+        return 60;
+    }
+
+    if (now.tv_sec - last_success.tv_sec < 30)
+        return 30 - (attempt_start.tv_sec - last_success.tv_sec);
+
+    if (firsttry)
+        return 0;
+
+    if (now.tv_sec - attempt_start.tv_sec < 2)
+        return 2;
+
+    if (now.tv_sec - attempt_start.tv_sec > 60)
+        return 60;
+
+    return now.tv_sec - attempt_start.tv_sec;
 }
 
 /* Local Variables: */

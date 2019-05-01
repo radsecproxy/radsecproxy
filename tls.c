@@ -31,7 +31,7 @@
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
 void *tlslistener(void *arg);
-int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
+int tlsconnect(struct server *server, int timeout, char *text);
 void *tlsclientrd(void *arg);
 int clientradputtls(struct server *server, unsigned char *rad);
 void tlssetsrcres();
@@ -82,9 +82,10 @@ void tlssetsrcres() {
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
 
-int tlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
-    struct timeval now, start = {0,0};
+int tlsconnect(struct server *server, int timeout, char *text) {
+    struct timeval now, start;
     time_t wait;
+    int firsttry = 1;
     X509 *cert;
     SSL_CTX *ctx = NULL;
     unsigned long error;
@@ -92,17 +93,10 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 
     debug(DBG_DBG, "tlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
-
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
-
     pthread_mutex_unlock(&server->lock);
-
-    gettimeofday(&now, NULL);
-    if (when && (now.tv_sec - when->tv_sec) < 30 ) {
-        /* last connection was less than 30s ago. Delay next attempt */
-        start.tv_sec = now.tv_sec + 30 - (now.tv_sec - when->tv_sec);
-    }
+    gettimeofday(&start, NULL);
 
     for (;;) {
         /* ensure previous connection is properly closed */
@@ -114,29 +108,18 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
             SSL_free(server->ssl);
         server->ssl = NULL;
 
-        /* no sleep at startup or at first try */
-        if (start.tv_sec) {
-            gettimeofday(&now, NULL);
-            wait = abs(now.tv_sec - start.tv_sec);
-            wait = wait > 60 ? 60 : wait;
+        wait = connect_wait(start, server->connecttime, firsttry);
+        debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        sleep(wait);
+        firsttry = 0;
 
-            if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
-                debug(DBG_DBG, "tlsconnect: timeout");
-                return 0;
-            }
-
-            if (wait < 1)
-                sleep(2);
-            else {
-                debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
-                sleep(wait);
-            }
-            debug(DBG_INFO, "tlsconnect: retry connecting to %s", server->conf->name);
-        } else {
-            gettimeofday(&start, NULL);
+        gettimeofday(&now, NULL);
+        if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
+            debug(DBG_DBG, "tlsconnect: timeout");
+            return 0;
         }
-        /* done sleeping */
 
+        debug(DBG_INFO, "tlsconnect: connecting to %s", server->conf->name);
         if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
             continue;
         if (server->conf->keepalive)
@@ -181,7 +164,7 @@ int tlsconnect(struct server *server, struct timeval *when, int timeout, char *t
 
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
-    gettimeofday(&server->lastconnecttry, NULL);
+    gettimeofday(&server->connecttime, NULL);
     server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
@@ -357,11 +340,9 @@ int clientradputtls(struct server *server, unsigned char *rad) {
 void *tlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
-    struct timeval now, lastconnecttry;
+    struct timeval now;
 
     for (;;) {
-	/* yes, lastconnecttry is really necessary */
-	lastconnecttry = server->lastconnecttry;
 	buf = radtlsget(server->ssl, 10, &server->lock);
 	if (!buf) {
         if (SSL_get_shutdown(server->ssl) || server->lostrqs) {
@@ -371,7 +352,7 @@ void *tlsclientrd(void *arg) {
                 debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
             if (server->dynamiclookuparg)
                 break;
-            tlsconnect(server, &lastconnecttry, 0, "tlsclientrd");
+            tlsconnect(server, 0, "tlsclientrd");
         }
         if (server->dynamiclookuparg) {
             gettimeofday(&now, NULL);

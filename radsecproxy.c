@@ -1823,7 +1823,7 @@ void *clientwr(void *arg) {
     gettimeofday(&server->lastreply, NULL);
 
     if (conf->pdef->connecter) {
-	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+	if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
 	    server->state = RSP_SERVER_STATE_FAILING;
 	    if (server->dynamiclookuparg) {
                 debug(DBG_WARN, "%s: connect failed, sleeping %ds",
