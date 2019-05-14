@@ -1950,7 +1950,7 @@ void *clientwr(void *arg) {
 	    pthread_mutex_unlock(rqout->lock);
 	}
     do_resend = 0;
-    if (server->state == RSP_SERVER_STATE_CONNECTED && !conf->statusserver == RSP_STATSRV_OFF) {
+    if (server->state == RSP_SERVER_STATE_CONNECTED && !(conf->statusserver == RSP_STATSRV_OFF)) {
         gettimeofday(&now, NULL);
         if ((conf->statusserver == RSP_STATSRV_ON && now.tv_sec - (laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec) > STATUS_SERVER_PERIOD) ||
             (conf->statusserver == RSP_STATSRV_MINIMAL && statusserver_requested && now.tv_sec - laststatsrv.tv_sec > STATUS_SERVER_PERIOD) ||
