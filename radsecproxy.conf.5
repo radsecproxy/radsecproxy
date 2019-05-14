@@ -189,7 +189,7 @@ See \fIradsecproxy.conf\-example\fR for details.
 The FTicksMAC option has the same function as LogMAC for FTicks. The default for
 FTicksMAC is \fBVendorKeyHashed\fR which needs \fBFTicksKey\fR to be set.
 
-Before chosing any of
+Before choosing any of
 .BR Original ,
 .BR FullyHashed
 or
@@ -466,7 +466,7 @@ Apply the operations in the specified \fIrewrite\fR block on incoming (request)
 or outgoing (response) messages from this client. Rewriting incoming messages is
 done before, outgoing after other processing. If the \fBRewriteIn\fR is not
 configured, the rewrite blocks \fBdefaultClient\fR or \fBdefault\fR will be
-applied if defined. No default blocks are appied for \fBRewriteOut\fR.
+applied if defined. No default blocks are applied for \fBRewriteOut\fR.
 .RE
 
 .BI "RewriteAttribute User-Name:/" regex / replace /
@@ -581,7 +581,7 @@ Apply the operations in the specified \fIrewrite\fR block on outgoing (request)
 or incoming (response) messages to/from this server. Rewriting outgoing messages is
 done after, incoming before other processing. If the \fBRewriteIn\fR is not
 configured, the rewrite blocks \fBdefaultServer\fR or \fBdefault\fR will be
-applied if defined. No default blocks are appied for \fBRewriteOut\fR.
+applied if defined. No default blocks are applied for \fBRewriteOut\fR.
 .RE
 
 .BR "LoopPrevention (" on | off)
@@ -811,7 +811,7 @@ block are:
 
 .BI "AddAttribute " attribute \fR: value
 .RS
-Add an \fIattribute\fR to the radius mesage and set it to \fIvalue\fR. The
+Add an \fIattribute\fR to the radius message and set it to \fIvalue\fR. The
 \fIattribute\fR must be specified using the numerical attribute id. The
 \fIvalue\fR can either be numerical, a string, or a hex value. See the
 \fBCONFIGURATION SYNTAX\fR section for details.

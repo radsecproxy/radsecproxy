@@ -275,7 +275,7 @@ changes since 1.7.2
 
 2008-10-07 1.2
 	listenTCP and sourceTCP options renamed to listenTLS and sourceTLS
-	  Old options deprecated but available for backwards compatiblity
+	  Old options deprecated but available for backwards compatibility
 	Logging reply-message attribute from Reject messages
 	  Contribution from Arne Schwabe
 	Rewrite blocks have new options addAttribute and modifyAttribute

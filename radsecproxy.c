@@ -1823,7 +1823,7 @@ void *clientwr(void *arg) {
     laststatsrv = server->lastreply;
 
     if (conf->pdef->connecter) {
-	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+	if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
 	    server->state = RSP_SERVER_STATE_FAILING;
 	    if (server->dynamiclookuparg) {
                 debug(DBG_WARN, "%s: connect failed, sleeping %ds",
@@ -2009,8 +2009,13 @@ void createlistener(uint8_t type, char *arg) {
             if (setsockopt(s, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "craetelistener: IPV6_RECVPKTINFO");
         } else if (res->ai_family == AF_INET) {
+#if defined(IP_PKTINFO)
             if (setsockopt(s, IPPROTO_IP, IP_PKTINFO, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "createlistener: IP_PKTINFO");
+#elif defined(IP_RECVDSTADDR)
+            if (setsockopt(s, IPPROTO_IP, IP_RECVDSTADDR, &on, sizeof(on)) == -1)
+                debugerrno(errno, DBG_WARN, "createlistener: IP_RECVDSTADDR");
+#endif
         }
     }
 	if (bind(s, res->ai_addr, res->ai_addrlen)) {

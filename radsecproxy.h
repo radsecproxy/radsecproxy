@@ -190,7 +190,7 @@ struct server {
     pthread_mutex_t lock;
     pthread_t clientth;
     uint8_t clientrdgone;
-    struct timeval lastconnecttry;
+    struct timeval connecttime;
     struct timeval lastreply;
     enum rsp_server_state state;
     uint8_t lostrqs;
@@ -244,7 +244,7 @@ struct protodefs {
     void (*setprotoopts)(struct commonprotoopts *);
     char **(*getlistenerargs)();
     void *(*listener)(void*);
-    int (*connecter)(struct server *, struct timeval *, int, char *);
+    int (*connecter)(struct server *, int, char *);
     void *(*clientconnreader)(void*);
     int (*clientradput)(struct server *, unsigned char *);
     void (*addclient)(struct client *);

@@ -29,7 +29,7 @@
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
 void *tcplistener(void *arg);
-int tcpconnect(struct server *server, struct timeval *when, int timeout, char * text);
+int tcpconnect(struct server *server, int timeout, char * text);
 void *tcpclientrd(void *arg);
 int clientradputtcp(struct server *server, unsigned char *rad);
 void tcpsetsrcres();
@@ -79,8 +79,9 @@ void tcpsetsrcres() {
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
 
-int tcpconnect(struct server *server, struct timeval *when, int timeout, char *text) {
-    struct timeval now, start = {0,0};
+int tcpconnect(struct server *server, int timeout, char *text) {
+    struct timeval now, start;
+    int firsttry = 1;
     time_t wait;
 
     debug(DBG_DBG, "tcpconnect: called from %s", text);
@@ -89,43 +90,27 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
 
-    gettimeofday(&now, NULL);
-    if (when && (now.tv_sec - when->tv_sec) < 30 ) {
-        /* last connection was less than 30s ago. Delay next attempt */
-        start.tv_sec = now.tv_sec + 30 - (now.tv_sec - when->tv_sec);
-    }
+    gettimeofday(&start, NULL);
 
     for (;;) {
         if (server->sock >= 0)
             close(server->sock);
         server->sock = -1;
 
-        /* no sleep at startup or at first try */
-        if (start.tv_sec) {
-            gettimeofday(&now, NULL);
-            wait = abs(now.tv_sec - start.tv_sec);
-            wait = wait > 60 ? 60 : wait;
+        pthread_mutex_unlock(&server->lock);
+        wait = connect_wait(start, server->connecttime, firsttry);
+        debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        sleep(wait);
+        firsttry = 0;
 
-            if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
-                debug(DBG_DBG, "tlsconnect: timeout");
-                pthread_mutex_unlock(&server->lock);
-                return 0;
-            }
-
-            /* give up lock while sleeping for next try */
-            pthread_mutex_unlock(&server->lock);
-            if (wait < 1)
-                sleep(2);
-            else {
-                debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
-                sleep(wait);
-            }
-            pthread_mutex_lock(&server->lock);
-            debug(DBG_INFO, "tlsconnect: retry connecting to %s", server->conf->name);
-        } else {
-            gettimeofday(&start, NULL);
+        gettimeofday(&now, NULL);
+        if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
+            debug(DBG_DBG, "tcpconnect: timeout");
+            return 0;
         }
+        pthread_mutex_lock(&server->lock);
 
+        debug(DBG_INFO, "tcpconnect: connecting to %s", server->conf->name);
         if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
             continue;
         if (server->conf->keepalive)
@@ -133,7 +118,7 @@ int tcpconnect(struct server *server, struct timeval *when, int timeout, char *t
         break;
     }
     server->state = RSP_SERVER_STATE_CONNECTED;
-    gettimeofday(&server->lastconnecttry, NULL);
+    gettimeofday(&server->connecttime, NULL);
     server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
@@ -230,16 +215,13 @@ int clientradputtcp(struct server *server, unsigned char *rad) {
 void *tcpclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
-    struct timeval lastconnecttry;
 
     for (;;) {
-	/* yes, lastconnecttry is really necessary */
-	lastconnecttry = server->lastconnecttry;
 	buf = radtcpget(server->sock, server->dynamiclookuparg ? IDLE_TIMEOUT : 0);
 	if (!buf) {
         if (server->dynamiclookuparg)
 		break;
-	    tcpconnect(server, &lastconnecttry, 0, "tcpclientrd");
+	    tcpconnect(server, 0, "tcpclientrd");
 	    continue;
 	}
 
