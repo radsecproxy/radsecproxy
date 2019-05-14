@@ -5,7 +5,7 @@
 # realm given as argument, and creates a server template based
 # on that. It currently ignores weight markers, but does sort
 # servers on priority marker, lowest number first.
-# For host command this is coloumn 5, for dig it is coloumn 1.
+# For host command this is column 5, for dig it is column 1.
 
 usage() {
    echo "Usage: ${0} <realm>"

@@ -191,7 +191,7 @@ See \fIradsecproxy.conf\-example\fR for details.
 The FTicksMAC option has the same function as LogMAC for FTicks. The default for
 FTicksMAC is \fBVendorKeyHashed\fR which needs \fBFTicksKey\fR to be set.
 
-Before chosing any of
+Before choosing any of
 .BR Original ,
 .BR FullyHashed
 or
@@ -468,7 +468,7 @@ Apply the operations in the specified \fIrewrite\fR block on incoming (request)
 or outgoing (response) messages from this client. Rewriting incoming messages is
 done before, outgoing after other processing. If the \fBRewriteIn\fR is not
 configured, the rewrite blocks \fBdefaultClient\fR or \fBdefault\fR will be
-applied if defined. No default blocks are appied for \fBRewriteOut\fR.
+applied if defined. No default blocks are applied for \fBRewriteOut\fR.
 .RE
 
 .BI "RewriteAttribute User-Name:/" regex / replace /
@@ -545,13 +545,18 @@ for the realm and then the SRV records for each NAPTR matching
 \&'x-eduroam:radius.tls' is provided in \fItools/naptr\-eduroam.sh\fR.
 .RE
 
-.BR "StatusServer (" on | off )
+.BR "StatusServer (" on | off | minimal | auto )
 .RS
-Enable the use of status-server messages for this server (default off).  If
-statusserver is enabled, the proxy will send regular status-server messages to
-the server to verify that it is alive. Status tracking of the server will solely
-depend on status-server message and ignore lost requests. This should only be
-enabled if the server supports it.
+Enable the use of status-server messages for this server (default \fBoff\fR).  If
+statusserver is enabled (\fBon\fR), the proxy will send regular status-server
+messages to the server to verify that it is alive. Status tracking of the server
+will solely depend on status-server message and ignore lost requests. This
+should only be enabled if the server supports it. With the option \fBminimal\fR
+status-server messages are only sent when regular requests have been lost and no
+other replies have been received.
+
+The option \fBauto\fR tries to detect whether the other server supports
+status-server. If so, status-server messages are enabled in \fBminimal\fR mode.
 .RE
 
 .BI "RetryCount " count
@@ -578,7 +583,7 @@ Apply the operations in the specified \fIrewrite\fR block on outgoing (request)
 or incoming (response) messages to/from this server. Rewriting outgoing messages is
 done after, incoming before other processing. If the \fBRewriteIn\fR is not
 configured, the rewrite blocks \fBdefaultServer\fR or \fBdefault\fR will be
-applied if defined. No default blocks are appied for \fBRewriteOut\fR.
+applied if defined. No default blocks are applied for \fBRewriteOut\fR.
 .RE
 
 .BR "LoopPrevention (" on | off)
@@ -819,7 +824,7 @@ block are:
 
 .BI "AddAttribute " attribute \fR: value
 .RS
-Add an \fIattribute\fR to the radius mesage and set it to \fIvalue\fR. The
+Add an \fIattribute\fR to the radius message and set it to \fIvalue\fR. The
 \fIattribute\fR must be specified using the numerical attribute id. The
 \fIvalue\fR can either be numerical, a string, or a hex value. If the value
 starts with a number, it is interpreted as a 32bit unsigned integer.  Use the '

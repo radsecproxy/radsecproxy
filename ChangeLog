@@ -3,10 +3,15 @@ changes since 1.7.2
 	- Rewrite: supplement attribute (add attribute if not present) (#19)
 	- Rewrite: modify vendor attribute
 	- Rewrite whitelist mode
+	- Autodetect status-server capability of servers
+	- Minimalistic status-server
 
 	Misc:
 	- No longer require docbook2x tools, but include plain manpages
 	- Fail on startup if overlapping clients with different tls blocks
+
+	Compile fixes:
+	- Fix compile issues on bsd
 
 	Bug fixes:
 	- Handle %00 in config correctly (#31)
@@ -279,7 +284,7 @@ changes since 1.7.2
 
 2008-10-07 1.2
 	listenTCP and sourceTCP options renamed to listenTLS and sourceTLS
-	  Old options deprecated but available for backwards compatiblity
+	  Old options deprecated but available for backwards compatibility
 	Logging reply-message attribute from Reject messages
 	  Contribution from Arne Schwabe
 	Rewrite blocks have new options addAttribute and modifyAttribute

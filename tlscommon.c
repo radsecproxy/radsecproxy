@@ -44,9 +44,16 @@ static uint8_t cookie_secret_initialized = 0;
 #if OPENSSL_VERSION_NUMBER < 0x10100000
 static pthread_mutex_t *ssl_locks = NULL;
 
+#if OPENSSL_VERSION_NUMBER < 0x10000000
 unsigned long ssl_thread_id() {
     return (unsigned long)pthread_self();
 }
+#else
+void ssl_thread_id(CRYPTO_THREADID *id) {
+    CRYPTO_THREADID_set_numeric(id, (unsigned long)pthread_self());
+}
+#endif
+
 
 void ssl_locking_callback(int mode, int type, const char *file, int line) {
     if (mode & CRYPTO_LOCK)
@@ -69,7 +76,11 @@ void sslinit() {
     for (i = 0; i < CRYPTO_num_locks(); i++) {
         pthread_mutex_init(&ssl_locks[i], NULL);
     }
+#if OPENSSL_VERSION_NUMBER < 0x10000000
     CRYPTO_set_id_callback(ssl_thread_id);
+#else
+    CRYPTO_THREADID_set_callback(ssl_thread_id);
+#endif
     CRYPTO_set_locking_callback(ssl_locking_callback);
     SSL_load_error_strings();
 #else

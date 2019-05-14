@@ -471,7 +471,7 @@ void sendrq(struct request *rq) {
     if (!to)
         goto errexit;
 
-    start = to->conf->statusserver ? 1 : 0;
+    start = to->conf->statusserver == RSP_STATSRV_OFF ? 0 : 1;
     pthread_mutex_lock(&to->newrq_mutex);
     if (start && rq->msg->code == RAD_Status_Server) {
         if (!_internal_sendrq(to, 0, rq)) {
@@ -1422,9 +1422,11 @@ void replyh(struct server *server, unsigned char *buf) {
     gettimeofday(&server->lastrcv, NULL);
 
     if (rqout->rq->msg->code == RAD_Status_Server) {
-	freerqoutdata(rqout);
-	debug(DBG_NOTICE, "replyh: got status server response from %s", server->conf->name);
-	goto errunlock;
+        freerqoutdata(rqout);
+        debug(DBG_NOTICE, "replyh: got status server response from %s", server->conf->name);
+        if (server->conf->statusserver == RSP_STATSRV_AUTO)
+            server->conf->statusserver = RSP_STATSRV_MINIMAL;
+        goto errunlock;
     }
 
     gettimeofday(&server->lastreply, NULL);
@@ -1537,7 +1539,7 @@ void *clientwr(void *arg) {
     pthread_t clientrdth;
     int i, dynconffail = 0;
     time_t secs;
-    uint8_t rnd, do_resend = 0;
+    uint8_t rnd, do_resend = 0, statusserver_requested = 0;
     struct timeval now, laststatsrv;
     struct timespec timeout;
     struct request *statsrvrq;
@@ -1569,14 +1571,12 @@ void *clientwr(void *arg) {
 
     memset(&timeout, 0, sizeof(struct timespec));
 
-    if (conf->statusserver) {
-	gettimeofday(&server->lastrcv, NULL);
-	gettimeofday(&laststatsrv, NULL);
-    }
     gettimeofday(&server->lastreply, NULL);
+    server->lastrcv = server->lastreply;
+    laststatsrv = server->lastreply;
 
     if (conf->pdef->connecter) {
-	if (!conf->pdef->connecter(server, NULL, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+	if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
 	    server->state = RSP_SERVER_STATE_FAILING;
 	    if (server->dynamiclookuparg) {
                 debug(DBG_WARN, "%s: connect failed, sleeping %ds",
@@ -1600,7 +1600,7 @@ void *clientwr(void *arg) {
 	    /* random 0-7 seconds */
 	    RAND_bytes(&rnd, 1);
 	    rnd /= 32;
-	    if (conf->statusserver) {
+	    if (conf->statusserver != RSP_STATSRV_OFF) {
 		secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
 		if (now.tv_sec - secs > STATUS_SERVER_PERIOD)
 		    secs = now.tv_sec;
@@ -1664,24 +1664,33 @@ void *clientwr(void *arg) {
             continue;
         }
 
-	    if (rqout->tries == (*rqout->rq->buf == RAD_Status_Server ? 1 : conf->retrycount + 1)) {
-		debug(DBG_DBG, "clientwr: removing expired packet from queue");
-        replylog(rqout->rq->msg, server, rqout->rq);
-		if (conf->statusserver) {
-		    if (*rqout->rq->buf == RAD_Status_Server) {
-			debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->name);
-			if (server->lostrqs < 255)
-			    server->lostrqs++;
-		    }
+        if (rqout->tries > 0 && now.tv_sec - server->lastrcv.tv_sec > conf->retryinterval)
+            statusserver_requested = 1;
+        if (rqout->tries == (*rqout->rq->buf == RAD_Status_Server ? 1 : conf->retrycount + 1)) {
+            debug(DBG_DBG, "clientwr: removing expired packet from queue");
+            replylog(rqout->rq->msg, server, rqout->rq);
+            if (conf->statusserver == RSP_STATSRV_ON || conf->statusserver == RSP_STATSRV_MINIMAL) {
+                if (*rqout->rq->buf == RAD_Status_Server) {
+                    debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->name);
+                    if (server->lostrqs < 255)
+                        server->lostrqs++;
+                }
+            } else {
+                if (conf->statusserver == RSP_STATSRV_AUTO && *rqout->rq->buf == RAD_Status_Server) {
+                    if (server->lastreply.tv_sec >= laststatsrv.tv_sec) {
+                        debug(DBG_DBG, "clientwr: status server autodetect faild, disabling status server for %s", conf->name);
+                        conf->statusserver = RSP_STATSRV_OFF;
+                    }
                 } else {
-		    debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->name);
-		    if (server->lostrqs < 255)
-			server->lostrqs++;
-		}
-		freerqoutdata(rqout);
-                pthread_mutex_unlock(rqout->lock);
-		continue;
-	    }
+                    debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->name);
+                    if (server->lostrqs < 255)
+                        server->lostrqs++;
+                }
+            }
+            freerqoutdata(rqout);
+            pthread_mutex_unlock(rqout->lock);
+            continue;
+        }
 
 	    rqout->expiry.tv_sec = now.tv_sec + conf->retryinterval;
 	    if (!timeout.tv_sec || rqout->expiry.tv_sec < timeout.tv_sec)
@@ -1694,19 +1703,22 @@ void *clientwr(void *arg) {
 	    pthread_mutex_unlock(rqout->lock);
 	}
     do_resend = 0;
-	if (conf->statusserver && server->state == RSP_SERVER_STATE_CONNECTED) {
-	    secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
-	    gettimeofday(&now, NULL);
-	    if (now.tv_sec - secs > STATUS_SERVER_PERIOD) {
-		laststatsrv = now;
-		statsrvrq = createstatsrvrq();
-		if (statsrvrq) {
-		    statsrvrq->to = server;
-		    debug(DBG_DBG, "clientwr: sending %s to %s", radmsgtype2string(RAD_Status_Server), conf->name);
-		    sendrq(statsrvrq);
-		}
-	    }
-	}
+    if (server->state == RSP_SERVER_STATE_CONNECTED && !(conf->statusserver == RSP_STATSRV_OFF)) {
+        gettimeofday(&now, NULL);
+        if ((conf->statusserver == RSP_STATSRV_ON && now.tv_sec - (laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec) > STATUS_SERVER_PERIOD) ||
+            (conf->statusserver == RSP_STATSRV_MINIMAL && statusserver_requested && now.tv_sec - laststatsrv.tv_sec > STATUS_SERVER_PERIOD) ||
+            (conf->statusserver == RSP_STATSRV_AUTO && server->lastreply.tv_sec >= laststatsrv.tv_sec)) {
+
+            laststatsrv = now;
+            statsrvrq = createstatsrvrq();
+            if (statsrvrq) {
+                statsrvrq->to = server;
+                debug(DBG_DBG, "clientwr: sending %s to %s", radmsgtype2string(RAD_Status_Server), conf->name);
+                sendrq(statsrvrq);
+            }
+            statusserver_requested = 0;
+        }
+    }
     }
 errexit:
     if (server->dynamiclookuparg) {
@@ -1750,8 +1762,13 @@ void createlistener(uint8_t type, char *arg) {
             if (setsockopt(s, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "craetelistener: IPV6_RECVPKTINFO");
         } else if (res->ai_family == AF_INET) {
+#if defined(IP_PKTINFO)
             if (setsockopt(s, IPPROTO_IP, IP_PKTINFO, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "createlistener: IP_PKTINFO");
+#elif defined(IP_RECVDSTADDR)
+            if (setsockopt(s, IPPROTO_IP, IP_RECVDSTADDR, &on, sizeof(on)) == -1)
+                debugerrno(errno, DBG_WARN, "createlistener: IP_RECVDSTADDR");
+#endif
         }
     }
 	if (bind(s, res->ai_addr, res->ai_addrlen)) {
@@ -2462,7 +2479,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *resconf;
-    char *conftype = NULL, *rewriteinalias = NULL;
+    char *conftype = NULL, *rewriteinalias = NULL, *statusserver = NULL;
     long int retryinterval = LONG_MIN, retrycount = LONG_MIN, addttl = LONG_MIN;
     uint8_t ipv4only = 0, ipv6only = 0, confmerged = 0;
 
@@ -2477,10 +2494,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->loopprevention = UCHAR_MAX; /* Uninitialized.  */
     resconf = (struct clsrvconf *)arg;
     if (resconf) {
-	conf->statusserver = resconf->statusserver;
-	conf->certnamecheck = resconf->certnamecheck;
-    } else
-	conf->certnamecheck = 1;
+        conf->statusserver = resconf->statusserver;
+        conf->certnamecheck = resconf->certnamecheck;
+    } else {
+        conf->certnamecheck = 1;
+    }
 
     if (!getgenericconfig(cf, block,
 			  "type", CONF_STR, &conftype,
@@ -2499,7 +2517,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 			  "rewrite", CONF_STR, &rewriteinalias,
 			  "rewriteIn", CONF_STR, &conf->confrewritein,
 			  "rewriteOut", CONF_STR, &conf->confrewriteout,
-			  "StatusServer", CONF_BLN, &conf->statusserver,
+			  "StatusServer", CONF_STR, &statusserver,
 			  "RetryInterval", CONF_LINT, &retryinterval,
 			  "RetryCount", CONF_LINT, &retrycount,
 			  "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
@@ -2573,6 +2591,19 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    goto errexit;
 	}
 	conf->addttl = (uint8_t)addttl;
+    }
+
+    if (statusserver) {
+        if (strcasecmp(statusserver, "Off") == 0)
+            conf->statusserver = RSP_STATSRV_OFF;
+        else if (strcasecmp(statusserver, "On") == 0)
+            conf->statusserver = RSP_STATSRV_ON;
+        else if (strcasecmp(statusserver, "Minimal") == 0)
+            conf->statusserver = RSP_STATSRV_MINIMAL;
+        else if (strcasecmp(statusserver, "Auto") == 0)
+            conf->statusserver = RSP_STATSRV_AUTO;
+        else
+            debugx(1, DBG_ERR, "config error in blocck %s: invalid StatusServer value: %s", block, statusserver);
     }
 
     if (resconf) {
@@ -2759,8 +2790,8 @@ void getmainconfig(const char *configfile) {
 	    "FTicksKey", CONF_STR, &fticks_key_str,
 	    "FTicksSyslogFacility", CONF_STR, &options.ftickssyslogfacility,
         "FTicksPrefix", CONF_STR, &options.fticksprefix,
-            "IPv4Only", CONF_BLN, &options.ipv4only,
-            "IPv6Only", CONF_BLN, &options.ipv6only,
+        "IPv4Only", CONF_BLN, &options.ipv4only,
+        "IPv6Only", CONF_BLN, &options.ipv6only,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");

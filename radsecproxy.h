@@ -72,6 +72,13 @@ enum rsp_server_state {
     RSP_SERVER_STATE_FAILING
 };
 
+enum rsp_statsrv {
+	RSP_STATSRV_OFF = 0,
+	RSP_STATSRV_ON,
+	RSP_STATSRV_MINIMAL,
+	RSP_STATSRV_AUTO
+};
+
 struct options {
     char *pidfile;
     char *logdestination;
@@ -147,7 +154,7 @@ struct clsrvconf {
     char *confrewriteusername;
     struct modattr *rewriteusername;
     char *dynamiclookupcommand;
-    uint8_t statusserver;
+    enum rsp_statsrv statusserver;
     uint8_t retryinterval;
     uint8_t retrycount;
     uint8_t dupinterval;
@@ -185,7 +192,7 @@ struct server {
     pthread_mutex_t lock;
     pthread_t clientth;
     uint8_t clientrdgone;
-    struct timeval lastconnecttry;
+    struct timeval connecttime;
     struct timeval lastreply;
     enum rsp_server_state state;
     uint8_t lostrqs;
@@ -226,7 +233,7 @@ struct protodefs {
     void (*setprotoopts)(struct commonprotoopts *);
     char **(*getlistenerargs)();
     void *(*listener)(void*);
-    int (*connecter)(struct server *, struct timeval *, int, char *);
+    int (*connecter)(struct server *, int, char *);
     void *(*clientconnreader)(void*);
     int (*clientradput)(struct server *, unsigned char *);
     void (*addclient)(struct client *);

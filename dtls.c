@@ -35,7 +35,7 @@
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
 void *dtlslistener(void *arg);
-int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text);
+int dtlsconnect(struct server *server, int timeout, char *text);
 void *dtlsclientrd(void *arg);
 int clientradputdtls(struct server *server, unsigned char *rad);
 void addserverextradtls(struct clsrvconf *conf);
@@ -400,12 +400,24 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
     if (getsockname(socket, to, &tolen))
         return -1;
     for (ctrlhdr = CMSG_FIRSTHDR(&msghdr); ctrlhdr; ctrlhdr = CMSG_NXTHDR(&msghdr, ctrlhdr)) {
+#if defined(IP_PKTINFO)
         if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_PKTINFO) {
-            debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, &((struct in_pktinfo *)CMSG_DATA(ctrlhdr))->ipi_addr, tmp, sizeof(tmp)));
+            struct in_pktinfo *pktinfo = (struct in_pktinfo *)CMSG_DATA(ctrlhdr);
+            debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, &(pktinfo->ipi_addr), tmp, sizeof(tmp)));
 
-            ((struct sockaddr_in *)to)->sin_addr = ((struct in_pktinfo *)CMSG_DATA(ctrlhdr))->ipi_addr;
+            ((struct sockaddr_in *)to)->sin_addr = pktinfo->ipi_addr;
             toaddrfound = 1;
-        } else if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_RECVPKTINFO) {
+        }
+#elif defined(IP_RECVDSTADDR)
+        if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_RECVDSTADDR) {
+            struct in_addr *addr = (struct in_addr *)CMSG_DATA(ctrlhdr);
+            debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, addr, tmp, sizeof(tmp)));
+
+            ((struct sockaddr_in *)to)->sin_addr = *addr;
+            toaddrfound = 1;
+        }
+#endif
+        if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_RECVPKTINFO) {
             info6 = (struct in6_pktinfo *)CMSG_DATA(ctrlhdr);
             debug(DBG_DBG, "udp packet to: %x", inet_ntop(AF_INET6, &info6->ipi6_addr, tmp, sizeof(tmp)));
 
@@ -502,9 +514,10 @@ void *dtlslistener(void *arg) {
     return NULL;
 }
 
-int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *text) {
-    struct timeval socktimeout, now, start = {0,0};
+int dtlsconnect(struct server *server, int timeout, char *text) {
+    struct timeval socktimeout, now, start;
     time_t wait;
+    int firsttry = 1;
     X509 *cert;
     SSL_CTX *ctx = NULL;
     struct hostportres *hp;
@@ -520,12 +533,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
     pthread_mutex_unlock(&server->lock);
 
     hp = (struct hostportres *)list_first(server->conf->hostports)->data;
-
-    gettimeofday(&now, NULL);
-    if (when && (now.tv_sec - when->tv_sec) < 30 ) {
-        /* last connection was less than 30s ago. Delay next attempt */
-        start.tv_sec = now.tv_sec + 30 - (now.tv_sec - when->tv_sec);
-    }
+    gettimeofday(&start, NULL);
 
     for (;;) {
         /* ensure previous connection is properly closed */
@@ -537,30 +545,18 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
             SSL_free(server->ssl);
         server->ssl = NULL;
 
-        /* no sleep at startup or at first try */
-        if (start.tv_sec) {
-            gettimeofday(&now, NULL);
-            wait = abs(now.tv_sec - start.tv_sec);
-            wait = wait > 60 ? 60 : wait;
+        wait = connect_wait(start, server->connecttime, firsttry);
+        debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        sleep(wait);
+        firsttry = 0;
 
-            if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
-                debug(DBG_DBG, "tlsconnect: timeout");
-                return 0;
-            }
-
-            if (wait < 1)
-                sleep(2);
-            else {
-                debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
-                sleep(wait);
-            }
-            debug(DBG_INFO, "tlsconnect: retry connecting to %s", server->conf->name);
-        } else {
-            gettimeofday(&start, NULL);
+        gettimeofday(&now, NULL);
+        if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
+            debug(DBG_DBG, "tlsconnect: timeout");
+            return 0;
         }
-        /* done sleeping */
 
-        debug(DBG_WARN, "dtlsconnect: trying to open DTLS connection to %s port %s", hp->host, hp->port);
+        debug(DBG_INFO, "dtlsconnect: connecting to %s port %s", hp->host, hp->port);
 
         if ((server->sock = bindtoaddr(srcres, hp->addrinfo->ai_family, 0)) < 0)
             continue;
@@ -605,7 +601,7 @@ int dtlsconnect(struct server *server, struct timeval *when, int timeout, char *
 
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
-    gettimeofday(&server->lastconnecttry, NULL);
+    gettimeofday(&server->connecttime, NULL);
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
     server->conreset = 1;
@@ -647,11 +643,8 @@ int clientradputdtls(struct server *server, unsigned char *rad) {
 void *dtlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
-    struct timeval lastconnecttry;
 
     for (;;) {
-	/* yes, lastconnecttry is really necessary */
-	lastconnecttry = server->lastconnecttry;
     buf = raddtlsget(server->ssl, 5, &server->lock);
 	if (!buf) {
         if(SSL_get_shutdown(server->ssl) || server->lostrqs) {
@@ -659,7 +652,7 @@ void *dtlsclientrd(void *arg) {
                 debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
             else if (server->lostrqs)
                 debug (DBG_WARN, "dtlsclientrd: server %s did not respond, closing connection.", server->conf->name);
-    	    dtlsconnect(server, &lastconnecttry, 0, "dtlsclientrd");
+    	    dtlsconnect(server, 0, "dtlsclientrd");
             server->lostrqs = 0;
         }
 	    continue;
