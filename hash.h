@@ -4,6 +4,7 @@
 #ifndef SYS_SOLARIS9
 #include <stdint.h>
 #endif
+#include <pthread.h>
 
 struct hash {
     struct list *hashlist;

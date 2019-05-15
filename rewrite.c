@@ -456,27 +456,33 @@ int replacesubtlv(struct tlv *vendortlv, uint8_t *p, struct tlv *newtlv) {
 }
 
 int dorewritemodvattr(struct tlv *vendortlv, struct modattr *modvattr) {
-    uint8_t *p;
     struct tlv *tmpattr;
+    int offset;
 
     if (vendortlv->l <= 4 || !attrvalidate(vendortlv->v+4, vendortlv->l-4))
         return 0;
-    for (p = vendortlv->v+4; p < (vendortlv->v + vendortlv->l); p = p+ATTRLEN(p)) {
-        if (ATTRTYPE(p) == modvattr->t) {
-            tmpattr = maketlv(ATTRTYPE(p), ATTRVALLEN(p), ATTRVAL(p));
+    for (offset = 4; offset < vendortlv->l; offset += ATTRLEN(vendortlv->v+offset)) {
+        if (ATTRTYPE(vendortlv->v+offset) == modvattr->t) {
+            tmpattr = maketlv(ATTRTYPE(vendortlv->v+offset), ATTRVALLEN(vendortlv->v+offset), ATTRVAL(vendortlv->v+offset));
             if (dorewritemodattr(tmpattr, modvattr)) {
-                int size_diff = tmpattr->l - ATTRVALLEN(p);
-                uint8_t *next_attr = p+ATTRLEN(p);
-                uint8_t rem_size = (vendortlv->v + vendortlv->l) - next_attr;
+                int size_diff = tmpattr->l - ATTRVALLEN(vendortlv->v+offset);
+                int rem_size = vendortlv->l - offset - ATTRLEN(vendortlv->v+offset);
+                uint8_t *next;
 
-                if (size_diff < 0)
-                    memmove(next_attr + size_diff, next_attr, rem_size);
-                if (!resizeattr(vendortlv, vendortlv->l+size_diff))
-                    return 0;
                 if (size_diff > 0)
-                    memmove(next_attr + size_diff, next_attr, rem_size);
+                    if (!resizeattr(vendortlv, vendortlv->l+size_diff)) {
+                        freetlv(tmpattr);
+                        return 0;
+                    }
+                next = vendortlv->v + offset + ATTRLEN(vendortlv->v+offset);
+                memmove(next + size_diff, next, rem_size);
+                if (size_diff < 0)
+                    if (!resizeattr(vendortlv, vendortlv->l+size_diff)) {
+                        freetlv(tmpattr);
+                        return 0;
+                    }
 
-                tlv2buf(p, tmpattr);
+                tlv2buf(vendortlv->v+offset, tmpattr);
             } else {
                 freetlv(tmpattr);
                 return 0;
