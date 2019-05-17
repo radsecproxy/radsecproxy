@@ -10,24 +10,23 @@ int test_resize(int start_size, int target_size, uint8_t shouldfail) {
 
     uint8_t *value = malloc(start_size);
     struct tlv *attr;
+    int result = 1;
 
     memset(value, 42, start_size);
     attr = maketlv(1,start_size,value);
 
     if (!resizeattr(attr, target_size))
-        return shouldfail;
+        result = shouldfail;
     else if (shouldfail)
-        return 0;
-
-    if (attr->l != target_size)
-        return 0;
-
-    if (memcmp(attr->v, value, target_size <= start_size ? target_size : start_size))
-        return 0;
+        result = 0;
+    else if (attr->l != target_size)
+        result = 0;
+    else if (memcmp(attr->v, value, target_size <= start_size ? target_size : start_size))
+        result = 0;
 
     freetlv(attr);
     free(value);
-    return 1;
+    return result;
 }
 
 int main (int argc, char *argv[])

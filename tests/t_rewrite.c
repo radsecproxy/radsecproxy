@@ -46,14 +46,20 @@ void _list_clear(struct list *list) {
         free(data);
 }
 
+void _tlv_list_clear(struct list *list) {
+    struct tlv *tlv;
+    while ( (tlv = (struct tlv *)list_shift(list)) )
+        freetlv(tlv);
+}
+
 void _reset_rewrite(struct rewrite *rewrite) {
     rewrite->whitelist_mode = 0;
     rewrite->removeattrs = NULL;
     rewrite->removevendorattrs = NULL;
-    _list_clear(rewrite->addattrs);
+    _tlv_list_clear(rewrite->addattrs);
     _list_clear(rewrite->modattrs);
     _list_clear(rewrite->modvattrs);
-    _list_clear(rewrite->supattrs);
+    _tlv_list_clear(rewrite->supattrs);
 }
 
 int
@@ -87,8 +93,8 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - empty rewrite\n", testcount++);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -105,8 +111,8 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - removeattrs\n", testcount++);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -126,8 +132,8 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - removevendorattrs full\n", testcount++);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -147,8 +153,8 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - removevendorattrs last element\n", testcount++);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -165,8 +171,8 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - removevendorattrs non-rfc\n", testcount++);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -192,8 +198,8 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - removevendorattrs sub-attribute\n", testcount++);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -208,8 +214,8 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - addattribute simple\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -230,8 +236,8 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - addattribute with existing attributes\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -244,8 +250,8 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - addattribute null\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -261,8 +267,8 @@ main (int argc, char *argv[])
         printf("ok %d - addattribute too big\n", testcount++);
 
         free(value);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -277,8 +283,8 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - suppattrs non existing\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -295,8 +301,8 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - suppattrs existing\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -315,8 +321,8 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - suppattrs vendor\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -340,8 +346,9 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - modify attribute no match\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        regfree(&regex);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -365,8 +372,9 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - modify attribute match full replace\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        regfree(&regex);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -390,8 +398,9 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - modify attribute match full replace\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        regfree(&regex);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -421,8 +430,9 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - modify attribute max length\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        regfree(&regex);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -444,8 +454,9 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - modify attribute too long\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        regfree(&regex);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -468,8 +479,9 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - modify attribute regex replace\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        regfree(&regex);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -494,8 +506,9 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - modify vendor\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        regfree(&regex);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -526,8 +539,9 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - modify vendor too long\n", testcount++);
 
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        regfree(&regex);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -546,8 +560,8 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - whitelistattrs\n", testcount++);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
 
     }
@@ -571,8 +585,8 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - whitelistvendorattrs\n", testcount++);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -598,8 +612,8 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - whitelistvendorattrs\n", testcount++);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
@@ -624,11 +638,17 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - whitelistvendorattrs\n", testcount++);
-        _list_clear(origattrs);
-        _list_clear(expectedattrs);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
     }
 
+    list_destroy(origattrs);
+    list_destroy(expectedattrs);
+    list_destroy(rewrite.addattrs);
+    list_destroy(rewrite.modattrs);
+    list_destroy(rewrite.modvattrs);
+    list_destroy(rewrite.supattrs);
 
     return 0;
 }

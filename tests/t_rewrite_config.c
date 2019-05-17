@@ -48,6 +48,7 @@ main (int argc, char *argv[])
         printf("not ok %d - rewrite ocnfig\n", numtests++);
     }
 
+    freetlv(expected);
 
     return 0;
 }
