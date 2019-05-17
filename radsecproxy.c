@@ -1335,24 +1335,28 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
     struct clsrvconf *server, *best = NULL, *first = NULL;
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
-	server = (struct clsrvconf *)entry->data;
-	if (!server->servers)
-	    return server;
-        if (server->servers->state == RSP_SERVER_STATE_FAILING)
+        server = (struct clsrvconf *)entry->data;
+        if (!server->servers)
+            return server;
+            if (server->servers->state == RSP_SERVER_STATE_FAILING)
+                continue;
+        if (!first)
+            first = server;
+        if (server->servers->state == RSP_SERVER_STATE_STARTUP || server->servers->state == RSP_SERVER_STATE_RECONNECTING)
             continue;
-	if (!first)
-	    first = server;
-	if (server->servers->state == RSP_SERVER_STATE_STARTUP || server->servers->state == RSP_SERVER_STATE_RECONNECTING)
-	    continue;
-	if (!server->servers->lostrqs)
-	    return server;
-	if (!best) {
-	    best = server;
-	    continue;
-	}
-	if (server->servers->lostrqs < best->servers->lostrqs)
-	    best = server;
+        if (!server->servers->lostrqs)
+            return server;
+        if (!best) {
+            best = server;
+            continue;
+        }
+        if (server->servers->lostrqs < best->servers->lostrqs)
+            best = server;
     }
+    if (best && best->servers->lostrqs == MAX_LOSTRQS)
+        for (entry = list_first(srvconfs); entry; entry = list_next(entry))
+            if (((struct clsrvconf *)entry->data)->servers->lostrqs == MAX_LOSTRQS)
+                ((struct clsrvconf *)entry->data)->servers->lostrqs--;
     return best ? best : first;
 }
 
@@ -1919,7 +1923,7 @@ void *clientwr(void *arg) {
             if (conf->statusserver == RSP_STATSRV_ON || conf->statusserver == RSP_STATSRV_MINIMAL) {
                 if (*rqout->rq->buf == RAD_Status_Server) {
                     debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->name);
-                    if (server->lostrqs < 255)
+                    if (server->lostrqs < MAX_LOSTRQS)
                         server->lostrqs++;
                 }
             } else {
@@ -1930,7 +1934,7 @@ void *clientwr(void *arg) {
                     }
                 } else {
                     debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->name);
-                    if (server->lostrqs < 255)
+                    if (server->lostrqs < MAX_LOSTRQS)
                         server->lostrqs++;
                 }
             }
@@ -1945,7 +1949,8 @@ void *clientwr(void *arg) {
 	    rqout->tries++;
 	    if (!conf->pdef->clientradput(server, rqout->rq->buf)) {
             debug(DBG_WARN, "clientwr: could not send request to server %s", conf->name);
-            server->lostrqs++;
+            if (server->lostrqs < MAX_LOSTRQS)
+                server->lostrqs++;
         }
 	    pthread_mutex_unlock(rqout->lock);
 	}
