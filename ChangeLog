@@ -9,6 +9,7 @@ changes since 1.7.2
 
 	Compile fixes:
 	- Fix compile issues on bsd
+	- Fix server selection when udp were unreachable for long periods
 
 2018-09-03 1.7.2
 	Misc:
