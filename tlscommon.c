@@ -734,6 +734,13 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
             ok = 0;
         }
     }
+    if (conf->certdnsregex) {
+        debug(DBG_DBG, "verifyconfcert: matching subjectaltname DNS regex %s", conf->matchcertattr);
+        if (subjectaltnameregexp(cert, GEN_DNS, NULL, conf->certdnsregex) < 1) {
+            debug(DBG_WARN, "verifyconfcert: subjectaltname DNS not matching regex for host %s (%s)", conf->name, subject);
+            ok = 0;
+        }
+    }
     free(subject);
     return ok;
 }
@@ -815,31 +822,36 @@ int addmatchcertattr(struct clsrvconf *conf) {
     regex_t **r;
 
     if (!strncasecmp(conf->matchcertattr, "CN:/", 4)) {
-	r = &conf->certcnregex;
-	v = conf->matchcertattr + 4;
+        r = &conf->certcnregex;
+        v = conf->matchcertattr + 4;
     } else if (!strncasecmp(conf->matchcertattr, "SubjectAltName:URI:/", 20)) {
-	r = &conf->certuriregex;
-	v = conf->matchcertattr + 20;
-    } else
-	return 0;
+        r = &conf->certuriregex;
+        v = conf->matchcertattr + 20;
+    } else if (!strncasecmp(conf->matchcertattr, "SubjectAltName:DNS:/", 20)) {
+        r = &conf->certdnsregex;
+        v = conf->matchcertattr + 20;
+    }
+    else
+        return 0;
+
     if (!*v)
-	return 0;
+        return 0;
     /* regexp, remove optional trailing / if present */
     if (v[strlen(v) - 1] == '/')
-	v[strlen(v) - 1] = '\0';
+        v[strlen(v) - 1] = '\0';
     if (!*v)
-	return 0;
+        return 0;
 
     *r = malloc(sizeof(regex_t));
     if (!*r) {
-	debug(DBG_ERR, "malloc failed");
-	return 0;
+        debug(DBG_ERR, "malloc failed");
+        return 0;
     }
     if (regcomp(*r, v, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
-	free(*r);
-	*r = NULL;
-	debug(DBG_ERR, "failed to compile regular expression %s", v);
-	return 0;
+        free(*r);
+        *r = NULL;
+        debug(DBG_ERR, "failed to compile regular expression %s", v);
+        return 0;
     }
     return 1;
 }

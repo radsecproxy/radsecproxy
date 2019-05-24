@@ -148,6 +148,7 @@ struct clsrvconf {
     char *matchcertattr;
     regex_t *certcnregex;
     regex_t *certuriregex;
+    regex_t *certdnsregex;
     char *confrewritein;
     char *confrewriteout;
     char *confrewriteusername;
