@@ -2724,7 +2724,7 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
     return 1;
 }
 
-int setprotoopts(uint8_t type, char **listenargs, char *sourcearg) {
+int setprotoopts(uint8_t type, char **listenargs, char **sourcearg) {
     struct commonprotoopts *protoopts;
 
     protoopts = malloc(sizeof(struct commonprotoopts));
@@ -2741,7 +2741,7 @@ void getmainconfig(const char *configfile) {
     long int addttl = LONG_MIN, loglevel = LONG_MIN;
     struct gconffile *cfs;
     char **listenargs[RAD_PROTOCOUNT];
-    char *sourcearg[RAD_PROTOCOUNT];
+    char **sourceargs[RAD_PROTOCOUNT];
     char *log_mac_str = NULL;
     char *log_key_str = NULL;
     uint8_t *fticks_reporting_str = NULL;
@@ -2752,7 +2752,7 @@ void getmainconfig(const char *configfile) {
     cfs = openconfigfile(configfile);
     memset(&options, 0, sizeof(options));
     memset(&listenargs, 0, sizeof(listenargs));
-    memset(&sourcearg, 0, sizeof(sourcearg));
+    memset(&sourceargs, 0, sizeof(sourceargs));
     options.logfullusername = 1;
 
     clconfs = list_create();
@@ -2771,19 +2771,19 @@ void getmainconfig(const char *configfile) {
 	    &cfs, NULL,
 #ifdef RADPROT_UDP
 	    "ListenUDP", CONF_MSTR, &listenargs[RAD_UDP],
-	    "SourceUDP", CONF_STR, &sourcearg[RAD_UDP],
+	    "SourceUDP", CONF_MSTR, &sourceargs[RAD_UDP],
 #endif
 #ifdef RADPROT_TCP
 	    "ListenTCP", CONF_MSTR, &listenargs[RAD_TCP],
-	    "SourceTCP", CONF_STR, &sourcearg[RAD_TCP],
+	    "SourceTCP", CONF_MSTR, &sourceargs[RAD_TCP],
 #endif
 #ifdef RADPROT_TLS
 	    "ListenTLS", CONF_MSTR, &listenargs[RAD_TLS],
-	    "SourceTLS", CONF_STR, &sourcearg[RAD_TLS],
+	    "SourceTLS", CONF_MSTR, &sourceargs[RAD_TLS],
 #endif
 #ifdef RADPROT_DTLS
 	    "ListenDTLS", CONF_MSTR, &listenargs[RAD_DTLS],
-	    "SourceDTLS", CONF_STR, &sourcearg[RAD_DTLS],
+	    "SourceDTLS", CONF_MSTR, &sourceargs[RAD_DTLS],
 #endif
             "PidFile", CONF_STR, &options.pidfile,
 	    "TTLAttribute", CONF_STR, &options.ttlattr,
@@ -2859,8 +2859,8 @@ void getmainconfig(const char *configfile) {
 		     &fticks_key_str);
 
     for (i = 0; i < RAD_PROTOCOUNT; i++)
-	if (listenargs[i] || sourcearg[i])
-	    setprotoopts(i, listenargs[i], sourcearg[i]);
+	if (listenargs[i] || sourceargs[i])
+	    setprotoopts(i, listenargs[i], sourceargs[i]);
 }
 
 void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8_t *loglevel, char **configfile, char **pidfile) {

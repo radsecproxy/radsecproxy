@@ -221,14 +221,27 @@ int resolvehostports(struct list *hostports, int af, int socktype) {
     return 1;
 }
 
-struct addrinfo *resolvepassiveaddrinfo(char *hostport, int af, char *default_port, int socktype) {
-    struct addrinfo *ai = NULL;
-    struct hostportres *hp = newhostport(hostport, default_port, 0);
-    if (hp && resolvehostport(hp, af, socktype, 1)) {
-	ai = hp->addrinfo;
-	hp->addrinfo = NULL;
+struct addrinfo *resolvepassiveaddrinfo(char **hostport, int af, char *default_port, int socktype) {
+    struct addrinfo *ai = NULL, *last_ai;
+    int i;
+    char *any[2] = {"*", NULL};
+
+    if(!hostport)
+        hostport = any;
+
+    for (i = 0; hostport[i]; i++) {
+        struct hostportres *hp = newhostport(hostport[i], default_port, 0);
+        if (hp && resolvehostport(hp, af, socktype, 1)) {
+            if (!ai) {
+                ai = last_ai = hp->addrinfo;
+            } else {
+                last_ai->ai_next = hp->addrinfo;
+                last_ai = last_ai->ai_next;
+            }
+            hp->addrinfo = NULL;
+            freehostport(hp);
+        }
     }
-    freehostport(hp);
     return ai;
 }
 

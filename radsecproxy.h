@@ -104,7 +104,7 @@ struct options {
 
 struct commonprotoopts {
     char **listenargs;
-    char *sourcearg;
+    char **sourcearg;
 };
 
 struct request {
