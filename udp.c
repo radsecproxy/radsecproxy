@@ -317,27 +317,38 @@ void addclientudp(struct client *client) {
 }
 
 void addserverextraudp(struct clsrvconf *conf) {
+    struct addrinfo *source = NULL;
+ 
     assert(list_first(conf->hostports) != NULL);
-    switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
-    case AF_INET:
-	if (client4_sock < 0) {
-	    client4_sock = bindtoaddr(srcres, AF_INET, 0);
-	    if (client4_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
-	}
-	conf->servers->sock = client4_sock;
-	break;
-    case AF_INET6:
-	if (client6_sock < 0) {
-	    client6_sock = bindtoaddr(srcres, AF_INET6, 0);
-	    if (client6_sock < 0)
-		debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
-	}
-	conf->servers->sock = client6_sock;
-	break;
-    default:
-	debugx(1, DBG_ERR, "addserver: unsupported address family");
+ 
+    if(conf->source) {
+        source = resolvepassiveaddrinfo(conf->source, AF_UNSPEC, NULL, protodefs.socktype);
+        if(!source)
+            debug(DBG_WARN, "addserver: could not resolve source address to bind for server %s, using default", conf->name);
     }
+
+    switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
+        case AF_INET:
+            if (client4_sock < 0) {
+                client4_sock = bindtoaddr(source ? source : srcres, AF_INET, 0);
+                if (client4_sock < 0)
+                debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
+            }
+            conf->servers->sock = client4_sock;
+            break;
+        case AF_INET6:
+            if (client6_sock < 0) {
+                client6_sock = bindtoaddr(source ? source : srcres, AF_INET6, 0);
+                if (client6_sock < 0)
+                debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
+            }
+            conf->servers->sock = client6_sock;
+            break;
+        default:
+            debugx(1, DBG_ERR, "addserver: unsupported address family");
+    }
+    if (source)
+        freeaddrinfo(source);
 }
 
 void initextraudp() {

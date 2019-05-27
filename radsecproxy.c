@@ -2518,28 +2518,29 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 
     if (!getgenericconfig(cf, block,
-			  "type", CONF_STR, &conftype,
-			  "host", CONF_MSTR, &conf->hostsrc,
+            "type", CONF_STR, &conftype,
+            "host", CONF_MSTR, &conf->hostsrc,
                           "IPv4Only", CONF_BLN, &ipv4only,
                           "IPv6Only", CONF_BLN, &ipv6only,
-			  "port", CONF_STR, &conf->portsrc,
-			  "secret", CONF_STR_NOESC, &conf->confsecret,
+            "port", CONF_STR, &conf->portsrc,
+            "source", CONF_MSTR, &conf->source,
+            "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-			  "tls", CONF_STR, &conf->tls,
-			  "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
-			  "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+            "tls", CONF_STR, &conf->tls,
+            "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
+            "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
-			  "addTTL", CONF_LINT, &addttl,
-              "tcpKeepalive", CONF_BLN, &conf->keepalive,
-			  "rewrite", CONF_STR, &rewriteinalias,
-			  "rewriteIn", CONF_STR, &conf->confrewritein,
-			  "rewriteOut", CONF_STR, &conf->confrewriteout,
-			  "StatusServer", CONF_STR, &statusserver,
-			  "RetryInterval", CONF_LINT, &retryinterval,
-			  "RetryCount", CONF_LINT, &retrycount,
-			  "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
-			  "LoopPrevention", CONF_BLN, &conf->loopprevention,
-			  NULL
+            "addTTL", CONF_LINT, &addttl,
+            "tcpKeepalive", CONF_BLN, &conf->keepalive,
+            "rewrite", CONF_STR, &rewriteinalias,
+            "rewriteIn", CONF_STR, &conf->confrewritein,
+            "rewriteOut", CONF_STR, &conf->confrewriteout,
+            "StatusServer", CONF_STR, &statusserver,
+            "RetryInterval", CONF_LINT, &retryinterval,
+            "RetryCount", CONF_LINT, &retrycount,
+            "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
+            "LoopPrevention", CONF_BLN, &conf->loopprevention,
+            NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");
 	goto errexit;
