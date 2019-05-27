@@ -90,12 +90,20 @@ int tlsconnect(struct server *server, int timeout, char *text) {
     SSL_CTX *ctx = NULL;
     unsigned long error;
     int origflags;
+    struct addrinfo *source = NULL;
 
     debug(DBG_DBG, "tlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
     pthread_mutex_unlock(&server->lock);
+
+    if(server->conf->source) {
+        source = resolvepassiveaddrinfo(server->conf->source, AF_UNSPEC, NULL, protodefs.socktype);
+        if(!source)
+            debug(DBG_WARN, "tlsconnect: could not resolve source address to bind for server %s, using default", server->conf->name);
+    }
+
     gettimeofday(&start, NULL);
 
     for (;;) {
@@ -116,11 +124,12 @@ int tlsconnect(struct server *server, int timeout, char *text) {
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
             debug(DBG_DBG, "tlsconnect: timeout");
+            if (source) freeaddrinfo(source);
             return 0;
         }
 
         debug(DBG_INFO, "tlsconnect: connecting to %s", server->conf->name);
-        if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
+        if ((server->sock = connecttcphostlist(server->conf->hostports, source ? source : srcres)) < 0)
             continue;
         if (server->conf->keepalive)
             enable_keepalive(server->sock);
@@ -171,6 +180,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
     server->conreset = 1;
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
+    if (source) freeaddrinfo(source);
     return 1;
 }
 

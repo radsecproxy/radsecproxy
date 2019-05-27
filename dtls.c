@@ -523,6 +523,7 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
     struct hostportres *hp;
     unsigned long error;
     BIO *bio;
+    struct addrinfo *source = NULL;
 
     debug(DBG_DBG, "dtlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -533,6 +534,13 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
     pthread_mutex_unlock(&server->lock);
 
     hp = (struct hostportres *)list_first(server->conf->hostports)->data;
+
+    if(server->conf->source) {
+        source = resolvepassiveaddrinfo(server->conf->source, AF_UNSPEC, NULL, protodefs.socktype);
+        if(!source)
+            debug(DBG_WARN, "dtlsconnect: could not resolve source address to bind for server %s, using default", server->conf->name);
+    }
+
     gettimeofday(&start, NULL);
 
     for (;;) {
@@ -553,12 +561,13 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
             debug(DBG_DBG, "tlsconnect: timeout");
+            if (source) freeaddrinfo(source);
             return 0;
         }
 
         debug(DBG_INFO, "dtlsconnect: connecting to %s port %s", hp->host, hp->port);
 
-        if ((server->sock = bindtoaddr(srcres, hp->addrinfo->ai_family, 0)) < 0)
+        if ((server->sock = bindtoaddr(source ? source : srcres, hp->addrinfo->ai_family, 0)) < 0)
             continue;
         if (connect(server->sock, hp->addrinfo->ai_addr, hp->addrinfo->ai_addrlen))
             continue;
@@ -607,6 +616,7 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
     server->conreset = 1;
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
+    if (source) freeaddrinfo(source);
     return 1;
 }
 
