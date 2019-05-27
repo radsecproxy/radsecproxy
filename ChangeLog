@@ -1,4 +1,8 @@
 chanes since 1.8.1
+	New features:
+	- Accept multiple source* configs for IPv4/v6
+	- Specify source per server
+
 	Bug fixes:
 	- Fix wrong config-unhexing if %25 (%) occurs
 

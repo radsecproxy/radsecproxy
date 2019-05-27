@@ -531,6 +531,12 @@ Specify the \fIport\fR (UDP/TCP) to connect to. If omitted, UDP and TCP will
 default to 1812 while TLS and DTLS will default to 2083.
 .RE
 
+.BI "Source (" address | \fR* )[\fR: port ]
+.RS
+Specify the source address and/or port to use for this server. See \fBSource...\fR 
+options above.
+.RE
+
 .BI "DynamicLookupCommand " command
 .RS
 Execude the \fIcommand\fR to dynamically configure a server. The executable file

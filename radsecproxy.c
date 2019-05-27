@@ -2166,6 +2166,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
     if (conf->hostsrc)
 	freegconfmstr(conf->hostsrc);
     free(conf->portsrc);
+    freegconfmstr(conf->source);
     free(conf->confsecret);
     free(conf->secret);
     free(conf->tls);
@@ -2260,6 +2261,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     if (!mergeconfstring(&dst->name, &src->name) ||
 	!mergeconfmstring(&dst->hostsrc, &src->hostsrc) ||
 	!mergeconfstring(&dst->portsrc, &src->portsrc) ||
+    !mergeconfmstring(&dst->source, &src->source) ||
 	!mergeconfstring(&dst->confsecret, &src->confsecret) ||
 	!mergeconfstring(&dst->tls, &src->tls) ||
 	!mergeconfstring(&dst->matchcertattr, &src->matchcertattr) ||
