@@ -26,6 +26,7 @@ int popgconf(struct gconffile **cf);
 void freegconfmstr(char **mstr);
 void freegconf(struct gconffile **cf);
 struct gconffile *openconfigfile(const char *file);
+int unhex(char *s, uint8_t process_null);
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

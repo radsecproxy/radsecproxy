@@ -105,16 +105,16 @@ uint8_t *tlv2str(struct tlv *tlv) {
     return s;
 }
 
-uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
-    *p++ = tlv->t;
-    *p++ = tlv->l;
-    if (tlv->l) {
-	if (tlv->v)
-	    memcpy(p, tlv->v, tlv->l);
-	else
-	    memset(p, 0, tlv->l);
+struct tlv *resizetlv(struct tlv *tlv, uint8_t newlen) {
+    uint8_t *newv;
+    if (newlen != tlv->l) {
+        newv = realloc(tlv->v, newlen);
+        if (newlen && !newv)
+            return NULL;
+        tlv->v = newv;
+        tlv->l = newlen;
     }
-    return p;
+    return tlv;
 }
 
 /* Local Variables: */

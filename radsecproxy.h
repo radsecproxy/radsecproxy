@@ -7,9 +7,9 @@
 #include <pthread.h>
 #include <regex.h>
 #include "list.h"
-#include "tlv11.h"
 #include "radmsg.h"
 #include "gconfig.h"
+#include "rewrite.h"
 
 #define DEBUG_LEVEL 2
 
@@ -143,7 +143,9 @@ struct clsrvconf {
     int hostaf;
     char *portsrc;
     struct list *hostports;
-    char *secret;
+    char *confsecret;
+    uint8_t *secret;
+    int secret_len;
     char *tls;
     char *matchcertattr;
     regex_t *certcnregex;
@@ -219,19 +221,6 @@ struct realm {
     struct list *accsrvconfs;
 };
 
-struct modattr {
-    uint8_t t;
-    char *replacement;
-    regex_t *regex;
-};
-
-struct rewrite {
-    uint8_t *removeattrs;
-    uint32_t *removevendorattrs;
-    struct list *addattrs;
-    struct list *modattrs;
-};
-
 struct protodefs {
     char *name;
     char *secretdefault;
@@ -256,11 +245,6 @@ struct protodefs {
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
 
-#define ATTRTYPE(x) ((x)[0])
-#define ATTRLEN(x) ((x)[1])
-#define ATTRVAL(x) ((x) + 2)
-#define ATTRVALLEN(x) ((x)[1] - 2)
-
 struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
@@ -273,7 +257,7 @@ void freerq(struct request *rq);
 int radsrv(struct request *rq);
 void replyh(struct server *server, unsigned char *buf);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);
-uint8_t *radattr2ascii(struct tlv *attr);
+uint8_t *radattr2ascii(struct tlv *attr); /* TODO: mv this to radmsg? */
 pthread_attr_t pthread_attr;
 
 /* Local Variables: */

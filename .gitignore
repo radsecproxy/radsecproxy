@@ -22,6 +22,10 @@ TAGS
 radsecproxy
 radsecproxy-conf
 radsecproxy-hash
+build-aux/*
 tests/t_fticks
+tests/t_rewrite
+tests/t_rewrite_config
+tests/t_resizeattr
 tests/*.log
 tests/*.trs
