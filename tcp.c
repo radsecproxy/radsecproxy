@@ -83,12 +83,19 @@ int tcpconnect(struct server *server, int timeout, char *text) {
     struct timeval now, start;
     int firsttry = 1;
     time_t wait;
+    struct addrinfo *source = NULL;
 
     debug(DBG_DBG, "tcpconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
 
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
+
+    if(server->conf->source) {
+        source = resolvepassiveaddrinfo(server->conf->source, AF_UNSPEC, NULL, protodefs.socktype);
+        if(!source)
+            debug(DBG_WARN, "tcpconnect: could not resolve source address to bind for server %s, using default", server->conf->name);
+    }
 
     gettimeofday(&start, NULL);
 
@@ -106,12 +113,13 @@ int tcpconnect(struct server *server, int timeout, char *text) {
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
             debug(DBG_DBG, "tcpconnect: timeout");
+            if (source) freeaddrinfo(source);
             return 0;
         }
         pthread_mutex_lock(&server->lock);
 
         debug(DBG_INFO, "tcpconnect: connecting to %s", server->conf->name);
-        if ((server->sock = connecttcphostlist(server->conf->hostports, srcres)) < 0)
+        if ((server->sock = connecttcphostlist(server->conf->hostports, source ? source : srcres)) < 0)
             continue;
         if (server->conf->keepalive)
             enable_keepalive(server->sock);
@@ -125,6 +133,8 @@ int tcpconnect(struct server *server, int timeout, char *text) {
     server->conreset = 1;
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
+
+    if (source) freeaddrinfo(source);
     return 1;
 }
 
