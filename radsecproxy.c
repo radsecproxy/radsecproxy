@@ -551,7 +551,7 @@ void sendreply(struct request *rq) {
     pthread_mutex_unlock(&to->replyq->mutex);
 }
 
-static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth) {
+static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt, uint8_t saltlen) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct md5_ctx mdctx;
     unsigned char hash[MD5_DIGEST_SIZE], *input;
@@ -562,18 +562,22 @@ static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared
     md5_init(&mdctx);
     input = auth;
     for (;;) {
-	md5_update(&mdctx, sharedlen, shared);
+        md5_update(&mdctx, sharedlen, shared);
         md5_update(&mdctx, 16, input);
+        if (salt) {
+            md5_update(&mdctx, saltlen, salt);
+            salt = NULL;
+        }
         md5_digest(&mdctx, sizeof(hash), hash);
-	for (i = 0; i < 16; i++)
-	    out[offset + i] = hash[i] ^ in[offset + i];
-	if (encrypt_flag)
-	    input = out + offset;
-	else
-	    input = in + offset;
-	offset += 16;
-	if (offset == len)
-	    break;
+        for (i = 0; i < 16; i++)
+            out[offset + i] = hash[i] ^ in[offset + i];
+        if (encrypt_flag)
+            input = out + offset;
+        else
+            input = in + offset;
+        offset += 16;
+        if (offset == len)
+            break;
     }
     memcpy(in, out, len);
 
@@ -787,20 +791,21 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
     }
 }
 
-int pwdrecrypt(uint8_t *pwd, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
+int pwdrecrypt(uint8_t *pwd, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth,
+                uint8_t *oldsalt, uint8_t oldsaltlen, uint8_t *newsalt, uint8_t newsaltlen) {
     if (len < 16 || len > 128 || len % 16) {
 	debug(DBG_WARN, "pwdrecrypt: invalid password length");
 	return 0;
     }
 
-    if (!pwdcrypt(0, pwd, len, oldsecret, oldsecret_len, oldauth)) {
+    if (!pwdcrypt(0, pwd, len, oldsecret, oldsecret_len, oldauth, oldsalt, oldsaltlen)) {
 	debug(DBG_WARN, "pwdrecrypt: cannot decrypt password");
 	return 0;
     }
 #ifdef DEBUG
     printfchars(NULL, "pwdrecrypt: password", "%02x ", pwd, len);
 #endif
-    if (!pwdcrypt(1, pwd, len, newsecret, newsecret_len, newauth)) {
+    if (!pwdcrypt(1, pwd, len, newsecret, newsecret_len, newauth, newsalt, newsaltlen)) {
 	debug(DBG_WARN, "pwdrecrypt: cannot encrypt password");
 	return 0;
     }
@@ -1347,16 +1352,21 @@ int radsrv(struct request *rq) {
 
     attr = radmsg_gettype(msg, RAD_Attr_User_Password);
     if (attr) {
-	debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attr->l);
-	if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len, rq->rqauth, msg->auth))
-	    goto rmclrqexit;
+        debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attr->l);
+        if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len, rq->rqauth, msg->auth, NULL, 0, NULL, 0))
+            goto rmclrqexit;
     }
 
     attr = radmsg_gettype(msg, RAD_Attr_Tunnel_Password);
     if (attr) {
-	debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", attr->l);
-	if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len, rq->rqauth, msg->auth))
-	    goto rmclrqexit;
+        uint8_t newsalt[2];
+        debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", attr->l);
+        if (!RAND_bytes(newsalt,2))
+            goto rmclrqexit;
+        newsalt[0] |= 0x80;
+        if (!pwdrecrypt(attr->v+3, attr->l-3, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len, rq->rqauth, msg->auth, attr->v+1, 2, newsalt, 2))
+            goto rmclrqexit;
+        memcpy(attr->v+1, newsalt, 2);
     }
 
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
