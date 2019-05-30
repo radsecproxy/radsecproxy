@@ -1,4 +1,4 @@
-changes since 1.7.2
+20190531 1.8.0-beta
 	New features:
 	- Rewrite: supplement attribute (add attribute if not present) (#19)
 	- Rewrite: modify vendor attribute
@@ -12,10 +12,10 @@ changes since 1.7.2
 
 	Compile fixes:
 	- Fix compile issues on bsd
-	- Fix server selection when udp were unreachable for long periods
 
 	Bug fixes:
 	- Handle %00 in config correctly (#31)
+	- Fix server selection when udp were unreachable for long periods
 
 2018-09-03 1.7.2
 	Misc:

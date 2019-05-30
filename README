@@ -1,4 +1,4 @@
-This is radsecproxy 1.7.2.
+This is radsecproxy 1.8.0-beta
 
 radsecproxy is a generic RADIUS proxy that supports both UDP and TLS
 (RadSec) RADIUS transports.  There is also experimental support for
