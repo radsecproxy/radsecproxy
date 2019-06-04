@@ -3,8 +3,8 @@ dnl Copyright (c) 2010-2013,2016, NORDUnet A/S
 dnl See LICENSE for licensing information.
 
 AC_INIT(radsecproxy, 1.8.0-beta, https://radsecproxy.github.io)
-AC_CANONICAL_TARGET
 AC_CONFIG_AUX_DIR([build-aux])
+AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
 AC_PROG_CC
 AC_PROG_RANLIB
