@@ -2,7 +2,7 @@ changes since 1.7.2
 	New features:
 	- Autodetect status-server capability of servers
 	- Minimalistic status-server
-	- Explicit SubjectAltName:DNS match on certificates
+	- Explicit SubjectAltName:DNS and :IP match on certificates
 
 	Misc:
 	- No longer require docbook2x tools, but include plain manpages
