@@ -152,7 +152,7 @@ struct clsrvconf {
     regex_t *certcnregex;
     regex_t *certuriregex;
     regex_t *certdnsregex;
-    in6_addr_t certipmatch;
+    struct in6_addr certipmatch;
     int certipmatchaf;
     char *confrewritein;
     char *confrewriteout;
