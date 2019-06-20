@@ -709,6 +709,7 @@ int certnamecheck(X509 *cert, struct list *hostports) {
 
 int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     char *subject;
+    char addrbuf[INET6_ADDRSTRLEN];
     int ok = 1;
 
     subject = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
@@ -731,6 +732,20 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
         debug(DBG_DBG, "verifyconfcert: matching subjectaltname URI regex %s", conf->matchcertattr);
         if (subjectaltnameregexp(cert, GEN_URI, NULL, conf->certuriregex) < 1) {
             debug(DBG_WARN, "verifyconfcert: subjectaltname URI not matching regex for host %s (%s)", conf->name, subject);
+            ok = 0;
+        }
+    }
+    if (conf->certdnsregex) {
+        debug(DBG_DBG, "verifyconfcert: matching subjectaltname DNS regex %s", conf->matchcertattr);
+        if (subjectaltnameregexp(cert, GEN_DNS, NULL, conf->certdnsregex) < 1) {
+            debug(DBG_WARN, "verifyconfcert: subjectaltname DNS not matching regex for host %s (%s)", conf->name, subject);
+            ok = 0;
+        }
+    }
+    if (conf->certipmatchaf) {
+        debug(DBG_DBG, "verifyconfcert: matching subjectaltname IP %s", inet_ntop(conf->certipmatchaf, &conf->certipmatch, addrbuf, INET6_ADDRSTRLEN));
+        if (subjectaltnameaddr(cert, conf->certipmatchaf, &conf->certipmatch) < 1) {
+            debug(DBG_WARN, "verifyconfcert: subjectaltname IP not matching regex for host %s (%s)", conf->name, subject);
             ok = 0;
         }
     }
@@ -814,32 +829,48 @@ int addmatchcertattr(struct clsrvconf *conf) {
     char *v;
     regex_t **r;
 
+    if (!strncasecmp(conf->matchcertattr, "SubjectAltName:IP:", 18)) {
+        if (inet_pton(AF_INET, conf->matchcertattr+18, &conf->certipmatch))
+            conf->certipmatchaf = AF_INET;
+        else if (inet_pton(AF_INET6, conf->matchcertattr+18, &conf->certipmatch))
+            conf->certipmatchaf = AF_INET6;
+        else
+            return 0;
+        return 1;
+    }
+
+    /* the other cases below use a common regex match */
     if (!strncasecmp(conf->matchcertattr, "CN:/", 4)) {
-	r = &conf->certcnregex;
-	v = conf->matchcertattr + 4;
+        r = &conf->certcnregex;
+        v = conf->matchcertattr + 4;
     } else if (!strncasecmp(conf->matchcertattr, "SubjectAltName:URI:/", 20)) {
-	r = &conf->certuriregex;
-	v = conf->matchcertattr + 20;
-    } else
-	return 0;
+        r = &conf->certuriregex;
+        v = conf->matchcertattr + 20;
+    } else if (!strncasecmp(conf->matchcertattr, "SubjectAltName:DNS:/", 20)) {
+        r = &conf->certdnsregex;
+        v = conf->matchcertattr + 20;
+    }
+    else
+        return 0;
+
     if (!*v)
-	return 0;
+        return 0;
     /* regexp, remove optional trailing / if present */
     if (v[strlen(v) - 1] == '/')
-	v[strlen(v) - 1] = '\0';
+        v[strlen(v) - 1] = '\0';
     if (!*v)
-	return 0;
+        return 0;
 
     *r = malloc(sizeof(regex_t));
     if (!*r) {
-	debug(DBG_ERR, "malloc failed");
-	return 0;
+        debug(DBG_ERR, "malloc failed");
+        return 0;
     }
     if (regcomp(*r, v, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
-	free(*r);
-	*r = NULL;
-	debug(DBG_ERR, "failed to compile regular expression %s", v);
-	return 0;
+        free(*r);
+        *r = NULL;
+        debug(DBG_ERR, "failed to compile regular expression %s", v);
+        return 0;
     }
     return 1;
 }

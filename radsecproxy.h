@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <regex.h>
+#include <netinet/in.h>
 #include "list.h"
 #include "radmsg.h"
 #include "gconfig.h"
@@ -150,6 +151,9 @@ struct clsrvconf {
     char *matchcertattr;
     regex_t *certcnregex;
     regex_t *certuriregex;
+    regex_t *certdnsregex;
+    in6_addr_t certipmatch;
+    int certipmatchaf;
     char *confrewritein;
     char *confrewriteout;
     char *confrewriteusername;

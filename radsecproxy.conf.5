@@ -350,10 +350,11 @@ of the configured clients (in the order they are defined), to determine which
 this might mask clients defined later, which then will never be matched.
 
 In the case of TLS/DTLS, the name of the client must match the FQDN or IP
-address in the client certificate. Note that this is not required when the
-client name is an IP prefix. If overlapping clients are defined (see section
-above), they will be searched for matching \fBMatchCertificateAttribute\fR, but
-they must reference the same tls block.
+address in the client certificate (CN or SubectAltName:DNS or SubjectAltName:IP
+respectively). Note that this is not required when the client name is an IP
+prefix. If overlapping clients are defined (see section above), they will be
+searched for matching \fBMatchCertificateAttribute\fR, but they must reference
+the same tls block.
 
 The allowed options in a client block are:
 
@@ -412,11 +413,13 @@ For a TLS/DTLS client, disable the default behaviour of matching CN or
 SubjectAltName against the specified hostname or IP address.
 .RE
 
-\fBMatchCertificateAttribute ((\fR CN \fB|\fR SubjectAltName:URI \fB) :\fR/\fIregexp\fR/\fB )\fR
+\fBmatchCertificateAttribute (\fR CN \fB|\fR SubjectAltName:URI \fB|\fR SubjectAltName:DNS \fB) :\fR/\fIregexp\fR/
+.br
+\fBMatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
 .RS
-Perform additional validation of certificate attributes. Currently only matching
-of CN and SubjectAltName type URI is supported. Note that currently this option
-can only be specified once in a client block.
+Perform additional validation of certificate attributes. Currently matching
+of CN and SubjectAltName types URI DNS and IP is supported. Note that currently this 
+option can only be specified once in a client block.
 .RE
 
 .BI "DuplicateInterval " seconds
@@ -608,7 +611,9 @@ block. The details are not repeated here. Please refer to the definitions in the
 .br
 .BR "CertificateNameCheck (" on | off )
 .br
-\fBmatchCertificateAttribute ((\fR CN \fB|\fR SubjectAltName:URI \fB) :\fR/\fIregexp\fR/\fB )\fR
+\fBmatchCertificateAttribute (\fR CN \fB|\fR SubjectAltName:URI \fB|\fR SubjectAltName:DNS \fB) :\fR/\fIregexp\fR/
+.br
+\fBMatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
 .br
 .BR "AddTTL " 1-255
 .br

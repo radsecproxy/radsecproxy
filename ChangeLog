@@ -5,6 +5,7 @@
 	- Rewrite whitelist mode
 	- Autodetect status-server capability of servers
 	- Minimalistic status-server
+	- Explicit SubjectAltName:DNS and :IP match on certificates
 
 	Misc:
 	- No longer require docbook2x tools, but include plain manpages
