@@ -15,7 +15,6 @@
 #include <poll.h>
 #include <stdarg.h>
 #include <assert.h>
-#include <sys/time.h>
 #include "debug.h"
 #include "util.h"
 
