@@ -1091,8 +1091,8 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
         server = (struct clsrvconf *)entry->data;
         if (!server->servers)
             return server;
-            if (server->servers->state == RSP_SERVER_STATE_FAILING)
-                continue;
+        if (server->servers->state == RSP_SERVER_STATE_FAILING)
+            continue;
         if (!first)
             first = server;
         if (server->servers->state == RSP_SERVER_STATE_STARTUP || server->servers->state == RSP_SERVER_STATE_RECONNECTING)

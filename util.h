@@ -3,6 +3,7 @@
 /* See LICENSE for licensing information. */
 
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netdb.h>
 
 #define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ?	\
