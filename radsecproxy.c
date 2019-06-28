@@ -2634,7 +2634,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    goto errexit;
 	}
 	conf->confsecret = stringcopy(conf->pdef->secretdefault, 0);
-	if (!conf->secret) {
+	if (!conf->confsecret) {
 	    debug(DBG_ERR, "malloc failed");
 	    goto errexit;
 	}
