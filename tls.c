@@ -347,7 +347,7 @@ void *tlsclientrd(void *arg) {
 	if (!buf) {
         if (SSL_get_shutdown(server->ssl) || server->lostrqs) {
             if (SSL_get_shutdown(server->ssl))
-                debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
+                debug (DBG_WARN, "tlsclientrd: connection to server %s lost", server->conf->name);
             else if (server->lostrqs)
                 debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
             if (server->dynamiclookuparg)
