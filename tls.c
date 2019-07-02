@@ -343,7 +343,7 @@ void *tlsclientrd(void *arg) {
     struct timeval now;
 
     for (;;) {
-	buf = radtlsget(server->ssl, 10, &server->lock);
+	buf = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock);
 	if (!buf) {
         if (SSL_get_shutdown(server->ssl) || server->lostrqs) {
             if (SSL_get_shutdown(server->ssl))
