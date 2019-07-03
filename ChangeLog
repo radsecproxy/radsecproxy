@@ -1,4 +1,4 @@
-20190621 1.8.0-rc1
+20190704 1.8.0
 	New features:
 	- Rewrite: supplement attribute (add attribute if not present) (#19)
 	- Rewrite: modify vendor attribute
