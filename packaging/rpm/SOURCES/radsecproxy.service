@@ -1,0 +1,14 @@
+[Unit]
+Description=generic RADIUS proxy supports TLS (RadSec)
+After=syslog.target network-online.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/radsecproxy/radsecproxy.pid
+ExecStartPre=/sbin/radsecproxy -p
+ExecStart=/sbin/radsecproxy
+User=radsecproxy
+Group=radsecproxy
+
+[Install]
+WantedBy=multi-user.target
