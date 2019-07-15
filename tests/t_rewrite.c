@@ -412,10 +412,10 @@ main (int argc, char *argv[])
         struct modattr *mod = malloc(sizeof(struct modattr));
         regex_t regex;
 
-        for (i=0; i<253; i+=20){
+        for (i=0; i<253-20; i+=20){
             memcpy(value2+i, value, 20);
         }
-        memcpy(value2+i-20, "and another13\0", 14);
+        memcpy(value2+i, "and another13\0", 14);
 
         mod->t = 1;
         mod->regex = &regex;
