@@ -84,7 +84,7 @@ This signal is ignored.
 
 .SH "FILES"
 .TP
-.B /usr/local/etc/radsecproxy.conf
+.B @SYSCONFDIR@/radsecproxy.conf
 .sp
 The default configuration file.
 

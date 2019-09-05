@@ -92,6 +92,16 @@ if test "x$dtls" = "xyes" ; then
   TARGET_CFLAGS="$TARGET_CFLAGS -DRADPROT_DTLS"
 fi
 
+dnl Substitute variables such as sysconfdir
+AC_CONFIG_FILES([radsecproxy.1 radsecproxy.conf.5])
+
+dnl Expand sysconfdir early to avoid two layers of substitution
+test "x$prefix" = xNONE && prefix=$ac_default_prefix
+test "x$exec_prefix" = xNONE && exec_prefix='${prefix}'
+SYSCONFDIR=`eval echo $sysconfdir`
+SYSCONFDIR=`eval echo $SYSCONFDIR`
+AC_SUBST(SYSCONFDIR)
+
 AC_SUBST(TARGET_CFLAGS)
 AC_SUBST(TARGET_LDFLAGS)
 AX_CHECK_SSL

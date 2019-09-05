@@ -6,7 +6,7 @@ radsecproxy.conf \- Radsec proxy configuration file
 .SH DESCRIPTION
 When the proxy server starts, it will first check the command line arguments,
 and then read the configuration file. Normally radsecproxy will read the
-configuration file \fI/usr/local/etc/radsecproxy.conf\fR. The command line
+configuration file \fI@SYSCONFDIR@/radsecproxy.conf\fR. The command line
 \fB\-c\fR option can be used to instead read an alternate file (see
 \fBradsecproxy\fR(1) for details).
 
@@ -79,7 +79,7 @@ be included. The value can be a single file, or it can use normal shell globbing
 to specify multiple files, e.g.:
 
 .RS
-include /usr/local/etc/radsecproxy.conf.d/*.conf
+include @SYSCONFDIR@/radsecproxy.conf.d/*.conf
 .RE
 
 The files are sorted alphabetically. Included files are read in the order they
