@@ -13,9 +13,9 @@ support.  Without any special options to configure, all transports
 supported by the system will be enabled.  See the output from
 "./configure --help" for how to change this.
 
-To use radsecproxy you need to create a config file which is normally
-found in /usr/local/etc/radsecproxy.conf.  You can also specify the
-location with the "-c" command line option (see below).  For further
+To use radsecproxy you need to create a config file which is normally found in
+/etc/radsecproxy.conf or /usr/local/etc/radsecproxy.conf.  You can also specify
+the location with the "-c" command line option (see below).  For further
 instructions, please see the enclosed example file and the manpages
 radsecproxy(8) and radsecproxy.conf(5).
 
