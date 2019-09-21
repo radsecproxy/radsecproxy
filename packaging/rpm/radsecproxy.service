@@ -1,0 +1,17 @@
+[Unit]
+Description=radsecproxy
+ConditionPathExists=/etc/radsecproxy.conf
+After=network.target
+Documentation=man:radsecproxy(1)
+
+[Service]
+Type=forking
+ExecStart=/usr/sbin/radsecproxy
+User=radsecproxy
+ProtectSystem=full
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
