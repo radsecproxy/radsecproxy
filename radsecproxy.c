@@ -1682,7 +1682,7 @@ void *clientwr(void *arg) {
             } else {
                 if (conf->statusserver == RSP_STATSRV_AUTO && *rqout->rq->buf == RAD_Status_Server) {
                     if (server->lastreply.tv_sec >= laststatsrv.tv_sec) {
-                        debug(DBG_DBG, "clientwr: status server autodetect faild, disabling status server for %s", conf->name);
+                        debug(DBG_DBG, "clientwr: status server autodetect failed, disabling status server for %s", conf->name);
                         conf->statusserver = RSP_STATSRV_OFF;
                     }
                 } else {
