@@ -777,13 +777,17 @@ This can be specified multiple times.
 
 .BR "CRLCheck (" on | off )
 .RS
-Enable checking peer certificate against the CRL (default off).
+Enable checking peer certificate against the CRL (default off). 
+.br
+Note that radsecproxy does not fetch the CRLs itslef. This has to be done 
+separately, e.g. with 
+.BR fetch-crl (8)
 .RE
 
 .BI "CacheExpiry " seconds
 .RS
 Specify how many \fIseconds\fR the CA and CRL information should be cached. By
-default, the CA and CRL are loaded at startup and cached indefinetely. after the
+default, the CA and CRL are loaded at startup and cached indefinetely. After the
 configured time, the CA CRL are re-read. Alternatively, reloading the CA and CRL
 can be triggered by sending a SIGHUP to the radsecproxy process. This option may
 be set to zero to disable caching.
