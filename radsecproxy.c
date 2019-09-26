@@ -1357,18 +1357,6 @@ int radsrv(struct request *rq) {
             goto rmclrqexit;
     }
 
-    attr = radmsg_gettype(msg, RAD_Attr_Tunnel_Password);
-    if (attr) {
-        uint8_t newsalt[2];
-        debug(DBG_DBG, "radsrv: found tunnelpwdattr with value length %d", attr->l);
-        if (!RAND_bytes(newsalt,2))
-            goto rmclrqexit;
-        newsalt[0] |= 0x80;
-        if (!pwdrecrypt(attr->v+3, attr->l-3, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len, rq->rqauth, msg->auth, attr->v+1, 2, newsalt, 2))
-            goto rmclrqexit;
-        memcpy(attr->v+1, newsalt, 2);
-    }
-
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
 	goto rmclrqexit;
 
@@ -1480,6 +1468,20 @@ void replyh(struct server *server, unsigned char *buf) {
     if (node) {
 	debug(DBG_WARN, "replyh: MS attribute handling failed, ignoring reply");
 	goto errunlock;
+    }
+
+    /* reencrypt tunnel-password RFC2868 */
+    attr = radmsg_gettype(msg, RAD_Attr_Tunnel_Password);
+    if (attr && msg->code == RAD_Access_Accept) {
+        uint8_t newsalt[2];
+        debug(DBG_DBG, "replyh: found tunnelpwdattr with value length %d", attr->l);
+        if (!RAND_bytes(newsalt,2))
+            goto errunlock;
+        newsalt[0] |= 0x80;
+        if (!pwdrecrypt(attr->v+3, attr->l-3, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
+                        rqout->rq->msg->auth, rqout->rq->rqauth, attr->v+1, 2, newsalt, 2))
+            goto errunlock;
+        memcpy(attr->v+1, newsalt, 2);
     }
 
     replylog(msg, server, rqout->rq);
