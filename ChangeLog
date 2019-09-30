@@ -1,4 +1,4 @@
-2019-09-30 changes since 1.8.0
+2019-10-01 1.8.1
 	Bug fixes:
 	- Handle Tunnel-Password attribute correctly
 	- Fix BSD platform issues
