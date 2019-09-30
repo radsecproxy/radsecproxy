@@ -1,4 +1,11 @@
-20190704 1.8.0
+2019-09-30 changes since 1.8.0
+	Bug fixes:
+	- Handle Tunnel-Password attribute correctly
+	- Fix BSD platform issues
+	- Fix spelling in log messages and manpages
+	- Fix compile issues for unit tests
+
+2019-07-04 1.8.0
 	New features:
 	- Rewrite: supplement attribute (add attribute if not present) (#19)
 	- Rewrite: modify vendor attribute
