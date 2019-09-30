@@ -46,7 +46,7 @@ radsecproxy_LDADD = librsp.a @SSL_LIBS@
 radsecproxy_conf_LDFLAGS = @TARGET_LDFLAGS@
 radsecproxy_hash_LDADD = fticks_hashmac.o hash.o list.o
 
-dist_man_MANS = radsecproxy.1 radsecproxy-hash.1 radsecproxy.conf.5
+dist_man_MANS = radsecproxy.8 radsecproxy-hash.8 radsecproxy.conf.5
 
 EXTRA_DIST = \
 	LICENSE THANKS \
@@ -59,7 +59,7 @@ EXTRA_DIST = \
 
 html: radsecproxy.html radsecproxy-hash.html radsecproxy.conf.html
 
-%.html: %.1
+%.html: %.8
 	groff -mandoc -Thtml $< >$@
 %.html: %.5
 	groff -mandoc -Thtml $< >$@

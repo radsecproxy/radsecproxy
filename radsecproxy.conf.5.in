@@ -6,9 +6,9 @@ radsecproxy.conf \- Radsec proxy configuration file
 .SH DESCRIPTION
 When the proxy server starts, it will first check the command line arguments,
 and then read the configuration file. Normally radsecproxy will read the
-configuration file \fI/usr/local/etc/radsecproxy.conf\fR. The command line
+configuration file \fI@SYSCONFDIR@/radsecproxy.conf\fR. The command line
 \fB\-c\fR option can be used to instead read an alternate file (see
-\fBradsecproxy\fR(1) for details).
+\fBradsecproxy\fR(8) for details).
 
 If the configuration file can not be found, the proxy will exit with an error
 message. Note that there is also an include facility so that any configuration
@@ -79,7 +79,7 @@ be included. The value can be a single file, or it can use normal shell globbing
 to specify multiple files, e.g.:
 
 .RS
-include /usr/local/etc/radsecproxy.conf.d/*.conf
+include @SYSCONFDIR@/radsecproxy.conf.d/*.conf
 .RE
 
 The files are sorted alphabetically. Included files are read in the order they
@@ -222,7 +222,7 @@ not supported.
 The FTicksPrefix option is used to set the \fIprefix\fR printed in F-Ticks
 messages. This allows for use of F-Ticks messages in non-eduroam environments.
 If no FTicksPrefix option is given, it defaults to the prefix used for eduroam
-(\*(T<F\-TICKS/eduroam/1.0\*(T>)
+(\fIF\-TICKS/eduroam/1.0\fR).
 
 .RE
 
@@ -915,5 +915,4 @@ subattributes are removed.
 .RE
 
 .SH "SEE ALSO"
-\fBradsecproxy\fR(1),
-.URL https://tools.ietf.org/html/rfc6614 " 	  Transport Layer Security (TLS) Encryption for RADIUS 	"
+\fBradsecproxy\fR(8)

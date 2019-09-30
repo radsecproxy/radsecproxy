@@ -22,6 +22,8 @@ TAGS
 radsecproxy
 radsecproxy-conf
 radsecproxy-hash
+radsecproxy.8
+radsecproxy.conf.5
 build-aux/*
 tests/t_fticks
 tests/t_rewrite

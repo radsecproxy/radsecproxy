@@ -1,5 +1,4 @@
-# Master config file, must be in /usr/local/etc/radsecproxy or specified with -c option
-#	All possible config options are listed below
+# Master config file, all possible config options are listed below
 
 # First you may define any global options, these are:
 #
