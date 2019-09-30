@@ -4,6 +4,7 @@
 	- Fix BSD platform issues
 	- Fix spelling in log messages and manpages
 	- Fix compile issues for unit tests
+	- Don't hardcode location of config files
 
 2019-07-04 1.8.0
 	New features:
