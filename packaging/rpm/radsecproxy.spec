@@ -1,6 +1,6 @@
 Name:			radsecproxy
-Version:		1.8.0
-Release:		4%{?dist}
+Version:		1.8.1
+Release:		1%{?dist}
 Summary:		A generic RADIUS proxy
 
 License:		BSD

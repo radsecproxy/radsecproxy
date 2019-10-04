@@ -1,26 +1,8 @@
 # CentOS/Fedora package for radsecproxy
 
-  * Project page: https://radsecproxy.github.io/
-  * Package page: https://copr.fedorainfracloud.org/coprs/jornane/radsecproxy/
+Project page: https://radsecproxy.github.io/
 
-
-# Install
-
-## CentOS / Red Hat
-
-	yum install yum-plugin-copr
-	yum copr enable jornane/radsecproxy
-	yum install radsecproxy
-
-
-## Fedora
-
-	dnf install dnf-plugins-core
-	dnf copr enable jornane/radsecproxy
-	dnf install radsecproxy
-
-
-# Build locally
+# Build
 
 	sh build.sh
 

@@ -1,12 +1,6 @@
---- radsecproxy.conf-example.orig	2019-09-17 15:39:48.776488895 +0200
-+++ radsecproxy.conf-example	2019-09-17 16:03:54.208480060 +0200
-@@ -1,4 +1,4 @@
--# Master config file, must be in /usr/local/etc/radsecproxy or specified with -c option
-+# Master config file, /etc/radsecproxy.conf or specified with -c option
- #	All possible config options are listed below
- 
- # First you may define any global options, these are:
-@@ -91,12 +91,12 @@
+--- radsecproxy.conf-example.orig	2019-10-03 18:29:12.434977076 +0200
++++ radsecproxy.conf-example	2019-10-03 18:29:57.124976803 +0200
+@@ -90,12 +90,12 @@
  tls default {
      # You must specify at least one of CACertificateFile or CACertificatePath
      # for TLS to work. We always verify peer certificate (client and server)
