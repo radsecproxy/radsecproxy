@@ -779,7 +779,7 @@ This can be specified multiple times.
 .RS
 Enable checking peer certificate against the CRL (default off). 
 .br
-Note that radsecproxy does not fetch the CRLs itslef. This has to be done 
+Note that radsecproxy does not fetch the CRLs itself. This has to be done 
 separately, e.g. with 
 .BR fetch-crl (8)
 .RE
