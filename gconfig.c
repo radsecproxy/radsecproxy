@@ -415,12 +415,14 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 	while ((word = va_arg(ap, char *))) {
 	    type = va_arg(ap, int);
 	    switch (type) {
-	    case CONF_STR:
+	    case CONF_STR: /*intentional fall-thru, these are identical*/
+        case CONF_STR_NOESC:
 		str = va_arg(ap, char **);
 		if (!str)
 		    goto errparam;
 		break;
-	    case CONF_MSTR:
+	    case CONF_MSTR: /*intentional fall-thru, these are identical*/
+        case CONF_MSTR_NOESC:
 		mstr = va_arg(ap, char ***);
 		if (!mstr)
 		    goto errparam;
@@ -456,38 +458,43 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
 	    goto errexit;
 	}
 
-	if (((type == CONF_STR || type == CONF_MSTR || type == CONF_BLN || type == CONF_LINT) && conftype != CONF_STR) ||
-	    (type == CONF_CBK && conftype != CONF_CBK)) {
+	if (((type == CONF_STR || type == CONF_STR_NOESC || type == CONF_MSTR || type == CONF_MSTR_NOESC ||
+        type == CONF_BLN || type == CONF_LINT) && conftype != CONF_STR) ||
+        (type == CONF_CBK && conftype != CONF_CBK)) {
 	    if (block)
 		debug(DBG_ERR, "configuration error in block %s, wrong syntax for option %s", block, opt);
 	    debug(DBG_ERR, "configuration error, wrong syntax for option %s", opt);
 	    goto errexit;
 	}
 
-	switch (type) {
-	case CONF_STR:
-	    if (*str) {
-		debug(DBG_ERR, "configuration error, option %s already set to %s", opt, *str);
-		goto errexit;
-	    }
-	    unhex(val,0);
-	    *str = val;
-	    break;
-	case CONF_MSTR:
-	    if (*mstr)
-		for (n = 0; (*mstr)[n]; n++);
-	    else
-		n = 0;
-	    newmstr = realloc(*mstr, sizeof(char *) * (n + 2));
-	    if (!newmstr) {
-		debug(DBG_ERR, "malloc failed");
-		goto errexit;
-	    }
-	    unhex(val,0);
-	    newmstr[n] = val;
-	    newmstr[n + 1] = NULL;
-	    *mstr = newmstr;
-	    break;
+    switch (type) {
+    case CONF_STR: /*intentional fall-thru, these are almost identical*/
+    case CONF_STR_NOESC:
+        if (*str) {
+            debug(DBG_ERR, "configuration error, option %s already set to %s", opt, *str);
+            goto errexit;
+        }
+        if (type == CONF_STR)
+            unhex(val,0);
+        *str = val;
+        break;
+    case CONF_MSTR: /*intentional fall-thru, these are almost identical*/
+    case CONF_MSTR_NOESC:
+        if (*mstr)
+            for (n = 0; (*mstr)[n]; n++);
+        else
+            n = 0;
+        newmstr = realloc(*mstr, sizeof(char *) * (n + 2));
+        if (!newmstr) {
+            debug(DBG_ERR, "malloc failed");
+            goto errexit;
+        }
+        if (type == CONF_MSTR)
+            unhex(val,0);
+        newmstr[n] = val;
+        newmstr[n + 1] = NULL;
+        *mstr = newmstr;
+        break;
 	case CONF_BLN:
 	    if (!strcasecmp(val, "on"))
 		*bln = 1;

@@ -2322,7 +2322,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "host", CONF_MSTR, &conf->hostsrc,
             "IPv4Only", CONF_BLN, &ipv4only,
             "IPv6Only", CONF_BLN, &ipv6only,
-	    "secret", CONF_STR, &conf->confsecret,
+	    "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 	    "tls", CONF_STR, &conf->tls,
 	    "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
@@ -2523,7 +2523,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                           "IPv4Only", CONF_BLN, &ipv4only,
                           "IPv6Only", CONF_BLN, &ipv6only,
 			  "port", CONF_STR, &conf->portsrc,
-			  "secret", CONF_STR, &conf->confsecret,
+			  "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 			  "tls", CONF_STR, &conf->tls,
 			  "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
@@ -2688,12 +2688,12 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
         "removeVendorAttribute", CONF_MSTR, &rmvattrs,
         "whitelistAttribute", CONF_MSTR, &wlattrs,
         "whitelistVendorAttribute", CONF_MSTR, &wlvattrs,
-        "addAttribute", CONF_MSTR, &addattrs,
-        "addVendorAttribute", CONF_MSTR, &addvattrs,
+        "addAttribute", CONF_MSTR_NOESC, &addattrs,
+        "addVendorAttribute", CONF_MSTR_NOESC, &addvattrs,
         "modifyAttribute", CONF_MSTR, &modattrs,
         "modifyVendorAttribute", CONF_MSTR, &modvattrs,
-        "supplementAttribute", CONF_MSTR, &supattrs,
-        "supplementVendorAttribute", CONF_MSTR, &supvattrs,
+        "supplementAttribute", CONF_MSTR_NOESC, &supattrs,
+        "supplementVendorAttribute", CONF_MSTR_NOESC, &supvattrs,
         NULL))
         debugx(1, DBG_ERR, "configuration error");
     addrewrite(val, whitelist_mode, whitelist_mode? wlattrs : rmattrs, whitelist_mode? wlvattrs : rmvattrs,
