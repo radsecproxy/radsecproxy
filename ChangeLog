@@ -1,4 +1,8 @@
-2019-09-30 changes since 1.8.0
+chanes since 1.8.1
+	Bug fixes:
+	- Fix wrong config-unhexing if %25 (%) occurs
+
+2019-10-01 1.8.1
 	Bug fixes:
 	- Handle Tunnel-Password attribute correctly
 	- Fix BSD platform issues

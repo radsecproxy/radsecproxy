@@ -6,6 +6,8 @@
 #define CONF_MSTR 3
 #define CONF_BLN 4
 #define CONF_LINT 5
+#define CONF_STR_NOESC 6
+#define CONF_MSTR_NOESC 7
 
 #include <stdio.h>
 

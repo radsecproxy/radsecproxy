@@ -17,16 +17,16 @@ main (int argc, char *argv[])
     char **addattrs;
     int numtests = 1, i;
     struct tlv *tlv, *expected;
-    uint8_t expectedvalue[] = {'1',0,0,'1','A'};
+    uint8_t expectedvalue[] = {'1',0,0,'1','A','%','4','1'};
 
     printf("1..%d\n", numtests);
     numtests = 1;
 
     addattrs = malloc(2);
-    addattrs[0] = stringcopy("1:'1%00%001%41", 0);
+    addattrs[0] = stringcopy("1:'1%00%001%41%2541", 0);
     addattrs[1] = NULL;
 
-    expected = maketlv(1,5,expectedvalue);
+    expected = maketlv(1,8,expectedvalue);
 
     addrewrite(rewritename, 0, NULL, NULL, addattrs,
                     NULL, NULL, NULL, NULL, NULL);
