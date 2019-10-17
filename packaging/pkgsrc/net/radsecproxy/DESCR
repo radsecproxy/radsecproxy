@@ -1,4 +1,0 @@
-radsecproxy is a generic RADIUS proxy that in addition to to usual
-RADIUS UDP transport, also supports TLS (RadSec), TCP and DTLS.
-The aim is for the proxy to have sufficient features to be flexible,
-while at the same time to be small, efficient and easy to configure.
