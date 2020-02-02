@@ -84,6 +84,7 @@ extern int optind;
 extern char *optarg;
 #endif
 static const struct protodefs *protodefs[RAD_PROTOCOUNT];
+pthread_attr_t pthread_attr;
 
 /* minimum required declarations to avoid reordering code */
 struct realm *adddynamicrealmserver(struct realm *realm, char *id);
