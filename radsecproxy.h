@@ -262,7 +262,7 @@ int radsrv(struct request *rq);
 void replyh(struct server *server, unsigned char *buf);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);
 uint8_t *radattr2ascii(struct tlv *attr); /* TODO: mv this to radmsg? */
-pthread_attr_t pthread_attr;
+extern pthread_attr_t pthread_attr;
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
