@@ -1681,6 +1681,8 @@ void *clientwr(void *arg) {
             continue;
         }
 
+        if (!rqout->rq) continue;
+
         if (rqout->tries > 0 && now.tv_sec - server->lastrcv.tv_sec > conf->retryinterval)
             statusserver_requested = 1;
         if (rqout->tries == (*rqout->rq->buf == RAD_Status_Server ? 1 : conf->retrycount + 1)) {
