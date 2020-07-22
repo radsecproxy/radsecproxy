@@ -1,6 +1,8 @@
 chanes since 1.8.1
 	Bug fixes:
 	- Fix wrong config-unhexing if %25 (%) occurs
+	- Fix compatibility with GCC 10 (#63)
+	- Fix spelling in manpage
 
 2019-10-01 1.8.1
 	Bug fixes:
