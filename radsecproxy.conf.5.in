@@ -539,7 +539,7 @@ options above.
 
 .BI "DynamicLookupCommand " command
 .RS
-Execude the \fIcommand\fR to dynamically configure a server. The executable file
+Execute the \fIcommand\fR to dynamically configure a server. The executable file
 should be given with full path and will be invoked with the name of the realm as
 its first and only argument. It should either print a valid \fBserver {...}\fR
 option on stdout and exit with a code of 0 or print nothing and exit with a
