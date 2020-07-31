@@ -3046,7 +3046,8 @@ int radsecproxy_main(int argc, char **argv) {
     sigaddset(&sigset, SIGHUP);
     sigaddset(&sigset, SIGPIPE);
     pthread_sigmask(SIG_BLOCK, &sigset, NULL);
-    pthread_create(&sigth, &pthread_attr, sighandler, NULL);
+    if (pthread_create(&sigth, &pthread_attr, sighandler, NULL))
+        debugx(1, DBG_ERR, "pthread_create failed: sighandler");
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	srvconf = (struct clsrvconf *)entry->data;
