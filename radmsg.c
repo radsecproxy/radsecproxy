@@ -296,7 +296,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, int secret_len, uint8_t
     while (p - buf + 2 <= len) {
 	t = *p++;
         l = *p++;
-	if (l < 2) {
+	if (l < 2 || l > 255) {
 	    debug(DBG_WARN, "buf2radmsg: invalid attribute length %d", l);
 	    radmsg_free(msg);
 	    return NULL;
