@@ -1649,8 +1649,11 @@ void *clientwr(void *arg) {
 #endif
 	pthread_mutex_unlock(&server->newrq_mutex);
 
-	for (i = 0; i < MAX_REQUESTS; i++) {
-	    if (server->clientrdgone) {
+    if (do_resend || server->lastrcv.tv_sec > laststatsrv.tv_sec)
+        statusserver_requested = 0;
+
+    for (i = 0; i < MAX_REQUESTS; i++) {
+        if (server->clientrdgone) {
 		server->state = RSP_SERVER_STATE_FAILING;
                 if (conf->pdef->connecter)
                     pthread_join(clientrdth, NULL);
@@ -1681,7 +1684,7 @@ void *clientwr(void *arg) {
             continue;
         }
 
-        if (rqout->tries > 0 && now.tv_sec - server->lastrcv.tv_sec > conf->retryinterval)
+        if (rqout->tries > 0 && now.tv_sec - server->lastrcv.tv_sec > conf->retryinterval && !do_resend)
             statusserver_requested = 1;
         if (rqout->tries == (*rqout->rq->buf == RAD_Status_Server ? 1 : conf->retrycount + 1)) {
             debug(DBG_DBG, "clientwr: removing expired packet from queue");

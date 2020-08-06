@@ -4,6 +4,7 @@ chanes since 1.8.1
 	- Fix compatibility with GCC 10 (#63)
 	- Fix spelling in manpage
 	- Fix modifyVendorAttribute not applied (#62)
+	- Fix unncessary status-server when in minimal mode (#61)
 
 2019-10-01 1.8.1
 	Bug fixes:
