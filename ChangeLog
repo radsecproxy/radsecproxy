@@ -1,4 +1,4 @@
-chanes since 1.8.1
+2020-08-06 1.8.2
 	Bug fixes:
 	- Fix wrong config-unhexing if %25 (%) occurs
 	- Fix compatibility with GCC 10 (#63)
