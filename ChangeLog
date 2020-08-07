@@ -1,16 +1,18 @@
-chanes since 1.8.1
+unreleased chanes
 	New features:
 	- Accept multiple source* configs for IPv4/v6
 	- Specify source per server
 
+	Misc:
+	- Move radsecproxy manpage to section 8
+
+2020-08-06 1.8.2
 	Bug fixes:
 	- Fix wrong config-unhexing if %25 (%) occurs
 	- Fix compatibility with GCC 10 (#63)
 	- Fix spelling in manpage
 	- Fix modifyVendorAttribute not applied (#62)
-
-	Misc:
-	- Move radsecproxy manpage to section 8
+	- Fix unncessary status-server when in minimal mode (#61)
 
 2019-10-01 1.8.1
 	Bug fixes:
@@ -18,6 +20,7 @@ chanes since 1.8.1
 	- Fix BSD platform issues
 	- Fix spelling in log messages and manpages
 	- Fix compile issues for unit tests
+	- Don't hardcode location of config files
 
 2019-07-04 1.8.0
 	New features:
