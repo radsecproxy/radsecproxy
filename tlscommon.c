@@ -348,35 +348,35 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     case RAD_TLS:
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
         /* TLS_method() was introduced in OpenSSL 1.1.0. */
-	ctx = SSL_CTX_new(TLS_method());
+        ctx = SSL_CTX_new(TLS_method());
 #else
         /* No TLS_method(), use SSLv23_method() and disable SSLv2 and SSLv3. */
         ctx = SSL_CTX_new(SSLv23_method());
         SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
 #endif
 #ifdef DEBUG
-	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
+        SSL_CTX_set_info_callback(ctx, ssl_info_callback);
 #endif
-	break;
+        break;
 #endif
 #ifdef RADPROT_DTLS
     case RAD_DTLS:
 #if OPENSSL_VERSION_NUMBER >= 0x10002000
         /* DTLS_method() seems to have been introduced in OpenSSL 1.0.2. */
-	ctx = SSL_CTX_new(DTLS_method());
+        ctx = SSL_CTX_new(DTLS_method());
 #else
-	ctx = SSL_CTX_new(DTLSv1_method());
+        ctx = SSL_CTX_new(DTLSv1_method());
 #endif
 #ifdef DEBUG
-	SSL_CTX_set_info_callback(ctx, ssl_info_callback);
+        SSL_CTX_set_info_callback(ctx, ssl_info_callback);
 #endif
-	SSL_CTX_set_read_ahead(ctx, 1);
-	break;
+        SSL_CTX_set_read_ahead(ctx, 1);
+        break;
 #endif
     }
     if (!ctx) {
-	debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
-	return NULL;
+        debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
+        return NULL;
     }
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
@@ -394,39 +394,55 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #endif
 
     if (conf->certkeypwd) {
-	SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
-	SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
+        SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
+        SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
     }
     if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
-	!SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
-	!SSL_CTX_check_private_key(ctx)) {
-	while ((error = ERR_get_error()))
-	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-	debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
-	SSL_CTX_free(ctx);
-	return NULL;
+        !SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+        !SSL_CTX_check_private_key(ctx)) {
+        while ((error = ERR_get_error()))
+            debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+        debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
+        SSL_CTX_free(ctx);
+        return NULL;
     }
 
     if (conf->policyoids) {
-	if (!conf->vpm) {
-	    conf->vpm = createverifyparams(conf->policyoids);
-	    if (!conf->vpm) {
-		debug(DBG_ERR, "tlscreatectx: Failed to add policyOIDs in TLS context %s", conf->name);
-		SSL_CTX_free(ctx);
-		return NULL;
-	    }
-	}
+        if (!conf->vpm) {
+            conf->vpm = createverifyparams(conf->policyoids);
+            if (!conf->vpm) {
+                debug(DBG_ERR, "tlscreatectx: Failed to add policyOIDs in TLS context %s", conf->name);
+                SSL_CTX_free(ctx);
+                return NULL;
+            }
+        }
     }
 
     if (!tlsaddcacrl(ctx, conf)) {
-	if (conf->vpm) {
-	    X509_VERIFY_PARAM_free(conf->vpm);
-	    conf->vpm = NULL;
-	}
-	SSL_CTX_free(ctx);
-	return NULL;
+        if (conf->vpm) {
+            X509_VERIFY_PARAM_free(conf->vpm);
+            conf->vpm = NULL;
+        }
+        SSL_CTX_free(ctx);
+        return NULL;
     }
 
+    if (conf->cipherlist) {
+        if (!SSL_CTX_set_cipher_list(ctx, conf->cipherlist)) {
+            debug(DBG_ERR, "tlscreatectx: Failed to set cipher list in TLS context %s", conf->name);
+            SSL_CTX_free(ctx);
+            return NULL;
+        }
+    }
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
+    if (conf->ciphersuites) {
+        if (!SSL_CTX_set_ciphersuites(ctx, conf->ciphersuites)) {
+            debug(DBG_ERR, "tlscreatectx: Failed to set ciphersuites in TLS context %s", conf->name);
+            SSL_CTX_free(ctx);
+            return NULL;
+        }
+    }
+#endif
     debug(DBG_DBG, "tlscreatectx: created TLS context %s", conf->name);
     return ctx;
 }
@@ -775,6 +791,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 			  "CacheExpiry", CONF_LINT, &expiry,
 			  "CRLCheck", CONF_BLN, &conf->crlcheck,
 			  "PolicyOID", CONF_MSTR, &conf->policyoids,
+              "CipherList", CONF_STR, &conf->cipherlist,
+              "CipherSuites", CONF_STR, &conf->ciphersuites,
 			  NULL
 	    )) {
 	debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);

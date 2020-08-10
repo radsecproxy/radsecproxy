@@ -799,6 +799,19 @@ can be triggered by sending a SIGHUP to the radsecproxy process. This option may
 be set to zero to disable caching.
 .RE
 
+.BI "CipherList " ciphers
+.RS
+Specify the list of accepted \fIciphers\fR. See 
+.BR openssl-ciphers (1).
+.RE
+
+.BI "CipherSuites " ciphersuites
+.RS
+Specify the \fIciphersuites\fR to be used for TLS1.3. See 
+.BR openssl-ciphers (1).
+.br
+Note this requires openssl 1.1.1
+
 
 .SH "REWRITE BLOCK"
 .nf

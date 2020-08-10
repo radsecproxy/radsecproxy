@@ -18,6 +18,8 @@ struct tls {
     char *certkeypwd;
     uint8_t crlcheck;
     char **policyoids;
+    char *cipherlist;
+    char *ciphersuites;
     uint32_t cacheexpiry;
     uint32_t tlsexpiry;
     uint32_t dtlsexpiry;
