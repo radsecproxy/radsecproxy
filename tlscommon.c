@@ -874,6 +874,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
             goto errexit;
         }
         free (tlsversion);
+        tlsversion = NULL;
     }
     if (dtlsversion) {
         if(!conf_tls_version(dtlsversion, &conf->dtlsminversion, &conf->dtlsmaxversion)) {
@@ -881,6 +882,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
             goto errexit;
         }
         free (dtlsversion);
+        dtlsversion = NULL;
     }
 #else
         debug(DBG_ERR, "error in block %s, setting tls/dtls version requires openssl 1.1.0 or later", val);
