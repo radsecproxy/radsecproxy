@@ -25,6 +25,7 @@ struct tls {
     int tlsmaxversion;
     int dtlsminversion;
     int dtlsmaxversion;
+    DH *dhparam;
     uint32_t tlsexpiry;
     uint32_t dtlsexpiry;
     X509_VERIFY_PARAM *vpm;

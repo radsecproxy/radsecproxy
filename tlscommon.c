@@ -449,6 +449,14 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
         }
     }
 #endif
+
+    if (conf->dhparam) {
+        if (!SSL_CTX_set_tmp_dh(ctx, conf->dhparam)) {
+            while ((error = ERR_get_error()))
+                debug(DBG_WARN, "tlscreatectx: SSL: %s", ERR_error_string(error, NULL));
+            debug(DBG_WARN, "tlscreatectx: Failed to set dh params. Can continue, but some ciphers might not be available.");
+        }
+    }
     debug(DBG_DBG, "tlscreatectx: created TLS context %s", conf->name);
     return ctx;
 }
@@ -823,6 +831,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     long int expiry = LONG_MIN;
     char *tlsversion = NULL;
     char *dtlsversion = NULL;
+    char *dhfile = NULL;
+    unsigned long error;
 
     debug(DBG_DBG, "conftls_cb called for %s", block);
 
@@ -846,6 +856,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
               "CipherSuites", CONF_STR, &conf->ciphersuites,
               "TlsVersion", CONF_STR, &tlsversion,
               "DtlsVersion", CONF_STR, &dtlsversion,
+              "DhFile", CONF_STR, &dhfile,
 			  NULL
 	    )) {
 	debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
@@ -889,6 +900,25 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         goto errexit;
 #endif
 
+    if (dhfile) {
+        FILE *dhfp = fopen(dhfile, "r");
+        if (dhfp) {
+            conf->dhparam = PEM_read_DHparams(dhfp, NULL, NULL, NULL);
+            fclose(dhfp);
+            if (!conf->dhparam) {
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+                debug(DBG_ERR, "error in block %s: Failed to load DhFile %s.", val, dhfile);
+                goto errexit;
+            }
+        } else {
+            debug(DBG_ERR, "error in block %s, DhFile: can't open file %s", val, dhfile);
+            goto errexit;
+        }
+        free(dhfile);
+        dhfile = NULL;
+    }
+
     conf->name = stringcopy(val, 0);
     if (!conf->name) {
 	debug(DBG_ERR, "conftls_cb: malloc failed");
@@ -916,6 +946,8 @@ errexit:
     freegconfmstr(conf->policyoids);
     free(tlsversion);
     free(dtlsversion);
+    free(dhfile);
+    DH_free(conf->dhparam);
     free(conf);
     return 0;
 }

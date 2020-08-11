@@ -830,7 +830,11 @@ Currently supported values are
 for TLS and
 .BR DTLS1 , DTLS1_1
 for DTLS.
+.RE
 
+.BI "DhFile " file
+.RS
+DH parameter \fIfile\fR to use. See \fBopenssl-dhparam\fR(1)
 
 
 .SH "REWRITE BLOCK"

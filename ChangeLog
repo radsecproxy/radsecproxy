@@ -4,6 +4,7 @@ unreleased chanes
 	- Specify source per server
 	- User configurable cipher-list and ciphersuites
 	- User configurable TLS versions
+	- Config option for DH-file
 
 	Misc:
 	- Move radsecproxy manpage to section 8
