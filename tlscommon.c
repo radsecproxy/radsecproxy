@@ -349,6 +349,8 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
         /* TLS_method() was introduced in OpenSSL 1.1.0. */
         ctx = SSL_CTX_new(TLS_method());
+        SSL_CTX_set_min_proto_version(ctx, conf->tlsminversion);
+        SSL_CTX_set_max_proto_version(ctx, conf->tlsmaxversion);
 #else
         /* No TLS_method(), use SSLv23_method() and disable SSLv2 and SSLv3. */
         ctx = SSL_CTX_new(SSLv23_method());
@@ -364,6 +366,10 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #if OPENSSL_VERSION_NUMBER >= 0x10002000
         /* DTLS_method() seems to have been introduced in OpenSSL 1.0.2. */
         ctx = SSL_CTX_new(DTLS_method());
+#if OPENSSL_VERSION_NUMBER >= 0x10100000
+        SSL_CTX_set_min_proto_version(ctx, conf->dtlsminversion);
+        SSL_CTX_set_max_proto_version(ctx, conf->dtlsmaxversion);
+#endif
 #else
         ctx = SSL_CTX_new(DTLSv1_method());
 #endif
@@ -769,9 +775,54 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     return ok;
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000
+static int parse_tls_version(const char* version) {
+    if (!strcasecmp("SSL3", version)) {
+        return SSL3_VERSION;
+    } else if (!strcasecmp("TLS1", version)) {
+        return TLS1_VERSION;
+    } else if (!strcasecmp("TLS1_1", version)) {
+        return TLS1_1_VERSION;
+    } else if (!strcasecmp("TLS1_2", version)) {
+        return TLS1_2_VERSION;
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
+    } else if (!strcasecmp("TLS1_3", version)) {
+        return TLS1_3_VERSION;
+#endif
+    } else if (!strcasecmp("DTLS1", version)) {
+        return DTLS1_VERSION;
+    } else if (!strcasecmp("DTLS1_2", version)) {
+        return DTLS1_2_VERSION;
+    } else if (!strcasecmp("", version)) {
+        return 0;
+    } else {
+        return -1;
+    }
+}
+
+static int conf_tls_version(const char *version, int *min, int *max) {
+    char *ver, *s, *smin, *smax;
+    ver = stringcopy(version, strlen(version));
+    s = strchr(ver, ':');
+    if (!s) {
+        smin = smax = ver;
+    } else {
+        *s =  '\0';
+        smin = ver;
+        smax = s+1;
+    }
+    *min = parse_tls_version(smin);
+    *max = parse_tls_version(smax);
+    free(ver);
+    return *min >=0 && *max >=0 && (*max == 0 || *min <= *max);
+}
+#endif
+
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct tls *conf;
     long int expiry = LONG_MIN;
+    char *tlsversion = NULL;
+    char *dtlsversion = NULL;
 
     debug(DBG_DBG, "conftls_cb called for %s", block);
 
@@ -793,6 +844,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 			  "PolicyOID", CONF_MSTR, &conf->policyoids,
               "CipherList", CONF_STR, &conf->cipherlist,
               "CipherSuites", CONF_STR, &conf->ciphersuites,
+              "TlsVersion", CONF_STR, &tlsversion,
+              "DtlsVersion", CONF_STR, &dtlsversion,
 			  NULL
 	    )) {
 	debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
@@ -813,6 +866,26 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 	}
 	conf->cacheexpiry = expiry;
     }
+#if OPENSSL_VERSION_NUMBER >= 0x10100000
+    conf->tlsminversion = TLS1_1_VERSION;
+    if (tlsversion) {
+        if(!conf_tls_version(tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
+            debug(DBG_ERR, "error in block %s, invalid TlsVersion %s", val, tlsversion);
+            goto errexit;
+        }
+        free (tlsversion);
+    }
+    if (dtlsversion) {
+        if(!conf_tls_version(dtlsversion, &conf->dtlsminversion, &conf->dtlsmaxversion)) {
+            debug(DBG_ERR, "error in block %s, invalid DtlsVersion %s", val, dtlsversion);
+            goto errexit;
+        }
+        free (dtlsversion);
+    }
+#else
+        debug(DBG_ERR, "error in block %s, setting tls/dtls version requires openssl 1.1.0 or later", val);
+        goto errexit;
+#endif
 
     conf->name = stringcopy(val, 0);
     if (!conf->name) {
@@ -839,6 +912,8 @@ errexit:
     free(conf->certkeyfile);
     free(conf->certkeypwd);
     freegconfmstr(conf->policyoids);
+    free(tlsversion);
+    free(dtlsversion);
     free(conf);
     return 0;
 }

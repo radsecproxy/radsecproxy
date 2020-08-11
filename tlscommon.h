@@ -21,6 +21,10 @@ struct tls {
     char *cipherlist;
     char *ciphersuites;
     uint32_t cacheexpiry;
+    int tlsminversion;
+    int tlsmaxversion;
+    int dtlsminversion;
+    int dtlsmaxversion;
     uint32_t tlsexpiry;
     uint32_t dtlsexpiry;
     X509_VERIFY_PARAM *vpm;

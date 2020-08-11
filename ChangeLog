@@ -3,6 +3,7 @@ unreleased chanes
 	- Accept multiple source* configs for IPv4/v6
 	- Specify source per server
 	- User configurable cipher-list and ciphersuites
+	- User configurable TLS versions
 
 	Misc:
 	- Move radsecproxy manpage to section 8
