@@ -15,6 +15,7 @@
 #include <pthread.h>
 #include <nettle/hmac.h>
 #include <openssl/rand.h>
+#include "raddict.h"
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
 
@@ -412,6 +413,24 @@ int resizeattr(struct tlv *attr, uint8_t newlen) {
     if (resizetlv(attr, newlen))
         return 1;
     return 0;
+}
+
+char* attrval2str(struct tlv *attr) {
+    if(!attr) return '\0';
+    uint32_t val = tlv2longint(attr) - 1;
+    switch (attr->t) {
+        case RAD_Attr_Acct_Status_Type:
+            return RAD_Attr_Acct_Status_Type_Dict[val] ? RAD_Attr_Acct_Status_Type_Dict[val] : RAD_Dict_Unknown_Value;
+            break;
+
+        case RAD_Attr_Acct_Terminate_Cause:
+            return RAD_Attr_Acct_Terminate_Cause_Dict[val] ? RAD_Attr_Acct_Terminate_Cause_Dict[val] : RAD_Dict_Unknown_Value;
+            break;
+
+        default:
+            break;
+    }
+    return RAD_Dict_Unknown_Value;
 }
 
 /* Local Variables: */

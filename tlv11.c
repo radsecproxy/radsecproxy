@@ -2,6 +2,7 @@
  * Copyright (c) 2010, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
+#define _GNU_SOURCE
 #ifdef SYS_SOLARIS9
 #include <sys/inttypes.h>
 #else
@@ -12,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <stdio.h>
 
 struct tlv *maketlv(uint8_t t, uint8_t l, void *v) {
     struct tlv *tlv;
@@ -97,6 +99,8 @@ void rmtlv(struct list *tlvs, uint8_t t) {
 }
 
 uint8_t *tlv2str(struct tlv *tlv) {
+    if(!tlv)
+        return '\0';
     uint8_t *s = malloc(tlv->l + 1);
     if (s) {
 	memcpy(s, tlv->v, tlv->l);
@@ -115,6 +119,30 @@ struct tlv *resizetlv(struct tlv *tlv, uint8_t newlen) {
         tlv->l = newlen;
     }
     return tlv;
+}
+
+uint32_t tlv2longint(struct tlv *tlv) {
+    if(!tlv) return 0;
+    uint32_t n = 0;
+    n += tlv->v[3];
+    n += tlv->v[2] << 8;
+    n += tlv->v[1] << 16;
+    n += tlv->v[0] << 24;
+    return n;
+}
+
+char* tlv2ipv4addr(struct tlv *tlv) {
+    if(!tlv) return 0;
+    char *rval = "undef";
+    if(tlv->v) {
+        uint8_t *v = tlv2str(tlv);
+	char *str;
+        if(asprintf(&str, "%d.%d.%d.%d", v[0], v[1], v[2], v[3]) >=0) {
+            rval = str;
+        }
+        free(v);
+    }
+    return rval;
 }
 
 /* Local Variables: */
