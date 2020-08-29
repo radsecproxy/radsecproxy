@@ -420,17 +420,19 @@ char* attrval2str(struct tlv *attr) {
     uint32_t val = tlv2longint(attr) - 1;
     switch (attr->t) {
         case RAD_Attr_Acct_Status_Type:
-            return RAD_Attr_Acct_Status_Type_Dict[val] ? RAD_Attr_Acct_Status_Type_Dict[val] : RAD_Dict_Unknown_Value;
+            if(val < sizeof(RAD_Attr_Acct_Status_Type_Dict)/sizeof(uint32_t))
+                return RAD_Attr_Acct_Status_Type_Dict[val] ? strdup(RAD_Attr_Acct_Status_Type_Dict[val]) : strdup(RAD_Dict_Unknown_Value);
             break;
 
         case RAD_Attr_Acct_Terminate_Cause:
-            return RAD_Attr_Acct_Terminate_Cause_Dict[val] ? RAD_Attr_Acct_Terminate_Cause_Dict[val] : RAD_Dict_Unknown_Value;
+            if(val < sizeof(RAD_Attr_Acct_Terminate_Cause_Dict)/sizeof(uint32_t))
+                return RAD_Attr_Acct_Terminate_Cause_Dict[val] ? strdup(RAD_Attr_Acct_Terminate_Cause_Dict[val]) : strdup(RAD_Dict_Unknown_Value);
             break;
 
         default:
             break;
     }
-    return RAD_Dict_Unknown_Value;
+    return strdup(RAD_Dict_Unknown_Value);
 }
 
 /* Local Variables: */
