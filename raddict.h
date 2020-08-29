@@ -1,7 +1,7 @@
 #ifndef RAD_DICT
 #define RAD_DICT
 
-char* RAD_Attr_Acct_Terminate_Cause_Dict[] = {
+const char* RAD_Attr_Acct_Terminate_Cause_Dict[] = {
         "User-Request",
         "Lost-Carrier",
         "Lost-Service",
@@ -22,7 +22,7 @@ char* RAD_Attr_Acct_Terminate_Cause_Dict[] = {
         "Host-Request",
 };
 
-char* RAD_Attr_Acct_Status_Type_Dict[] = {
+const char* RAD_Attr_Acct_Status_Type_Dict[] = {
         "Start",
         "Stop",
         "Interim-Update",
