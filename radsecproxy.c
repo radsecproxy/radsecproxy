@@ -1306,6 +1306,7 @@ int radsrv(struct request *rq) {
 	    respond(rq, RAD_Access_Reject, realm->message, 1, 1);
 	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
 		//uint8_t* framed_ip_address = tlv2str(radmsg_gettype(msg, RAD_Attr_Framed_IP_Address));
+        char* status_type = attrval2str(radmsg_gettype(msg, RAD_Attr_Acct_Status_Type));
         char* nas_ip_address = tlv2ipv4addr(radmsg_gettype(msg, RAD_Attr_NAS_IP_Address));
         char* framed_ip_address = tlv2ipv4addr(radmsg_gettype(msg, RAD_Attr_Framed_IP_Address));
 
@@ -1315,10 +1316,12 @@ int radsrv(struct request *rq) {
         uint8_t *session_id = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Acct_Session_Id));
         uint8_t *called_station_id = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Called_Station_Id));
         uint8_t *calling_station_id = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Calling_Station_Id));
+        char* terminate_cause = attrval2str(radmsg_gettype(msg, RAD_Attr_Acct_Terminate_Cause));
+
         strftime(event_timestamp, sizeof(event_timestamp), "%FT%TZ", gmtime(&event_timestamp_i));
 
 		debug(DBG_NOTICE, "Accounting %s (id %d) at %s from client %s (%s): { SID=%s, User-Name=%s, Ced-S-Id=%s, Cing-S-Id=%s, NAS-IP=%s, Framed-IP=%s, Sess-Time=%u, In-Packets=%u, In-Octets=%u, Out-Packets=%u, Out-Octets=%u, Terminate-Cause=%s }",
-			attrval2str(radmsg_gettype(msg, RAD_Attr_Acct_Status_Type)),
+			status_type,
 			msg->id,
 			event_timestamp,
 			from->conf->name,
@@ -1335,13 +1338,15 @@ int radsrv(struct request *rq) {
 			tlv2longint(radmsg_gettype(msg, RAD_Attr_Acct_Input_Octets)),
 			tlv2longint(radmsg_gettype(msg, RAD_Attr_Acct_Output_Packets)),
 			tlv2longint(radmsg_gettype(msg, RAD_Attr_Acct_Output_Octets)),
-			attrval2str(radmsg_gettype(msg, RAD_Attr_Acct_Terminate_Cause))
+			terminate_cause
 		);
+        free(status_type);
         free(framed_ip_address);
         free(nas_ip_address);
         free(session_id);
         free(called_station_id);
         free(calling_station_id);
+        free(terminate_cause);
         // accounting_log(rq);
 	    respond(rq, RAD_Accounting_Response, NULL, 1, 0);
 	}
