@@ -153,7 +153,11 @@ struct clsrvconf {
     regex_t *certcnregex;
     regex_t *certuriregex;
     regex_t *certdnsregex;
+    regex_t *certotherregex;
+    char *certothertype;
     struct in6_addr certipmatch;
+    //ASN1_OBJECT certridmatch;
+    char *certridmatch;
     int certipmatchaf;
     char *confrewritein;
     char *confrewriteout;
