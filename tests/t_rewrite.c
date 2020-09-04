@@ -685,6 +685,7 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - issue #62\n", testcount++);
 
+        regfree(&regex);
         _tlv_list_clear(origattrs);
         _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
