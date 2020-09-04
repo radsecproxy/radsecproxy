@@ -604,20 +604,14 @@ exit:
 }
 
 static int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
-    int loc, i, l, n, r = 0;
+    int i, l, n, r = 0;
     char *v;
-    X509_EXTENSION *ex;
     STACK_OF(GENERAL_NAME) *alt;
     GENERAL_NAME *gn;
 
     debug(DBG_DBG, "subjectaltnameaddr");
 
-    loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
-    if (loc < 0)
-	return r;
-
-    ex = X509_get_ext(cert, loc);
-    alt = X509V3_EXT_d2i(ex);
+    alt = getaltname(cert);
     if (!alt)
 	return r;
 
@@ -640,21 +634,15 @@ static int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
 }
 
 static int subjectaltnameregexp(X509 *cert, int type, char *othernametype, char *exact, regex_t *regex) {
-    int loc, i, l, n, r = 0;
+    int i, l, n, r = 0;
     char *s, *v, *fail = NULL, *tmp;
-    X509_EXTENSION *ex;
     STACK_OF(GENERAL_NAME) *alt;
     GENERAL_NAME *gn;
     ASN1_OBJECT *othernameoid;
 
     debug(DBG_DBG, "subjectaltnameregexp");
 
-    loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
-    if (loc < 0)
-	return r;
-
-    ex = X509_get_ext(cert, loc);
-    alt = X509V3_EXT_d2i(ex);
+    alt = getaltname(cert);
     if (!alt)
 	return r;
 
