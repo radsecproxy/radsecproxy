@@ -12,6 +12,8 @@
 #include "gconfig.h"
 #include "rewrite.h"
 
+#include <openssl/asn1.h>
+
 #define DEBUG_LEVEL 2
 
 #define CONFIG_MAIN SYSCONFDIR"/radsecproxy.conf"
@@ -154,10 +156,10 @@ struct clsrvconf {
     regex_t *certuriregex;
     regex_t *certdnsregex;
     regex_t *certotherregex;
-    char *certothertype;
+    ASN1_OBJECT *certothertype;
     struct in6_addr certipmatch;
-    //ASN1_OBJECT certridmatch;
-    char *certridmatch;
+    ASN1_OBJECT *certridmatch;
+    //char *certridmatch;
     int certipmatchaf;
     char *confrewritein;
     char *confrewriteout;
