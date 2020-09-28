@@ -39,6 +39,16 @@ static struct hash *tlsconfs = NULL;
 static unsigned char cookie_secret[COOKIE_SECRET_LENGTH];
 static uint8_t cookie_secret_initialized = 0;
 
+struct certattrmatch {
+    int (*matchfn)(GENERAL_NAME *, struct certattrmatch *);
+    int type;
+    char * exact;
+    regex_t *regex;
+    ASN1_OBJECT *oid;
+    struct in6_addr ipaddr;
+    int af;
+    char * debugname;
+};
 
 /* callbacks for making OpenSSL < 1.1 thread safe */
 #if OPENSSL_VERSION_NUMBER < 0x10100000
@@ -557,180 +567,52 @@ X509 *verifytlscert(SSL *ssl) {
     return cert;
 }
 
-static STACK_OF(GENERAL_NAME) *getaltname(X509 *cert) {
-    STACK_OF(GENERAL_NAME) *altname;
-    int loc;
-
-    loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
-    if (loc < 0) 
-        return NULL;
-
-    altname = X509V3_EXT_d2i(X509_get_ext(cert, loc));
-    if (!altname)
-        return NULL;
-
-    return altname;
+static int certattr_matchrid(GENERAL_NAME *gn, struct certattrmatch *match) {
+    return OBJ_cmp(gn->d.registeredID, match->oid) == 0 ? 1 : 0;
 }
 
-static int matchsubjaltname(X509 *cert, int type, int (*matchfn)(GENERAL_NAME *, void *), void *arg ) {
-    GENERAL_NAME *gn;
-    int n,i,r = 0;
-    STACK_OF(GENERAL_NAME) *alt;
-
-    alt = getaltname(cert);
-
-    n = sk_GENERAL_NAME_num(alt);
-    for (i = 0; i < n; i++) {
-        gn = sk_GENERAL_NAME_value(alt, i);
-        if (gn->type == type) {
-            r = matchfn(gn, arg);
-            if (r)
-                break;
-        }
-    }
-
-    GENERAL_NAMES_free(alt);
-    return r;
-}
-
-static int matchsanrid(GENERAL_NAME *gn, void *rid) {
-    return OBJ_cmp(gn->d.registeredID, (ASN1_OBJECT *)rid) == 0 ? 1 : 0;
-}
-
-struct matchsanip_arg {
-    int family;
-    struct in6_addr *addr;
-};
-static int matchsanip(GENERAL_NAME *gn, void *arg){
-    struct matchsanip_arg *addr = (struct matchsanip_arg *)arg;
+static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match){
     int l = ASN1_STRING_length(gn->d.iPAddress);
-    return (((addr->family == AF_INET && l == sizeof(struct in_addr)) || (addr->family == AF_INET6 && l == sizeof(struct in6_addr)))
-        && !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), addr->addr, l)) ? 1 : 0 ;
+    return (((match->af == AF_INET && l == sizeof(struct in_addr)) || (match->af == AF_INET6 && l == sizeof(struct in6_addr)))
+        && !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), &match->ipaddr, l)) ? 1 : 0 ;
 }
 
-/*
-static int subjectaltnamerid(X509 *cert, ASN1_OBJECT *rid) {
-    STACK_OF(GENERAL_NAME) *alt = NULL;
-    GENERAL_NAME *gn;
-    int n, i, r=0;
+static int _general_name_regex_match(char *v, int l, struct certattrmatch *match) {
+    char *s;
+    if (l <= 0 ) 
+        return 0;
+    if (match->exact && memcmp(v, match->exact, l) == 0) 
+        return 1;
 
-    alt = getaltname(cert);
-    if (!alt)
-        return r;
-
-    n = sk_GENERAL_NAME_num(alt);
-    for (i = 0; i < n; i++) {
-        gn = sk_GENERAL_NAME_value(alt, i);
-        if (gn->type != GEN_RID)
-            continue;
-        if (OBJ_cmp(gn->d.registeredID, rid) == 0){
-            r = 1;
-            break;
-        }
+    s = stringcopy((char *)v, l);
+    if (!s) {
+        debug(DBG_ERR, "malloc failed");
+        return 0;
     }
-
-    GENERAL_NAMES_free(alt);
-    return r;
-}*/
-
-static int subjectaltnameaddr(X509 *cert, int family, struct in6_addr *addr) {
-    int i, l, n, r = 0;
-    char *v;
-    STACK_OF(GENERAL_NAME) *alt;
-    GENERAL_NAME *gn;
-
-    debug(DBG_DBG, "subjectaltnameaddr");
-
-    alt = getaltname(cert);
-    if (!alt)
-	return r;
-
-    n = sk_GENERAL_NAME_num(alt);
-    for (i = 0; i < n; i++) {
-	gn = sk_GENERAL_NAME_value(alt, i);
-	if (gn->type != GEN_IPADD)
-	    continue;
-	r = -1;
-	v = (char *)ASN1_STRING_get0_data(gn->d.iPAddress);
-	l = ASN1_STRING_length(gn->d.iPAddress);
-	if (((family == AF_INET && l == sizeof(struct in_addr)) || (family == AF_INET6 && l == sizeof(struct in6_addr)))
-	    && !memcmp(v, addr, l)) {
-	    r = 1;
-	    break;
-	}
+    debug(DBG_DBG, "matchtregex: matching %s", s);
+    if (regexec(match->regex, s, 0, NULL, 0) == 0) {
+        free(s);
+        return 1;
     }
-    GENERAL_NAMES_free(alt);
-    return r;
+    free(s);
+    return 0;
 }
 
-static int subjectaltnameregexp(X509 *cert, int type, ASN1_OBJECT *othernametype, char *exact, regex_t *regex) {
-    int i, l, n, r = 0;
-    char *s, *v, *fail = NULL, *tmp;
-    STACK_OF(GENERAL_NAME) *alt;
-    GENERAL_NAME *gn;
-
-    debug(DBG_DBG, "subjectaltnameregexp");
-
-    alt = getaltname(cert);
-    if (!alt)
-	return r;
-
-    n = sk_GENERAL_NAME_num(alt);
-    for (i = 0; i < n; i++) {
-	gn = sk_GENERAL_NAME_value(alt, i);
-	if (gn->type != type)
-	    continue;
-	r = -1;
-    if (gn->type == GEN_OTHERNAME) {
-        if (OBJ_cmp(gn->d.otherName->type_id, othernametype) != 0)
-            continue;
-        v = (char *)ASN1_STRING_get0_data(gn->d.otherName->value->value.octet_string);
-        l = ASN1_STRING_length(gn->d.otherName->value->value.octet_string);
-    } else {
-        v = (char *)ASN1_STRING_get0_data(gn->d.ia5);
-        l = ASN1_STRING_length(gn->d.ia5);
-    }
-    if (l <= 0)
-        continue;
-#ifdef DEBUG
-	printfchars(NULL, gn->type == GEN_DNS ? "dns" : "uri", NULL, (uint8_t *) v, l);
-#endif
-	if (exact) {
-	    if (memcmp(v, exact, l))
-		continue;
-	} else {
-	    s = stringcopy((char *)v, l);
-	    if (!s) {
-		debug(DBG_ERR, "malloc failed");
-		continue;
-	    }
-        debug(DBG_DBG, "subjectaltnameregex: matching %s", s);
-        if (regexec(regex, s, 0, NULL, 0)) {
-            tmp = fail;
-            if (asprintf(&fail, "%s%s%s", tmp ? tmp : "", tmp ? ", " : "", s) >= 0)
-                free(tmp);
-            else
-                fail = tmp;
-            free(s);
-            continue;
-	    }
-	    free(s);
-	}
-	r = 1;
-	break;
-    }
-    if (r!=1)
-        debug(DBG_WARN, "subjectaltnameregex: no matching Subject Alt Name %s found! (%s)",
-            type == GEN_DNS ? "DNS" : type == GEN_URI ? "URI" : type == GEN_OTHERNAME ? "OtherName" : "", fail);
-
-    GENERAL_NAMES_free(alt);
-    free(fail);
-    return r;
+static int certattr_matchregex(GENERAL_NAME *gn, struct certattrmatch *match) {
+    return _general_name_regex_match((char *)ASN1_STRING_get0_data(gn->d.ia5), ASN1_STRING_length(gn->d.ia5), match);
 }
 
-static int cnregexp(X509 *cert, char *exact, regex_t *regex) {
-    int loc, l;
-    char *v, *s;
+static int certattr_matchothername(GENERAL_NAME *gn, struct certattrmatch *match) {
+    if (OBJ_cmp(gn->d.otherName->type_id, match->oid) != 0)
+        return 0;
+    return _general_name_regex_match((char *)ASN1_STRING_get0_data(gn->d.otherName->value->value.octet_string),
+                                     ASN1_STRING_length(gn->d.otherName->value->value.octet_string),
+                                     match);
+    
+}
+
+static int certattr_matchcn(X509 *cert, struct certattrmatch *match){
+    int loc;
     X509_NAME *nm;
     X509_NAME_ENTRY *e;
     ASN1_STRING *t;
@@ -738,33 +620,49 @@ static int cnregexp(X509 *cert, char *exact, regex_t *regex) {
     nm = X509_get_subject_name(cert);
     loc = -1;
     for (;;) {
-	loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
-	if (loc == -1)
-	    break;
-	e = X509_NAME_get_entry(nm, loc);
-	t = X509_NAME_ENTRY_get_data(e);
-	v = (char *) ASN1_STRING_get0_data(t);
-	l = ASN1_STRING_length(t);
-	if (l < 0)
-	    continue;
-	if (exact) {
-	    if (l == strlen(exact) && !strncasecmp(exact, v, l))
-		return 1;
-	} else {
-	    s = stringcopy((char *)v, l);
-	    if (!s) {
-		debug(DBG_ERR, "malloc failed");
-		continue;
-	    }
-	    if (regexec(regex, s, 0, NULL, 0)) {
-		free(s);
-		continue;
-	    }
-	    free(s);
-	    return 1;
-	}
+        loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
+        if (loc == -1)
+            break;
+
+        e = X509_NAME_get_entry(nm, loc);
+        t = X509_NAME_ENTRY_get_data(e);
+        if (_general_name_regex_match((char *) ASN1_STRING_get0_data(t), ASN1_STRING_length(t), match))
+            return 1;
     }
     return 0;
+}
+
+static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
+    GENERAL_NAME *gn;
+    int loc, n,i,r = 0;
+    STACK_OF(GENERAL_NAME) *alt;
+
+    /*special case: don't search in SAN, but CN field in subject */
+    if (match->type == -1)
+        return certattr_matchcn(cert, match);
+
+    loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
+    if (loc < 0) 
+        return 0;
+
+    alt = X509V3_EXT_d2i(X509_get_ext(cert, loc));
+    if (!alt)
+        return 0;
+
+    n = sk_GENERAL_NAME_num(alt);
+    for (i = 0; i < n; i++) {
+        gn = sk_GENERAL_NAME_value(alt, i);
+        if (gn->type == match->type) {
+            r = match->matchfn(gn, match);
+            if (r)
+                break;
+        }
+    }
+
+    //TODO old code prints non-matching elements.
+
+    GENERAL_NAMES_free(alt);
+    return r;
 }
 
 /* this is a bit sloppy, should not always accept match to any */
@@ -772,8 +670,7 @@ int certnamecheck(X509 *cert, struct list *hostports) {
     struct list_node *entry;
     struct hostportres *hp;
     int r = 0;
-    uint8_t type = 0; /* 0 for DNS, AF_INET for IPv4, AF_INET6 for IPv6 */
-    struct in6_addr addr;
+    struct certattrmatch match;
 
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
         hp = (struct hostportres *)entry->data;
@@ -781,25 +678,30 @@ int certnamecheck(X509 *cert, struct list *hostports) {
             /* we disable the check for prefixes */
             return 1;
         }
-        if (inet_pton(AF_INET, hp->host, &addr))
-            type = AF_INET;
-        else if (inet_pton(AF_INET6, hp->host, &addr))
-            type = AF_INET6;
+        if (inet_pton(AF_INET, hp->host, &match.ipaddr))
+            match.af = AF_INET;
+        else if (inet_pton(AF_INET6, hp->host, &match.ipaddr))
+            match.af = AF_INET6;
         else
-            type = 0;
+            match.af = 0;
+            match.exact = hp->host;
 
-        if (type)
-            r = subjectaltnameaddr(cert, type, &addr);
+        if (match.af)
+            match.matchfn = &certattr_matchip;
+            match.type = GEN_IPADD;
+            r = matchsubjaltname(cert, &match);
         if (!r)
-            r = subjectaltnameregexp(cert, GEN_DNS, NULL, hp->host, NULL);
+            match.matchfn = &certattr_matchregex;
+            match.type = GEN_DNS;
+            r = matchsubjaltname(cert, &match);
         if (r) {
             if (r > 0) {
-                debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", type ? "address" : "host", hp->host);
+                debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
                 return 1;
             }
-            debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", type ? "address" : "host", hp->host);
+            debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
         } else {
-            if (cnregexp(cert, hp->host, NULL)) {
+            if (certattr_matchcn(cert, &match)) {
                 debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
                 return 1;
             }
@@ -811,8 +713,8 @@ int certnamecheck(X509 *cert, struct list *hostports) {
 
 int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     char *subject;
-    char addrbuf[INET6_ADDRSTRLEN];
     int ok = 1;
+    struct list_node *entry;
 
     subject = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
     debug(DBG_DBG, "verifyconfcert: verify certificate for host %s, subject %s", conf->name, subject);
@@ -823,49 +725,16 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
             ok = 0;
         }
     }
-    if (conf->certcnregex) {
-        debug(DBG_DBG, "verifyconfcert: matching CN regex %s", conf->matchcertattr);
-        if (cnregexp(cert, NULL, conf->certcnregex) < 1) {
-            debug(DBG_WARN, "verifyconfcert: CN not matching regex for host %s (%s)", conf->name, subject);
+
+    for (entry = list_first(conf->matchcertattrs); entry; entry = list_next(entry)) {
+        if (matchsubjaltname(cert, (struct certattrmatch *)entry->data) < 1) {
+            debug(DBG_WARN, "verifyconfcert: %s not matching for host %s (%s)", ((struct certattrmatch *)entry->data)->debugname, conf->name, subject);
             ok = 0;
+        } else {
+            debug(DBG_DBG, "verifyconfcert: %s matching for host %s (%s)", ((struct certattrmatch *)entry->data)->debugname, conf->name, subject);
         }
     }
-    if (conf->certuriregex) {
-        debug(DBG_DBG, "verifyconfcert: matching subjectaltname URI regex %s", conf->matchcertattr);
-        if (subjectaltnameregexp(cert, GEN_URI, NULL, NULL, conf->certuriregex) < 1) {
-            debug(DBG_WARN, "verifyconfcert: subjectaltname URI not matching regex for host %s (%s)", conf->name, subject);
-            ok = 0;
-        }
-    }
-    if (conf->certdnsregex) {
-        debug(DBG_DBG, "verifyconfcert: matching subjectaltname DNS regex %s", conf->matchcertattr);
-        if (subjectaltnameregexp(cert, GEN_DNS, NULL, NULL, conf->certdnsregex) < 1) {
-            debug(DBG_WARN, "verifyconfcert: subjectaltname DNS not matching regex for host %s (%s)", conf->name, subject);
-            ok = 0;
-        }
-    }
-    if (conf->certotherregex && conf->certothertype) {
-        debug(DBG_DBG, "verifyconfcert: matching subjectaltname OtherName regex %s", conf->matchcertattr);
-        if (subjectaltnameregexp(cert, GEN_OTHERNAME, conf->certothertype, NULL, conf->certotherregex) < 1) {
-            debug(DBG_WARN, "verifyconfcert: subjectaltname DNS not matching regex for host %s (%s)", conf->name, subject);
-            ok = 0;
-        }
-    }
-    if (conf->certipmatchaf) {
-        struct matchsanip_arg arg = {conf->certipmatchaf, &conf->certipmatch};
-        debug(DBG_DBG, "verifyconfcert: matching subjectaltname IP %s", inet_ntop(conf->certipmatchaf, &conf->certipmatch, addrbuf, INET6_ADDRSTRLEN));
-        if (matchsubjaltname(cert, GEN_IPADD, &matchsanip, &arg)) {
-            debug(DBG_WARN, "verifyconfcert: subjectaltname IP not matching regex for host %s (%s)", conf->name, subject);
-            ok = 0;
-        }
-    }
-    if (conf->certridmatch) {
-        debug(DBG_DBG, "verfiyconfcert: matching subjectlatname rID %s", conf->certridmatch);
-        if (matchsubjaltname(cert, GEN_RID, &matchsanrid, conf->certridmatch)) {
-            debug(DBG_WARN, "verifyconfcert: subjectaltname rID not matching for host %s (%s)", conf->name, subject);
-            ok = 0;
-        }
-    }
+
     free(subject);
     return ok;
 }
@@ -1039,69 +908,116 @@ errexit:
     return 0;
 }
 
-int addmatchcertattr(struct clsrvconf *conf) {
-    char *v;
-    regex_t **r;
+static regex_t *compileregex(char *regstr) {
+    regex_t *result;
 
-    if (!strncasecmp(conf->matchcertattr, "SubjectAltName:IP:", 18)) {
-        if (inet_pton(AF_INET, conf->matchcertattr+18, &conf->certipmatch))
-            conf->certipmatchaf = AF_INET;
-        else if (inet_pton(AF_INET6, conf->matchcertattr+18, &conf->certipmatch))
-            conf->certipmatchaf = AF_INET6;
-        else
-            return 0;
-        return 1;
-    }
+    if (regstr[strlen(regstr) - 1] == '/')
+        regstr[strlen(regstr) - 1] = '\0';
+    if (!*regstr)
+        return NULL;
 
-    if (!strncasecmp(conf->matchcertattr, "SubjectAltName:rID:", 19)) {
-        conf->certridmatch = OBJ_txt2obj(conf->matchcertattr+19, 0);
-        if (!conf->certridmatch)
-            return 0;
-    }
-
-    /* the other cases below use a common regex match */
-    if (!strncasecmp(conf->matchcertattr, "CN:/", 4)) {
-        r = &conf->certcnregex;
-        v = conf->matchcertattr + 4;
-    } else if (!strncasecmp(conf->matchcertattr, "SubjectAltName:URI:/", 20)) {
-        r = &conf->certuriregex;
-        v = conf->matchcertattr + 20;
-    } else if (!strncasecmp(conf->matchcertattr, "SubjectAltName:DNS:/", 20)) {
-        r = &conf->certdnsregex;
-        v = conf->matchcertattr + 20;
-    } else if (!strncasecmp(conf->matchcertattr, "SubjectAltName:OtherName:", 25)) {
-        v = strchr(conf->matchcertattr + 25, ':');
-        if (!v || +1 != '/') return 0;
-        *v = '\0';
-        conf->certothertype = OBJ_txt2obj(conf->matchcertattr+25, 0);
-        if (!conf->certothertype)
-            return 0;
-        v = v+1;
-        r = &conf->certotherregex;
-    }
-    else
-        return 0;
-
-    if (!*v)
-        return 0;
-    /* regexp, remove optional trailing / if present */
-    if (v[strlen(v) - 1] == '/')
-        v[strlen(v) - 1] = '\0';
-    if (!*v)
-        return 0;
-
-    *r = malloc(sizeof(regex_t));
-    if (!*r) {
+    result = malloc(sizeof(regex_t));
+    if (!result) {
         debug(DBG_ERR, "malloc failed");
-        return 0;
+        return NULL;
     }
-    if (regcomp(*r, v, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
-        free(*r);
-        *r = NULL;
-        debug(DBG_ERR, "failed to compile regular expression %s", v);
-        return 0;
+    if (regcomp(result, regstr, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
+        free(result);
+        debug(DBG_ERR, "failed to compile regular expression %s", regstr);
+        return NULL;
     }
+    return result;
+}
+
+int addmatchcertattr(struct clsrvconf *conf, char *match) {
+    struct certattrmatch *certattrmatch;
+    char *pos, *colon;
+    
+    if (!conf->matchcertattrs) {
+        conf->matchcertattrs = list_create();
+    }
+
+    certattrmatch = malloc(sizeof(struct certattrmatch));
+
+    pos = match;
+    colon = strchr(pos, ':');
+    if (!colon) goto errexit;
+
+    if (strncasecmp(pos, "CN", colon - pos) == 0) {
+        certattrmatch->regex = compileregex(colon+1);
+        certattrmatch->type = -1;
+        certattrmatch->matchfn = NULL; /*special case: don't search in SAN, but CN field in subject */
+    } 
+    else if (strncasecmp(pos, "SubjectAltName", colon - pos) == 0) {
+        pos = colon+1;
+        colon = strchr(pos, ':');
+        if (!colon) goto errexit;
+
+        if (strncasecmp(pos, "IP", colon - pos) == 0) {
+            pos = colon+1;
+            if (inet_pton(AF_INET, pos, &certattrmatch->ipaddr))
+                certattrmatch->af = AF_INET;
+            else if (inet_pton(AF_INET6, pos, &certattrmatch->ipaddr))
+                certattrmatch->af = AF_INET6;
+            else
+                goto errexit;
+            certattrmatch->type = GEN_IPADD;
+            certattrmatch->matchfn = &certattr_matchip;
+        }
+        else if(strncasecmp(pos, "URI", colon - pos) == 0) {
+            certattrmatch->regex = compileregex(colon+1);
+            certattrmatch->type = GEN_URI;
+            certattrmatch->matchfn = &certattr_matchregex;
+        }
+        else if(strncasecmp(pos, "DNS", colon - pos) == 0) {
+            certattrmatch->regex = compileregex(colon+1);
+            certattrmatch->type = GEN_DNS;
+            certattrmatch->matchfn = &certattr_matchregex;
+        }
+        else if(strncasecmp(pos, "rID", colon - pos) == 0) {
+            certattrmatch->oid = OBJ_txt2obj(colon+1, 0);
+            if (!certattrmatch->oid) goto errexit;
+            certattrmatch->type = GEN_RID;
+            certattrmatch->matchfn = &certattr_matchrid;
+        }
+        else if(strncasecmp(pos, "otherNAme", colon - pos) == 0){
+            pos = colon+1;
+            colon = strchr(pos, ':');
+            if(!colon) goto errexit;
+            *colon = '\0';
+            if(!(certattrmatch->oid = OBJ_txt2obj(pos,0))) goto errexit;
+            if(!(certattrmatch->regex = compileregex(colon+1))) goto errexit;
+            certattrmatch->type = GEN_OTHERNAME;
+            certattrmatch->matchfn = &certattr_matchothername;
+            *colon = ';';
+        }
+        else goto errexit;
+    } 
+    else goto errexit;
+
+    certattrmatch->debugname = stringcopy(match, 0);
+    if(!list_push(conf->matchcertattrs, certattrmatch)) goto errexit;
     return 1;
+
+errexit:
+    free(certattrmatch);
+    return 0;
+}
+
+void freematchcertattr(struct clsrvconf *conf) {
+    struct list_node *entry;
+    struct certattrmatch *match;
+
+    if (conf->matchcertattrs) {
+        for (entry = list_first(conf->matchcertattrs); entry; entry=list_next(entry)) {
+            match = ((struct certattrmatch*)entry->data);
+            free(match->debugname);
+            free(match->exact);
+            ASN1_OBJECT_free(match->oid);
+            regfree(match->regex);
+        }
+        list_destroy(conf->matchcertattrs);
+    }
 }
 
 int sslaccepttimeout (SSL *ssl, int timeout) {

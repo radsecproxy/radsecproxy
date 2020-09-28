@@ -151,16 +151,8 @@ struct clsrvconf {
     uint8_t *secret;
     int secret_len;
     char *tls;
-    char *matchcertattr;
-    regex_t *certcnregex;
-    regex_t *certuriregex;
-    regex_t *certdnsregex;
-    regex_t *certotherregex;
-    ASN1_OBJECT *certothertype;
-    struct in6_addr certipmatch;
-    ASN1_OBJECT *certridmatch;
-    //char *certridmatch;
-    int certipmatchaf;
+    struct list *matchcertattrs;
+    char **confmatchcertattrs;
     char *confrewritein;
     char *confrewriteout;
     char *confrewriteusername;

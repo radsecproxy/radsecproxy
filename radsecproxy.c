@@ -2174,11 +2174,8 @@ void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->confsecret);
     free(conf->secret);
     free(conf->tls);
-    free(conf->matchcertattr);
-    if (conf->certcnregex)
-	regfree(conf->certcnregex);
-    if (conf->certuriregex)
-	regfree(conf->certuriregex);
+    freegconfmstr(conf->confmatchcertattrs);
+    freematchcertattr(conf);
     free(conf->confrewritein);
     free(conf->confrewriteout);
     if (conf->rewriteusername) {
@@ -2268,7 +2265,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     !mergeconfmstring(&dst->source, &src->source) ||
 	!mergeconfstring(&dst->confsecret, &src->confsecret) ||
 	!mergeconfstring(&dst->tls, &src->tls) ||
-	!mergeconfstring(&dst->matchcertattr, &src->matchcertattr) ||
+	!mergeconfmstring(&dst->confmatchcertattrs, &src->confmatchcertattrs) ||
 	!mergeconfstring(&dst->confrewritein, &src->confrewritein) ||
 	!mergeconfstring(&dst->confrewriteout, &src->confrewriteout) ||
 	!mergeconfstring(&dst->confrewriteusername, &src->confrewriteusername) ||
@@ -2309,10 +2306,11 @@ int config_hostaf(const char *desc, int ipv4only, int ipv6only, int *af) {
 
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *existing;
-    char *conftype = NULL, *rewriteinalias = NULL;
+    char *conftype = NULL, *rewriteinalias = NULL, **matchcertattrs = NULL;
     long int dupinterval = LONG_MIN, addttl = LONG_MIN;
     uint8_t ipv4only = 0, ipv6only = 0;
     struct list_node *entry;
+    int i;
 
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -2331,7 +2329,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 	    "tls", CONF_STR, &conf->tls,
-	    "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
+	    "matchcertificateattribute", CONF_MSTR, &matchcertattrs,
 	    "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
 	    "DuplicateInterval", CONF_LINT, &dupinterval,
@@ -2368,13 +2366,19 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-	conf->tlsconf = conf->tls
-            ? tlsgettls(conf->tls, NULL)
-            : tlsgettls("defaultClient", "default");
-	if (!conf->tlsconf)
-	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
-	if (conf->matchcertattr && !addmatchcertattr(conf))
-	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+        conf->tlsconf = conf->tls
+                ? tlsgettls(conf->tls, NULL)
+                : tlsgettls("defaultClient", "default");
+        if (!conf->tlsconf)
+            debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
+        if (matchcertattrs) {
+            for (i=0; matchcertattrs[i]; i++){
+                if (!addmatchcertattr(conf, matchcertattrs[i])) {
+                    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+                }
+            }
+            freegconfmstr(matchcertattrs);
+        }
     }
 #endif
 
@@ -2451,19 +2455,23 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 }
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
+    int i;
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
     	conf->tlsconf = conf->tls
             ? tlsgettls(conf->tls, NULL)
             : tlsgettls("defaultServer", "default");
-	if (!conf->tlsconf) {
-	    debug(DBG_ERR, "error in block %s, no tls context defined", block);
-	    return 0;
-	}
-	if (conf->matchcertattr && !addmatchcertattr(conf)) {
-	    debug(DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
-	    return 0;
-	}
+        if (!conf->tlsconf) {
+            debug(DBG_ERR, "error in block %s, no tls context defined", block);
+            return 0;
+        }
+        if (conf->matchcertattrs) {
+            for (i=0; conf->confmatchcertattrs[i]; i++){
+                if (!addmatchcertattr(conf, conf->confmatchcertattrs[i])) {
+                    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+                }
+            }
+        }
     }
 #endif
 
@@ -2533,7 +2541,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
             "tls", CONF_STR, &conf->tls,
-            "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
+            "MatchCertificateAttribute", CONF_STR, &conf->confmatchcertattrs,
             "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
             "addTTL", CONF_LINT, &addttl,
