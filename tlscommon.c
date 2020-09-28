@@ -635,6 +635,7 @@ static int certattr_matchcn(X509 *cert, struct certattrmatch *match){
 static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
     GENERAL_NAME *gn;
     int loc, n,i,r = 0;
+    char *fail, *tmp, *s;
     STACK_OF(GENERAL_NAME) *alt;
 
     /*special case: don't search in SAN, but CN field in subject */
@@ -657,9 +658,20 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
             if (r)
                 break;
         }
+        /*legacy print non-matching SAN*/
+        if (gn->type == GEN_DNS || gn->type == GEN_URI) {
+            s = stringcopy((char *)ASN1_STRING_get0_data(gn->d.ia5), ASN1_STRING_length(gn->d.ia5));
+             tmp = fail;
+            if (asprintf(&fail, "%s%s%s", tmp ? tmp : "", tmp ? ", " : "", s) >= 0)
+                free(tmp);
+            else
+                fail = tmp;
+            free(s);
+        }
     }
 
-    //TODO old code prints non-matching elements.
+    if (!r)
+        debug(DBG_WARN, "matchsubjaltname: no matching Subject Alt Name found! (%s)", fail);
 
     GENERAL_NAMES_free(alt);
     return r;
