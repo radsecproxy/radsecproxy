@@ -696,16 +696,18 @@ int certnamecheck(X509 *cert, struct list *hostports) {
             match.af = AF_INET6;
         else
             match.af = 0;
-            match.exact = hp->host;
+        match.exact = hp->host;
 
-        if (match.af)
+        if (match.af) {
             match.matchfn = &certattr_matchip;
             match.type = GEN_IPADD;
             r = matchsubjaltname(cert, &match);
-        if (!r)
+        }
+        if (!r) {
             match.matchfn = &certattr_matchregex;
             match.type = GEN_DNS;
             r = matchsubjaltname(cert, &match);
+        }
         if (r) {
             if (r > 0) {
                 debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
