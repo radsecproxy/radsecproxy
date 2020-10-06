@@ -936,7 +936,7 @@ the given vendor id are removed.
 .BR "WhitelistMode (" on | off )
 .RS
 Enable whitelist mode. All attributes except those configured with
-\fBWhitelistAttrbiute\fR or \fBWhitelistVendorAttribute\fR will be removed.
+\fBWhitelistAttribute\fR or \fBWhitelistVendorAttribute\fR will be removed.
 While whitelist mode is active, \fBRemoveAttribute\fR and
 \fBRemoveVendorAttribute\fR statements are ignored.
 .RE
