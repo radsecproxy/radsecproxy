@@ -581,8 +581,11 @@ static int _general_name_regex_match(char *v, int l, struct certattrmatch *match
     char *s;
     if (l <= 0 ) 
         return 0;
-    if (match->exact && memcmp(v, match->exact, l) == 0) 
-        return 1;
+    if (match->exact) {
+        if (memcmp(v, match->exact, l) == 0)
+            return 1;
+        return 0;
+    }
 
     s = stringcopy((char *)v, l);
     if (!s) {
@@ -635,7 +638,7 @@ static int certattr_matchcn(X509 *cert, struct certattrmatch *match){
 static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
     GENERAL_NAME *gn;
     int loc, n,i,r = 0;
-    char *fail, *tmp, *s;
+    char *fail = NULL, *tmp, *s;
     STACK_OF(GENERAL_NAME) *alt;
 
     /*special case: don't search in SAN, but CN field in subject */
@@ -661,7 +664,8 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
         /*legacy print non-matching SAN*/
         if (gn->type == GEN_DNS || gn->type == GEN_URI) {
             s = stringcopy((char *)ASN1_STRING_get0_data(gn->d.ia5), ASN1_STRING_length(gn->d.ia5));
-             tmp = fail;
+            if (!s) continue;
+            tmp = fail;
             if (asprintf(&fail, "%s%s%s", tmp ? tmp : "", tmp ? ", " : "", s) >= 0)
                 free(tmp);
             else
@@ -672,6 +676,7 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
 
     if (!r)
         debug(DBG_WARN, "matchsubjaltname: no matching Subject Alt Name found! (%s)", fail);
+    free(fail);
 
     GENERAL_NAMES_free(alt);
     return r;
@@ -683,6 +688,8 @@ int certnamecheck(X509 *cert, struct list *hostports) {
     struct hostportres *hp;
     int r = 0;
     struct certattrmatch match;
+
+    memset(&match, 0, sizeof(struct certattrmatch));
 
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
         hp = (struct hostportres *)entry->data;
@@ -952,6 +959,7 @@ int addmatchcertattr(struct clsrvconf *conf, char *match) {
     }
 
     certattrmatch = malloc(sizeof(struct certattrmatch));
+    memset(certattrmatch, 0, sizeof(struct certattrmatch));
 
     pos = match;
     colon = strchr(pos, ':');
@@ -1028,9 +1036,12 @@ void freematchcertattr(struct clsrvconf *conf) {
             free(match->debugname);
             free(match->exact);
             ASN1_OBJECT_free(match->oid);
-            regfree(match->regex);
+            if(match->regex)
+                regfree(match->regex);
+            free(match->regex);
         }
         list_destroy(conf->matchcertattrs);
+        conf->matchcertattrs = NULL;
     }
 }
 
