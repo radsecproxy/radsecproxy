@@ -582,7 +582,7 @@ static int _general_name_regex_match(char *v, int l, struct certattrmatch *match
     if (l <= 0 ) 
         return 0;
     if (match->exact) {
-        if (memcmp(v, match->exact, l) == 0)
+        if (l == strlen(match->exact) && memcmp(v, match->exact, l) == 0)
             return 1;
         return 0;
     }
@@ -635,6 +635,10 @@ static int certattr_matchcn(X509 *cert, struct certattrmatch *match){
     return 0;
 }
 
+/* returns
+   1 if expected type is present and matches
+   0 if expected type is not present
+   -1 if expected type is present but does not match */
 static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
     GENERAL_NAME *gn;
     int loc, n,i,r = 0;
@@ -660,6 +664,7 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
             r = match->matchfn(gn, match);
             if (r)
                 break;
+            r = -1;
         }
         /*legacy print non-matching SAN*/
         if (gn->type == GEN_DNS || gn->type == GEN_URI) {
@@ -674,7 +679,7 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
         }
     }
 
-    if (!r)
+    if (r<1)
         debug(DBG_WARN, "matchsubjaltname: no matching Subject Alt Name found! (%s)", fail);
     free(fail);
 
@@ -682,7 +687,6 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
     return r;
 }
 
-/* this is a bit sloppy, should not always accept match to any */
 int certnamecheck(X509 *cert, struct list *hostports) {
     struct list_node *entry;
     struct hostportres *hp;
@@ -692,6 +696,7 @@ int certnamecheck(X509 *cert, struct list *hostports) {
     memset(&match, 0, sizeof(struct certattrmatch));
 
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
+        r = 0;
         hp = (struct hostportres *)entry->data;
         if (hp->prefixlen != 255) {
             /* we disable the check for prefixes */
@@ -931,6 +936,9 @@ errexit:
 
 static regex_t *compileregex(char *regstr) {
     regex_t *result;
+    if (regstr[0] != '/')
+        return NULL;
+    regstr++;
 
     if (regstr[strlen(regstr) - 1] == '/')
         regstr[strlen(regstr) - 1] = '\0';
@@ -966,7 +974,7 @@ int addmatchcertattr(struct clsrvconf *conf, char *match) {
     if (!colon) goto errexit;
 
     if (strncasecmp(pos, "CN", colon - pos) == 0) {
-        certattrmatch->regex = compileregex(colon+1);
+        if(!(certattrmatch->regex = compileregex(colon+1))) goto errexit;
         certattrmatch->type = -1;
         certattrmatch->matchfn = NULL; /*special case: don't search in SAN, but CN field in subject */
     } 
@@ -987,12 +995,12 @@ int addmatchcertattr(struct clsrvconf *conf, char *match) {
             certattrmatch->matchfn = &certattr_matchip;
         }
         else if(strncasecmp(pos, "URI", colon - pos) == 0) {
-            certattrmatch->regex = compileregex(colon+1);
+            if(!(certattrmatch->regex = compileregex(colon+1))) goto errexit;
             certattrmatch->type = GEN_URI;
             certattrmatch->matchfn = &certattr_matchregex;
         }
         else if(strncasecmp(pos, "DNS", colon - pos) == 0) {
-            certattrmatch->regex = compileregex(colon+1);
+            if(!(certattrmatch->regex = compileregex(colon+1))) goto errexit;
             certattrmatch->type = GEN_DNS;
             certattrmatch->matchfn = &certattr_matchregex;
         }

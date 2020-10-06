@@ -272,6 +272,7 @@ Qe0Vy/UCDijCHK6Y5GkzWD7H008l\n\
         ok(1,verifyconfcert(certsandns, &conf),"san dns");
         ok(0,verifyconfcert(certsandnsother, &conf),"negative san dns");
         ok(1,verifyconfcert(certcomplex,&conf),"san dns in complex cert");
+        ok(0,verifyconfcert(certsimple, &conf),"missing san dns");
 
         while(list_shift(conf.hostports));
     }
@@ -308,9 +309,9 @@ Qe0Vy/UCDijCHK6Y5GkzWD7H008l\n\
         hp2.prefixlen = 255;
         list_push(conf.hostports, &hp2);
 
-        ok(1,verifyconfcert(certsandns, &conf),"multi hostport san dns # TODO fix in refactoring");
+        ok(1,verifyconfcert(certsandns, &conf),"multi hostport san dns");
         ok(0,verifyconfcert(certsandnsother, &conf),"negative multi hostport san dns");
-        ok(1,verifyconfcert(certcomplex,&conf),"multi hostport san dns in complex cert # TODO fix in refactoring");
+        ok(1,verifyconfcert(certcomplex,&conf),"multi hostport san dns in complex cert");
 
         while(list_shift(conf.hostports));
     }
