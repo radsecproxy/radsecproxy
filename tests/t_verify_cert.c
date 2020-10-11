@@ -151,14 +151,52 @@ bG9jYWwvcHJvZmlsZSNtZTAJBgcqhkjOPQQBAyMAMCACDniwUmV285CoguiJ6WmW\n\
 Ag5ZWNTJtmNNdKxh0Mahsw==\n\
 -----END CERTIFICATE-----"),
 
-        /* /CN=other, URI:https://other.local/profile#me */
-        *certsanuriother = getcert("-----BEGIN CERTIFICATE-----\n\
+    /* /CN=other, URI:https://other.local/profile#me */
+    *certsanuriother = getcert("-----BEGIN CERTIFICATE-----\n\
 MIIBATCBzaADAgECAhQLG7rYpl+8YbPNEtUgw6HRZYIc1DAJBgcqhkjOPQQBMBAx\n\
 DjAMBgNVBAMMBW90aGVyMB4XDTIwMTAwNjA5MDU0OVoXDTIwMTAxNjA5MDU0OVow\n\
 EDEOMAwGA1UEAwwFb3RoZXIwMjAQBgcqhkjOPQIBBgUrgQQABgMeAAScZ7M19uKE\n\
 DDXCtCGaM1KbqRZA/3VgQt+6iEFuoy0wKzApBgNVHREEIjAghh5odHRwczovL290\n\
 aGVyLmxvY2FsL3Byb2ZpbGUjbWUwCQYHKoZIzj0EAQMkADAhAg8AoOJVnRcp3gyY\n\
 Qe0Vy/UCDijCHK6Y5GkzWD7H008l\n\
+-----END CERTIFICATE-----"),
+
+    /* /CN=test, Registered ID:1.2.3.4 */
+    *certsanrid = getcert("-----BEGIN CERTIFICATE-----\n\
+MIHjMIGwoAMCAQICFBKq59XodNaMiLZDZbE7BMFn+GnAMAkGByqGSM49BAEwDzEN\n\
+MAsGA1UEAwwEdGVzdDAeFw0yMDEwMDYxNTA1NTBaFw0yMDEwMTYxNTA1NTBaMA8x\n\
+DTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAAScZ7M19uKEDDXC\n\
+tCGaM1KbqRZA/3VgQt+6iEFuoxIwEDAOBgNVHREEBzAFiAMqAwQwCQYHKoZIzj0E\n\
+AQMjADAgAg4QFOirxwoC5OYpFArE8gIORG+zCoikzhvY95kBGvg=\n\
+-----END CERTIFICATE-----"),
+
+    /* /CN=other, Registered ID:1.2.3.9 */
+    *certsanridother = getcert("-----BEGIN CERTIFICATE-----\n\
+MIHmMIGyoAMCAQICFEvhI4VZvPr7cITrckvz6J576uy3MAkGByqGSM49BAEwEDEO\n\
+MAwGA1UEAwwFb3RoZXIwHhcNMjAxMDA2MTUwNzQzWhcNMjAxMDE2MTUwNzQzWjAQ\n\
+MQ4wDAYDVQQDDAVvdGhlcjAyMBAGByqGSM49AgEGBSuBBAAGAx4ABJxnszX24oQM\n\
+NcK0IZozUpupFkD/dWBC37qIQW6jEjAQMA4GA1UdEQQHMAWIAyoDCTAJBgcqhkjO\n\
+PQQBAyQAMCECDwCJMMBtTsOZNwvy43TlLgIOKtssl/hBDN/JcPbBQgI=\n\
+-----END CERTIFICATE-----"),
+
+    /* /CN=test, otherNAME 1.3.6.1.5.5.7.8.8;UTF8:test.local */
+    *certsanothername = getcert("-----BEGIN CERTIFICATE-----\n\
+MIH4MIHFoAMCAQICFHfn1oV2cr4BkkWImdYCJXkSmiKrMAkGByqGSM49BAEwDzEN\n\
+MAsGA1UEAwwEdGVzdDAeFw0yMDEwMDYxNTE4NTNaFw0yMDEwMTYxNTE4NTNaMA8x\n\
+DTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAAScZ7M19uKEDDXC\n\
+tCGaM1KbqRZA/3VgQt+6iEFuoycwJTAjBgNVHREEHDAaoBgGCCsGAQUFBwgIoAwM\n\
+CnRlc3QubG9jYWwwCQYHKoZIzj0EAQMjADAgAg5picQbJfIM1Ljn7H/26QIOCLcA\n\
+UXfI8XA07aHTgzE=\n\
+-----END CERTIFICATE-----"),
+
+    /* /CN=other, otherNAME 1.3.6.1.5.5.7.8.8;UTF8:other.local */
+    *certsanothernameother = getcert("-----BEGIN CERTIFICATE-----\n\
+MIH6MIHGoAMCAQICFEa/hIvgCkqCF6ulCq3Jy3iw6XkwMAkGByqGSM49BAEwDzEN\n\
+MAsGA1UEAwwEdGVzdDAeFw0yMDEwMDYxNTIwMDhaFw0yMDEwMTYxNTIwMDhaMA8x\n\
+DTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAAScZ7M19uKEDDXC\n\
+tCGaM1KbqRZA/3VgQt+6iEFuoygwJjAkBgNVHREEHTAboBkGCCsGAQUFBwgIoA0M\n\
+C290aGVyLmxvY2FsMAkGByqGSM49BAEDJAAwIQIOSOJ5OK2xzjrCweD/ImECDwDL\n\
+COiok62ckBQsaUG8AA==\n\
 -----END CERTIFICATE-----");
 
     memset(&conf, 0, sizeof(conf));
@@ -385,6 +423,7 @@ Qe0Vy/UCDijCHK6Y5GkzWD7H008l\n\
         freematchcertattr(&conf);
         free(match);
     }
+
     /* test explicit SAN URI regex */
     {
         conf.name = "test";
@@ -396,6 +435,38 @@ Qe0Vy/UCDijCHK6Y5GkzWD7H008l\n\
         ok(1,verifyconfcert(certsanuri, &conf),"explicit san uri regex");
         ok(0,verifyconfcert(certsanuriother, &conf),"negative explicit san uri");
         ok(0,verifyconfcert(certsimple, &conf), "missing explicit san uri");
+
+        freematchcertattr(&conf);
+        free(match);
+    }
+
+    /* test explicit SAN rID */
+    {
+        conf.name = "test";
+        conf.certnamecheck = 0;
+        match = stringcopy("SubjectAltName:rID:1.2.3.4",0);
+
+        ok(1,addmatchcertattr(&conf, match),"explicit san rid config");
+
+        ok(1,verifyconfcert(certsanrid, &conf),"explicit san rid");
+        ok(0,verifyconfcert(certsanridother, &conf),"negative explicit san rid");
+        ok(0,verifyconfcert(certsimple, &conf), "missing explicit san rid");
+
+        freematchcertattr(&conf);
+        free(match);
+    }
+
+    /* test explicit SAN otherNAME */
+    {
+        conf.name = "test";
+        conf.certnamecheck = 0;
+        match = stringcopy("SubjectAltName:otherName:1.3.6.1.5.5.7.8.8:/test.local/",0);
+
+        ok(1,addmatchcertattr(&conf, match),"explicit san otherName config");
+
+        ok(1,verifyconfcert(certsanothername, &conf),"explicit san otherName");
+        ok(0,verifyconfcert(certsanothernameother, &conf),"negative explicit san otherName");
+        ok(0,verifyconfcert(certsimple, &conf), "missing explicit san otherName");
 
         freematchcertattr(&conf);
         free(match);
@@ -438,6 +509,11 @@ Qe0Vy/UCDijCHK6Y5GkzWD7H008l\n\
         ok(0,addmatchcertattr(&conf, match),"test invalid syntax ipv6");
         freematchcertattr(&conf);
         free(match);
+
+        match = stringcopy("SubjectAltName:rID:1:2",0);
+        ok(0,addmatchcertattr(&conf, match),"test invalid syntax rID");
+        freematchcertattr(&conf);
+        free(match);
     }
 
     /* test explicit & implicit combined */
@@ -463,6 +539,8 @@ Qe0Vy/UCDijCHK6Y5GkzWD7H008l\n\
         free(match);
     }
 
+    //TODO test new features
+    // - multiple attribute checks
 
     printf("1..%d\n", numtests);
     list_free(conf.hostports);
@@ -479,6 +557,8 @@ Qe0Vy/UCDijCHK6Y5GkzWD7H008l\n\
     X509_free(certcomplexother);
     X509_free(certsanuri);
     X509_free(certsanuriother);
+    X509_free(certsanrid);
+    X509_free(certsanridother);
 
     return 0;
 }
