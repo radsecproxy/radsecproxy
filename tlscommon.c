@@ -958,9 +958,9 @@ static regex_t *compileregex(char *regstr) {
     return result;
 }
 
-int addmatchcertattr(struct clsrvconf *conf, char *match) {
+int addmatchcertattr(struct clsrvconf *conf, const char *match) {
     struct certattrmatch *certattrmatch;
-    char *pos, *colon;
+    char *pos, *colon, *matchcopy;
     
     if (!conf->matchcertattrs) {
         conf->matchcertattrs = list_create();
@@ -969,7 +969,8 @@ int addmatchcertattr(struct clsrvconf *conf, char *match) {
     certattrmatch = malloc(sizeof(struct certattrmatch));
     memset(certattrmatch, 0, sizeof(struct certattrmatch));
 
-    pos = match;
+    matchcopy = stringcopy(match,0);
+    pos = matchcopy;
     colon = strchr(pos, ':');
     if (!colon) goto errexit;
 
@@ -1019,7 +1020,6 @@ int addmatchcertattr(struct clsrvconf *conf, char *match) {
             if(!(certattrmatch->regex = compileregex(colon+1))) goto errexit;
             certattrmatch->type = GEN_OTHERNAME;
             certattrmatch->matchfn = &certattr_matchothername;
-            *colon = ';';
         }
         else goto errexit;
     } 
@@ -1027,10 +1027,12 @@ int addmatchcertattr(struct clsrvconf *conf, char *match) {
 
     certattrmatch->debugname = stringcopy(match, 0);
     if(!list_push(conf->matchcertattrs, certattrmatch)) goto errexit;
+    free(matchcopy);
     return 1;
 
 errexit:
     free(certattrmatch);
+    free(matchcopy);
     return 0;
 }
 

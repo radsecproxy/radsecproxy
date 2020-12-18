@@ -36,7 +36,6 @@ int
 main (int argc, char *argv[])
 {
     struct clsrvconf conf;
-    char *match;
     X509 
     /* /CN=test */
     *certsimple = getcert("-----BEGIN CERTIFICATE-----\n\
@@ -379,25 +378,21 @@ vY/uPjA=\n\
         conf.name = "test";
         conf.certnamecheck = 0;
 
-        match = stringcopy("CN:/t..t/",0);
-        ok(1,addmatchcertattr(&conf, match),"explicit cn regex config");
+        ok(1,addmatchcertattr(&conf, "CN:/t..t/"),"explicit cn regex config");
 
         ok(1,verifyconfcert(certsimple, &conf),"explicit cn regex");
         ok(0,verifyconfcert(certsimpleother, &conf),"negative explicit cn regex");
         ok(1,verifyconfcert(certsandns, &conf), "explicit cn regex with SAN DNS");
 
         freematchcertattr(&conf);
-        free(match);
     }
 
     /* test explicit ip match to SAN IP */
     {
         conf.name = "test";
         conf.certnamecheck = 0;
-        match = stringcopy("SubjectAltName:IP:192.0.2.1",0);
 
-        ok(1,addmatchcertattr(&conf, match),"explicit san ip config");
-
+        ok(1,addmatchcertattr(&conf, "SubjectAltName:IP:192.0.2.1"),"explicit san ip config");
 
         ok(1,verifyconfcert(certsanip, &conf),"explicit san ip");
         ok(0,verifyconfcert(certsanipother, &conf),"wrong explicit san ip");
@@ -405,18 +400,14 @@ vY/uPjA=\n\
         ok(1,verifyconfcert(certcomplex,&conf),"explicit san ip in complex cert");
 
         freematchcertattr(&conf);
-        free(match);
     }
 
     /* test explicit ipv6 match to SAN IP */
     {
-
         conf.name = "test";
         conf.certnamecheck = 0;
-        match = stringcopy("SubjectAltName:IP:2001:db8::1",0);
 
-        ok(1,addmatchcertattr(&conf, match),"explicit san ipv6 config");
-
+        ok(1,addmatchcertattr(&conf, "SubjectAltName:IP:2001:db8::1"),"explicit san ipv6 config");
 
         ok(1,verifyconfcert(certsanipv6, &conf),"explicit san ipv6");
         ok(0,verifyconfcert(certsanipother, &conf),"wrong explicit san ipv6");
@@ -424,16 +415,14 @@ vY/uPjA=\n\
         ok(1,verifyconfcert(certcomplex,&conf),"explicit san ipv6 in complex cert");
 
         freematchcertattr(&conf);
-        free(match);
     }
 
     /* test explicit SAN DNS regex */
     {
         conf.name = "test";
         conf.certnamecheck = 0;
-        match = stringcopy("SubjectAltName:DNS:/t..t\\.local/",0);
 
-        ok(1,addmatchcertattr(&conf, match),"explicit san dns regex config");
+        ok(1,addmatchcertattr(&conf, "SubjectAltName:DNS:/t..t\\.local/"),"explicit san dns regex config");
 
         ok(1,verifyconfcert(certsandns, &conf),"explicit san dns");
         ok(0,verifyconfcert(certsandnsother, &conf),"negative explicit san dns");
@@ -441,68 +430,59 @@ vY/uPjA=\n\
         ok(1,verifyconfcert(certcomplex,&conf),"explicit san dns in complex cert");
 
         freematchcertattr(&conf);
-        free(match);
     }
 
     /* test explicit SAN URI regex */
     {
         conf.name = "test";
         conf.certnamecheck = 0;
-        match = stringcopy("SubjectAltName:URI:/https:\\/\\/test.local\\/profile#me/",0);
 
-        ok(1,addmatchcertattr(&conf, match),"explicit cn regex config");
+        ok(1,addmatchcertattr(&conf, "SubjectAltName:URI:/https:\\/\\/test.local\\/profile#me/"),"explicit cn regex config");
 
         ok(1,verifyconfcert(certsanuri, &conf),"explicit san uri regex");
         ok(0,verifyconfcert(certsanuriother, &conf),"negative explicit san uri");
         ok(0,verifyconfcert(certsimple, &conf), "missing explicit san uri");
 
         freematchcertattr(&conf);
-        free(match);
     }
 
     /* test explicit SAN rID */
     {
         conf.name = "test";
         conf.certnamecheck = 0;
-        match = stringcopy("SubjectAltName:rID:1.2.3.4",0);
 
-        ok(1,addmatchcertattr(&conf, match),"explicit san rid config");
+        ok(1,addmatchcertattr(&conf, "SubjectAltName:rID:1.2.3.4"),"explicit san rid config");
 
         ok(1,verifyconfcert(certsanrid, &conf),"explicit san rid");
         ok(0,verifyconfcert(certsanridother, &conf),"negative explicit san rid");
         ok(0,verifyconfcert(certsimple, &conf), "missing explicit san rid");
 
         freematchcertattr(&conf);
-        free(match);
     }
 
     /* test explicit SAN otherNAME */
     {
         conf.name = "test";
         conf.certnamecheck = 0;
-        match = stringcopy("SubjectAltName:otherName:1.3.6.1.5.5.7.8.8:/test.local/",0);
 
-        ok(1,addmatchcertattr(&conf, match),"explicit san otherName config");
+        ok(1,addmatchcertattr(&conf, "SubjectAltName:otherName:1.3.6.1.5.5.7.8.8:/test.local/"),"explicit san otherName config");
 
         ok(1,verifyconfcert(certsanothername, &conf),"explicit san otherName");
         ok(0,verifyconfcert(certsanothernameother, &conf),"negative explicit san otherName");
         ok(0,verifyconfcert(certsimple, &conf), "missing explicit san otherName");
 
         freematchcertattr(&conf);
-        free(match);
     }
 
     /* test valid config syntax */
     {
         conf.name = "test";
         conf.certnamecheck = 0;
-        match = stringcopy("CN:/t..t",0);
 
-        ok(1,addmatchcertattr(&conf, match),"test regex config syntax");
+        ok(1,addmatchcertattr(&conf, "CN:/t..t"),"test regex config syntax");
         ok(1,verifyconfcert(certsimple, &conf),"test regex config syntax execution");
 
         freematchcertattr(&conf);
-        free(match);
     }
 
     /* test invalid config syntax */
@@ -510,30 +490,20 @@ vY/uPjA=\n\
         conf.name = "test";
         conf.certnamecheck = 0;
 
-        match = stringcopy("CN:t..t",0);
-        ok(0,addmatchcertattr(&conf, match),"test invalid syntax regex");
+        ok(0,addmatchcertattr(&conf, "CN:t..t"),"test invalid syntax regex");
         freematchcertattr(&conf);
-        free(match);
 
-        match = stringcopy("SAN:/t..t/",0);
-        ok(0,addmatchcertattr(&conf, match),"test invalid syntax attribute");
+        ok(0,addmatchcertattr(&conf, "SAN:/t..t/"),"test invalid syntax attribute");
         freematchcertattr(&conf);
-        free(match);
 
-        match = stringcopy("SubjectAltName:IP:1.2.3",0);
-        ok(0,addmatchcertattr(&conf, match),"test invalid syntax ip");
+        ok(0,addmatchcertattr(&conf, "SubjectAltName:IP:1.2.3"),"test invalid syntax ip");
         freematchcertattr(&conf);
-        free(match);
 
-        match = stringcopy("SubjectAltName:IP:2001:db8:1",0);
-        ok(0,addmatchcertattr(&conf, match),"test invalid syntax ipv6");
+        ok(0,addmatchcertattr(&conf, "SubjectAltName:IP:2001:db8:1"),"test invalid syntax ipv6");
         freematchcertattr(&conf);
-        free(match);
 
-        match = stringcopy("SubjectAltName:rID:1:2",0);
-        ok(0,addmatchcertattr(&conf, match),"test invalid syntax rID");
+        ok(0,addmatchcertattr(&conf, "SubjectAltName:rID:1:2"),"test invalid syntax rID");
         freematchcertattr(&conf);
-        free(match);
     }
 
     /* test explicit & implicit combined */
@@ -542,12 +512,11 @@ vY/uPjA=\n\
 
         conf.name = "test";
         conf.certnamecheck = 1;
-        match = stringcopy("CN:/t..t",0);
         hp.host = "test.local";
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1,addmatchcertattr(&conf, match),"combined config");
+        ok(1,addmatchcertattr(&conf, "CN:/t..t"),"combined config");
 
         ok(1,verifyconfcert(certsandns, &conf),"combined san dns");
         ok(0,verifyconfcert(certsandnsother, &conf),"negative combined san dns");
@@ -556,7 +525,6 @@ vY/uPjA=\n\
 
         while(list_shift(conf.hostports));
         freematchcertattr(&conf);
-        free(match);
     }
 
     /* test multiple explicit checks*/
@@ -569,12 +537,8 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        match = stringcopy("SubjectAltName:DNS:/test\\.local/",0);
-        ok(1,addmatchcertattr(&conf, match),"multiple check 1");
-        free(match);
-        match = stringcopy("SubjectAltName:rID:1.2.3.4",0);
-        ok(1,addmatchcertattr(&conf, match),"multiple check 2");
-        free(match);
+        ok(1,addmatchcertattr(&conf, "SubjectAltName:DNS:/test\\.local/"),"multiple check 1");
+        ok(1,addmatchcertattr(&conf, "SubjectAltName:rID:1.2.3.4"),"multiple check 2");
 
         ok(0,verifyconfcert(certsandns, &conf),"multiple missing rID");
         ok(0,verifyconfcert(certsanrid, &conf), "multiple missing DNS");
