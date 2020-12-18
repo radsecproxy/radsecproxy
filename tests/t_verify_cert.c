@@ -197,6 +197,26 @@ DTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAAScZ7M19uKEDDXC\n\
 tCGaM1KbqRZA/3VgQt+6iEFuoygwJjAkBgNVHREEHTAboBkGCCsGAQUFBwgIoA0M\n\
 C290aGVyLmxvY2FsMAkGByqGSM49BAEDJAAwIQIOSOJ5OK2xzjrCweD/ImECDwDL\n\
 COiok62ckBQsaUG8AA==\n\
+-----END CERTIFICATE-----"),
+
+    /* /CN=test, DNS:test.local, Registered ID:1.2.3.4 */
+    *certmulti = getcert("-----BEGIN CERTIFICATE-----\n\
+MIHxMIG8oAMCAQICFFrDaNQffsxLTERNbN7sXupYziWAMAkGByqGSM49BAEwDzEN\n\
+MAsGA1UEAwwEdGVzdDAeFw0yMDEyMTgwOTQwMDFaFw0yMTAxMTcwOTQwMDFaMA8x\n\
+DTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAAScZ7M19uKEDDXC\n\
+tCGaM1KbqRZA/3VgQt+6iEFuox4wHDAaBgNVHREEEzARggp0ZXN0LmxvY2FsiAMq\n\
+AwQwCQYHKoZIzj0EAQMlADAiAg8AnsiRL2CH3u0bAX/FOt4CDwC9wGzr0l/PCnxK\n\
+mKlpkQ==\n\
+-----END CERTIFICATE-----"),
+
+    /* /CN=other, DNS:other.local, Registered ID:1.2.3.4 */
+    *certmultiother = getcert("-----BEGIN CERTIFICATE-----\n\
+MIHyMIG/oAMCAQICFAke6IO1yAeuwOewT/QfAF9afFo7MAkGByqGSM49BAEwEDEO\n\
+MAwGA1UEAwwFb3RoZXIwHhcNMjAxMjE4MDk0NTI1WhcNMjEwMTE3MDk0NTI1WjAQ\n\
+MQ4wDAYDVQQDDAVvdGhlcjAyMBAGByqGSM49AgEGBSuBBAAGAx4ABJxnszX24oQM\n\
+NcK0IZozUpupFkD/dWBC37qIQW6jHzAdMBsGA1UdEQQUMBKCC290aGVyLmxvY2Fs\n\
+iAMqAwQwCQYHKoZIzj0EAQMjADAgAg521Y8BtyeKAMIY8lcLbwIORNNmcwVIJjGj\n\
+vY/uPjA=\n\
 -----END CERTIFICATE-----");
 
     memset(&conf, 0, sizeof(conf));
@@ -539,8 +559,33 @@ COiok62ckBQsaUG8AA==\n\
         free(match);
     }
 
-    //TODO test new features
-    // - multiple attribute checks
+    /* test multiple explicit checks*/
+    {
+        struct hostportres hp;
+
+        conf.name = "test";
+        conf.certnamecheck = 0;
+        hp.host = "test.local";
+        hp.prefixlen = 255;
+        list_push(conf.hostports, &hp);
+
+        match = stringcopy("SubjectAltName:DNS:/test\\.local/",0);
+        ok(1,addmatchcertattr(&conf, match),"multiple check 1");
+        free(match);
+        match = stringcopy("SubjectAltName:rID:1.2.3.4",0);
+        ok(1,addmatchcertattr(&conf, match),"multiple check 2");
+        free(match);
+
+        ok(0,verifyconfcert(certsandns, &conf),"multiple missing rID");
+        ok(0,verifyconfcert(certsanrid, &conf), "multiple missing DNS");
+        ok(1,verifyconfcert(certmulti, &conf),"multiple SANs");
+        ok(0,verifyconfcert(certmultiother, &conf),"multiple negative match");
+        ok(0,verifyconfcert(certcomplex, &conf),"multiple missing rID in complex cert");
+        ok(0,verifyconfcert(certsimple, &conf),"multiple missing everything");
+
+        while(list_shift(conf.hostports));
+        freematchcertattr(&conf);
+    }
 
     printf("1..%d\n", numtests);
     list_free(conf.hostports);
@@ -559,6 +604,10 @@ COiok62ckBQsaUG8AA==\n\
     X509_free(certsanuriother);
     X509_free(certsanrid);
     X509_free(certsanridother);
+    X509_free(certsanothername);
+    X509_free(certsanothernameother);
+    X509_free(certmulti);
+    X509_free(certmultiother);
 
     return 0;
 }
