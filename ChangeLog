@@ -5,6 +5,8 @@ unreleased chanes
 	- User configurable cipher-list and ciphersuites
 	- User configurable TLS versions
 	- Config option for DH-file
+	- Add rID and otherName options to certifcateAttributeCheck
+	- Allow multiple matchCertificateAttribute
 
 	Misc:
 	- Move radsecproxy manpage to section 8

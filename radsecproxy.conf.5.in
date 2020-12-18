@@ -413,13 +413,21 @@ For a TLS/DTLS client, disable the default behaviour of matching CN or
 SubjectAltName against the specified hostname or IP address.
 .RE
 
-\fBmatchCertificateAttribute (\fR CN \fB|\fR SubjectAltName:URI \fB|\fR SubjectAltName:DNS \fB) :\fR/\fIregexp\fR/
+\fBmatchCertificateAttribute \fRCN:/\fIregexp\fR/
 .br
-\fBMatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
+\fBmatchCertificateAttribute \fRSubjectAltName:DNS:/\fIregexp\fR/
+.br
+\fBmatchCertificateAttribute \fRSubjectAltName:URI:/\fIregexp\fR/
+.br
+\fBmatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
+.br
+\fBmatchCertificateAttribute \fRSubjectAltName:rID:\fIoid\fR
+.br
+\fBmatchCertificateAttribute \fRSubjectAltName:otherName:\fIoid\fR:/\fIregexp\fR/
 .RS
 Perform additional validation of certificate attributes. Currently matching
-of CN and SubjectAltName types URI DNS and IP is supported. Note that currently this 
-option can only be specified once in a client block.
+of CN and SubjectAltName types URI, DNS, IP, rID, and otherName is supported. If specified
+multiple times, all terms must match for the certificate to be considered valid.
 .RE
 
 .BI "DuplicateInterval " seconds
