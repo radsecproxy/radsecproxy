@@ -535,6 +535,21 @@ void tlsreloadcrls() {
 	conf = (struct tls *)entry->data;
 #ifdef RADPROT_TLS
 	if (conf->tlsctx) {
+            if (conf->certkeypwd) {
+                debug(DBG_INFO, "tls: set default passwd for certkeypwd");
+                SSL_CTX_set_default_passwd_cb_userdata(conf->tlsctx, conf->certkeypwd);
+                SSL_CTX_set_default_passwd_cb(conf->tlsctx, pem_passwd_cb);
+            }
+            if (!SSL_CTX_use_certificate_chain_file(conf->tlsctx, conf->certfile) ||
+                !SSL_CTX_use_PrivateKey_file(conf->tlsctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+                !SSL_CTX_check_private_key(conf->tlsctx)) {
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "tls SSL: %s", ERR_error_string(error, NULL));
+                debug(DBG_ERR, "tls: Error initialising SSL/TLS in TLS context %s", conf->name);
+                SSL_CTX_free(conf->tlsctx);
+                return;
+            }
+            debug(DBG_INFO, "tls: private certificate and keys updated");
 	    if (conf->tlsexpiry)
 		conf->tlsexpiry = now.tv_sec + conf->cacheexpiry;
 	    tlsaddcacrl(conf->tlsctx, conf);
@@ -542,6 +557,21 @@ void tlsreloadcrls() {
 #endif
 #ifdef RADPROT_DTLS
 	if (conf->dtlsctx) {
+            if (conf->certkeypwd) {
+                debug(DBG_INFO, "dtls: set default passwd for certkeypwd");
+                SSL_CTX_set_default_passwd_cb_userdata(conf->dtlsctx, conf->certkeypwd);
+                SSL_CTX_set_default_passwd_cb(conf->dtlsctx, pem_passwd_cb);
+            }
+            if (!SSL_CTX_use_certificate_chain_file(conf->dtlsctx, conf->certfile) ||
+                !SSL_CTX_use_PrivateKey_file(conf->dtlsctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+                !SSL_CTX_check_private_key(conf->dtlsctx)) {
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "dtls SSL: %s", ERR_error_string(error, NULL));
+                debug(DBG_ERR, "dtls: Error initialising SSL/TLS in TLS context %s", conf->name);
+                SSL_CTX_free(conf->dtlsctx);
+                return;
+            }
+            debug(DBG_INFO, "dtls: private certificate and keys updated");
 	    if (conf->dtlsexpiry)
 		conf->dtlsexpiry = now.tv_sec + conf->cacheexpiry;
 	    tlsaddcacrl(conf->dtlsctx, conf);
