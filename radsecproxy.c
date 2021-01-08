@@ -978,6 +978,7 @@ uint8_t *radattr2ascii(struct tlv *attr) {
 
 void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     uint8_t *username, *logusername = NULL, *stationid, *replymsg, *tmpmsg;
+    uint8_t *operatorname, *cui;
     char *servername, *logstationid = NULL;
     uint8_t level = DBG_NOTICE;
     char tmp[INET6_ADDRSTRLEN];
@@ -1012,6 +1013,20 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
         }
         free(stationid);
     }
+    cui = radattr2ascii(radmsg_gettype(msg, RAD_Attr_CUI));
+    if(cui) {
+        if (asprintf((char **)&tmpmsg, " cui %s", cui) >= 0) {
+            free(cui);
+            cui = tmpmsg;
+        }
+    }
+    operatorname = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Operator_Name));
+    if (operatorname) {
+        if (asprintf((char **)&tmpmsg, " operator %s", operatorname) >= 0) {
+            free(operatorname);
+            operatorname = tmpmsg;
+        }
+    }
     replymsg = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Reply_Message));
     if (replymsg) {
         if (asprintf((char **)&tmpmsg, " (%s)", replymsg) >= 0) {
@@ -1024,10 +1039,10 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
         if (msg->code == RAD_Accounting_Response)
             level = DBG_INFO;
         if (logusername) {
-            debug(level, "%s for user %s%s from %s%s to %s (%s)",
-                radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "",
+            debug(level, "%s for user %s%s%s from %s%s to %s (%s)%s",
+                radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "", cui ? (char *)cui : "",
                 servername, replymsg ? (char *)replymsg : "", rq->from->conf->name,
-                addr2string(rq->from->addr, tmp, sizeof(tmp)));
+                addr2string(rq->from->addr, tmp, sizeof(tmp)), operatorname ? (char *)operatorname : "");
         } else {
             debug(level, "%s (response to %s) from %s to %s (%s)", radmsgtype2string(msg->code),
                 radmsgtype2string(rq->msg->code), servername,
@@ -1040,6 +1055,8 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     }
     free(username);
     free(logstationid);
+    free(cui);
+    free(operatorname);
     free(replymsg);
 }
 

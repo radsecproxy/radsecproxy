@@ -28,6 +28,8 @@
 #define RAD_Attr_CHAP_Challenge 60
 #define RAD_Attr_Tunnel_Password 69
 #define RAD_Attr_Message_Authenticator 80
+#define RAD_Attr_CUI 89
+#define RAD_Attr_Operator_Name 126
 
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
