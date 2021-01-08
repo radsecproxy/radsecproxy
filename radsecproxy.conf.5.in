@@ -1,4 +1,4 @@
-.TH radsecproxy.conf 5 2019-07-04 "radsecproxy 1.8.0" ""
+.TH radsecproxy.conf 5 2020-08-06 "radsecproxy 1.8.2" ""
 
 .SH NAME
 radsecproxy.conf \- Radsec proxy configuration file
@@ -413,13 +413,21 @@ For a TLS/DTLS client, disable the default behaviour of matching CN or
 SubjectAltName against the specified hostname or IP address.
 .RE
 
-\fBmatchCertificateAttribute (\fR CN \fB|\fR SubjectAltName:URI \fB|\fR SubjectAltName:DNS \fB) :\fR/\fIregexp\fR/
+\fBMatchCertificateAttribute \fRCN:/\fIregexp\fR/
+.br
+\fBMatchCertificateAttribute \fRSubjectAltName:DNS:/\fIregexp\fR/
+.br
+\fBMatchCertificateAttribute \fRSubjectAltName:URI:/\fIregexp\fR/
 .br
 \fBMatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
+.br
+\fBMatchCertificateAttribute \fRSubjectAltName:rID:\fIoid\fR
+.br
+\fBMatchCertificateAttribute \fRSubjectAltName:otherName:\fIoid\fR:/\fIregexp\fR/
 .RS
 Perform additional validation of certificate attributes. Currently matching
-of CN and SubjectAltName types URI DNS and IP is supported. Note that currently this 
-option can only be specified once in a client block.
+of CN and SubjectAltName types URI, DNS, IP, rID, and otherName is supported. If specified
+multiple times, all terms must match for the certificate to be considered valid.
 .RE
 
 .BI "DuplicateInterval " seconds
@@ -539,7 +547,7 @@ options above.
 
 .BI "DynamicLookupCommand " command
 .RS
-Execude the \fIcommand\fR to dynamically configure a server. The executable file
+Execute the \fIcommand\fR to dynamically configure a server. The executable file
 should be given with full path and will be invoked with the name of the realm as
 its first and only argument. It should either print a valid \fBserver {...}\fR
 option on stdout and exit with a code of 0 or print nothing and exit with a
@@ -617,9 +625,7 @@ block. The details are not repeated here. Please refer to the definitions in the
 .br
 .BR "CertificateNameCheck (" on | off )
 .br
-\fBmatchCertificateAttribute (\fR CN \fB|\fR SubjectAltName:URI \fB|\fR SubjectAltName:DNS \fB) :\fR/\fIregexp\fR/
-.br
-\fBMatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
+\fBMatchCertificateAttribute \fR...
 .br
 .BR "AddTTL " 1-255
 .br
@@ -799,6 +805,43 @@ can be triggered by sending a SIGHUP to the radsecproxy process. This option may
 be set to zero to disable caching.
 .RE
 
+.BI "CipherList " ciphers
+.RS
+Specify the list of accepted \fIciphers\fR. See 
+.BR openssl-ciphers (1).
+.RE
+
+.BI "CipherSuites " ciphersuites
+.RS
+Specify the \fIciphersuites\fR to be used for TLS1.3. See 
+.BR openssl-ciphers (1).
+.br
+Note this requires openssl 1.1.1
+.RE
+
+.BR "TlsVersion " (
+.IR version " | " minversion : maxversion " )"
+.br
+.BR "DtlsVersion " (
+.IR version " | " minversion : maxversion " )"
+.RS
+Specify the TLS/DTLS protocol \fIversion\fR to be used.
+.br
+Specify the range of allowed protocol versions between \fIminversion\fR and 
+\fImaxversion\fR (inclusive). If either is left out, any version up to, or 
+starting from this version is allowed. E.g. "TLS1_2:" will allow TLSv1.2 or later.
+.br
+Currently supported values are
+.BR SSL3 , TLS1 , TLS1_1 , TLS1_2 , TLS1_3
+for TLS and
+.BR DTLS1 , DTLS1_1
+for DTLS.
+.RE
+
+.BI "DhFile " file
+.RS
+DH parameter \fIfile\fR to use. See \fBopenssl-dhparam\fR(1)
+
 
 .SH "REWRITE BLOCK"
 .nf
@@ -899,7 +942,7 @@ the given vendor id are removed.
 .BR "WhitelistMode (" on | off )
 .RS
 Enable whitelist mode. All attributes except those configured with
-\fBWhitelistAttrbiute\fR or \fBWhitelistVendorAttribute\fR will be removed.
+\fBWhitelistAttribute\fR or \fBWhitelistVendorAttribute\fR will be removed.
 While whitelist mode is active, \fBRemoveAttribute\fR and
 \fBRemoveVendorAttribute\fR statements are ignored.
 .RE

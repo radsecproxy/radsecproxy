@@ -4,9 +4,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "../rewrite.h"
 #include "../radmsg.h"
 #include "../debug.h"
+
+static void printescape(uint8_t *v, uint8_t l) {
+    int i;
+    for(i=0; i<l; i++) {
+        if(isprint(v[i])) printf("%c", v[i]);
+        else printf("\\x%02x", v[i]);
+    }
+}
 
 /*origattrs and expectedattrs as struct tlv*/
 /*return 0 if expected; 1 otherwise or error*/
@@ -14,6 +23,7 @@ static int
 _check_rewrite(struct list *origattrs, struct rewrite *rewrite, struct list *expectedattrs, int shouldfail) {
     struct radmsg msg;
     struct list_node *n,*m;
+    int i = 1;
 
     msg.attrs = origattrs;
 
@@ -31,11 +41,20 @@ _check_rewrite(struct list *origattrs, struct rewrite *rewrite, struct list *exp
     }
     m=list_first(origattrs);
     for(n=list_first(expectedattrs); n; n=list_next(n)) {
-        if (!eqtlv((struct tlv *)n->data, (struct tlv *)m->data)) {
-            printf("attribute list not as expected\n");
+        struct tlv *tlv_exp = (struct tlv *)n->data, *tlv_act = (struct tlv *)m->data;
+        if (!eqtlv(tlv_exp, tlv_act)) {
+            printf("attribute list at %d not as expected!\n", i);
+            printf("  expected type: %d, actual type: %d\n", tlv_exp->t, tlv_act->t);
+            printf("  expected length: %d, actual length: %d\n", tlv_exp->l, tlv_act->l);
+            printf("  expected value: ");
+            printescape(tlv_exp->v, tlv_exp->l);
+            printf(" actual value: ");
+            printescape(tlv_act->v, tlv_act->l);
+            printf("\n");
             return 1;
         }
         m=list_next(m);
+        i++;
     }
     return 0;
 }
@@ -65,7 +84,7 @@ void _reset_rewrite(struct rewrite *rewrite) {
 int
 main (int argc, char *argv[])
 {
-    int testcount = 25;
+    int testcount = 26;
     struct list *origattrs, *expectedattrs;
     struct rewrite rewrite;
     char *username = "user@realm";
@@ -638,6 +657,34 @@ main (int argc, char *argv[])
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
         printf("ok %d - whitelistvendorattrs\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /*  test issue #62
+        rewrite 9:102:/^(h323-credit-time).*$/\1=86400/
+    */
+    {
+        char *value = "h323-credit-time=1846422";
+        char *expect = "h323-credit-time=86400";
+        struct modattr *mod = malloc(sizeof(struct modattr));
+        regex_t regex;
+
+        mod->t = 102;
+        mod->vendor = 9;
+        mod->regex = &regex;
+        mod->replacement = "\\1=86400";
+        regcomp(mod->regex, "^(h323-credit-time).*$", REG_ICASE | REG_EXTENDED);
+
+        list_push(rewrite.modvattrs, mod);
+        list_push(origattrs, makevendortlv(9,maketlv(102,strlen(value), value)));
+        list_push(expectedattrs, makevendortlv(9,maketlv(102,strlen(expect), expect)));
+
+        if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
+            printf("not ");
+        printf("ok %d - issue #62\n", testcount++);
+
         _tlv_list_clear(origattrs);
         _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);

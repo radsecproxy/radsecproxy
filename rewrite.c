@@ -147,7 +147,7 @@ struct modattr *extractmodvattr(char *nameval) {
 
     s = strchr(nameval, ':');
     vendor = atoi(nameval);
-    if (!s || !vendor || !strchr(s,':'))
+    if (!s || !vendor || !strchr(s+1,':'))
         return NULL;
     modvattr = extractmodattr(s+1);
     if (modvattr)
@@ -278,7 +278,7 @@ void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmva
         freegconfmstr(supvattrs);
     }
 
-    if (rma || rmva || adda || moda || supa) {
+    if (rma || rmva || adda || moda || modva || supa) {
         rewrite = malloc(sizeof(struct rewrite));
         if (!rewrite)
             debugx(1, DBG_ERR, "malloc failed");
@@ -499,7 +499,7 @@ int dorewritemodvattr(struct tlv *vendortlv, struct modattr *modvattr) {
 int dorewritemod(struct radmsg *msg, struct list *modattrs, struct list *modvattrs) {
     struct list_node *n, *m;
     uint32_t vendor;
-
+    
     for (n = list_first(msg->attrs); n; n = list_next(n)) {
         struct tlv *attr = (struct tlv *)n->data;
         if (attr->t == RAD_Attr_Vendor_Specific) {

@@ -84,6 +84,7 @@ extern int optind;
 extern char *optarg;
 #endif
 static const struct protodefs *protodefs[RAD_PROTOCOUNT];
+pthread_attr_t pthread_attr;
 
 /* minimum required declarations to avoid reordering code */
 struct realm *adddynamicrealmserver(struct realm *realm, char *id);
@@ -1648,8 +1649,11 @@ void *clientwr(void *arg) {
 #endif
 	pthread_mutex_unlock(&server->newrq_mutex);
 
-	for (i = 0; i < MAX_REQUESTS; i++) {
-	    if (server->clientrdgone) {
+    if (do_resend || server->lastrcv.tv_sec > laststatsrv.tv_sec)
+        statusserver_requested = 0;
+
+    for (i = 0; i < MAX_REQUESTS; i++) {
+        if (server->clientrdgone) {
 		server->state = RSP_SERVER_STATE_FAILING;
                 if (conf->pdef->connecter)
                     pthread_join(clientrdth, NULL);
@@ -1680,7 +1684,7 @@ void *clientwr(void *arg) {
             continue;
         }
 
-        if (rqout->tries > 0 && now.tv_sec - server->lastrcv.tv_sec > conf->retryinterval)
+        if (rqout->tries > 0 && now.tv_sec - server->lastrcv.tv_sec > conf->retryinterval && !do_resend)
             statusserver_requested = 1;
         if (rqout->tries == (*rqout->rq->buf == RAD_Status_Server ? 1 : conf->retrycount + 1)) {
             debug(DBG_DBG, "clientwr: removing expired packet from queue");
@@ -2170,11 +2174,8 @@ void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->confsecret);
     free(conf->secret);
     free(conf->tls);
-    free(conf->matchcertattr);
-    if (conf->certcnregex)
-	regfree(conf->certcnregex);
-    if (conf->certuriregex)
-	regfree(conf->certuriregex);
+    freegconfmstr(conf->confmatchcertattrs);
+    freematchcertattr(conf);
     free(conf->confrewritein);
     free(conf->confrewriteout);
     if (conf->rewriteusername) {
@@ -2264,7 +2265,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     !mergeconfmstring(&dst->source, &src->source) ||
 	!mergeconfstring(&dst->confsecret, &src->confsecret) ||
 	!mergeconfstring(&dst->tls, &src->tls) ||
-	!mergeconfstring(&dst->matchcertattr, &src->matchcertattr) ||
+	!mergeconfmstring(&dst->confmatchcertattrs, &src->confmatchcertattrs) ||
 	!mergeconfstring(&dst->confrewritein, &src->confrewritein) ||
 	!mergeconfstring(&dst->confrewriteout, &src->confrewriteout) ||
 	!mergeconfstring(&dst->confrewriteusername, &src->confrewriteusername) ||
@@ -2305,10 +2306,11 @@ int config_hostaf(const char *desc, int ipv4only, int ipv6only, int *af) {
 
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *existing;
-    char *conftype = NULL, *rewriteinalias = NULL;
+    char *conftype = NULL, *rewriteinalias = NULL, **matchcertattrs = NULL;
     long int dupinterval = LONG_MIN, addttl = LONG_MIN;
     uint8_t ipv4only = 0, ipv6only = 0;
     struct list_node *entry;
+    int i;
 
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -2327,7 +2329,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 	    "tls", CONF_STR, &conf->tls,
-	    "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
+	    "matchcertificateattribute", CONF_MSTR, &matchcertattrs,
 	    "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
 	    "DuplicateInterval", CONF_LINT, &dupinterval,
@@ -2364,13 +2366,19 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-	conf->tlsconf = conf->tls
-            ? tlsgettls(conf->tls, NULL)
-            : tlsgettls("defaultClient", "default");
-	if (!conf->tlsconf)
-	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
-	if (conf->matchcertattr && !addmatchcertattr(conf))
-	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+        conf->tlsconf = conf->tls
+                ? tlsgettls(conf->tls, NULL)
+                : tlsgettls("defaultClient", "default");
+        if (!conf->tlsconf)
+            debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
+        if (matchcertattrs) {
+            for (i=0; matchcertattrs[i]; i++){
+                if (!addmatchcertattr(conf, matchcertattrs[i])) {
+                    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+                }
+            }
+            freegconfmstr(matchcertattrs);
+        }
     }
 #endif
 
@@ -2447,19 +2455,23 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 }
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
+    int i;
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
     	conf->tlsconf = conf->tls
             ? tlsgettls(conf->tls, NULL)
             : tlsgettls("defaultServer", "default");
-	if (!conf->tlsconf) {
-	    debug(DBG_ERR, "error in block %s, no tls context defined", block);
-	    return 0;
-	}
-	if (conf->matchcertattr && !addmatchcertattr(conf)) {
-	    debug(DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
-	    return 0;
-	}
+        if (!conf->tlsconf) {
+            debug(DBG_ERR, "error in block %s, no tls context defined", block);
+            return 0;
+        }
+        if (conf->confmatchcertattrs) {
+            for (i=0; conf->confmatchcertattrs[i]; i++){
+                if (!addmatchcertattr(conf, conf->confmatchcertattrs[i])) {
+                    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+                }
+            }
+        }
     }
 #endif
 
@@ -2529,7 +2541,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
             "tls", CONF_STR, &conf->tls,
-            "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
+            "MatchCertificateAttribute", CONF_STR, &conf->confmatchcertattrs,
             "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
             "addTTL", CONF_LINT, &addttl,
@@ -3045,7 +3057,8 @@ int radsecproxy_main(int argc, char **argv) {
     sigaddset(&sigset, SIGHUP);
     sigaddset(&sigset, SIGPIPE);
     pthread_sigmask(SIG_BLOCK, &sigset, NULL);
-    pthread_create(&sigth, &pthread_attr, sighandler, NULL);
+    if (pthread_create(&sigth, &pthread_attr, sighandler, NULL))
+        debugx(1, DBG_ERR, "pthread_create failed: sighandler");
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	srvconf = (struct clsrvconf *)entry->data;

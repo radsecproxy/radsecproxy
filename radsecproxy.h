@@ -12,6 +12,8 @@
 #include "gconfig.h"
 #include "rewrite.h"
 
+#include <openssl/asn1.h>
+
 #define DEBUG_LEVEL 2
 
 #define CONFIG_MAIN SYSCONFDIR"/radsecproxy.conf"
@@ -149,12 +151,8 @@ struct clsrvconf {
     uint8_t *secret;
     int secret_len;
     char *tls;
-    char *matchcertattr;
-    regex_t *certcnregex;
-    regex_t *certuriregex;
-    regex_t *certdnsregex;
-    struct in6_addr certipmatch;
-    int certipmatchaf;
+    struct list *matchcertattrs;
+    char **confmatchcertattrs;
     char *confrewritein;
     char *confrewriteout;
     char *confrewriteusername;
@@ -263,7 +261,7 @@ int radsrv(struct request *rq);
 void replyh(struct server *server, unsigned char *buf);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);
 uint8_t *radattr2ascii(struct tlv *attr); /* TODO: mv this to radmsg? */
-pthread_attr_t pthread_attr;
+extern pthread_attr_t pthread_attr;
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
