@@ -413,17 +413,17 @@ For a TLS/DTLS client, disable the default behaviour of matching CN or
 SubjectAltName against the specified hostname or IP address.
 .RE
 
-\fBmatchCertificateAttribute \fRCN:/\fIregexp\fR/
+\fBMatchCertificateAttribute \fRCN:/\fIregexp\fR/
 .br
-\fBmatchCertificateAttribute \fRSubjectAltName:DNS:/\fIregexp\fR/
+\fBMatchCertificateAttribute \fRSubjectAltName:DNS:/\fIregexp\fR/
 .br
-\fBmatchCertificateAttribute \fRSubjectAltName:URI:/\fIregexp\fR/
+\fBMatchCertificateAttribute \fRSubjectAltName:URI:/\fIregexp\fR/
 .br
-\fBmatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
+\fBMatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
 .br
-\fBmatchCertificateAttribute \fRSubjectAltName:rID:\fIoid\fR
+\fBMatchCertificateAttribute \fRSubjectAltName:rID:\fIoid\fR
 .br
-\fBmatchCertificateAttribute \fRSubjectAltName:otherName:\fIoid\fR:/\fIregexp\fR/
+\fBMatchCertificateAttribute \fRSubjectAltName:otherName:\fIoid\fR:/\fIregexp\fR/
 .RS
 Perform additional validation of certificate attributes. Currently matching
 of CN and SubjectAltName types URI, DNS, IP, rID, and otherName is supported. If specified
@@ -625,9 +625,7 @@ block. The details are not repeated here. Please refer to the definitions in the
 .br
 .BR "CertificateNameCheck (" on | off )
 .br
-\fBmatchCertificateAttribute (\fR CN \fB|\fR SubjectAltName:URI \fB|\fR SubjectAltName:DNS \fB) :\fR/\fIregexp\fR/
-.br
-\fBMatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
+\fBMatchCertificateAttribute \fR...
 .br
 .BR "AddTTL " 1-255
 .br

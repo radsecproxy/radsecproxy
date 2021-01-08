@@ -2465,7 +2465,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
             debug(DBG_ERR, "error in block %s, no tls context defined", block);
             return 0;
         }
-        if (conf->matchcertattrs) {
+        if (conf->confmatchcertattrs) {
             for (i=0; conf->confmatchcertattrs[i]; i++){
                 if (!addmatchcertattr(conf, conf->confmatchcertattrs[i])) {
                     debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
