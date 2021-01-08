@@ -765,6 +765,30 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     return ok;
 }
 
+char *getcertsubject(X509 *cert) {
+    BIO *bio;
+    char *subject;
+
+    bio = BIO_new(BIO_s_mem());
+    if (!bio) {
+        debug(DBG_ERR, "getcertsubject: BIO_new failed");
+        return NULL;
+    }
+
+    X509_NAME_print_ex(bio, X509_get_subject_name(cert), 0, XN_FLAG_ONELINE);
+
+    subject = malloc(BIO_number_written(bio)+1);
+    if (subject) {
+        BIO_read(bio, subject, BIO_number_written(bio));
+        subject[BIO_number_written(bio)] = '\0';
+    } else {
+        debug(DBG_ERR, "getcertsubject: malloc failed");
+    }
+    BIO_free(bio);
+
+    return subject;
+}
+
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
 static int parse_tls_version(const char* version) {
     if (!strcasecmp("SSL3", version)) {

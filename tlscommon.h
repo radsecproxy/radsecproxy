@@ -41,6 +41,7 @@ struct tls *tlsgettls(char *alt1, char *alt2);
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
 X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf);
+char *getcertsubject(X509 *cert);
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 int addmatchcertattr(struct clsrvconf *conf, const char *match);
 void freematchcertattr(struct clsrvconf *conf);

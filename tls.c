@@ -480,36 +480,6 @@ void tlsserverrd(struct client *client) {
     debug(DBG_DBG, "tlsserverrd: reader for %s exiting", addr2string(client->addr, tmp, sizeof(tmp)));
 }
 
-/* Returns the CN from the certificate subject as a malloc'ed char array
- * Doesn't support non ASCII characters!
- * BEWARE char* needs to be free() after use! 
- * based on the code from cnregexp() at tlscommon.c
- * by pribeiro@net.ipl.pt DSIC/IPL */
-static char *malloced_cnfromcert(X509 *cert) {
-    int loc, l;
-    char *v;
-    X509_NAME *nm;
-    X509_NAME_ENTRY *e;
-    ASN1_STRING *t;
-
-    nm = X509_get_subject_name(cert);
-    loc = -1;
-    for (;;) {
-        loc = X509_NAME_get_index_by_NID(nm, NID_commonName, loc);
-        if (loc == -1)
-            break;
-        e = X509_NAME_get_entry(nm, loc);
-        t = X509_NAME_ENTRY_get_data(e);
-        v = (char *) ASN1_STRING_get0_data(t);
-        l = ASN1_STRING_length(t);
-        if (l < 0)
-            continue;
-        return stringcopy((char *)v, l);
-    }
-    /* not found */
-    return NULL;
-}
-
 void *tlsservernew(void *arg) {
     int s, origflags;
     struct sockaddr_storage from;
@@ -568,11 +538,11 @@ void *tlsservernew(void *arg) {
 
     while (conf) {
         if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf)) {
-            char *cn = malloced_cnfromcert(cert);
-            if(cn) {
-                debug(DBG_WARN, "tlsservernew: from %s, host %s, cert CN %s",
-                    addr2string((struct sockaddr *)&from,tmp, sizeof(tmp)), conf->name, cn);
-                free(cn);
+            char *subj = getcertsubject(cert);
+            if(subj) {
+                debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s up",
+                    addr2string((struct sockaddr *)&from,tmp, sizeof(tmp)), conf->name, subj);
+                free(subj);
             }
             X509_free(cert);
             client = addclient(conf, 1);
