@@ -304,7 +304,7 @@ void *dtlsservernew(void *arg) {
     unsigned long error;
     struct timeval timeout;
     struct addrinfo tmpsrvaddr;
-    char tmp[INET6_ADDRSTRLEN];
+    char tmp[INET6_ADDRSTRLEN], *subj;
 
     debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
 
@@ -343,6 +343,12 @@ void *dtlsservernew(void *arg) {
 
     while (conf) {
         if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf)) {
+            subj = getcertsubject(cert);
+            if(subj) {
+                debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, subject %s up",
+                    addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)), conf->name, subj);
+                free(subj);
+            }
             X509_free(cert);
             client = addclient(conf, 1);
             if (client) {
@@ -524,6 +530,7 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
     unsigned long error;
     BIO *bio;
     struct addrinfo *source = NULL;
+    char *subj;
 
     debug(DBG_DBG, "dtlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -601,12 +608,16 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
         if (!cert)
             continue;
         if (verifyconfcert(cert, server->conf)) {
+            subj = getcertsubject(cert);
+            if(subj) {
+                debug(DBG_WARN, "dtlsconnect: DTLS connection to %s, subject %s up", server->conf->name, subj);
+                free(subj);
+            }
             X509_free(cert);
             break;
         }
         X509_free(cert);
     }
-    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s up", server->conf->name);
 
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;

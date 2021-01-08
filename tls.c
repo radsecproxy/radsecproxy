@@ -91,6 +91,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
     unsigned long error;
     int origflags;
     struct addrinfo *source = NULL;
+    char *subj;
 
     debug(DBG_DBG, "tlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -157,6 +158,11 @@ int tlsconnect(struct server *server, int timeout, char *text) {
         if (!cert)
             continue;
         if (verifyconfcert(cert, server->conf)) {
+            subj = getcertsubject(cert);
+            if(subj) {
+                debug(DBG_WARN, "tlsconnect: TLS connection to %s, subject %s up", server->conf->name, subj);
+                free(subj);
+            }
             X509_free(cert);
             break;
         }
@@ -492,7 +498,7 @@ void *tlsservernew(void *arg) {
     unsigned long error;
     struct client *client;
     struct tls *accepted_tls = NULL;
-    char tmp[INET6_ADDRSTRLEN];
+    char tmp[INET6_ADDRSTRLEN], *subj;
 
     s = *(int *)arg;
     free(arg);
@@ -538,7 +544,7 @@ void *tlsservernew(void *arg) {
 
     while (conf) {
         if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf)) {
-            char *subj = getcertsubject(cert);
+            subj = getcertsubject(cert);
             if(subj) {
                 debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s up",
                     addr2string((struct sockaddr *)&from,tmp, sizeof(tmp)), conf->name, subj);
