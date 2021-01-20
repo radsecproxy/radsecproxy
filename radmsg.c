@@ -254,11 +254,14 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len) {
 	return NULL;
     }
     if (secret) {
-	if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(buf, secret, secret_len)) {
+	if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge
+             || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request
+             || DYNAUTH_REQ(msg->code) || DYNAUTH_RES(msg->code))
+            && !_radsign(buf, secret, secret_len)) {
 	    free(buf);
 	    return NULL;
 	}
-	if (msg->code == RAD_Accounting_Request)
+	if (msg->code == RAD_Accounting_Request || DYNAUTH_REQ(msg->code))
 	    memcpy(msg->auth, buf + 4, 16);
     }
     return buf;
@@ -275,7 +278,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, int secret_len, uint8_t
     if (len < 20)
 	return NULL;
 
-    if (secret && buf[0] == RAD_Accounting_Request) {
+    if (secret && (buf[0] == RAD_Accounting_Request || DYNAUTH_REQ(buf[0]))) {
 	memset(auth, 0, 16);
 	if (!_validauth(buf, auth, secret, secret_len)) {
 	    debug(DBG_WARN, "buf2radmsg: Accounting-Request message authentication failed");

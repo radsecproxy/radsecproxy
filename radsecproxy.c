@@ -935,6 +935,13 @@ const char *radmsgtype2string(uint8_t code) {
 	"", "", "", "Access-Challenge",
 	"Status-Server", "Status-Client"
     };
+    static const char *rad_dynauth_msg_names[] = {
+        "Disconnect-Request", "Disconnect-ACK", "Disconnect-NAK", "CoA-Request",
+        "CoA-ACK", "CoA-NAK"
+    };
+    if (code >= 40 && code <= 45) {
+        return *rad_dynauth_msg_names[code - 40] ? rad_dynauth_msg_names[code - 40] : "Unknown";
+    }
     return code < 14 && *rad_msg_names[code] ? rad_msg_names[code] : "Unknown";
 }
 
@@ -1044,11 +1051,12 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
 }
 
 void respond(struct request *rq, uint8_t code, char *message,
-             int copy_proxystate_flag, int add_msg_auth)
+             int copy_proxystate_flag, int add_msg_auth, int err_cause)
 {
     struct radmsg *msg;
     struct tlv *attr;
     char tmp[INET6_ADDRSTRLEN];
+    uint32_t err;
 
     msg = radmsg_init(code, rq->msg->id, rq->msg->auth);
     if (!msg) {
@@ -1078,6 +1086,22 @@ void respond(struct request *rq, uint8_t code, char *message,
         if (radmsg_copy_attrs(msg, rq->msg, RAD_Attr_Proxy_State) < 0) {
             debug(DBG_ERR, "%s: unable to copy all Proxy-State attributes",
                   __func__);
+        }
+    }
+    if (err_cause > 0) {
+        /*
+         * Error_Cause attr value should be 4 bytes long. We ensure here that the
+         * 4 byte value is stored in network byte order in memory i.e
+         * most significant byte first. This is because we don't convert each
+         * individual attr value to network byte order while sending replybuf to wire.
+         */
+        err = htonl(err_cause);
+        attr = maketlv(RAD_Attr_Error_Cause, 4, &err);
+        if (!attr || !radmsg_add(msg, attr)) {
+            freetlv(attr);
+            radmsg_free(msg);
+            debug(DBG_ERR, "respond: malloc failed");
+            return;
         }
     }
 
@@ -1119,12 +1143,32 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
     return best ? best : first;
 }
 
-/* returns with lock on realm, protects from server changes while in use by radsrv/sendrq */
-struct server *findserver(struct realm **realm, struct tlv *username, uint8_t acc) {
+struct list *getsrvconfs(struct realm *realm, uint8_t acc, uint8_t coa) {
+    if (coa) {
+        return realm->dynauthsrvconfs;
+    } else if (acc) {
+        return realm->accsrvconfs;
+    } else {
+        return realm->srvconfs;
+    }
+}
+
+/*
+ * find an appropriate server to send requests to based on the given realm name
+ * 
+ * @params
+ *     - realm : pointer to realm object to fill
+ *     - id : string representing the realm name to match
+ *     - acc : whether to return an accountingServer configured for the realm
+ *     - coa : whether to return a dynAuthServer configured for the realm 
+ * 
+ * returns with lock on realm, protects from server changes while in use by
+ * radsrv/sendrq
+ */
+struct server *findserver(struct realm **realm, char *id, uint8_t acc, uint8_t coa) {
     struct clsrvconf *srvconf;
     struct realm *subrealm;
     struct server *server = NULL;
-    char *id = (char *)tlv2str(username);
 
     if (!id)
 	return NULL;
@@ -1133,7 +1177,7 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
     if (!*realm)
 	goto exit;
     debug(DBG_DBG, "found matching realm: %s", (*realm)->name);
-    srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
+    srvconf = choosesrvconf(getsrvconfs(*realm, acc, coa));
     if (srvconf && !(*realm)->parent && !srvconf->servers && srvconf->dynamiclookupcommand) {
 	subrealm = adddynamicrealmserver(*realm, id);
 	if (subrealm) {
@@ -1142,7 +1186,7 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
 	    freerealm(*realm);
 	    *realm = subrealm;
             debug(DBG_DBG, "added realm: %s", (*realm)->name);
-	    srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
+	    srvconf = choosesrvconf(getsrvconfs(*realm, acc, coa));
             debug(DBG_DBG, "found conf for new realm: %s", srvconf->name);
 	}
     }
@@ -1152,7 +1196,6 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
     }
 
 exit:
-    free(id);
     return server;
 }
 
@@ -1233,6 +1276,7 @@ int radsrv(struct request *rq) {
     struct client *from = rq->from;
     int ttlres;
     char tmp[INET6_ADDRSTRLEN];
+    char *realmname = NULL;
 
     msg = buf2radmsg(rq->buf, from->conf->secret, from->conf->secret_len, NULL);
     free(rq->buf);
@@ -1249,8 +1293,8 @@ int radsrv(struct request *rq) {
     memcpy(rq->rqauth, msg->auth, 16);
 
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
-    if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
-	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
+    if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request && !DYNAUTH_REQ(msg->code)) {
+	debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests, status-server, disconnect and CoA requests, ignoring");
 	goto exit;
     }
 
@@ -1259,11 +1303,14 @@ int radsrv(struct request *rq) {
 	goto exit;
 
     if (msg->code == RAD_Status_Server) {
-	respond(rq, RAD_Access_Accept, NULL, 1, 0);
+	respond(rq, RAD_Access_Accept, NULL, 1, 0, 0);
 	goto exit;
     }
 
-    /* below: code == RAD_Access_Request || code == RAD_Accounting_Request */
+    /*
+     * below: code == RAD_Access_Request || code == RAD_Accounting_Request
+     *        || code == RAD_CoA_Request || code == RAD_Disconnect_Request
+     */
 
     if (from->conf->rewritein && !dorewrite(msg, from->conf->rewritein))
 	goto rmclrqexit;
@@ -1274,40 +1321,102 @@ int radsrv(struct request *rq) {
 	goto exit;
     }
 
-    attr = radmsg_gettype(msg, RAD_Attr_User_Name);
-    if (!attr) {
-	if (msg->code == RAD_Accounting_Request) {
-	    respond(rq, RAD_Accounting_Response, NULL, 1, 0);
-	} else
-	    debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
-	goto exit;
-    }
+    if (msg->code == RAD_Access_Request || msg->code == RAD_Accounting_Request) {
+        attr = radmsg_gettype(msg, RAD_Attr_User_Name);
+        if (!attr) {
+            if (msg->code == RAD_Accounting_Request) {
+                respond(rq, RAD_Accounting_Response, NULL, 1, 0, 0);
+            } else
+                debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
+            goto exit;
+        }
 
-    if (from->conf->rewriteusername && !rewriteusername(rq, attr)) {
-	debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
-	goto rmclrqexit;
+        if (from->conf->rewriteusername && !rewriteusername(rq, attr)) {
+            debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
+            goto rmclrqexit;
+        }
+    } else if (DYNAUTH_REQ(msg->code)) {
+        attr = radmsg_gettype(msg, RAD_Attr_Operator_Name);
+        if (!attr) {
+            debug(DBG_INFO,
+                  "radsrv: no operatorname attribute in dynauth reqeust, sending NAK");
+            if (msg->code == RAD_Disconnect_Request) {
+                respond(rq, RAD_Disconnect_NAK, NULL, 1, 0, RAD_Err_Request_Not_Routable);
+            } else if (msg->code == RAD_CoA_Request) {
+                respond(rq, RAD_CoA_NAK, NULL, 1, 0, RAD_Err_Request_Not_Routable);
+            }
+            goto exit;
+        }
+    } else {
+        goto exit;
     }
 
     userascii = radattr2ascii(attr);
     if (!userascii)
-	goto rmclrqexit;
-    debug(DBG_INFO, "radsrv: got %s (id %d) with username: %s from client %s (%s)", radmsgtype2string(msg->code), msg->id, userascii, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
-
+        goto rmclrqexit;
+    debug(DBG_INFO, "radsrv: got %s (id %d) with %s: %s from client %s (%s)",
+          radmsgtype2string(msg->code), msg->id,
+          DYNAUTH_REQ(msg->code) ? "operatorname" : "username", userascii,
+          from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+    
+    realmname = (char *)tlv2str(attr);
+    /*
+     * first char of Operator-Name attr is an ASCII encoded '1' followed by actual
+     * realmname
+     */
+    if (DYNAUTH_REQ(msg->code)) {
+        if (!realmname || realmname[0] != '1') {
+            debug(DBG_INFO,
+                  "radsrv: invalid operatorname attribute in dynauth request, sending NAK");
+            if (msg->code == RAD_Disconnect_Request) {
+                respond(rq, RAD_Disconnect_NAK, NULL, 1, 0, RAD_Err_Request_Not_Routable);
+            } else if (msg->code == RAD_CoA_Request) {
+                respond(rq, RAD_CoA_NAK, NULL, 1, 0, RAD_Err_Request_Not_Routable);
+            }
+            goto exit;
+        }
+        /*
+         * strip ascii '1' from the start of operatorname and replace it with '@'
+         * because the constructed regex for configured realms expects an '@' in the string
+         */
+        realmname[0] = '@';
+    }
+    
     /* will return with lock on the realm */
-    to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
+    to = findserver(&realm, realmname, msg->code == RAD_Accounting_Request,
+                    DYNAUTH_REQ(msg->code));
     if (!realm) {
-	debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
-	goto exit;
+        if (msg->code == RAD_Access_Request || msg->code == RAD_Accounting_Request) {
+            debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
+        } else if (DYNAUTH_REQ(msg->code)) {
+            debug(DBG_INFO, "radsrv: unknown realm, sending NAK");
+            /* 
+             * If realm is unknown, send a NAK with Error-Cause attribute having
+             * value 502 = "Request not Routable"
+             */
+            if (msg->code == RAD_Disconnect_Request) {
+                respond(rq, RAD_Disconnect_NAK, NULL, 1, 0, RAD_Err_Request_Not_Routable);
+            } else if (msg->code == RAD_CoA_Request) {
+                respond(rq, RAD_CoA_NAK, NULL, 1, 0, RAD_Err_Request_Not_Routable);
+            }
+        }
+        goto exit;
     }
 
     if (!to) {
-	if (realm->message && msg->code == RAD_Access_Request) {
-	    debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), userascii);
-	    respond(rq, RAD_Access_Reject, realm->message, 1, 1);
-	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
-	    respond(rq, RAD_Accounting_Response, NULL, 1, 0);
-	}
-	goto exit;
+        if (realm->message && msg->code == RAD_Access_Request) {
+            debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), userascii);
+            respond(rq, RAD_Access_Reject, realm->message, 1, 1, 0);
+        } else if (realm->accresp && msg->code == RAD_Accounting_Request) {
+            respond(rq, RAD_Accounting_Response, NULL, 1, 0, 0);
+        } else if (DYNAUTH_REQ(msg->code)) {
+            if (msg->code == RAD_Disconnect_Request) {
+                respond(rq, RAD_Disconnect_NAK, NULL, 1, 0, 0);
+            } else if (msg->code == RAD_CoA_Request) {
+                respond(rq, RAD_CoA_NAK, NULL, 1, 0, 0);
+            }
+        }
+        goto exit;
     }
 
     if ((to->conf->loopprevention == 1
@@ -1339,8 +1448,11 @@ int radsrv(struct request *rq) {
         }
     }
 
-    /* Create new Request Authenticator. */
-    if (msg->code == RAD_Accounting_Request)
+    /*
+     * Create new Request Authenticator.
+     * For Accounting and dynamic authorization requests, authenticator is 16 bytes of zero
+     */
+    if (msg->code == RAD_Accounting_Request || DYNAUTH_REQ(msg->code))
 	memset(msg->auth, 0, 16);
     else if (!RAND_bytes(msg->auth, 16)) {
 	debug(DBG_WARN, "radsrv: failed to generate random auth");
@@ -1365,6 +1477,7 @@ int radsrv(struct request *rq) {
 	addttlattr(msg, options.ttlattrtype, to->conf->addttl ? to->conf->addttl : options.addttl);
 
     free(userascii);
+    free(realmname);
     rq->to = to;
     sendrq(rq);
     pthread_mutex_unlock(&realm->mutex);
@@ -1376,6 +1489,7 @@ rmclrqexit:
 exit:
     freerq(rq);
     free(userascii);
+    free(realmname);
     if (realm) {
 	pthread_mutex_unlock(&realm->mutex);
 	freerealm(realm);
@@ -1416,8 +1530,8 @@ void replyh(struct server *server, unsigned char *buf) {
 	goto errunlock;
     }
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge
-	&& msg->code != RAD_Accounting_Response) {
-	debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
+	&& msg->code != RAD_Accounting_Response && !DYNAUTH_RES(msg->code)) {
+	debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge, accounting response, disconnect ack, disconnect nak, coa ack and coa nak messages", radmsgtype2string(msg->code));
 	goto errunlock;
     }
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
@@ -1899,7 +2013,9 @@ void freerealm(struct realm *realm) {
     free(realm);
 }
 
-struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char *message, uint8_t accresp) {
+struct realm *addrealm(struct list *realmlist, char *value, char **servers,
+                       char **accservers, char **dynauthservers, char *message,
+                       uint8_t accresp) {
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
@@ -1979,6 +2095,13 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
 	realm->accsrvconfs = addsrvconfs(value, accservers);
 	if (!realm->accsrvconfs)
 	    goto errexit;
+    }
+
+    if (dynauthservers && *dynauthservers) {
+        realm->dynauthsrvconfs = addsrvconfs(value, dynauthservers);
+        if (!realm->dynauthsrvconfs) {
+            goto errexit;
+        }
     }
 
     if (!list_push(realmlist, realm)) {
@@ -2083,7 +2206,8 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
     if (!realm->subrealms)
 	return NULL;
 
-    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, stringcopy(realm->message, 0), realm->accresp);
+    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, NULL,
+                        stringcopy(realm->message, 0), realm->accresp);
     if (!newrealm) {
 	list_destroy(realm->subrealms);
 	realm->subrealms = NULL;
@@ -2094,6 +2218,7 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
     /* add server and accserver to newrealm */
     newrealm->srvconfs = createsubrealmservers(newrealm, realm->srvconfs);
     newrealm->accsrvconfs = createsubrealmservers(newrealm, realm->accsrvconfs);
+    newrealm->dynauthsrvconfs = createsubrealmservers(newrealm, realm->dynauthsrvconfs);
     return newrealm;
 }
 
@@ -2476,7 +2601,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 #endif
 
     if (!conf->portsrc) {
-	conf->portsrc = stringcopy(conf->pdef->portdefault, 0);
+        conf->portsrc = stringcopy(conf->pdef->portdefault, 0);
 	if (!conf->portsrc) {
 	    debug(DBG_ERR, "malloc failed");
 	    return 0;
@@ -2721,7 +2846,7 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
 }
 
 int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    char **servers = NULL, **accservers = NULL, *msg = NULL;
+    char **servers = NULL, **accservers = NULL, **dynauthservers = NULL, *msg = NULL;
     uint8_t accresp = 0;
 
     debug(DBG_DBG, "confrealm_cb called for %s", block);
@@ -2729,13 +2854,14 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
     if (!getgenericconfig(cf, block,
 			  "server", CONF_MSTR, &servers,
 			  "accountingServer", CONF_MSTR, &accservers,
+                          "dynAuthServer", CONF_MSTR, &dynauthservers,
 			  "ReplyMessage", CONF_STR, &msg,
 			  "AccountingResponse", CONF_BLN, &accresp,
 			  NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
 
-    addrealm(realms, val, servers, accservers, msg, accresp);
+    addrealm(realms, val, servers, accservers, dynauthservers, msg, accresp);
     return 1;
 }
 

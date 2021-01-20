@@ -222,6 +222,7 @@ struct realm {
     struct list *subrealms;
     struct list *srvconfs;
     struct list *accsrvconfs;
+    struct list *dynauthsrvconfs;
 };
 
 struct protodefs {
