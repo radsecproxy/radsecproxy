@@ -1002,6 +1002,7 @@ int addmatchcertattr(struct clsrvconf *conf, const char *match) {
     }
 
     certattrmatch = malloc(sizeof(struct certattrmatch));
+    if (!certattrmatch) return 0;
     memset(certattrmatch, 0, sizeof(struct certattrmatch));
 
     matchcopy = stringcopy(match,0);

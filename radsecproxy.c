@@ -841,14 +841,16 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
 
 int rewriteusername(struct request *rq, struct tlv *attr) {
     char *orig = (char *)tlv2str(attr);
+    if (!orig)
+        return 0;
     if (!dorewritemodattr(attr, rq->from->conf->rewriteusername)) {
-	free(orig);
-	return 0;
+        free(orig);
+        return 0;
     }
     if (strlen(orig) != attr->l || memcmp(orig, attr->v, attr->l))
-	rq->origusername = (char *)orig;
+        rq->origusername = (char *)orig;
     else
-	free(orig);
+        free(orig);
     return 1;
 }
 
