@@ -10,6 +10,7 @@ unreleased chanes
 
 	Misc:
 	- Move radsecproxy manpage to section 8
+	- Log CUI and operator-name if present
 
 2020-08-06 1.8.2
 	Bug fixes:
