@@ -98,6 +98,37 @@ void sslinit() {
 #endif
 }
 
+/**
+ * Print a human readable form of X509_NAME
+ * 
+ * This is a direct replacement for X509_NAME_oneline() which should no longer be used.
+ * 
+ * @param name The X509_Name to be printed.
+ */
+static char *print_x509_name(X509_NAME *name) {
+    BIO *bio;
+    char *buf;
+
+    bio = BIO_new(BIO_s_mem());
+    if (!bio) {
+        debug(DBG_ERR, "getcertsubject: BIO_new failed");
+        return NULL;
+    }
+
+    X509_NAME_print_ex(bio, name, 0, XN_FLAG_RFC2253);
+
+    buf = malloc(BIO_number_written(bio)+1);
+    if (buf) {
+        BIO_read(bio, buf, BIO_number_written(bio));
+        buf[BIO_number_written(bio)] = '\0';
+    } else {
+        debug(DBG_ERR, "getcertsubject: malloc failed");
+    }
+    BIO_free(bio);
+
+    return buf;
+}
+
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
     int pwdlen = strlen(userdata);
     if (rwflag != 0 || pwdlen > size) /* not for decryption or too large */
@@ -116,43 +147,43 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
     depth = X509_STORE_CTX_get_error_depth(ctx);
 
     if (depth > MAX_CERT_DEPTH) {
-	ok = 0;
-	err = X509_V_ERR_CERT_CHAIN_TOO_LONG;
-	X509_STORE_CTX_set_error(ctx, err);
+        ok = 0;
+        err = X509_V_ERR_CERT_CHAIN_TOO_LONG;
+        X509_STORE_CTX_set_error(ctx, err);
     }
 
     if (!ok) {
-	if (err_cert)
-	    buf = X509_NAME_oneline(X509_get_subject_name(err_cert), NULL, 0);
-	debug(DBG_WARN, "verify error: num=%d:%s:depth=%d:%s", err, X509_verify_cert_error_string(err), depth, buf ? buf : "");
-	free(buf);
-	buf = NULL;
+        if (err_cert)
+            buf = print_x509_name(X509_get_subject_name(err_cert));
+        debug(DBG_WARN, "verify error: num=%d:%s:depth=%d:%s", err, X509_verify_cert_error_string(err), depth, buf ? buf : "");
+        free(buf);
+        buf = NULL;
 
-	switch (err) {
-	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
-	    if (err_cert) {
-		buf = X509_NAME_oneline(X509_get_issuer_name(err_cert), NULL, 0);
-		if (buf) {
-		    debug(DBG_WARN, "\tIssuer=%s", buf);
-		    free(buf);
-		    buf = NULL;
-		}
-	    }
-	    break;
-	case X509_V_ERR_CERT_NOT_YET_VALID:
-	case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
-	    debug(DBG_WARN, "\tCertificate not yet valid");
-	    break;
-	case X509_V_ERR_CERT_HAS_EXPIRED:
-	    debug(DBG_WARN, "Certificate has expired");
-	    break;
-	case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
-	    debug(DBG_WARN, "Certificate no longer valid (after notAfter)");
-	    break;
-	case X509_V_ERR_NO_EXPLICIT_POLICY:
-	    debug(DBG_WARN, "No Explicit Certificate Policy");
-	    break;
-	}
+        switch (err) {
+        case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
+            if (err_cert) {
+            buf = print_x509_name(X509_get_issuer_name(err_cert));
+            if (buf) {
+                debug(DBG_WARN, "\tIssuer=%s", buf);
+                free(buf);
+                buf = NULL;
+            }
+            }
+            break;
+        case X509_V_ERR_CERT_NOT_YET_VALID:
+        case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
+            debug(DBG_WARN, "\tCertificate not yet valid");
+            break;
+        case X509_V_ERR_CERT_HAS_EXPIRED:
+            debug(DBG_WARN, "Certificate has expired");
+            break;
+        case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
+            debug(DBG_WARN, "Certificate no longer valid (after notAfter)");
+            break;
+        case X509_V_ERR_NO_EXPLICIT_POLICY:
+            debug(DBG_WARN, "No Explicit Certificate Policy");
+            break;
+        }
     }
 #ifdef DEBUG
     printf("certificate verify returns %d\n", ok);
@@ -742,7 +773,7 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     int ok = 1;
     struct list_node *entry;
 
-    subject = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
+    subject = getcertsubject(cert);
     debug(DBG_DBG, "verifyconfcert: verify certificate for host %s, subject %s", conf->name, subject);
     if (conf->certnamecheck) {
         debug(DBG_DBG, "verifyconfcert: verify hostname");
@@ -763,6 +794,10 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
 
     free(subject);
     return ok;
+}
+
+char *getcertsubject(X509 *cert) {
+    return print_x509_name(X509_get_subject_name(cert));
 }
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
