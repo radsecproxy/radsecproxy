@@ -71,6 +71,7 @@ enum rsp_mac_type {
 
 enum rsp_server_state {
     RSP_SERVER_STATE_STARTUP = 0, /* default */
+    RSP_SERVER_STATE_BLOCKING_STARTUP,
     RSP_SERVER_STATE_CONNECTED,
     RSP_SERVER_STATE_RECONNECTING,
     RSP_SERVER_STATE_FAILING
@@ -166,6 +167,7 @@ struct clsrvconf {
     uint8_t addttl;
     uint8_t keepalive;
     uint8_t loopprevention;
+    uint8_t blockingstartup;
     struct rewrite *rewritein;
     struct rewrite *rewriteout;
     pthread_mutex_t *lock; /* only used for updating clients so far */

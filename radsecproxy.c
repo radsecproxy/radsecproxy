@@ -1586,7 +1586,8 @@ void *clientwr(void *arg) {
 
 #define ZZZ 900
 
-    server->state = RSP_SERVER_STATE_STARTUP;
+    if (server->state != RSP_SERVER_STATE_BLOCKING_STARTUP)
+        server->state = RSP_SERVER_STATE_STARTUP;
     if (server->dynamiclookuparg && !dynamicconfig(server)) {
 	dynconffail = 1;
 	server->state = RSP_SERVER_STATE_FAILING;
@@ -2059,7 +2060,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
              * the srvconfs list.  */
 	    if (addserver(srvconf)) {
 		srvconf->servers->dynamiclookuparg = stringcopy(realm->name, 0);
-		srvconf->servers->state = RSP_SERVER_STATE_STARTUP;
+		srvconf->servers->state = srvconf->blockingstartup ? RSP_SERVER_STATE_BLOCKING_STARTUP : RSP_SERVER_STATE_STARTUP;
                 debug(DBG_DBG, "%s: new client writer for %s",
                       __func__, srvconf->servers->conf->name);
 		if (pthread_create(&clientth, &pthread_attr, clientwr, (void *)(srvconf->servers))) {
@@ -2573,6 +2574,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "RetryCount", CONF_LINT, &retrycount,
             "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
             "LoopPrevention", CONF_BLN, &conf->loopprevention,
+            "BlockingStartup", CONF_BLN, &conf->blockingstartup,
             NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");
