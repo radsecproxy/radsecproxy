@@ -609,6 +609,16 @@ See section
 \fBBASIC OPTIONS\fR for details on this option.
 .RE
 
+.BR "BlockingStartup (" on | off)
+.RS
+Start the server in blocking mode, treating it as if it was already connected and enqueue
+requests to this server. Queued requests will be sent out when the connection is establised.
+This is only considered for dynamic lookup servers (ie when DynamicLookupCommand is specified)
+and is disabled by default.
+Warning: when the dynamic lookup and connection process is slow, this wil block the 
+respective realm for that time.
+.RE
+
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
 
