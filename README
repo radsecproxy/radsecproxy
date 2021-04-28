@@ -2,23 +2,21 @@ This is radsecproxy 1.8.2
 
 radsecproxy is a generic RADIUS proxy that supports both UDP and TLS
 (RadSec) RADIUS transports.  There is also experimental support for
-TCP and DTLS.
+TCP and DTLS. The aim is for the proxy to have sufficient features to be 
+flexible, while at the same time to be small, efficient and easy to configure.
 
-Official packages are available
+Official packages are available:
 
 Debian: apt-get install radsecproxy
 Fedora: dnf install radsecproxy
 FreeBSD: pkg install radsecproxy
 NetBSD: pkgin install radsecproxy
 
-It should build on most Unix like systems by simply typing
+Or built it from this rouce on most Unix like systems by simply typing
 
     ./configure && make
 
-It is possible to specify which RADIUS transport the build should
-support.  Without any special options to configure, all transports
-supported by the system will be enabled.  See the output from
-"./configure --help" for how to change this.
+For details see INSTALL
 
 To use radsecproxy you need to create a config file which is normally found in
 /etc/radsecproxy.conf or /usr/local/etc/radsecproxy.conf.  You can also specify
