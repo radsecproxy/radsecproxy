@@ -2348,7 +2348,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 	    "tls", CONF_STR, &conf->tls,
-	    "matchcertificateattribute", CONF_MSTR, &matchcertattrs,
+	    "MatchCertificateAttribute", CONF_MSTR, &matchcertattrs,
 	    "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
 	    "DuplicateInterval", CONF_LINT, &dupinterval,
@@ -2560,7 +2560,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
             "tls", CONF_STR, &conf->tls,
-            "MatchCertificateAttribute", CONF_STR, &conf->confmatchcertattrs,
+            "MatchCertificateAttribute", CONF_MSTR, &conf->confmatchcertattrs,
             "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
             "addTTL", CONF_LINT, &addttl,
