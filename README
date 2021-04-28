@@ -4,7 +4,12 @@ radsecproxy is a generic RADIUS proxy that supports both UDP and TLS
 (RadSec) RADIUS transports.  There is also experimental support for
 TCP and DTLS.
 
-Official packages are available for Debian, FreeBSD ports and NetBSD pkgsrc.
+Official packages are available
+
+Debian: apt-get install radsecproxy
+Fedora: dnf install radsecproxy
+FreeBSD: pkg install radsecproxy
+NetBSD: pkgin install radsecproxy
 
 It should build on most Unix like systems by simply typing
 
