@@ -115,9 +115,8 @@ option \fB\-d\fR overrides this.
 This specifies where the log messages should go. By default the messages go to
 syslog with facility \fBLOG_DAEMON\fR. Using this option you can specify another
 syslog facility, or you may specify that logging should be to a particular file,
-not using syslog. The value must be either a file or syslog URL. The file URL is
-the standard one \fBfile:///var/log/radius.log\fR, specifying a local file that
-should be used. For syslog, you must use the syntax:
+not using syslog. The value must be either a file URL like \fBfile:///path/to/your/logfile.log\fR 
+or a syslog URL using the syntax:
 .BR "x\-syslog:///FACILITY" " where " FACILITY " must be one of "
 .BR LOG_DAEMON ,
 .BR LOG_MAIL ,
