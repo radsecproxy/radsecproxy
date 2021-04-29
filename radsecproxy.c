@@ -1589,21 +1589,19 @@ void *clientwr(void *arg) {
     if (server->state != RSP_SERVER_STATE_BLOCKING_STARTUP)
         server->state = RSP_SERVER_STATE_STARTUP;
     if (server->dynamiclookuparg && !dynamicconfig(server)) {
-	dynconffail = 1;
-	server->state = RSP_SERVER_STATE_FAILING;
-	debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, sleeping %ds",
+        dynconffail = 1;
+        server->state = RSP_SERVER_STATE_FAILING;
+        debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, sleeping %ds",
               __func__, server->conf->name, server->dynamiclookuparg, ZZZ);
-	sleep(ZZZ);
-	goto errexit;
+        goto errexitwait;
     }
     /* FIXME: Is resolving not always done by compileserverconfig(),
      * either as part of static configuration setup or by
      * dynamicconfig() above?  */
     if (!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype)) {
         debug(DBG_WARN, "%s: resolve failed, sleeping %ds", __func__, ZZZ);
-	server->state = RSP_SERVER_STATE_FAILING;
-        sleep(ZZZ);
-        goto errexit;
+        server->state = RSP_SERVER_STATE_FAILING;
+        goto errexitwait;
     }
 
     memset(&timeout, 0, sizeof(struct timespec));
@@ -1613,20 +1611,19 @@ void *clientwr(void *arg) {
     laststatsrv = server->lastreply;
 
     if (conf->pdef->connecter) {
-	if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
-	    server->state = RSP_SERVER_STATE_FAILING;
-	    if (server->dynamiclookuparg) {
-                debug(DBG_WARN, "%s: connect failed, sleeping %ds",
-                      __func__, ZZZ);
-		sleep(ZZZ);
-	    }
-	    goto errexit;
-	}
-	if (pthread_create(&clientrdth, &pthread_attr, conf->pdef->clientconnreader, (void *)server)) {
-	    debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
-	    server->state = RSP_SERVER_STATE_FAILING;
-	    goto errexit;
-	}
+        if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+            server->state = RSP_SERVER_STATE_FAILING;
+            if (server->dynamiclookuparg) {
+                debug(DBG_WARN, "%s: connect failed, sleeping %ds", __func__, ZZZ);
+                goto errexitwait;
+            }
+            goto errexit;
+        }
+        if (pthread_create(&clientrdth, &pthread_attr, conf->pdef->clientconnreader, (void *)server)) {
+            debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
+            server->state = RSP_SERVER_STATE_FAILING;
+            goto errexit;
+        }
     }
     server->state = RSP_SERVER_STATE_CONNECTED;
 
@@ -1761,6 +1758,16 @@ void *clientwr(void *arg) {
         }
     }
     }
+
+errexitwait:
+    /* flush request queue so we don't block incoming retries by removing blocked duplicates*/
+    for (i=0; i < MAX_REQUESTS; i++) {
+        rqout = server->requests + i;
+        pthread_mutex_lock(rqout->lock);
+        freerqoutdata(rqout);
+        pthread_mutex_unlock(rqout->lock);
+    }
+    sleep(ZZZ);
 errexit:
     if (server->dynamiclookuparg) {
 	removeserversubrealms(realms, conf);
