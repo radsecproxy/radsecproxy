@@ -56,6 +56,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <assert.h>
+#include <poll.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
@@ -2125,10 +2126,12 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
 }
 
 int dynamicconfig(struct server *server) {
-    int ok, fd[2], status;
+    int ok = 0, fd[2], status;
     pid_t pid;
     struct clsrvconf *conf = server->conf;
     struct gconffile *cf = NULL;
+    struct pollfd fds[1];
+    FILE *pipein;
 
     /* for now we only learn hostname/address */
     debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
@@ -2156,10 +2159,20 @@ int dynamicconfig(struct server *server) {
     }
 
     close(fd[1]);
-    pushgconffile(&cf, fdopen(fd[0], "r"), conf->dynamiclookupcommand);
-    ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb,
-			  (void *) conf, NULL);
-    freegconf(&cf);
+    pipein = fdopen(fd[0], "r");
+    fds[0].fd = fd[0];
+    fds[0].events = POLLIN;
+    status = poll(fds, 1, 5000);
+    if (status < 0) {
+        debugerrno(errno, DBG_ERR, "dynamicconfig: error while waiting for command output");
+    } else if (status ==0) {
+        debug(DBG_WARN, "dynamicconfig: command did not return anything in time");
+        kill(pid, SIGKILL);
+    } else {
+        pushgconffile(&cf, pipein, conf->dynamiclookupcommand);
+        ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb, (void *) conf, NULL);
+        freegconf(&cf);
+    }
 
     if (waitpid(pid, &status, 0) < 0) {
 	debugerrno(errno, DBG_ERR, "dynamicconfig: wait error");
