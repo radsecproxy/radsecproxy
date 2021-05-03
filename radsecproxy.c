@@ -56,6 +56,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <assert.h>
+#include <poll.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
@@ -1586,23 +1587,22 @@ void *clientwr(void *arg) {
 
 #define ZZZ 900
 
-    server->state = RSP_SERVER_STATE_STARTUP;
+    if (server->state != RSP_SERVER_STATE_BLOCKING_STARTUP)
+        server->state = RSP_SERVER_STATE_STARTUP;
     if (server->dynamiclookuparg && !dynamicconfig(server)) {
-	dynconffail = 1;
-	server->state = RSP_SERVER_STATE_FAILING;
-	debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, sleeping %ds",
+        dynconffail = 1;
+        server->state = RSP_SERVER_STATE_FAILING;
+        debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, sleeping %ds",
               __func__, server->conf->name, server->dynamiclookuparg, ZZZ);
-	sleep(ZZZ);
-	goto errexit;
+        goto errexitwait;
     }
     /* FIXME: Is resolving not always done by compileserverconfig(),
      * either as part of static configuration setup or by
      * dynamicconfig() above?  */
     if (!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype)) {
         debug(DBG_WARN, "%s: resolve failed, sleeping %ds", __func__, ZZZ);
-	server->state = RSP_SERVER_STATE_FAILING;
-        sleep(ZZZ);
-        goto errexit;
+        server->state = RSP_SERVER_STATE_FAILING;
+        goto errexitwait;
     }
 
     memset(&timeout, 0, sizeof(struct timespec));
@@ -1612,20 +1612,19 @@ void *clientwr(void *arg) {
     laststatsrv = server->lastreply;
 
     if (conf->pdef->connecter) {
-	if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
-	    server->state = RSP_SERVER_STATE_FAILING;
-	    if (server->dynamiclookuparg) {
-                debug(DBG_WARN, "%s: connect failed, sleeping %ds",
-                      __func__, ZZZ);
-		sleep(ZZZ);
-	    }
-	    goto errexit;
-	}
-	if (pthread_create(&clientrdth, &pthread_attr, conf->pdef->clientconnreader, (void *)server)) {
-	    debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
-	    server->state = RSP_SERVER_STATE_FAILING;
-	    goto errexit;
-	}
+        if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+            server->state = RSP_SERVER_STATE_FAILING;
+            if (server->dynamiclookuparg) {
+                debug(DBG_WARN, "%s: connect failed, sleeping %ds", __func__, ZZZ);
+                goto errexitwait;
+            }
+            goto errexit;
+        }
+        if (pthread_create(&clientrdth, &pthread_attr, conf->pdef->clientconnreader, (void *)server)) {
+            debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
+            server->state = RSP_SERVER_STATE_FAILING;
+            goto errexit;
+        }
     }
     server->state = RSP_SERVER_STATE_CONNECTED;
 
@@ -1760,6 +1759,16 @@ void *clientwr(void *arg) {
         }
     }
     }
+
+errexitwait:
+    /* flush request queue so we don't block incoming retries by removing blocked duplicates*/
+    for (i=0; i < MAX_REQUESTS; i++) {
+        rqout = server->requests + i;
+        pthread_mutex_lock(rqout->lock);
+        freerqoutdata(rqout);
+        pthread_mutex_unlock(rqout->lock);
+    }
+    sleep(ZZZ);
 errexit:
     if (server->dynamiclookuparg) {
 	removeserversubrealms(realms, conf);
@@ -2059,7 +2068,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
              * the srvconfs list.  */
 	    if (addserver(srvconf)) {
 		srvconf->servers->dynamiclookuparg = stringcopy(realm->name, 0);
-		srvconf->servers->state = RSP_SERVER_STATE_STARTUP;
+		srvconf->servers->state = srvconf->blockingstartup ? RSP_SERVER_STATE_BLOCKING_STARTUP : RSP_SERVER_STATE_STARTUP;
                 debug(DBG_DBG, "%s: new client writer for %s",
                       __func__, srvconf->servers->conf->name);
 		if (pthread_create(&clientth, &pthread_attr, clientwr, (void *)(srvconf->servers))) {
@@ -2117,10 +2126,12 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
 }
 
 int dynamicconfig(struct server *server) {
-    int ok, fd[2], status;
+    int ok = 0, fd[2], status;
     pid_t pid;
     struct clsrvconf *conf = server->conf;
     struct gconffile *cf = NULL;
+    struct pollfd fds[1];
+    FILE *pipein;
 
     /* for now we only learn hostname/address */
     debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
@@ -2148,10 +2159,20 @@ int dynamicconfig(struct server *server) {
     }
 
     close(fd[1]);
-    pushgconffile(&cf, fdopen(fd[0], "r"), conf->dynamiclookupcommand);
-    ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb,
-			  (void *) conf, NULL);
-    freegconf(&cf);
+    pipein = fdopen(fd[0], "r");
+    fds[0].fd = fd[0];
+    fds[0].events = POLLIN;
+    status = poll(fds, 1, 5000);
+    if (status < 0) {
+        debugerrno(errno, DBG_ERR, "dynamicconfig: error while waiting for command output");
+    } else if (status ==0) {
+        debug(DBG_WARN, "dynamicconfig: command did not return anything in time");
+        kill(pid, SIGKILL);
+    } else {
+        pushgconffile(&cf, pipein, conf->dynamiclookupcommand);
+        ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb, (void *) conf, NULL);
+        freegconf(&cf);
+    }
 
     if (waitpid(pid, &status, 0) < 0) {
 	debugerrno(errno, DBG_ERR, "dynamicconfig: wait error");
@@ -2300,6 +2321,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	dst->retryinterval = src->retryinterval;
     if (src->retrycount != 255)
 	dst->retrycount = src->retrycount;
+    dst->blockingstartup = src->blockingstartup;
     return 1;
 }
 
@@ -2573,6 +2595,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "RetryCount", CONF_LINT, &retrycount,
             "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
             "LoopPrevention", CONF_BLN, &conf->loopprevention,
+            "BlockingStartup", CONF_BLN, &conf->blockingstartup,
             NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");

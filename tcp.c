@@ -106,16 +106,17 @@ int tcpconnect(struct server *server, int timeout, char *text) {
 
         pthread_mutex_unlock(&server->lock);
         wait = connect_wait(start, server->connecttime, firsttry);
-        debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
-        sleep(wait);
-        firsttry = 0;
-
         gettimeofday(&now, NULL);
-        if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
+        if (timeout && (now.tv_sec - start.tv_sec) + wait > timeout) {
             debug(DBG_DBG, "tcpconnect: timeout");
             if (source) freeaddrinfo(source);
             return 0;
         }
+        debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        sleep(wait);
+        firsttry = 0;
+
+        
         pthread_mutex_lock(&server->lock);
 
         debug(DBG_INFO, "tcpconnect: connecting to %s", server->conf->name);

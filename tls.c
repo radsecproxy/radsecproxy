@@ -118,6 +118,12 @@ int tlsconnect(struct server *server, int timeout, char *text) {
         server->ssl = NULL;
 
         wait = connect_wait(start, server->connecttime, firsttry);
+        gettimeofday(&now, NULL);
+        if (timeout && (now.tv_sec - start.tv_sec) + wait > timeout) {
+            debug(DBG_DBG, "tlsconnect: timeout");
+            if (source) freeaddrinfo(source);
+            return 0;
+        }
         debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
         sleep(wait);
         firsttry = 0;

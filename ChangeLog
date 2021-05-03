@@ -7,6 +7,7 @@ unreleased chanes
 	- Config option for DH-file
 	- Add rID and otherName options to certifcateAttributeCheck
 	- Allow multiple matchCertificateAttribute
+	- Option to start dynamic server in blocking mode
 
 	Misc:
 	- Move radsecproxy manpage to section 8
