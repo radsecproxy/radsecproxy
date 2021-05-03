@@ -611,10 +611,11 @@ See section
 
 .BR "BlockingStartup (" on | off)
 .RS
-Start the server in blocking mode, treating it as if it was already connected and enqueue
-requests to this server. Queued requests will be sent out when the connection is establised.
-This is only considered for dynamic lookup servers (ie when DynamicLookupCommand is specified)
-and is disabled by default.
+Start the dynamic server in blocking mode (default off), treating it as if it was already 
+connected and enqueue requests to this server. Queued requests will be sent out when the 
+connection is established. If however the dynamic lookup or the connection fails, the queued
+requests will be lost.
+(This is only considered for dynamic lookup servers. Ie when DynamicLookupCommand is specified)
 Warning: when the dynamic lookup and connection process is slow, this wil block the 
 respective realm for that time.
 .RE
