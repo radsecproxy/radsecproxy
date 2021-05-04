@@ -19,41 +19,53 @@ DIGCMD=$(command -v dig)
 HOSTCMD=$(command -v host)
 PRINTCMD=$(command -v printf)
 
+validate_host() {
+         echo ${@} | tr -d '\n\t\r' | grep -E '^[_0-9a-zA-Z][-._0-9a-zA-Z]*$'
+}
+
+validate_port() {
+         echo ${@} | tr -d '\n\t\r' | grep -E '^[0-9]+$'
+}
+
 dig_it_srv() {
     ${DIGCMD} +short srv $SRV_HOST | sort -n -k1 |
     while read line; do
-	set $line ; PORT=$3 ; HOST=$4
-	$PRINTCMD "\thost ${HOST%.}:${PORT}\n"
+        set $line ; PORT=$(validate_port $3) ; HOST=$(validate_host $4)
+        if [ -n "${HOST}" ] && [ -n "${PORT}" ]; then
+            $PRINTCMD "\thost ${HOST%.}:${PORT}\n"
+        fi
     done
 }
 
 dig_it_naptr() {
     ${DIGCMD} +short naptr ${REALM} | grep x-eduroam:radius.tls | sort -n -k1 |
     while read line; do
-	set $line ; TYPE=$3 ; HOST=$6
-	if [ "$TYPE" = "\"s\"" -o "$TYPE" = "\"S\"" ]; then
-	    SRV_HOST=${HOST%.}
-	    dig_it_srv
-	fi
+        set $line ; TYPE=$3 ; HOST=$(validate_host $6)
+        if ( [ "$TYPE" = "\"s\"" ] || [ "$TYPE" = "\"S\"" ] ) && [ -n "${HOST}" ]; then
+            SRV_HOST=${HOST%.}
+            dig_it_srv
+        fi
     done
 }
 
 host_it_srv() {
     ${HOSTCMD} -t srv $SRV_HOST | sort -n -k5 |
     while read line; do
-	set $line ; PORT=$7 ; HOST=$8 
-	$PRINTCMD "\thost ${HOST%.}:${PORT}\n"
+        set $line ; PORT=$(validate_port $7) ; HOST=$(validate_host $8) 
+        if [ -n "${HOST}" ] && [ -n "${PORT}" ]; then
+            $PRINTCMD "\thost ${HOST%.}:${PORT}\n"
+        fi
     done
 }
 
 host_it_naptr() {
     ${HOSTCMD} -t naptr ${REALM} | grep x-eduroam:radius.tls | sort -n -k5 |
     while read line; do
-	set $line ; TYPE=$7 ; HOST=${10}
-	if [ "$TYPE" = "\"s\"" -o "$TYPE" = "\"S\"" ]; then
-	    SRV_HOST=${HOST%.}
-	    host_it_srv
-	fi
+        set $line ; TYPE=$7 ; HOST=$(validate_host ${10})
+        if ( [ "$TYPE" = "\"s\"" ] || [ "$TYPE" = "\"S\"" ] ) && [ -n "${HOST}" ]; then
+            SRV_HOST=${HOST%.}
+            host_it_srv
+        fi
     done
 }
 
