@@ -411,7 +411,7 @@ int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
     }
     reslen += i - start;
     if (!resizeattr(attr, reslen)) {
-        debug(DBG_INFO, "rewritten attribute to length %d failed, discarding message", reslen);
+        debug(DBG_INFO, "rewritten attribute to length %zu failed, discarding message", reslen);
         free(in);
         return 0;
     }

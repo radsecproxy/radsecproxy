@@ -2173,6 +2173,7 @@ int dynamicconfig(struct server *server) {
         ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb, (void *) conf, NULL);
         freegconf(&cf);
     }
+    fclose(pipein);
 
     if (waitpid(pid, &status, 0) < 0) {
 	debugerrno(errno, DBG_ERR, "dynamicconfig: wait error");
@@ -2643,7 +2644,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (retryinterval != LONG_MIN) {
 	if (retryinterval < 1 || retryinterval > conf->pdef->retryintervalmax) {
-	    debug(DBG_ERR, "error in block %s, value of option RetryInterval is %d, must be 1-%d", block, retryinterval, conf->pdef->retryintervalmax);
+	    debug(DBG_ERR, "error in block %s, value of option RetryInterval is %ld, must be 1-%d", block, retryinterval, conf->pdef->retryintervalmax);
 	    goto errexit;
 	}
 	conf->retryinterval = (uint8_t)retryinterval;
@@ -2652,7 +2653,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (retrycount != LONG_MIN) {
 	if (retrycount < 0 || retrycount > conf->pdef->retrycountmax) {
-	    debug(DBG_ERR, "error in block %s, value of option RetryCount is %d, must be 0-%d", block, retrycount, conf->pdef->retrycountmax);
+	    debug(DBG_ERR, "error in block %s, value of option RetryCount is %ld, must be 0-%d", block, retrycount, conf->pdef->retrycountmax);
 	    goto errexit;
 	}
 	conf->retrycount = (uint8_t)retrycount;
@@ -2661,7 +2662,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (addttl != LONG_MIN) {
 	if (addttl < 1 || addttl > 255) {
-	    debug(DBG_ERR, "error in block %s, value of option addTTL is %d, must be 1-255", block, addttl);
+	    debug(DBG_ERR, "error in block %s, value of option addTTL is %ld, must be 1-255", block, addttl);
 	    goto errexit;
 	}
 	conf->addttl = (uint8_t)addttl;

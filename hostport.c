@@ -95,7 +95,7 @@ struct hostportres *newhostport(char *hostport, char *default_port, uint8_t pref
     slash = hostport ? strchr(hostport, '/') : NULL;
     if (slash) {
 	if (!prefixok) {
-	    debug(DBG_WARN, "newhostport: prefix not allowed here", hp->host);
+	    debug(DBG_WARN, "newhostport: prefix not allowed here (%s)", hp->host);
 	    goto errexit;
 	}
 	s = slash + 1;
@@ -236,11 +236,12 @@ struct addrinfo *resolvepassiveaddrinfo(char **hostport, int af, char *default_p
                 ai = last_ai = hp->addrinfo;
             } else {
                 last_ai->ai_next = hp->addrinfo;
-                last_ai = last_ai->ai_next;
             }
+            while (last_ai->ai_next)
+                last_ai = last_ai->ai_next;
             hp->addrinfo = NULL;
-            freehostport(hp);
         }
+        freehostport(hp);
     }
     return ai;
 }

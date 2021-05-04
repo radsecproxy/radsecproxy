@@ -248,7 +248,7 @@ int clientradputudp(struct server *server, unsigned char *rad) {
     len = RADLEN(rad);
     ai = ((struct hostportres *)list_first(conf->hostports)->data)->addrinfo;
     if (sendto(server->sock, rad, len, 0, ai->ai_addr, ai->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, addr2string(ai->ai_addr, tmp, sizeof(tmp)), port_get(ai->ai_addr));
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %zu to %s port %d", len, addr2string(ai->ai_addr, tmp, sizeof(tmp)), port_get(ai->ai_addr));
 	return 1;
     }
 

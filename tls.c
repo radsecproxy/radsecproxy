@@ -156,7 +156,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
         if (sslconnecttimeout(server->ssl, 5) <= 0) {
             while ((error = ERR_get_error()))
                 debug(DBG_ERR, "tlsconnect: SSL connect to %s failed: %s", server->conf->name, ERR_error_string(error, NULL));
-            debug(DBG_ERR, "tlsconnect: SSL connect to %s failed", server->conf->name, ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlsconnect: SSL connect to %s failed", server->conf->name);
             continue;
         }
 
@@ -354,7 +354,7 @@ int clientradputtls(struct server *server, unsigned char *rad) {
         return 0;
     }
 
-    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %d to TLS peer %s", cnt, len, conf->name);
+    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %zu to TLS peer %s", cnt, len, conf->name);
     pthread_mutex_unlock(&server->lock);
     return 1;
 }

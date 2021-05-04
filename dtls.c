@@ -425,7 +425,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
 #endif
         if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_RECVPKTINFO) {
             info6 = (struct in6_pktinfo *)CMSG_DATA(ctrlhdr);
-            debug(DBG_DBG, "udp packet to: %x", inet_ntop(AF_INET6, &info6->ipi6_addr, tmp, sizeof(tmp)));
+            debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET6, &info6->ipi6_addr, tmp, sizeof(tmp)));
 
             ((struct sockaddr_in6 *)to)->sin6_addr = info6->ipi6_addr;
             ((struct sockaddr_in6 *)to)->sin6_scope_id = info6->ipi6_ifindex;
@@ -595,7 +595,7 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
         if (sslconnecttimeout(server->ssl, 5) <= 0) {
             while ((error = ERR_get_error()))
                 debug(DBG_ERR, "dtlsconnect: SSL connect to %s failed: %s", server->conf->name, ERR_error_string(error, NULL));
-            debug(DBG_ERR, "dtlsconnect: SSL connect to %s failed", server->conf->name, ERR_error_string(error, NULL));
+            debug(DBG_ERR, "dtlsconnect: SSL connect to %s failed", server->conf->name);
             continue;
         }
         socktimeout.tv_sec = 5;
@@ -655,7 +655,7 @@ int clientradputdtls(struct server *server, unsigned char *rad) {
                 return 0;
         }
     }
-    debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %d to DTLS peer %s", cnt, len, conf->name);
+    debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %zu to DTLS peer %s", cnt, len, conf->name);
     pthread_mutex_unlock(&server->lock);
     return 1;
 }

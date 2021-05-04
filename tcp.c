@@ -219,7 +219,7 @@ int clientradputtcp(struct server *server, unsigned char *rad) {
 	debug(DBG_ERR, "clientradputtcp: write error");
 	return 0;
     }
-    debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %d to TCP peer %s", cnt, len, conf->name);
+    debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %zu to TCP peer %s", cnt, len, conf->name);
     return 1;
 }
 
