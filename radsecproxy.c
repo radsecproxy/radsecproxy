@@ -2169,11 +2169,15 @@ int dynamicconfig(struct server *server) {
         debug(DBG_WARN, "dynamicconfig: command did not return anything in time");
         kill(pid, SIGKILL);
     } else {
-        pushgconffile(&cf, pipein, conf->dynamiclookupcommand);
-        ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb, (void *) conf, NULL);
-        freegconf(&cf);
+        pipein = pushgconffile(&cf, pipein, conf->dynamiclookupcommand);
+        if (pipein) {
+            ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb, (void *) conf, NULL);
+            freegconf(&cf);
+            pipein = NULL;
+        }
     }
-    fclose(pipein);
+    if (pipein)
+        fclose(pipein);
 
     if (waitpid(pid, &status, 0) < 0) {
 	debugerrno(errno, DBG_ERR, "dynamicconfig: wait error");
