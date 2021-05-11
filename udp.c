@@ -65,8 +65,6 @@ struct client_sock {
 };
 
 static struct list *client_sock;
-//static int client4_sock = -1;
-//static int client6_sock = -1;
 static struct gqueue *server_replyq = NULL;
 
 static struct addrinfo *srcres = NULL;
