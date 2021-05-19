@@ -201,8 +201,8 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
 	vsyslog(priority, format, ap);
     } else {
         if (debug_timestamp && (timebuf = malloc(26 + 1))) {
-	    gettimeofday(&now, NULL);
-	    ctime_r(&now.tv_sec, timebuf);
+            gettimeofday(&now, NULL);
+            ctime_r(&now.tv_sec, timebuf);
             /*ctime_r writes exactly 24 bytes + "\n\0" */
             strncpy(timebuf+24,": ", 3);
         }
@@ -211,8 +211,8 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
         if (tmp2) {
             snprintf(tmp2, malloc_size, "%s%s\n", timebuf ? timebuf : "", format);
             format = tmp2;
-	}
-	vfprintf(debug_file, format, ap);
+        }
+        vfprintf(debug_file, format, ap);
     }
     free(tmp);
     free(tmp2);
@@ -240,18 +240,20 @@ void debugx(int status, uint8_t level, char *format, ...) {
 
 void debugerrno(int err, uint8_t level, char *format, ...) {
     if (level >= debug_level) {
-	va_list ap;
-	size_t len = strlen(format);
-	char *tmp = malloc(len + 1024 + 2);
-	assert(tmp);
-	strcpy(tmp, format);
-	tmp[len++] = ':';
-	tmp[len++] = ' ';
-	if (strerror_r(err, tmp + len, 1024))
-	    tmp = format;
-	va_start(ap, format);
-	debug_logit(level, tmp, ap);
-	va_end(ap);
+        va_list ap;
+        size_t len = strlen(format);
+        char *tmp = malloc(len + 1024 + 2);
+        assert(tmp);
+        strcpy(tmp, format);
+        tmp[len++] = ':';
+        tmp[len++] = ' ';
+        va_start(ap, format);
+        if (strerror_r(err, tmp + len, 1024))
+            debug_logit(level, format, ap);
+        else
+            debug_logit(level, tmp, ap);
+        va_end(ap);
+        free(tmp);
     }
 }
 
