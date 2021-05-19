@@ -152,8 +152,9 @@ void debug_reopen_log() {
 
 void debug_logit(uint8_t level, const char *format, va_list ap) {
     struct timeval now;
-    char *timebuf, *tidbuf, *tmp = NULL;
+    char *timebuf = NULL, *tidbuf, *tmp = NULL, *tmp2 = NULL;
     int priority;
+    size_t malloc_size;
 
     if (debug_tid) {
 #ifdef __linux__
@@ -199,17 +200,23 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
 	}
 	vsyslog(priority, format, ap);
     } else {
-	if (debug_timestamp && (timebuf = malloc(256))) {
+        if (debug_timestamp && (timebuf = malloc(26 + 1))) {
 	    gettimeofday(&now, NULL);
 	    ctime_r(&now.tv_sec, timebuf);
-	    timebuf[strlen(timebuf) - 1] = '\0';
-	    fprintf(debug_file, "%s: ", timebuf + 4);
-	    free(timebuf);
+            /*ctime_r writes exactly 24 bytes + "\n\0" */
+            strncpy(timebuf+24,": ", 3);
+        }
+        malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 2*sizeof(char);
+        tmp2 = malloc(malloc_size);
+        if (tmp2) {
+            snprintf(tmp2, malloc_size, "%s%s\n", timebuf ? timebuf : "", format);
+            format = tmp2;
 	}
 	vfprintf(debug_file, format, ap);
-	fprintf(debug_file, "\n");
     }
     free(tmp);
+    free(tmp2);
+    free(timebuf);
 }
 
 void debug(uint8_t level, char *format, ...) {
