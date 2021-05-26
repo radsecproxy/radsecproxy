@@ -794,7 +794,8 @@ The password to decrypt the private-key.
 .BI "PolicyOID " oid
 .RS
 Require the peers certificate to adhere to the policy specified by \fIoid\fR.
-This can be specified multiple times.
+When specified multiple times at least one policy must be valid in the peer
+certificate.
 .RE
 
 .BR "CRLCheck (" on | off )
