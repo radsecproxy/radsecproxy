@@ -1,4 +1,4 @@
-.TH radsecproxy.conf 5 2021-05-11 "radsecproxy 1.9.0-rc1" ""
+.TH radsecproxy.conf 5 2021-05-28 "radsecproxy 1.9.0" ""
 
 .SH NAME
 radsecproxy.conf \- Radsec proxy configuration file

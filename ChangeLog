@@ -1,4 +1,4 @@
-2021-05-11 1.9.0-rc1
+2021-05-28 1.9.0
 	New features:
 	- Accept multiple source* configs for IPv4/v6
 	- Specify source per server
@@ -13,6 +13,11 @@
 	- Move radsecproxy manpage to section 8
 	- Log CUI and operator-name if present
 	- Log CN for incomming TLS connections
+
+	Bug Fixes:
+	- Fix overlapping log lines
+	- Fix memory leak in logging
+	- Fix dynidsc example scripts input validation (CVE-2021-32642)
 
 2020-08-06 1.8.2
 	Bug fixes:
