@@ -28,7 +28,7 @@ validate_port() {
 }
 
 dig_it() {
-   ${DIGCMD} +short srv _radsec._tcp.${REALM} | sort -n -k1 |
+   ${DIGCMD} +short srv "_radsec._tcp.${REALM}" | sort -n -k1 |
    while read line ; do
       set $line ; PORT=$(validate_port $3) ; HOST=$(validate_host $4)
       if [ -n "${HOST}" ] && [ -n "${PORT}" ]; then 
@@ -38,7 +38,7 @@ dig_it() {
 }
 
 host_it() {
-   ${HOSTCMD} -t srv _radsec._tcp.${REALM} | sort -n -k5 |
+   ${HOSTCMD} -t srv "_radsec._tcp.${REALM}" | sort -n -k5 |
    while read line ; do
       set $line ; PORT=$(validate_port $7) ; HOST=$(validate_host $8) 
       if [ -n "${HOST}" ] && [ -n "${PORT}" ]; then

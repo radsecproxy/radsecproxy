@@ -38,7 +38,7 @@ dig_it_srv() {
 }
 
 dig_it_naptr() {
-    ${DIGCMD} +short naptr ${REALM} | grep x-eduroam:radius.tls | sort -n -k1 |
+    ${DIGCMD} +short naptr "${REALM}" | grep x-eduroam:radius.tls | sort -n -k1 |
     while read line; do
         set $line ; TYPE=$3 ; HOST=$(validate_host $6)
         if ( [ "$TYPE" = "\"s\"" ] || [ "$TYPE" = "\"S\"" ] ) && [ -n "${HOST}" ]; then
@@ -59,7 +59,7 @@ host_it_srv() {
 }
 
 host_it_naptr() {
-    ${HOSTCMD} -t naptr ${REALM} | grep x-eduroam:radius.tls | sort -n -k5 |
+    ${HOSTCMD} -t naptr "${REALM}" | grep x-eduroam:radius.tls | sort -n -k5 |
     while read line; do
         set $line ; TYPE=$7 ; HOST=$(validate_host ${10})
         if ( [ "$TYPE" = "\"s\"" ] || [ "$TYPE" = "\"S\"" ] ) && [ -n "${HOST}" ]; then
