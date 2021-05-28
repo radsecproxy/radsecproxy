@@ -14,7 +14,6 @@ usage() {
 
 test -n "${1}" || usage
 
-REALM="${1}"
 DIGCMD=$(command -v dig)
 HOSTCMD=$(command -v host)
 PRINTCMD=$(command -v printf)
@@ -68,6 +67,12 @@ host_it_naptr() {
         fi
     done
 }
+
+REALM=$(validate_host ${1})
+if [ -z "${REALM}" ]; then
+    echo "Error: realm \"${1}\" failed validation"
+    usage
+fi
 
 if [ -x "${DIGCMD}" ]; then
     SERVERS=$(dig_it_naptr)
