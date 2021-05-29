@@ -35,7 +35,7 @@ int list_push(struct list *list, void *data);
 /* removes first entry from list and returns data */
 void *list_shift(struct list *list);
 
-/* removes first entry with matching data pointer */
+/* removes all entries with matching data pointer */
 void list_removedata(struct list *list, void *data);
 
 /* returns first node */

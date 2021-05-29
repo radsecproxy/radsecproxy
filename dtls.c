@@ -142,6 +142,7 @@ int dtlsread(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t
                     continue;
                 case SSL_ERROR_ZERO_RETURN:
                     debug(DBG_DBG, "dtlsread: got ssl shutdown");
+                    /* fallthrough */
                 default:
                     while ((error = ERR_get_error()))
                         debug(DBG_ERR, "dtlsread: SSL: %s", ERR_error_string(error, NULL));
