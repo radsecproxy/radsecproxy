@@ -251,6 +251,7 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
                     continue;
                 case SSL_ERROR_ZERO_RETURN:
                     debug(DBG_DBG, "sslreadtimeout: got ssl shutdown");
+                    /* fallthrough */
                 default:
                     while ((error = ERR_get_error()))
                         debug(DBG_ERR, "sslreadtimeout: SSL: %s", ERR_error_string(error, NULL));
