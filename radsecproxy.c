@@ -2155,13 +2155,10 @@ int dynamicconfig(struct server *server) {
 		debugx(1, DBG_ERR, "dynamicconfig: dup2 error for command %s", conf->dynamiclookupcommand);
 	    close(fd[1]);
 	}
-    //debug(DBG_DBG,server->dynamiclookuparg);
     if(dns_main(server->dynamiclookuparg,STDOUT_FILENO) != 0){
         debug(DBG_WARN, "dynamicconfig: lookup failed, either there is nothing to look up or you have a larger problem");
     }
     exit(0);
-	//if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
-	//    debugx(1, DBG_ERR, "dynamicconfig: exec error for command %s", conf->dynamiclookupcommand);
     }
 
     close(fd[1]);
