@@ -72,6 +72,7 @@
 #include "dtls.h"
 #include "fticks.h"
 #include "fticks_hashmac.h"
+#include "rad-dns/rad-dns.h"
 
 static struct options options;
 static struct list *clconfs, *srvconfs;
@@ -2154,8 +2155,13 @@ int dynamicconfig(struct server *server) {
 		debugx(1, DBG_ERR, "dynamicconfig: dup2 error for command %s", conf->dynamiclookupcommand);
 	    close(fd[1]);
 	}
-	if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
-	    debugx(1, DBG_ERR, "dynamicconfig: exec error for command %s", conf->dynamiclookupcommand);
+    //debug(DBG_DBG,server->dynamiclookuparg);
+    if(dns_main(server->dynamiclookuparg,STDOUT_FILENO) != 0){
+        debug(DBG_WARN, "dynamicconfig: lookup failed, either there is nothing to look up or you have a larger problem");
+    }
+    exit(0);
+	//if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
+	//    debugx(1, DBG_ERR, "dynamicconfig: exec error for command %s", conf->dynamiclookupcommand);
     }
 
     close(fd[1]);
@@ -3039,6 +3045,9 @@ int radsecproxy_main(int argc, char **argv) {
 
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
+
+    if(init_ares()!=0)
+    debugx(1, DBG_ERR,"failed to initialize ARES");
 
     if (pthread_attr_init(&pthread_attr))
 	debugx(1, DBG_ERR, "pthread_attr_init failed");
