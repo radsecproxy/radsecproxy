@@ -74,10 +74,10 @@ FILE *pushgconffile(struct gconffile **cf, FILE *file, const char *description) 
     char *desc;
 
     if (!file) {
-        debug(DBG_INFO, "could not read config from STDOUT_FILENO");
+        debug(DBG_INFO, "could not read config from %s",description);
 	return NULL;
     }
-    debug(DBG_DBG, "reading config from STDOUT_FILENO");
+    debug(DBG_DBG, "reading config from %s",description);
 
     desc = stringcopy(description, 0);
     if (!desc)

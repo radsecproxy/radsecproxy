@@ -1,3 +1,6 @@
+/* Copyright (c) 2021, Long Yang Paffrath <paffrath@yangnet.de>*/
+/* See LICENSE for licensing information */
+
 #ifndef _RAD_DNS_H
 #define _RAD_DNS_H
 
@@ -20,7 +23,7 @@ struct callback_data
     size_t str_len;
 };
 
-int dns_main(char *host,int fd1);
+int dns_main(char *host, int fd1);
 int init_ares();
 void wait_ares(ares_channel channel);
 void srv_callback(void *arg, int status, int timeouts, unsigned char *abuf, int alen);

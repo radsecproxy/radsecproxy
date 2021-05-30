@@ -2156,7 +2156,7 @@ int dynamicconfig(struct server *server) {
 	    close(fd[1]);
 	}
     if(dns_main(server->dynamiclookuparg,STDOUT_FILENO) != 0){
-        debug(DBG_WARN, "dynamicconfig: lookup failed, either there is nothing to look up or you have a larger problem");
+        debugx(1, DBG_WARN, "dynamicconfig: lookup failed, either there is nothing to look up or you have a larger problem");
     }
     exit(0);
     }
@@ -2172,7 +2172,7 @@ int dynamicconfig(struct server *server) {
         debug(DBG_WARN, "dynamicconfig: command did not return anything in time");
         kill(pid, SIGKILL);
     } else {
-        pipein = pushgconffile(&cf, pipein, conf->dynamiclookupcommand);
+        pipein = pushgconffile(&cf, pipein, "internal pipe");
         if (pipein) {
             ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb, (void *) conf, NULL);
             freegconf(&cf);

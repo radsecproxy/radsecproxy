@@ -1,3 +1,6 @@
+/* Copyright (c) 2021, Long Yang Paffrath <paffrath@yangnet.de>*/
+/* See LICENSE for licensing information */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
