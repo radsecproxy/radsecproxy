@@ -14,7 +14,6 @@ usage() {
 
 test -n "${1}" || usage
 
-REALM="${1}"
 DIGCMD=$(command -v dig)
 HOSTCMD=$(command -v host)
 PRINTCMD=$(command -v printf)
@@ -38,7 +37,7 @@ dig_it_srv() {
 }
 
 dig_it_naptr() {
-    ${DIGCMD} +short naptr ${REALM} | grep x-eduroam:radius.tls | sort -n -k1 |
+    ${DIGCMD} +short naptr "${REALM}" | grep x-eduroam:radius.tls | sort -n -k1 |
     while read line; do
         set $line ; TYPE=$3 ; HOST=$(validate_host $6)
         if ( [ "$TYPE" = "\"s\"" ] || [ "$TYPE" = "\"S\"" ] ) && [ -n "${HOST}" ]; then
@@ -59,7 +58,7 @@ host_it_srv() {
 }
 
 host_it_naptr() {
-    ${HOSTCMD} -t naptr ${REALM} | grep x-eduroam:radius.tls | sort -n -k5 |
+    ${HOSTCMD} -t naptr "${REALM}" | grep x-eduroam:radius.tls | sort -n -k5 |
     while read line; do
         set $line ; TYPE=$7 ; HOST=$(validate_host ${10})
         if ( [ "$TYPE" = "\"s\"" ] || [ "$TYPE" = "\"S\"" ] ) && [ -n "${HOST}" ]; then
@@ -68,6 +67,12 @@ host_it_naptr() {
         fi
     done
 }
+
+REALM=$(validate_host ${1})
+if [ -z "${REALM}" ]; then
+    echo "Error: realm \"${1}\" failed validation"
+    usage
+fi
 
 if [ -x "${DIGCMD}" ]; then
     SERVERS=$(dig_it_naptr)
