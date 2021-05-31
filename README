@@ -8,11 +8,12 @@ flexible, while at the same time to be small, efficient and easy to configure.
 Official packages are available:
 
 Debian: apt-get install radsecproxy
+CentOS/RHEL/Rocky: yum install epel-release; yum install radsecproxy
 Fedora: dnf install radsecproxy
 FreeBSD: pkg install radsecproxy
 NetBSD: pkgin install radsecproxy
 
-Or built it from this rouce on most Unix like systems by simply typing
+Or built it from this source on most Unix like systems by simply typing
 
     ./configure && make
 
