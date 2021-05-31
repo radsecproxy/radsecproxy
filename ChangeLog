@@ -1,3 +1,7 @@
+unreleased changes
+	Bug Fixes:
+	- Fix refused startup with openssl <1.1 (#82)
+
 2021-05-28 1.9.0
 	New features:
 	- Accept multiple source* configs for IPv4/v6

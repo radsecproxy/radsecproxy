@@ -913,8 +913,10 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         dtlsversion = NULL;
     }
 #else
+    if (tlsversion || dtlsversion) {
         debug(DBG_ERR, "error in block %s, setting tls/dtls version requires openssl 1.1.0 or later", val);
         goto errexit;
+    }
 #endif
 
     if (dhfile) {
