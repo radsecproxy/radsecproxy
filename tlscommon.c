@@ -565,18 +565,65 @@ void tlsreloadcrls() {
     for (entry = hash_first(tlsconfs); entry; entry = hash_next(entry)) {
 	conf = (struct tls *)entry->data;
 #ifdef RADPROT_TLS
-	if (conf->tlsctx) {
-	    if (conf->tlsexpiry)
-		conf->tlsexpiry = now.tv_sec + conf->cacheexpiry;
-	    tlsaddcacrl(conf->tlsctx, conf);
-	}
+        if (conf->tlsctx) {
+            /*
+             * Little tricky situation now. If we try the SSL_CTX_* APIs with the
+             * original tlsctx and it fails, we might end up with a partially updated
+             * tlsctx and that does good to know one. As a quick workaround,
+             * we will create a dummy tlsctx and try out the APIs on it. If it goes fine,
+             * we will replay the same with the live tlsctx. Ofcourse, we would need to
+             * obtain a lock before handling the same.
+             */
+            testtlsctx = tlscreatectx(RAD_TLS, conf);
+            if (!testtlsctx) {
+                return;
+            }
+            SSL_CTX_free(testtlsctx);
+
+            pthread_mutex_lock(&conf->lock);
+            if (!SSL_CTX_use_certificate_chain_file(conf->tlsctx, conf->certfile) ||
+                !SSL_CTX_use_PrivateKey_file(conf->tlsctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+                !SSL_CTX_check_private_key(conf->tlsctx)) {
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "tls SSL: %s", ERR_error_string(error, NULL));
+                debug(DBG_ERR, "tls: Error initialising SSL/TLS in TLS context %s", conf->name);
+                SSL_CTX_free(conf->tlsctx);
+                conf->tlsctx = NULL;
+                return;
+            }
+
+            debug(DBG_INFO, "tls: private certificate and keys updated");
+            if (conf->tlsexpiry)
+                conf->tlsexpiry = now.tv_sec + conf->cacheexpiry;
+            tlsaddcacrl(conf->tlsctx, conf);
+            pthread_mutex_unlock(&conf->lock);
+        }
 #endif
 #ifdef RADPROT_DTLS
-	if (conf->dtlsctx) {
-	    if (conf->dtlsexpiry)
-		conf->dtlsexpiry = now.tv_sec + conf->cacheexpiry;
-	    tlsaddcacrl(conf->dtlsctx, conf);
-	}
+        if (conf->dtlsctx) {
+            testtlsctx = tlscreatectx(RAD_DTLS, conf);
+            if (!testtlsctx) {
+                return;
+            }
+            SSL_CTX_free(testtlsctx);
+
+            pthread_mutex_lock(&conf->lock);
+            if (!SSL_CTX_use_certificate_chain_file(conf->dtlsctx, conf->certfile) ||
+                !SSL_CTX_use_PrivateKey_file(conf->dtlsctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+                !SSL_CTX_check_private_key(conf->dtlsctx)) {
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "dtls SSL: %s", ERR_error_string(error, NULL));
+                debug(DBG_ERR, "dtls: Error initialising SSL/TLS in TLS context %s", conf->name);
+                SSL_CTX_free(conf->dtlsctx);
+                return;
+            }
+            debug(DBG_INFO, "dtls: private certificate and keys updated");
+
+            if (conf->dtlsexpiry)
+                conf->dtlsexpiry = now.tv_sec + conf->cacheexpiry;
+            tlsaddcacrl(conf->dtlsctx, conf);
+            pthread_mutex_unlock(&conf->lock);
+        }
 #endif
     }
 }
