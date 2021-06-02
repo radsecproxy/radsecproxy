@@ -18,7 +18,7 @@
 
 void naptr_callback(void *arg, int status, int timeouts, unsigned char *abuf, int alen)
 {
-    struct callback_data *data = (struct callback_data *)arg;
+    struct naptr_callback_data *data = (struct naptr_callback_data *)arg;
     if (status == ARES_SUCCESS)
     {
         struct ares_naptr_reply *reply;
@@ -26,7 +26,7 @@ void naptr_callback(void *arg, int status, int timeouts, unsigned char *abuf, in
         data->ptr = reply;
         while (reply != NULL)
         {
-            if (!strncmp((char *)reply->service, "x-eduroam:radius.tls", sizeof "x-eduroam:radius.tls"))
+            if (!strncmp((char *)reply->service, data->service_tag, strlen(data->service_tag) + 1))
             {
                 data->msg = (char **)reply->replacement;
                 data->empty = false;
@@ -40,7 +40,7 @@ void naptr_callback(void *arg, int status, int timeouts, unsigned char *abuf, in
 
 void srv_callback(void *arg, int status, int timeouts, unsigned char *abuf, int alen)
 {
-    struct callback_data *data = (struct callback_data *)arg;
+    struct srv_callback_data *data = (struct srv_callback_data *)arg;
     int i, j;
     unsigned short key;
     if (status == ARES_SUCCESS)
@@ -126,7 +126,7 @@ int init_ares()
     return 0;
 }
 
-int dns_main(char *host, int fd1)
+int dns_main(char *host, char *servicetag, int fd1)
 {
     int i;
     if (ares_library_initialized() != ARES_SUCCESS)
@@ -143,9 +143,10 @@ int dns_main(char *host, int fd1)
     {
         return -1;
     }
-    struct callback_data *naptr_data = malloc(sizeof *naptr_data);
+    struct naptr_callback_data *naptr_data = malloc(sizeof *naptr_data);
     naptr_data->empty = true;
-    struct callback_data *srv_data = malloc(sizeof *srv_data);
+    naptr_data->service_tag = servicetag;
+    struct srv_callback_data *srv_data = malloc(sizeof *srv_data);
     srv_data->empty = true;
     ares_query(channel, host, ns_c_in, ns_t_naptr, &naptr_callback, naptr_data);
     wait_ares(channel);

@@ -7,7 +7,19 @@
 #include <ares.h>
 #include <stdbool.h>
 
-struct callback_data
+struct naptr_callback_data
+{
+    /*true if there is not data to read*/
+    bool empty;
+    /*service tag to filter for*/
+    char *service_tag;
+    /*string or array of strings*/
+    char **msg;
+    /*pointer to ares object for later freeing*/
+    void *ptr;
+};
+
+struct srv_callback_data
 {
     /*true if there is no other data to read.*/
     bool empty;
@@ -23,7 +35,7 @@ struct callback_data
     size_t str_len;
 };
 
-int dns_main(char *host, int fd1);
+int dns_main(char *host, char *servicetag, int fd1);
 int init_ares();
 void wait_ares(ares_channel channel);
 void srv_callback(void *arg, int status, int timeouts, unsigned char *abuf, int alen);

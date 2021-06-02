@@ -158,7 +158,7 @@ struct clsrvconf {
     char *confrewriteout;
     char *confrewriteusername;
     struct modattr *rewriteusername;
-    char *dynamiclookupcommand;
+    char *dynamicservicetag;
     enum rsp_statsrv statusserver;
     uint8_t retryinterval;
     uint8_t retrycount;
