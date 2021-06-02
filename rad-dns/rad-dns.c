@@ -171,7 +171,7 @@ int dns_main(char *host, int fd1)
         cx += snprintf(buffer + cx, srv_data->count * srv_data->str_len + 255 - cx, "\thost %s:%hu\n", srv_data->msg[i], *srv_data->ports[i]);
     }
     snprintf(buffer + cx, srv_data->count * srv_data->str_len + 255 - cx, "\ttype TLS\n}\n");
-    write(fd1, buffer, strlen(buffer));
+    (void)write(fd1, buffer, strlen(buffer));
 
     //cleanup
     free(srv_data->msg);
