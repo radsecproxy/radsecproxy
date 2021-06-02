@@ -172,7 +172,20 @@ int dns_main(char *host, char *servicetag, int fd1)
         cx += snprintf(buffer + cx, srv_data->count * srv_data->str_len + 255 - cx, "\thost %s:%hu\n", srv_data->msg[i], *srv_data->ports[i]);
     }
     snprintf(buffer + cx, srv_data->count * srv_data->str_len + 255 - cx, "\ttype TLS\n}\n");
-    (void)write(fd1, buffer, strlen(buffer));
+    
+    if (write(fd1, buffer, strlen(buffer)) == -1)
+    {
+        free(srv_data->msg);
+        free(srv_data->ports);
+
+        ares_free_data(naptr_data->ptr);
+        ares_free_data(srv_data->ptr);
+
+        free(naptr_data);
+        free(srv_data);
+        ares_destroy(channel);
+        return -1;
+    }
 
     //cleanup
     free(srv_data->msg);
