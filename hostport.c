@@ -222,7 +222,7 @@ int resolvehostports(struct list *hostports, int af, int socktype) {
 }
 
 struct addrinfo *resolvepassiveaddrinfo(char **hostport, int af, char *default_port, int socktype) {
-    struct addrinfo *ai = NULL, *last_ai;
+    struct addrinfo *ai = NULL, *last_ai = NULL;
     int i;
     char *any[2] = {"*", NULL};
 
