@@ -28,7 +28,8 @@ librsp_a_SOURCES = \
 	tlscommon.c tlscommon.h \
 	tlv11.c tlv11.h \
 	udp.c udp.h \
-	util.c util.h
+	util.c util.h \
+	rad-dns/rad-dns.c rad-dns/rad-dns.h 
 
 radsecproxy_conf_SOURCES = \
 	catgconf.c \

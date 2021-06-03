@@ -57,7 +57,9 @@ AC_ARG_ENABLE(dtls,
 
 AC_CHECK_LIB([nettle], [nettle_sha256_init],,
     [AC_MSG_ERROR([required library nettle not found])])
-
+AC_CHECK_LIB([cares], [ares_library_init],,
+    [AC_MSG_ERROR([required library c-ares not found])])
+    
 dnl Check if we're on Solaris and set CFLAGS accordingly
 AC_CANONICAL_TARGET
 case "${target_os}" in

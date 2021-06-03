@@ -72,6 +72,7 @@
 #include "dtls.h"
 #include "fticks.h"
 #include "fticks_hashmac.h"
+#include "rad-dns/rad-dns.h"
 
 static struct options options;
 static struct list *clconfs, *srvconfs;
@@ -1154,7 +1155,7 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
 	goto exit;
     debug(DBG_DBG, "found matching realm: %s", (*realm)->name);
     srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
-    if (srvconf && !(*realm)->parent && !srvconf->servers && srvconf->dynamiclookupcommand) {
+    if (srvconf && !(*realm)->parent && !srvconf->servers && (srvconf->dynamicservicetag||srvconf->dynamiclookupcommand)) {
 	subrealm = adddynamicrealmserver(*realm, id);
 	if (subrealm) {
 	    pthread_mutex_lock(&subrealm->mutex);
@@ -2054,7 +2055,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
-	if (!conf->servers && conf->dynamiclookupcommand) {
+	if (!conf->servers && (conf->dynamicservicetag||conf->dynamiclookupcommand)) {
 	    srvconf = malloc(sizeof(struct clsrvconf));
 	    if (!srvconf) {
 		debug(DBG_ERR, "malloc failed");
@@ -2151,11 +2152,22 @@ int dynamicconfig(struct server *server) {
 	close(fd[0]);
 	if (fd[1] != STDOUT_FILENO) {
 	    if (dup2(fd[1], STDOUT_FILENO) != STDOUT_FILENO)
-		debugx(1, DBG_ERR, "dynamicconfig: dup2 error for command %s", conf->dynamiclookupcommand);
+		debugx(1, DBG_ERR, "dynamicconfig: dup2 error while creating internal pipe for dns_main");
 	    close(fd[1]);
 	}
-	if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
-	    debugx(1, DBG_ERR, "dynamicconfig: exec error for command %s", conf->dynamiclookupcommand);
+    if(conf->dynamicservicetag){
+        if(dns_main(server->dynamiclookuparg,conf->dynamicservicetag,STDOUT_FILENO) != 0){
+            debugx(1, DBG_WARN, "dynamicconfig: lookup failed, either there is nothing to look up or you have a larger problem");
+        }
+        exit(0);
+    }else{
+        debug(DBG_WARN, "dynamicconfig: using obsolete method for dynamiclookup");
+        if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
+        {
+            debugx(1, DBG_ERR, "dynamicconfig: exec error for command %s", conf->dynamiclookupcommand);
+        }
+        exit(0);
+    }
     }
 
     close(fd[1]);
@@ -2169,7 +2181,7 @@ int dynamicconfig(struct server *server) {
         debug(DBG_WARN, "dynamicconfig: command did not return anything in time");
         kill(pid, SIGKILL);
     } else {
-        pipein = pushgconffile(&cf, pipein, conf->dynamiclookupcommand);
+        pipein = pushgconffile(&cf, pipein, "internal pipe");
         if (pipein) {
             ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb, (void *) conf, NULL);
             freegconf(&cf);
@@ -2229,6 +2241,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
 	free(conf->rewriteusername->replacement);
 	free(conf->rewriteusername);
     }
+    free(conf->dynamicservicetag);
     free(conf->dynamiclookupcommand);
     conf->rewritein=NULL;
     conf->rewriteout=NULL;
@@ -2314,7 +2327,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	!mergeconfstring(&dst->confrewritein, &src->confrewritein) ||
 	!mergeconfstring(&dst->confrewriteout, &src->confrewriteout) ||
 	!mergeconfstring(&dst->confrewriteusername, &src->confrewriteusername) ||
-	!mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand) ||
+	!mergeconfstring(&dst->dynamicservicetag, &src->dynamicservicetag) ||
+    !mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand) ||
 	!mergeconfstring(&dst->fticks_viscountry, &src->fticks_viscountry) ||
 	!mergeconfstring(&dst->fticks_visinst, &src->fticks_visinst))
 	return 0;
@@ -2545,7 +2559,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	return 0;
     }
 
-    if (!conf->dynamiclookupcommand &&
+    if (!conf->dynamicservicetag && !conf->dynamiclookupcommand &&
         !resolvehostports(conf->hostports, conf->hostaf,
                           conf->pdef->socktype)) {
 	debug(DBG_ERR, "%s: resolve failed", __func__);
@@ -2598,6 +2612,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "StatusServer", CONF_STR, &statusserver,
             "RetryInterval", CONF_LINT, &retryinterval,
             "RetryCount", CONF_LINT, &retrycount,
+            "DynamicServiceTag", CONF_STR, &conf->dynamicservicetag,
             "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
             "LoopPrevention", CONF_BLN, &conf->loopprevention,
             "BlockingStartup", CONF_BLN, &conf->blockingstartup,
@@ -2691,13 +2706,17 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         free(conf);
         conf = resconf;
         confmerged = 1;
-        if (conf->dynamiclookupcommand) {
+        if (conf->dynamicservicetag) {
+            free(conf->dynamicservicetag);
+            conf->dynamicservicetag = NULL;
+        }
+        if(conf->dynamiclookupcommand){
             free(conf->dynamiclookupcommand);
             conf->dynamiclookupcommand = NULL;
         }
     }
 
-    if (resconf || !conf->dynamiclookupcommand) {
+    if (resconf || (!conf->dynamicservicetag && !conf->dynamiclookupcommand)) {
 	if (!compileserverconfig(conf, block))
             goto errexit;
     }
@@ -3040,6 +3059,9 @@ int radsecproxy_main(int argc, char **argv) {
     debug_init("radsecproxy");
     debug_set_level(DEBUG_LEVEL);
 
+    if(init_ares()!=0)
+    debugx(1, DBG_ERR,"failed to initialize ARES");
+
     if (pthread_attr_init(&pthread_attr))
 	debugx(1, DBG_ERR, "pthread_attr_init failed");
     if (pthread_attr_setstacksize(&pthread_attr, PTHREAD_STACK_SIZE))
@@ -3109,7 +3131,7 @@ int radsecproxy_main(int argc, char **argv) {
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	srvconf = (struct clsrvconf *)entry->data;
-	if (srvconf->dynamiclookupcommand)
+	if (srvconf->dynamicservicetag || srvconf->dynamiclookupcommand)
 	    continue;
 	if (!addserver(srvconf))
 	    debugx(1, DBG_ERR, "failed to add server");
