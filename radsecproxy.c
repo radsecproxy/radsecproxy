@@ -1155,7 +1155,7 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
 	goto exit;
     debug(DBG_DBG, "found matching realm: %s", (*realm)->name);
     srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
-    if (srvconf && !(*realm)->parent && !srvconf->servers && srvconf->dynamicservicetag) {
+    if (srvconf && !(*realm)->parent && !srvconf->servers && (srvconf->dynamicservicetag||srvconf->dynamiclookupcommand)) {
 	subrealm = adddynamicrealmserver(*realm, id);
 	if (subrealm) {
 	    pthread_mutex_lock(&subrealm->mutex);
@@ -2055,7 +2055,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
-	if (!conf->servers && conf->dynamicservicetag) {
+	if (!conf->servers && (conf->dynamicservicetag||conf->dynamiclookupcommand)) {
 	    srvconf = malloc(sizeof(struct clsrvconf));
 	    if (!srvconf) {
 		debug(DBG_ERR, "malloc failed");
@@ -2155,10 +2155,17 @@ int dynamicconfig(struct server *server) {
 		debugx(1, DBG_ERR, "dynamicconfig: dup2 error while creating internal pipe for dns_main");
 	    close(fd[1]);
 	}
-    if(dns_main(server->dynamiclookuparg,conf->dynamicservicetag,STDOUT_FILENO) != 0){
-        debugx(1, DBG_WARN, "dynamicconfig: lookup failed, either there is nothing to look up or you have a larger problem");
+    if(conf->dynamicservicetag){
+        if(dns_main(server->dynamiclookuparg,conf->dynamicservicetag,STDOUT_FILENO) != 0){
+            debugx(1, DBG_WARN, "dynamicconfig: lookup failed, either there is nothing to look up or you have a larger problem");
+        }
+        exit(0);
+    }else{
+        if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0){
+	        debugx(1, DBG_ERR, "dynamicconfig: exec error for command %s", conf->dynamiclookupcommand);
+        }
+        exit(0);
     }
-    exit(0);
     }
 
     close(fd[1]);
@@ -2233,6 +2240,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
 	free(conf->rewriteusername);
     }
     free(conf->dynamicservicetag);
+    free(conf->dynamiclookupcommand);
     conf->rewritein=NULL;
     conf->rewriteout=NULL;
     if (conf->hostports)
@@ -2318,6 +2326,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	!mergeconfstring(&dst->confrewriteout, &src->confrewriteout) ||
 	!mergeconfstring(&dst->confrewriteusername, &src->confrewriteusername) ||
 	!mergeconfstring(&dst->dynamicservicetag, &src->dynamicservicetag) ||
+    !mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand) ||
 	!mergeconfstring(&dst->fticks_viscountry, &src->fticks_viscountry) ||
 	!mergeconfstring(&dst->fticks_visinst, &src->fticks_visinst))
 	return 0;
@@ -2548,7 +2557,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	return 0;
     }
 
-    if (!conf->dynamicservicetag &&
+    if ((!conf->dynamicservicetag||!conf->dynamiclookupcommand) &&
         !resolvehostports(conf->hostports, conf->hostaf,
                           conf->pdef->socktype)) {
 	debug(DBG_ERR, "%s: resolve failed", __func__);
@@ -2602,6 +2611,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "RetryInterval", CONF_LINT, &retryinterval,
             "RetryCount", CONF_LINT, &retrycount,
             "DynamicServiceTag", CONF_STR, &conf->dynamicservicetag,
+            "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
             "LoopPrevention", CONF_BLN, &conf->loopprevention,
             "BlockingStartup", CONF_BLN, &conf->blockingstartup,
             NULL
@@ -2698,9 +2708,13 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             free(conf->dynamicservicetag);
             conf->dynamicservicetag = NULL;
         }
+        if(conf->dynamiclookupcommand){
+            free(conf->dynamiclookupcommand);
+            conf->dynamiclookupcommand = NULL;
+        }
     }
 
-    if (resconf || !conf->dynamicservicetag) {
+    if (resconf || (!conf->dynamicservicetag||!conf->dynamiclookupcommand)) {
 	if (!compileserverconfig(conf, block))
             goto errexit;
     }
@@ -3115,7 +3129,7 @@ int radsecproxy_main(int argc, char **argv) {
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	srvconf = (struct clsrvconf *)entry->data;
-	if (srvconf->dynamicservicetag)
+	if (srvconf->dynamicservicetag || srvconf->dynamiclookupcommand)
 	    continue;
 	if (!addserver(srvconf))
 	    debugx(1, DBG_ERR, "failed to add server");
