@@ -56,8 +56,8 @@ void srv_callback(void *arg, int status, int timeouts, unsigned char *abuf, int 
             count++;
             tmp_reply = tmp_reply->next;
         }
-        char **hosts = malloc(count * 8);
-        unsigned short **ports = malloc(count * 8);
+        char **hosts = malloc(count * sizeof(char*));
+        unsigned short **ports = malloc(count * sizeof(char*));
         unsigned short priority[count];
         tmp_reply = reply;
         for (i = 0; i < count; i++)
