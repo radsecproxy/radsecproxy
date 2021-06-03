@@ -2161,7 +2161,7 @@ int dynamicconfig(struct server *server) {
         }
         exit(0);
     }else{
-        debug(DBG_DBG, "dynamicconfig: using obsolete method for dynamiclookup");
+        debug(DBG_WARN, "dynamicconfig: using obsolete method for dynamiclookup");
         if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
         {
             debugx(1, DBG_ERR, "dynamicconfig: exec error for command %s", conf->dynamiclookupcommand);
