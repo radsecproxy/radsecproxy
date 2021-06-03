@@ -2559,7 +2559,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 	return 0;
     }
 
-    if ((!conf->dynamicservicetag||!conf->dynamiclookupcommand) &&
+    if (!conf->dynamicservicetag && !conf->dynamiclookupcommand &&
         !resolvehostports(conf->hostports, conf->hostaf,
                           conf->pdef->socktype)) {
 	debug(DBG_ERR, "%s: resolve failed", __func__);
@@ -2716,7 +2716,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         }
     }
 
-    if (resconf || (!conf->dynamicservicetag||!conf->dynamiclookupcommand)) {
+    if (resconf || (!conf->dynamicservicetag && !conf->dynamiclookupcommand)) {
 	if (!compileserverconfig(conf, block))
             goto errexit;
     }
