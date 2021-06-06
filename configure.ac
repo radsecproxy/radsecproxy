@@ -58,6 +58,8 @@ AC_ARG_ENABLE(dtls,
 AC_CHECK_LIB([nettle], [nettle_sha256_init],,
     [AC_MSG_ERROR([required library nettle not found])])
 
+LIBS="-lresolv $LIBS"
+
 dnl Check if we're on Solaris and set CFLAGS accordingly
 AC_CANONICAL_TARGET
 case "${target_os}" in
@@ -74,6 +76,7 @@ case "${target_os}" in
     TARGET_CFLAGS="-Wall -pedantic -Wno-long-long -pthread"
     TARGET_LDFLAGS=""
   esac
+
 dnl Adding enabled options
 if test "x$udp" = "xyes" ; then
   echo "UDP transport enabled"

@@ -546,11 +546,16 @@ options above.
 
 .BI "DynamicLookupCommand " command
 .RS
-Execute the \fIcommand\fR to dynamically configure a server. The executable file
-should be given with full path and will be invoked with the name of the realm as
-its first and only argument. It should either print a valid \fBserver {...}\fR
-option on stdout and exit with a code of 0 or print nothing and exit with a
-non-zero exit code.
+Execute the \fIcommand\fR to dynamically configure a server. 
+
+The command can take two special forms, naptr:\fIservice\fR or srv:\fIprefix\fR.
+These execute the corresponding DNS queries internally, and build a server config
+form the responses.
+
+Otherwise, the \fIcommand\fR should be an executable file given with full path that
+will be invoked with the name of the realm as its first and only argument. 
+It should either print a valid \fBserver {...}\fR block on stdout and exit with a 
+code of 0 or print nothing and exit with a non-zero exit code.
 
 If the command exited with 0 an provided a valid server config, it will be combined
 with the statements in this server block, with the values returned by the command
@@ -559,6 +564,7 @@ taking preference.
 An example of a shell script resolving the DNS NAPTR records
 for the realm and then the SRV records for each NAPTR matching
 \&'x-eduroam:radius.tls' is provided in \fItools/naptr\-eduroam.sh\fR.
+This does the same thing as specifying 'naptr:x-eduroam:radius.tls' directly.
 .RE
 
 .BR "StatusServer (" on | off | minimal | auto )
