@@ -2684,6 +2684,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             conf->statusserver = RSP_STATSRV_AUTO;
         else
             debugx(1, DBG_ERR, "config error in blocck %s: invalid StatusServer value: %s", block, statusserver);
+        free(statusserver);
     }
 
     if (resconf) {
