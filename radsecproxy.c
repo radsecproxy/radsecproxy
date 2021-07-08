@@ -2573,6 +2573,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (resconf) {
         conf->statusserver = resconf->statusserver;
         conf->certnamecheck = resconf->certnamecheck;
+        conf->blockingstartup = resconf->blockingstartup;
     } else {
         conf->certnamecheck = 1;
     }
