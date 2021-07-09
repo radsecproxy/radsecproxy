@@ -711,64 +711,67 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
     }
 
     if (r<1)
-        debug(DBG_WARN, "matchsubjaltname: no matching Subject Alt Name found! (%s)", fail);
+        debug(DBG_DBG, "matchsubjaltname: no matching Subject Alt Name found! (%s)", fail);
     free(fail);
 
     GENERAL_NAMES_free(alt);
     return r;
 }
 
-int certnamecheck(X509 *cert, struct list *hostports) {
-    struct list_node *entry;
-    struct hostportres *hp;
+int certnamecheck(X509 *cert, struct hostportres *hp) {
     int r = 0;
     struct certattrmatch match;
 
     memset(&match, 0, sizeof(struct certattrmatch));
 
-    for (entry = list_first(hostports); entry; entry = list_next(entry)) {
-        r = 0;
-        hp = (struct hostportres *)entry->data;
-        if (hp->prefixlen != 255) {
-            /* we disable the check for prefixes */
+    r = 0;
+    if (hp->prefixlen != 255) {
+        /* we disable the check for prefixes */
+        return 1;
+    }
+    if (inet_pton(AF_INET, hp->host, &match.ipaddr))
+        match.af = AF_INET;
+    else if (inet_pton(AF_INET6, hp->host, &match.ipaddr))
+        match.af = AF_INET6;
+    else
+        match.af = 0;
+    match.exact = hp->host;
+
+    if (match.af) {
+        match.matchfn = &certattr_matchip;
+        match.type = GEN_IPADD;
+        r = matchsubjaltname(cert, &match);
+    }
+    if (!r) {
+        match.matchfn = &certattr_matchregex;
+        match.type = GEN_DNS;
+        r = matchsubjaltname(cert, &match);
+    }
+    if (r) {
+        if (r > 0) {
+            debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
             return 1;
         }
-        if (inet_pton(AF_INET, hp->host, &match.ipaddr))
-            match.af = AF_INET;
-        else if (inet_pton(AF_INET6, hp->host, &match.ipaddr))
-            match.af = AF_INET6;
-        else
-            match.af = 0;
-        match.exact = hp->host;
-
-        if (match.af) {
-            match.matchfn = &certattr_matchip;
-            match.type = GEN_IPADD;
-            r = matchsubjaltname(cert, &match);
+        debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
+    } else { /* as per RFC 6125 6.4.4: CN MUST NOT be matched if SAN is present */
+        if (certattr_matchcn(cert, &match)) {
+            debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
+            return 1;
         }
-        if (!r) {
-            match.matchfn = &certattr_matchregex;
-            match.type = GEN_DNS;
-            r = matchsubjaltname(cert, &match);
-        }
-        if (r) {
-            if (r > 0) {
-                debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
-                return 1;
-            }
-            debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
-        } else {
-            if (certattr_matchcn(cert, &match)) {
-                debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
-                return 1;
-            }
-            debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
-        }
+        debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
     }
     return 0;
 }
 
-int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
+int certnamecheckany(X509 *cert, struct list *hostports) {
+    struct list_node *entry;
+    for (entry = list_first(hostports); entry; entry = list_next(entry)) {
+        if (certnamecheck(cert, (struct hostportres *)entry->data)) return 1;
+    }
+    return 0;
+}
+
+int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpconnected) {
     char *subject;
     int ok = 1;
     struct list_node *entry;
@@ -777,9 +780,16 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     debug(DBG_DBG, "verifyconfcert: verify certificate for host %s, subject %s", conf->name, subject);
     if (conf->certnamecheck) {
         debug(DBG_DBG, "verifyconfcert: verify hostname");
-        if (!certnamecheck(cert, conf->hostports)) {
-            debug(DBG_DBG, "verifyconfcert: certificate name check failed for host %s", conf->name);
-            ok = 0;
+        if (hpconnected) {
+            if (!certnamecheck(cert, hpconnected)) {
+                debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, hpconnected->host);
+                ok = 0;
+            }
+        } else {
+            if (!certnamecheckany(cert, conf->hostports)) {
+                debug(DBG_DBG, "verifyconfcert: no matching CN or SAN found for host %s", conf->name);
+                ok = 0;
+            }
         }
     }
 

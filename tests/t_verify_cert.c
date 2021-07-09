@@ -234,7 +234,7 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsimple, &conf), "check disabled");
+        ok(1, verifyconfcert(certsimple, &conf, &hp), "check disabled");
 
         while(list_shift(conf.hostports));
     }
@@ -249,7 +249,7 @@ vY/uPjA=\n\
         hp.prefixlen = 0;
         list_push(conf.hostports, &hp);
 
-        ok(1,verifyconfcert(certsimple, &conf),"cidr prefix");
+        ok(1,verifyconfcert(certsimple, &conf, &hp),"cidr prefix");
 
         while(list_shift(conf.hostports));
     }
@@ -264,11 +264,11 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1,verifyconfcert(certsimple, &conf), "simple cert cn");
-        ok(0,verifyconfcert(certsimpleother, &conf), "negative simple cert cn");
+        ok(1,verifyconfcert(certsimple, &conf, &hp), "simple cert cn");
+        ok(0,verifyconfcert(certsimpleother, &conf, &hp), "negative simple cert cn");
 
         /* as per RFC 6125 6.4.4: CN MUST NOT be matched if SAN is present */
-        ok(0,verifyconfcert(certsandns, &conf), "simple cert cn vs san dns, RFC6125");
+        ok(0,verifyconfcert(certsandns, &conf, &hp), "simple cert cn vs san dns, RFC6125");
 
         while(list_shift(conf.hostports));
     }
@@ -284,11 +284,11 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1,verifyconfcert(certsanip, &conf),"san ip");
-        ok(0,verifyconfcert(certsanipother, &conf),"wrong san ip");
-        ok(0,verifyconfcert(certsimple, &conf), "negative san ip");
-        ok(1,verifyconfcert(certsanipindns, &conf),"san ip in dns");
-        ok(1,verifyconfcert(certcomplex,&conf),"san ip in complex cert");
+        ok(1,verifyconfcert(certsanip, &conf, &hp),"san ip");
+        ok(0,verifyconfcert(certsanipother, &conf, &hp),"wrong san ip");
+        ok(0,verifyconfcert(certsimple, &conf, &hp), "negative san ip");
+        ok(1,verifyconfcert(certsanipindns, &conf, &hp),"san ip in dns");
+        ok(1,verifyconfcert(certcomplex,&conf, &hp),"san ip in complex cert");
 
         freeaddrinfo(hp.addrinfo);
         while(list_shift(conf.hostports));
@@ -306,11 +306,11 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1,verifyconfcert(certsanipv6, &conf),"san ipv6");
-        ok(0,verifyconfcert(certsanipother, &conf),"wrong san ipv6");
-        ok(0,verifyconfcert(certsimple, &conf),"negative san ipv6");
-        ok(1,verifyconfcert(certsanipv6indns, &conf),"san ipv6 in dns");
-        ok(1,verifyconfcert(certcomplex,&conf),"san ipv6 in complex cert");
+        ok(1,verifyconfcert(certsanipv6, &conf, &hp),"san ipv6");
+        ok(0,verifyconfcert(certsanipother, &conf, &hp),"wrong san ipv6");
+        ok(0,verifyconfcert(certsimple, &conf, &hp),"negative san ipv6");
+        ok(1,verifyconfcert(certsanipv6indns, &conf, &hp),"san ipv6 in dns");
+        ok(1,verifyconfcert(certcomplex,&conf, &hp),"san ipv6 in complex cert");
 
         freeaddrinfo(hp.addrinfo);
         while(list_shift(conf.hostports));
@@ -326,10 +326,10 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1,verifyconfcert(certsandns, &conf),"san dns");
-        ok(0,verifyconfcert(certsandnsother, &conf),"negative san dns");
-        ok(1,verifyconfcert(certcomplex,&conf),"san dns in complex cert");
-        ok(0,verifyconfcert(certsimple, &conf),"missing san dns");
+        ok(1,verifyconfcert(certsandns, &conf, &hp),"san dns");
+        ok(0,verifyconfcert(certsandnsother, &conf, &hp),"negative san dns");
+        ok(1,verifyconfcert(certcomplex,&conf, &hp),"san dns in complex cert");
+        ok(0,verifyconfcert(certsimple, &conf, &hp),"missing san dns");
 
         while(list_shift(conf.hostports));
     }
@@ -347,8 +347,8 @@ vY/uPjA=\n\
         hp2.prefixlen = 255;
         list_push(conf.hostports, &hp2);
 
-        ok(1,verifyconfcert(certsimple, &conf),"multi hostport cn");
-        ok(0,verifyconfcert(certsimpleother, &conf),"negative multi hostport cn");
+        ok(1,verifyconfcert(certsimple, &conf, NULL),"multi hostport cn");
+        ok(0,verifyconfcert(certsimpleother, &conf, NULL),"negative multi hostport cn");
 
         while(list_shift(conf.hostports));
     }
@@ -366,9 +366,14 @@ vY/uPjA=\n\
         hp2.prefixlen = 255;
         list_push(conf.hostports, &hp2);
 
-        ok(1,verifyconfcert(certsandns, &conf),"multi hostport san dns");
-        ok(0,verifyconfcert(certsandnsother, &conf),"negative multi hostport san dns");
-        ok(1,verifyconfcert(certcomplex,&conf),"multi hostport san dns in complex cert");
+        ok(1,verifyconfcert(certsandns, &conf, NULL),"multi hostport san dns");
+        ok(0,verifyconfcert(certsandnsother, &conf, NULL),"negative multi hostport san dns");
+        ok(1,verifyconfcert(certcomplex,&conf, NULL),"multi hostport san dns in complex cert");
+
+        ok(0,verifyconfcert(certsandns, &conf, &hp1),"multi hostport explicit wrong cert");
+        ok(1,verifyconfcert(certsandns, &conf, &hp2),"multi hostport explicit matching cert");
+        ok(0,verifyconfcert(certcomplex, &conf, &hp1),"multi hostport explicit wrong complex cert");
+        ok(1,verifyconfcert(certcomplex, &conf, &hp2),"multi hostport explicit matching complex cert");
 
         while(list_shift(conf.hostports));
     }
@@ -380,9 +385,9 @@ vY/uPjA=\n\
 
         ok(1,addmatchcertattr(&conf, "CN:/t..t/"),"explicit cn regex config");
 
-        ok(1,verifyconfcert(certsimple, &conf),"explicit cn regex");
-        ok(0,verifyconfcert(certsimpleother, &conf),"negative explicit cn regex");
-        ok(1,verifyconfcert(certsandns, &conf), "explicit cn regex with SAN DNS");
+        ok(1,verifyconfcert(certsimple, &conf, NULL),"explicit cn regex");
+        ok(0,verifyconfcert(certsimpleother, &conf, NULL),"negative explicit cn regex");
+        ok(1,verifyconfcert(certsandns, &conf, NULL), "explicit cn regex with SAN DNS");
 
         freematchcertattr(&conf);
     }
@@ -394,10 +399,10 @@ vY/uPjA=\n\
 
         ok(1,addmatchcertattr(&conf, "SubjectAltName:IP:192.0.2.1"),"explicit san ip config");
 
-        ok(1,verifyconfcert(certsanip, &conf),"explicit san ip");
-        ok(0,verifyconfcert(certsanipother, &conf),"wrong explicit san ip");
-        ok(0,verifyconfcert(certsimple, &conf), "missing explicit san ip");
-        ok(1,verifyconfcert(certcomplex,&conf),"explicit san ip in complex cert");
+        ok(1,verifyconfcert(certsanip, &conf, NULL),"explicit san ip");
+        ok(0,verifyconfcert(certsanipother, &conf, NULL),"wrong explicit san ip");
+        ok(0,verifyconfcert(certsimple, &conf, NULL), "missing explicit san ip");
+        ok(1,verifyconfcert(certcomplex,&conf, NULL),"explicit san ip in complex cert");
 
         freematchcertattr(&conf);
     }
@@ -409,10 +414,10 @@ vY/uPjA=\n\
 
         ok(1,addmatchcertattr(&conf, "SubjectAltName:IP:2001:db8::1"),"explicit san ipv6 config");
 
-        ok(1,verifyconfcert(certsanipv6, &conf),"explicit san ipv6");
-        ok(0,verifyconfcert(certsanipother, &conf),"wrong explicit san ipv6");
-        ok(0,verifyconfcert(certsimple, &conf),"missing explicitsan ipv6");
-        ok(1,verifyconfcert(certcomplex,&conf),"explicit san ipv6 in complex cert");
+        ok(1,verifyconfcert(certsanipv6, &conf, NULL),"explicit san ipv6");
+        ok(0,verifyconfcert(certsanipother, &conf, NULL),"wrong explicit san ipv6");
+        ok(0,verifyconfcert(certsimple, &conf, NULL),"missing explicitsan ipv6");
+        ok(1,verifyconfcert(certcomplex,&conf, NULL),"explicit san ipv6 in complex cert");
 
         freematchcertattr(&conf);
     }
@@ -424,10 +429,10 @@ vY/uPjA=\n\
 
         ok(1,addmatchcertattr(&conf, "SubjectAltName:DNS:/t..t\\.local/"),"explicit san dns regex config");
 
-        ok(1,verifyconfcert(certsandns, &conf),"explicit san dns");
-        ok(0,verifyconfcert(certsandnsother, &conf),"negative explicit san dns");
-        ok(0,verifyconfcert(certsimple,&conf),"missing explicit san dns");
-        ok(1,verifyconfcert(certcomplex,&conf),"explicit san dns in complex cert");
+        ok(1,verifyconfcert(certsandns, &conf, NULL),"explicit san dns");
+        ok(0,verifyconfcert(certsandnsother, &conf, NULL),"negative explicit san dns");
+        ok(0,verifyconfcert(certsimple,&conf, NULL),"missing explicit san dns");
+        ok(1,verifyconfcert(certcomplex,&conf, NULL),"explicit san dns in complex cert");
 
         freematchcertattr(&conf);
     }
@@ -439,9 +444,9 @@ vY/uPjA=\n\
 
         ok(1,addmatchcertattr(&conf, "SubjectAltName:URI:/https:\\/\\/test.local\\/profile#me/"),"explicit cn regex config");
 
-        ok(1,verifyconfcert(certsanuri, &conf),"explicit san uri regex");
-        ok(0,verifyconfcert(certsanuriother, &conf),"negative explicit san uri");
-        ok(0,verifyconfcert(certsimple, &conf), "missing explicit san uri");
+        ok(1,verifyconfcert(certsanuri, &conf, NULL),"explicit san uri regex");
+        ok(0,verifyconfcert(certsanuriother, &conf, NULL),"negative explicit san uri");
+        ok(0,verifyconfcert(certsimple, &conf, NULL), "missing explicit san uri");
 
         freematchcertattr(&conf);
     }
@@ -453,9 +458,9 @@ vY/uPjA=\n\
 
         ok(1,addmatchcertattr(&conf, "SubjectAltName:rID:1.2.3.4"),"explicit san rid config");
 
-        ok(1,verifyconfcert(certsanrid, &conf),"explicit san rid");
-        ok(0,verifyconfcert(certsanridother, &conf),"negative explicit san rid");
-        ok(0,verifyconfcert(certsimple, &conf), "missing explicit san rid");
+        ok(1,verifyconfcert(certsanrid, &conf, NULL),"explicit san rid");
+        ok(0,verifyconfcert(certsanridother, &conf, NULL),"negative explicit san rid");
+        ok(0,verifyconfcert(certsimple, &conf, NULL), "missing explicit san rid");
 
         freematchcertattr(&conf);
     }
@@ -467,9 +472,9 @@ vY/uPjA=\n\
 
         ok(1,addmatchcertattr(&conf, "SubjectAltName:otherName:1.3.6.1.5.5.7.8.8:/test.local/"),"explicit san otherName config");
 
-        ok(1,verifyconfcert(certsanothername, &conf),"explicit san otherName");
-        ok(0,verifyconfcert(certsanothernameother, &conf),"negative explicit san otherName");
-        ok(0,verifyconfcert(certsimple, &conf), "missing explicit san otherName");
+        ok(1,verifyconfcert(certsanothername, &conf, NULL),"explicit san otherName");
+        ok(0,verifyconfcert(certsanothernameother, &conf, NULL),"negative explicit san otherName");
+        ok(0,verifyconfcert(certsimple, &conf, NULL), "missing explicit san otherName");
 
         freematchcertattr(&conf);
     }
@@ -480,7 +485,7 @@ vY/uPjA=\n\
         conf.certnamecheck = 0;
 
         ok(1,addmatchcertattr(&conf, "CN:/t..t"),"test regex config syntax");
-        ok(1,verifyconfcert(certsimple, &conf),"test regex config syntax execution");
+        ok(1,verifyconfcert(certsimple, &conf, NULL),"test regex config syntax execution");
 
         freematchcertattr(&conf);
     }
@@ -518,10 +523,10 @@ vY/uPjA=\n\
 
         ok(1,addmatchcertattr(&conf, "CN:/t..t"),"combined config");
 
-        ok(1,verifyconfcert(certsandns, &conf),"combined san dns");
-        ok(0,verifyconfcert(certsandnsother, &conf),"negative combined san dns");
-        ok(1,verifyconfcert(certcomplex,&conf),"combined san dns in complex cert");
-        ok(0,verifyconfcert(certsimple, &conf),"combined missing san dns");
+        ok(1,verifyconfcert(certsandns, &conf, &hp),"combined san dns");
+        ok(0,verifyconfcert(certsandnsother, &conf, &hp),"negative combined san dns");
+        ok(1,verifyconfcert(certcomplex,&conf, &hp),"combined san dns in complex cert");
+        ok(0,verifyconfcert(certsimple, &conf, &hp),"combined missing san dns");
 
         while(list_shift(conf.hostports));
         freematchcertattr(&conf);
@@ -540,12 +545,12 @@ vY/uPjA=\n\
         ok(1,addmatchcertattr(&conf, "SubjectAltName:DNS:/test\\.local/"),"multiple check 1");
         ok(1,addmatchcertattr(&conf, "SubjectAltName:rID:1.2.3.4"),"multiple check 2");
 
-        ok(0,verifyconfcert(certsandns, &conf),"multiple missing rID");
-        ok(0,verifyconfcert(certsanrid, &conf), "multiple missing DNS");
-        ok(1,verifyconfcert(certmulti, &conf),"multiple SANs");
-        ok(0,verifyconfcert(certmultiother, &conf),"multiple negative match");
-        ok(0,verifyconfcert(certcomplex, &conf),"multiple missing rID in complex cert");
-        ok(0,verifyconfcert(certsimple, &conf),"multiple missing everything");
+        ok(0,verifyconfcert(certsandns, &conf, &hp),"multiple missing rID");
+        ok(0,verifyconfcert(certsanrid, &conf, &hp), "multiple missing DNS");
+        ok(1,verifyconfcert(certmulti, &conf, &hp),"multiple SANs");
+        ok(0,verifyconfcert(certmultiother, &conf, &hp),"multiple negative match");
+        ok(0,verifyconfcert(certcomplex, &conf, &hp),"multiple missing rID in complex cert");
+        ok(0,verifyconfcert(certsimple, &conf, &hp),"multiple missing everything");
 
         while(list_shift(conf.hostports));
         freematchcertattr(&conf);

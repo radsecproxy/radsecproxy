@@ -120,7 +120,7 @@ int tcpconnect(struct server *server, int timeout, char *text) {
         pthread_mutex_lock(&server->lock);
 
         debug(DBG_INFO, "tcpconnect: connecting to %s", server->conf->name);
-        if ((server->sock = connecttcphostlist(server->conf->hostports, source ? source : srcres)) < 0)
+        if ((server->sock = connecttcphostlist(server->conf->hostports, source ? source : srcres, NULL)) < 0)
             continue;
         if (server->conf->keepalive)
             enable_keepalive(server->sock);
@@ -339,7 +339,7 @@ void *tcpservernew(void *arg) {
     }
     debug(DBG_WARN, "tcpservernew: incoming TCP connection from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 
-    conf = find_clconf(handle, (struct sockaddr *)&from, NULL);
+    conf = find_clconf(handle, (struct sockaddr *)&from, NULL, NULL);
     if (conf) {
         client = addclient(conf, 1);
         if (client) {

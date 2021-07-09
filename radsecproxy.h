@@ -11,6 +11,7 @@
 #include "radmsg.h"
 #include "gconfig.h"
 #include "rewrite.h"
+#include "hostport.h"
 
 #include <openssl/asn1.h>
 
@@ -250,7 +251,7 @@ struct protodefs {
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
 
-struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
+struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur, struct hostportres **hp);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf, uint8_t lock);

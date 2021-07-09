@@ -306,10 +306,11 @@ void *dtlsservernew(void *arg) {
     struct timeval timeout;
     struct addrinfo tmpsrvaddr;
     char tmp[INET6_ADDRSTRLEN], *subj;
+    struct hostportres *hp;
 
     debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
 
-    conf = find_clconf(handle, (struct sockaddr *)&params->addr, NULL);
+    conf = find_clconf(handle, (struct sockaddr *)&params->addr, NULL, &hp);
     if (!conf)
         goto exit;
 
@@ -343,7 +344,7 @@ void *dtlsservernew(void *arg) {
     accepted_tls = conf->tlsconf;
 
     while (conf) {
-        if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf)) {
+        if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf, NULL)) {
             subj = getcertsubject(cert);
             if(subj) {
                 debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, subject %s up",
@@ -363,9 +364,10 @@ void *dtlsservernew(void *arg) {
             }
             goto exit;
         }
-        conf = find_clconf(handle, (struct sockaddr *)&params->addr, &cur);
+        conf = find_clconf(handle, (struct sockaddr *)&params->addr, &cur, &hp);
     }
-    debug(DBG_WARN, "dtlsservernew: ignoring request, no matching TLS client");
+    debug(DBG_WARN, "dtlsservernew: ignoring request, no matching TLS client for %s", 
+        addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
 
     if (cert)
     X509_free(cert);
@@ -468,7 +470,7 @@ void *dtlslistener(void *arg) {
             continue;
         }
 
-        conf = find_clconf(handle, (struct sockaddr *)&from, NULL);
+        conf = find_clconf(handle, (struct sockaddr *)&from, NULL, NULL);
         if (!conf) {
             debug(DBG_INFO, "dtlslistener: got UDP from unknown peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
             if (recv(s, buf, 4, 0) == -1)
@@ -607,7 +609,7 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
         cert = verifytlscert(server->ssl);
         if (!cert)
             continue;
-        if (verifyconfcert(cert, server->conf)) {
+        if (verifyconfcert(cert, server->conf, hp)) {
             subj = getcertsubject(cert);
             if(subj) {
                 debug(DBG_WARN, "dtlsconnect: DTLS connection to %s, subject %s up", server->conf->name, subj);

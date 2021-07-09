@@ -92,6 +92,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
     int origflags;
     struct addrinfo *source = NULL;
     char *subj;
+    struct hostportres *hpconnected = NULL;
 
     debug(DBG_DBG, "tlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -136,7 +137,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
         }
 
         debug(DBG_INFO, "tlsconnect: connecting to %s", server->conf->name);
-        if ((server->sock = connecttcphostlist(server->conf->hostports, source ? source : srcres)) < 0)
+        if ((server->sock = connecttcphostlist(server->conf->hostports, source ? source : srcres, &hpconnected)) < 0)
             continue;
         if (server->conf->keepalive)
             enable_keepalive(server->sock);
@@ -163,7 +164,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
         cert = verifytlscert(server->ssl);
         if (!cert)
             continue;
-        if (verifyconfcert(cert, server->conf)) {
+        if (verifyconfcert(cert, server->conf, hpconnected)) {
             subj = getcertsubject(cert);
             if(subj) {
                 debug(DBG_WARN, "tlsconnect: TLS connection to %s, subject %s up", server->conf->name, subj);
@@ -506,6 +507,7 @@ void *tlsservernew(void *arg) {
     struct client *client;
     struct tls *accepted_tls = NULL;
     char tmp[INET6_ADDRSTRLEN], *subj;
+    struct hostportres *hp;
 
     s = *(int *)arg;
     free(arg);
@@ -515,7 +517,7 @@ void *tlsservernew(void *arg) {
     }
     debug(DBG_WARN, "tlsservernew: incoming TLS connection from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 
-    conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
+    conf = find_clconf(handle, (struct sockaddr *)&from, &cur, &hp);
     if (conf) {
         pthread_mutex_lock(&conf->tlsconf->lock);
         ctx = tlsgetctx(handle, conf->tlsconf);
@@ -550,7 +552,7 @@ void *tlsservernew(void *arg) {
     }
 
     while (conf) {
-        if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf)) {
+        if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf, NULL)) {
             subj = getcertsubject(cert);
             if(subj) {
                 debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s up",
@@ -570,9 +572,10 @@ void *tlsservernew(void *arg) {
                 debug(DBG_WARN, "tlsservernew: failed to create new client instance");
             goto exit;
         }
-        conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
+        conf = find_clconf(handle, (struct sockaddr *)&from, &cur, &hp);
     }
-    debug(DBG_WARN, "tlsservernew: ignoring request, no matching TLS client");
+    debug(DBG_WARN, "tlsservernew: ignoring request, no matching TLS client for %s", 
+        addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
     if (cert)
 	X509_free(cert);
 
