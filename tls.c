@@ -23,10 +23,10 @@
 #include <assert.h>
 #include "radsecproxy.h"
 #include "hostport.h"
-
-#ifdef RADPROT_TLS
 #include "debug.h"
 #include "util.h"
+
+#ifdef RADPROT_TLS
 
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
@@ -82,6 +82,16 @@ void tlssetsrcres() {
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
 
+static void cleanup_connection(struct server *server) {
+    if (server->ssl)
+        SSL_shutdown(server->ssl);
+    if (server->sock >= 0)
+        close(server->sock);
+    if (server->ssl)
+        SSL_free(server->ssl);
+    server->ssl = NULL;
+}
+
 int tlsconnect(struct server *server, int timeout, char *text) {
     struct timeval now, start;
     time_t wait;
@@ -92,7 +102,8 @@ int tlsconnect(struct server *server, int timeout, char *text) {
     int origflags;
     struct addrinfo *source = NULL;
     char *subj;
-    struct hostportres *hpconnected = NULL;
+    struct list_node *entry;
+    struct hostportres *hp;
 
     debug(DBG_DBG, "tlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -109,15 +120,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
     gettimeofday(&start, NULL);
 
     for (;;) {
-        /* ensure previous connection is properly closed */
-        if (server->ssl)
-            SSL_shutdown(server->ssl);
-        if (server->sock >= 0)
-            close(server->sock);
-        if (server->ssl)
-            SSL_free(server->ssl);
-        server->ssl = NULL;
-
+        cleanup_connection(server);
         wait = connect_wait(start, server->connecttime, firsttry);
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) + wait > timeout) {
@@ -125,7 +128,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
             if (source) freeaddrinfo(source);
             return 0;
         }
-        debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        if (wait) debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
         sleep(wait);
         firsttry = 0;
 
@@ -136,46 +139,64 @@ int tlsconnect(struct server *server, int timeout, char *text) {
             return 0;
         }
 
-        debug(DBG_INFO, "tlsconnect: connecting to %s", server->conf->name);
-        if ((server->sock = connecttcphostlist(server->conf->hostports, source ? source : srcres, &hpconnected)) < 0)
-            continue;
-        if (server->conf->keepalive)
-            enable_keepalive(server->sock);
+        for (entry = list_first(server->conf->hostports); entry; entry = list_next(entry)) {
+            hp = (struct hostportres *)entry->data;
+            debug(DBG_INFO, "tlsconnect: trying to open TLS connection to server %s (%s port %s)", server->conf->name, hp->host, hp->port);
+            if ((server->sock = connecttcp(hp->addrinfo, source ? source : srcres, list_count(server->conf->hostports) > 1 ? 5 : 30)) < 0 ) {
+                debug(DBG_ERR, "tlsconnect: TLS connection to %s (%s port %s) failed: TCP connect failed", server->conf->name, hp->host, hp->port);
+                goto concleanup;
+            }
 
-        pthread_mutex_lock(&server->conf->tlsconf->lock);
-        if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))){
+            if (server->conf->keepalive)
+                enable_keepalive(server->sock);
+
+            pthread_mutex_lock(&server->conf->tlsconf->lock);
+            if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))) {
+                pthread_mutex_unlock(&server->conf->tlsconf->lock);
+                debug(DBG_ERR, "tlsconnect: failed to get TLS context for server %s", server->conf->name);
+                goto concleanup;
+            }
+
+            server->ssl = SSL_new(ctx);
             pthread_mutex_unlock(&server->conf->tlsconf->lock);
-            continue;
-        }
+            if (!server->ssl) {
+                debug(DBG_ERR, "tlsconnect: failed to create SSL conneciton for server %s", server->conf->name);
+                goto concleanup;
+            }
+            
+            SSL_set_fd(server->ssl, server->sock);
+            if (sslconnecttimeout(server->ssl, 5) <= 0) {
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "tlsconnect: SSL connect to %s failed: %s", server->conf->name, ERR_error_string(error, NULL));
+                debug(DBG_ERR, "tlsconnect: SSL connect to %s (%s port %s) failed", server->conf->name, hp->host, hp->port);
+                goto concleanup;
+            }
 
-        server->ssl = SSL_new(ctx);
-        pthread_mutex_unlock(&server->conf->tlsconf->lock);
-        if (!server->ssl)
-            continue;
+            cert = verifytlscert(server->ssl);
+            if (!cert) {
+                debug(DBG_ERR, "tlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                goto concleanup;
+            }
 
-        SSL_set_fd(server->ssl, server->sock);
-        if (sslconnecttimeout(server->ssl, 5) <= 0) {
-            while ((error = ERR_get_error()))
-                debug(DBG_ERR, "tlsconnect: SSL connect to %s failed: %s", server->conf->name, ERR_error_string(error, NULL));
-            debug(DBG_ERR, "tlsconnect: SSL connect to %s failed", server->conf->name);
-            continue;
-        }
-
-        cert = verifytlscert(server->ssl);
-        if (!cert)
-            continue;
-        if (verifyconfcert(cert, server->conf, hpconnected)) {
-            subj = getcertsubject(cert);
-            if(subj) {
-                debug(DBG_WARN, "tlsconnect: TLS connection to %s, subject %s up", server->conf->name, subj);
-                free(subj);
+            if (verifyconfcert(cert, server->conf, hp)) {
+                subj = getcertsubject(cert);
+                if(subj) {
+                    debug(DBG_WARN, "tlsconnect: TLS connection to %s (%s port %s), subject %s up", server->conf->name, hp->host, hp->port, subj);
+                    free(subj);
+                }
+                X509_free(cert);
+                break;
+            } else {
+                debug(DBG_ERR, "tlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
             }
             X509_free(cert);
-            break;
+
+concleanup:
+            /* ensure previous connection is properly closed */
+            cleanup_connection(server);
         }
-        X509_free(cert);
+        if (server->ssl) break;
     }
-    debug(DBG_WARN, "tlsconnect: TLS connection to %s up", server->conf->name);
 
     origflags = fcntl(server->sock, F_GETFL, 0);
     if (origflags == -1) {
