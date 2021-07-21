@@ -1,6 +1,10 @@
 unreleased changes
 	Bug Fixes:
 	- Fix refused startup with openssl <1.1 (#82)
+	- Fix compiler issue for Fedora 33 on s390x (#84)
+	- Fix small memory leak in config parser
+	- Fix lazy certificate check when connecting to TLS servers
+	- Fix connect is aborted if first host in list has invalid certificate
 
 2021-05-28 1.9.0
 	New features:
