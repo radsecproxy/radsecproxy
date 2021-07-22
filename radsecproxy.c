@@ -2416,7 +2416,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                 ? tlsgettls(conf->tls, NULL)
                 : tlsgettls("defaultClient", "default");
         if (!conf->tlsconf)
-            debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
+            debugx(1, DBG_ERR, "error in block %s, tls context not defined", block);
         if (matchcertattrs) {
             for (i=0; matchcertattrs[i]; i++){
                 if (!addmatchcertattr(conf, matchcertattrs[i])) {
@@ -2485,7 +2485,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                 existing->tlsconf != conf->tlsconf &&
                 hostportmatches(existing->hostports, conf->hostports, 0)) {
 
-                debugx(1, DBG_ERR, "error in block %s, overlapping clients must reference the same tls block", block);
+                debugx(1, DBG_ERR, "error in block %s, masked by overlapping (equal or less specific IP/prefix) client %s with different tls block", block, existing->name);
             }
         }
     }
