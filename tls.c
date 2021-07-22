@@ -152,6 +152,13 @@ int tlsconnect(struct server *server, int timeout, char *text) {
         if (!server->ssl)
             continue;
 
+        if (server->conf->sni) {
+            if (!tlssetsni(server->ssl, server->conf->sni)) {
+                debug(DBG_ERR, "tlsconnect: set SNI %s failed", server->conf->sni);
+                continue;
+            }
+        }
+
         SSL_set_fd(server->ssl, server->sock);
         if (sslconnecttimeout(server->ssl, 5) <= 0) {
             while ((error = ERR_get_error()))

@@ -2223,6 +2223,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
     freematchcertattr(conf);
     free(conf->confrewritein);
     free(conf->confrewriteout);
+    free(conf->sni);
     if (conf->rewriteusername) {
 	if (conf->rewriteusername->regex)
 	    regfree(conf->rewriteusername->regex);
@@ -2387,6 +2388,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "rewriteattribute", CONF_STR, &conf->confrewriteusername,
 	    "fticksVISCOUNTRY", CONF_STR, &conf->fticks_viscountry,
 	    "fticksVISINST", CONF_STR, &conf->fticks_visinst,
+            "sni", CONF_STR, &conf->sni,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
@@ -2601,6 +2603,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
             "LoopPrevention", CONF_BLN, &conf->loopprevention,
             "BlockingStartup", CONF_BLN, &conf->blockingstartup,
+            "sni", CONF_STR, &conf->sni,
             NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");
