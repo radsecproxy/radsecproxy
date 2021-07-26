@@ -3033,6 +3033,7 @@ int createpidfile(const char *pidfile) {
 int radsecproxy_main(int argc, char **argv) {
     pthread_t sigth;
     sigset_t sigset;
+    size_t stacksize;
     struct list_node *entry;
     uint8_t foreground = 0, pretend = 0, loglevel = 0;
     char *configfile = NULL, *pidfile = NULL;
@@ -3044,8 +3045,13 @@ int radsecproxy_main(int argc, char **argv) {
 
     if (pthread_attr_init(&pthread_attr))
 	debugx(1, DBG_ERR, "pthread_attr_init failed");
-    if (pthread_attr_setstacksize(&pthread_attr, PTHREAD_STACK_SIZE))
-	debugx(1, DBG_ERR, "pthread_attr_setstacksize failed");
+#if defined(PTHREAD_STACK_MIN)
+    stacksize = THREAD_STACK_SIZE > PTHREAD_STACK_MIN ? THREAD_STACK_SIZE : PTHREAD_STACK_MIN;
+#else
+    stacksize = THREAD_STACK_SIZE;
+#endif
+    if (pthread_attr_setstacksize(&pthread_attr, stacksize))
+        debug(DBG_WARN, "pthread_attr_setstacksize failed! Using system default. Memory footprint might be increased!");
 #if defined(HAVE_MALLOPT)
     if (mallopt(M_TRIM_THRESHOLD, 4 * 1024) != 1)
 	debugx(1, DBG_ERR, "mallopt failed");
