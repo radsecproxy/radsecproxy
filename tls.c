@@ -87,6 +87,7 @@ static void cleanup_connection(struct server *server) {
         SSL_shutdown(server->ssl);
     if (server->sock >= 0)
         close(server->sock);
+    server->sock = -1;
     if (server->ssl)
         SSL_free(server->ssl);
     server->ssl = NULL;
