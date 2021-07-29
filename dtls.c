@@ -610,6 +610,13 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
                 goto concleanup;
             }
 
+            if (server->conf->sni) {
+                if (!tlssetsni(server->ssl, server->conf->sni)) {
+                    debug(DBG_ERR, "dtlsconnect: set SNI %s failed", server->conf->sni);
+                    continue;
+                }
+            }
+
             bio = BIO_new_dgram(server->sock, BIO_CLOSE);
             BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, hp->addrinfo->ai_addr);
             SSL_set_bio(server->ssl, bio, bio);
