@@ -297,6 +297,15 @@ clients and servers. At most one of IPv4Only and IPv6Only can be enabled.
 Note that this can be overridden in client and server blocks, see below.
 .RE
 
+.BR "SNI (" on | off )
+.RS
+Server Name Indication (SNI) is an extension to the TLS protocol.  It allows a
+client to indicate which hostname it is trying to connect to at the start of
+the TLS handshake. Enabling this will use the extension for all TLS and DTLS
+servers which specify a hostname (not IP address). This can be overridden in 
+server blocks, see below.
+.RE
+
 .BI "Include " file
 .RS
 This is not a normal configuration option; it can be specified multiple times.
@@ -395,13 +404,6 @@ TLS/DTLS and if omitted will default to "radsec". (Note that using a secret
 other than "radsec" for TLS is a violation of the standard (RFC 6614) and that
 the proposed standard for DTLS stipulates that the secret must be
 "radius/dtls".)
-.RE
-
-.BI "SNI " sni
-.RS
-Server Name Indication (SNI) is an extension to the TLS protocol.  It allows a
-client to indicate which hostname it is trying to connect to at the start of
-the TLS handshake.
 .RE
 
 .BI "TLS " tls
@@ -626,6 +628,19 @@ requests will be lost.
 (This is only considered for dynamic lookup servers. Ie when DynamicLookupCommand is specified)
 Warning: when the dynamic lookup and connection process is slow, this wil block the 
 respective realm for that time.
+.RE
+
+.BR "SNI (" on | off )
+
+.RS
+Override gobal SNI setting (see above). This is implicitly enabled if \fBSNIservername\fR
+is set.
+.RE
+
+.BI "SNIservername " sni
+.RS
+Explicitly set the \fIsni\fR to request from the server, in case the server is specified
+by IP address or to override the hostname. Implicitly enables \fBSNI\fR for this server.
 .RE
 
 The meaning and syntax of the following options are exactly the same as for the client

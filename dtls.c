@@ -611,9 +611,12 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
             }
 
             if (server->conf->sni) {
-                if (!tlssetsni(server->ssl, server->conf->sni)) {
-                    debug(DBG_ERR, "dtlsconnect: set SNI %s failed", server->conf->sni);
-                    continue;
+                struct in6_addr tmp;
+                char *servername = server->conf->sniservername ? server->conf->sniservername : 
+                    (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL : hp->host;
+                if (servername && !tlssetsni(server->ssl, servername)) {
+                    debug(DBG_ERR, "tlsconnect: set SNI %s failed", servername);
+                    goto concleanup;
                 }
             }
 
