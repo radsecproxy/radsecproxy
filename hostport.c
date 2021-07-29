@@ -222,7 +222,7 @@ int resolvehostports(struct list *hostports, int af, int socktype) {
 }
 
 struct addrinfo *resolvepassiveaddrinfo(char **hostport, int af, char *default_port, int socktype) {
-    struct addrinfo *ai = NULL, *last_ai;
+    struct addrinfo *ai = NULL, *last_ai = NULL;
     int i;
     char *any[2] = {"*", NULL};
 
@@ -258,7 +258,7 @@ static int prefixmatch(void *a1, void *a2, uint8_t len) {
     return (((uint8_t *)a1)[l] & mask[r]) == (((uint8_t *)a2)[l] & mask[r]);
 }
 
-int _internal_addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t prefixlen, uint8_t checkport) {
+int _internal_addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t prefixlen, uint8_t checkport, struct hostportres **hpreturn) {
     struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
     struct addrinfo *res;
@@ -287,16 +287,20 @@ int _internal_addressmatches(struct list *hostports, struct sockaddr *addr, uint
                     !memcmp(&sa6->sin6_addr,
                     &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, 16) &&
                     (!checkport || ((struct sockaddr_in6 *)res->ai_addr)->sin6_port ==
-                    ((struct sockaddr_in6 *)addr)->sin6_port)))
+                    ((struct sockaddr_in6 *)addr)->sin6_port))) {
 
+                    if (hpreturn) *hpreturn = hp;
                     return 1;
+                }
             } else if (hp->prefixlen <= prefixlen) {
                 if ((a4 && res->ai_family == AF_INET &&
                     prefixmatch(a4, &((struct sockaddr_in *)res->ai_addr)->sin_addr, hp->prefixlen)) ||
                     (sa6 && res->ai_family == AF_INET6 &&
-                    prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, hp->prefixlen)))
+                    prefixmatch(&sa6->sin6_addr, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, hp->prefixlen))) {
 
+                    if (hpreturn) *hpreturn = hp;
                     return 1;
+                }
             }
         }
     }
@@ -312,18 +316,18 @@ int hostportmatches(struct list *hostports, struct list *matchhostports, uint8_t
         match = (struct hostportres *)entry->data;
 
         for (res = match->addrinfo; res; res = res->ai_next) {
-            if (_internal_addressmatches(hostports, res->ai_addr, match->prefixlen, checkport))
+            if (_internal_addressmatches(hostports, res->ai_addr, match->prefixlen, checkport, NULL))
                 return 1;
         }
     }
     return 0;
 }
 
-int addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t checkport) {
-    return _internal_addressmatches(hostports, addr, 255, checkport);
+int addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t checkport, struct hostportres **hp) {
+    return _internal_addressmatches(hostports, addr, 255, checkport, hp);
 }
 
-int connecttcphostlist(struct list *hostports,  struct addrinfo *src) {
+int connecttcphostlist(struct list *hostports,  struct addrinfo *src, struct hostportres** hpreturn) {
     int s;
     struct list_node *entry;
     struct hostportres *hp = NULL;
@@ -333,6 +337,7 @@ int connecttcphostlist(struct list *hostports,  struct addrinfo *src) {
 	debug(DBG_WARN, "connecttcphostlist: trying to open TCP connection to %s port %s", hp->host, hp->port);
 	if ((s = connecttcp(hp->addrinfo, src, list_count(hostports) > 1 ? 5 : 30)) >= 0) {
 	    debug(DBG_WARN, "connecttcphostlist: TCP connection to %s port %s up", hp->host, hp->port);
+        if (hpreturn) *hpreturn = hp;
 	    return s;
 	}
     }

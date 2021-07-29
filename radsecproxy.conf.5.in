@@ -350,10 +350,11 @@ this might mask clients defined later, which then will never be matched.
 
 In the case of TLS/DTLS, the name of the client must match the FQDN or IP
 address in the client certificate (CN or SubectAltName:DNS or SubjectAltName:IP
-respectively). Note that this is not required when the client name is an IP
-prefix. If overlapping clients are defined (see section above), they will be
-searched for matching \fBMatchCertificateAttribute\fR, but they must reference
-the same tls block.
+respectively) and any \fBMatchCertificateAttribute\fR to be positively identified. 
+Note that no FQDN/IP is checked when using an IP prefix. 
+If overlapping clients are defined (see section above), they will be searched for 
+positive identification, but only among clients referencing the same tls block
+(selected by the first matching IP address or prefix).
 
 The allowed options in a client block are:
 
