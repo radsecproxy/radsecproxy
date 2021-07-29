@@ -22,6 +22,7 @@
 #include <pthread.h>
 #include "radsecproxy.h"
 #include "hostport.h"
+#include "list.h"
 
 #ifdef RADPROT_TCP
 #include "debug.h"
@@ -84,6 +85,8 @@ int tcpconnect(struct server *server, int timeout, char *text) {
     int firsttry = 1;
     time_t wait;
     struct addrinfo *source = NULL;
+    struct list_node *entry;
+    struct hostportres *hp;
 
     debug(DBG_DBG, "tcpconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -112,16 +115,25 @@ int tcpconnect(struct server *server, int timeout, char *text) {
             if (source) freeaddrinfo(source);
             return 0;
         }
-        debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        if (wait) debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
         sleep(wait);
         firsttry = 0;
 
-        
         pthread_mutex_lock(&server->lock);
 
-        debug(DBG_INFO, "tcpconnect: connecting to %s", server->conf->name);
-        if ((server->sock = connecttcphostlist(server->conf->hostports, source ? source : srcres)) < 0)
+        for (entry = list_first(server->conf->hostports); entry; entry = list_next(entry)) {
+            hp = (struct hostportres *)entry->data;
+            debug(DBG_INFO, "tcpconnect: trying to open TCP connection to server %s (%s port %s)", server->conf->name, hp->host, hp->port);
+            if ((server->sock = connecttcp(hp->addrinfo, source ? source : srcres, list_count(server->conf->hostports) > 1 ? 5 : 30)) >= 0) {
+                debug(DBG_WARN, "tcpconnect: TCP connection to server %s (%s port %s) up", hp->host, hp->port);
+                break;
+            }
+        }
+        if (server->sock < 0) {
+            debug(DBG_ERR, "tcpconnect: TCP connection to server %s failed", server->conf->name);
             continue;
+        }
+
         if (server->conf->keepalive)
             enable_keepalive(server->sock);
         break;
@@ -339,7 +351,7 @@ void *tcpservernew(void *arg) {
     }
     debug(DBG_WARN, "tcpservernew: incoming TCP connection from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 
-    conf = find_clconf(handle, (struct sockaddr *)&from, NULL);
+    conf = find_clconf(handle, (struct sockaddr *)&from, NULL, NULL);
     if (conf) {
         client = addclient(conf, 1);
         if (client) {

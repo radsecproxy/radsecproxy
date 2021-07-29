@@ -11,6 +11,7 @@
 #include "radmsg.h"
 #include "gconfig.h"
 #include "rewrite.h"
+#include "hostport.h"
 
 #include <openssl/asn1.h>
 
@@ -28,15 +29,9 @@
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
 
-/* We want PTHREAD_STACK_SIZE to be 32768, but some platforms
- * have a higher minimum value defined in PTHREAD_STACK_MIN. */
-#define PTHREAD_STACK_SIZE 32768
-#if defined(PTHREAD_STACK_MIN)
-#if PTHREAD_STACK_MIN > PTHREAD_STACK_SIZE
-#undef PTHREAD_STACK_SIZE
-#define PTHREAD_STACK_SIZE PTHREAD_STACK_MIN
-#endif
-#endif
+/* Target value for stack size.
+ * Some platforms might define higher minimums in PTHREAD_STACK_MIN. */
+#define THREAD_STACK_SIZE 32768
 
 /* For systems that only support RFC 2292 Socket API, but not RFC 3542
  * like Cygwin */
@@ -250,7 +245,7 @@ struct protodefs {
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
 
-struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
+struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur, struct hostportres **hp);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf, uint8_t lock);

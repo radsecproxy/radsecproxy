@@ -121,13 +121,13 @@ int prefixmatch(void *a1, void *a2, uint8_t len) {
 }
 
 /* returns next config with matching address, or NULL */
-struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *confs, struct list_node **cur, uint8_t server_p) {
+struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *confs, struct list_node **cur, uint8_t server_p, struct hostportres **hp) {
     struct list_node *entry;
     struct clsrvconf *conf;
 
     for (entry = (cur && *cur ? list_next(*cur) : list_first(confs)); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
-	if (conf->type == type && addressmatches(conf->hostports, addr, server_p)) {
+	if (conf->type == type && addressmatches(conf->hostports, addr, server_p, hp)) {
 	    if (cur)
 		*cur = entry;
 	    return conf;
@@ -136,12 +136,12 @@ struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *co
     return NULL;
 }
 
-struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur) {
-    return find_conf(type, addr, clconfs, cur, 0);
+struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur, struct hostportres **hp) {
+    return find_conf(type, addr, clconfs, cur, 0, hp);
 }
 
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur) {
-    return find_conf(type, addr, srvconfs, cur, 1);
+    return find_conf(type, addr, srvconfs, cur, 1, NULL);
 }
 
 /* returns next config of given type, or NULL */
@@ -2416,7 +2416,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                 ? tlsgettls(conf->tls, NULL)
                 : tlsgettls("defaultClient", "default");
         if (!conf->tlsconf)
-            debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
+            debugx(1, DBG_ERR, "error in block %s, tls context not defined", block);
         if (matchcertattrs) {
             for (i=0; matchcertattrs[i]; i++){
                 if (!addmatchcertattr(conf, matchcertattrs[i])) {
@@ -2485,7 +2485,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                 existing->tlsconf != conf->tlsconf &&
                 hostportmatches(existing->hostports, conf->hostports, 0)) {
 
-                debugx(1, DBG_ERR, "error in block %s, overlapping clients must reference the same tls block", block);
+                debugx(1, DBG_ERR, "error in block %s, masked by overlapping (equal or less specific IP/prefix) client %s with different tls block", block, existing->name);
             }
         }
     }
@@ -2573,6 +2573,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (resconf) {
         conf->statusserver = resconf->statusserver;
         conf->certnamecheck = resconf->certnamecheck;
+        conf->blockingstartup = resconf->blockingstartup;
     } else {
         conf->certnamecheck = 1;
     }
@@ -2683,6 +2684,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             conf->statusserver = RSP_STATSRV_AUTO;
         else
             debugx(1, DBG_ERR, "config error in blocck %s: invalid StatusServer value: %s", block, statusserver);
+        free(statusserver);
     }
 
     if (resconf) {
@@ -3031,6 +3033,7 @@ int createpidfile(const char *pidfile) {
 int radsecproxy_main(int argc, char **argv) {
     pthread_t sigth;
     sigset_t sigset;
+    size_t stacksize;
     struct list_node *entry;
     uint8_t foreground = 0, pretend = 0, loglevel = 0;
     char *configfile = NULL, *pidfile = NULL;
@@ -3042,8 +3045,13 @@ int radsecproxy_main(int argc, char **argv) {
 
     if (pthread_attr_init(&pthread_attr))
 	debugx(1, DBG_ERR, "pthread_attr_init failed");
-    if (pthread_attr_setstacksize(&pthread_attr, PTHREAD_STACK_SIZE))
-	debugx(1, DBG_ERR, "pthread_attr_setstacksize failed");
+#if defined(PTHREAD_STACK_MIN)
+    stacksize = THREAD_STACK_SIZE > PTHREAD_STACK_MIN ? THREAD_STACK_SIZE : PTHREAD_STACK_MIN;
+#else
+    stacksize = THREAD_STACK_SIZE;
+#endif
+    if (pthread_attr_setstacksize(&pthread_attr, stacksize))
+        debug(DBG_WARN, "pthread_attr_setstacksize failed! Using system default. Memory footprint might be increased!");
 #if defined(HAVE_MALLOPT)
     if (mallopt(M_TRIM_THRESHOLD, 4 * 1024) != 1)
 	debugx(1, DBG_ERR, "mallopt failed");

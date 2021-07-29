@@ -160,7 +160,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server) 
         }
 
         p = client
-            ? find_clconf(handle, (struct sockaddr *)&from, NULL)
+            ? find_clconf(handle, (struct sockaddr *)&from, NULL, NULL)
             : find_srvconf(handle, (struct sockaddr *)&from, NULL);
         if (!p) {
             debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
