@@ -1592,7 +1592,7 @@ void *clientwr(void *arg) {
     if (server->dynamiclookuparg && !dynamicconfig(server)) {
         dynconffail = 1;
         server->state = RSP_SERVER_STATE_FAILING;
-        debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, sleeping %ds",
+        debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, Not trying again for %ds",
               __func__, server->conf->name, server->dynamiclookuparg, ZZZ);
         goto errexitwait;
     }
@@ -1600,7 +1600,7 @@ void *clientwr(void *arg) {
      * either as part of static configuration setup or by
      * dynamicconfig() above?  */
     if (!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype)) {
-        debug(DBG_WARN, "%s: resolve failed, sleeping %ds", __func__, ZZZ);
+        debug(DBG_WARN, "%s: resolve failed, Not trying again for %ds", __func__, ZZZ);
         server->state = RSP_SERVER_STATE_FAILING;
         goto errexitwait;
     }
@@ -1615,7 +1615,7 @@ void *clientwr(void *arg) {
         if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
             server->state = RSP_SERVER_STATE_FAILING;
             if (server->dynamiclookuparg) {
-                debug(DBG_WARN, "%s: connect failed, sleeping %ds", __func__, ZZZ);
+                debug(DBG_WARN, "%s: connect failed, giving up. Not trying again for %ds", __func__, ZZZ);
                 goto errexitwait;
             }
             goto errexit;
