@@ -2574,6 +2574,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->statusserver = resconf->statusserver;
         conf->certnamecheck = resconf->certnamecheck;
         conf->blockingstartup = resconf->blockingstartup;
+        conf->type = resconf->type;
     } else {
         conf->certnamecheck = 1;
     }
@@ -2622,24 +2623,26 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 
     if (!conftype) {
-	debug(DBG_ERR, "error in block %s, option type missing", block);
-	goto errexit;
+        if (!resconf) {
+            debug(DBG_ERR, "error in block %s, option type missing", block);
+            goto errexit;
+        }
+    } else {
+        conf->type = protoname2int(conftype);
+        if (conf->type == 255) {
+            debug(DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
+            goto errexit;
+        }
+        free(conftype);
+        conftype = NULL;
+        conf->pdef = protodefs[conf->type];
     }
-    conf->type = protoname2int(conftype);
-    if (conf->type == 255) {
-	debug(DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
-	goto errexit;
-    }
-    free(conftype);
-    conftype = NULL;
 
     conf->hostaf = AF_UNSPEC;
     if (config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf))
         debugx(1, DBG_ERR, "config error: ^");
     if (config_hostaf(block, ipv4only, ipv6only, &conf->hostaf))
         goto errexit;
-
-    conf->pdef = protodefs[conf->type];
 
     if (!conf->confrewritein)
 	conf->confrewritein = rewriteinalias;

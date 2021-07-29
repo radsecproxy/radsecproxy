@@ -84,7 +84,7 @@ else
 fi
 
 if [ -n "${SERVERS}" ]; then
-    $PRINTCMD "server dynamic_radsec.${REALM} {\n${SERVERS}\n\ttype TLS\n}\n"
+    $PRINTCMD "server dynamic_radsec.${REALM} {\n${SERVERS}\n}\n"
     exit 0
 fi
 
