@@ -827,7 +827,7 @@ Specify the list of accepted \fIciphers\fR. See
 Specify the \fIciphersuites\fR to be used for TLS1.3. See 
 .BR openssl-ciphers (1).
 .br
-Note this requires openssl 1.1.1
+Note this requires OpenSSL 1.1.1
 .RE
 
 .BR "TlsVersion " (
@@ -847,6 +847,12 @@ Currently supported values are
 for TLS and
 .BR DTLS1 , DTLS1_1
 for DTLS.
+.br
+If these options are not specified and you use OpenSSL 1.0.1 or newer,
+\fIminversion\fR defaults to TLS1_1 irrespective of your operating system's
+default minimum version (i.e. \fIversion\fR is 
+.BR TLS1_1:
+by default).
 .RE
 
 .BI "DhFile " file
