@@ -16,6 +16,7 @@
 #include <nettle/hmac.h>
 #include <openssl/rand.h>
 
+#define RADCODE(x) ((uint8_t *)(x))[0]
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
 
 void radmsg_free(struct radmsg *msg) {
@@ -124,21 +125,38 @@ int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret, int se
     int result = 0;             /* Fail. */
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct hmac_md5_ctx hmacctx;
-    uint8_t auth[16], hash[MD5_DIGEST_SIZE];
+    uint8_t code, save_reqauth[16], save_authattr[16], hash[MD5_DIGEST_SIZE];
 
     pthread_mutex_lock(&lock);
 
-   /* FIXME: Why clearing authattr during hashing? */
-    memcpy(auth, authattr, 16);
+    code = RADCODE(rad);
+
+    /* Calculate hmac on cleared Message-Authentication header, see RFC3579 section 3.2 */
+    memcpy(save_authattr, authattr, 16);
     memset(authattr, 0, 16);
+
+    /* Accounting packet Message-Authenticator is not calculated on request
+       authenticator, but on 16 zero byte
+       (Was unable to find RFC, this is what FreeRadius v3 does and expects)
+       FIXME: EXCEPT when answering a Status-Server request - but as radsecproxy
+       currently replies all Status-Server with Access-Accept even on accounting
+       ports such fix is not important for now. */
+    if (code == RAD_Accounting_Request || code == RAD_Accounting_Response) {
+        memcpy(save_reqauth, rad+4, 16);
+        memset(rad+4, 0, 16);
+    }
 
     hmac_md5_set_key(&hmacctx, secret_len, secret);
     hmac_md5_update(&hmacctx, RADLEN(rad), rad);
     hmac_md5_digest(&hmacctx, sizeof(hash), hash);
 
-    memcpy(authattr, auth, 16);
+    memcpy(authattr, save_authattr, 16);
 
-    if (memcmp(auth, hash, 16)) {
+    if (code == RAD_Accounting_Request || code == RAD_Accounting_Response) {
+        memcpy(rad+4, save_reqauth, 16);
+    }
+
+    if (memcmp(save_authattr, hash, 16)) {
 	debug(DBG_WARN, "message authenticator, wrong value");
         goto out;
     }
@@ -175,16 +193,35 @@ int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec, i
 int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *secret, int secret_len) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct hmac_md5_ctx hmacctx;
+    uint8_t code, save_reqauth[16];
 
     if (!authattrval)
 	return 1;
 
     pthread_mutex_lock(&lock);
 
+    code = RADCODE(rad);
+
     memset(authattrval, 0, 16);
+
+    /* Accounting packet Message-Authenticator is not calculated on request
+       authenticator, but on 16 zero byte
+       (Was unable to find RFC, this is what FreeRadius v3 does and expects)
+       FIXME: EXCEPT when answering a Status-Server request - but as radsecproxy
+       currently replies all Status-Server with Access-Accept even on accounting
+       ports such fix is not important for now. */
+    if (code == RAD_Accounting_Request || code == RAD_Accounting_Response) {
+        memcpy(save_reqauth, rad+4, 16);
+        memset(rad+4, 0, 16);
+    }
+
     hmac_md5_set_key(&hmacctx, secret_len, secret);
     hmac_md5_update(&hmacctx, RADLEN(rad), rad);
     hmac_md5_digest(&hmacctx, MD5_DIGEST_SIZE, authattrval);
+
+    if (code == RAD_Accounting_Request || code == RAD_Accounting_Response) {
+        memcpy(rad+4, save_reqauth, 16);
+    }
 
     pthread_mutex_unlock(&lock);
     return 1;
