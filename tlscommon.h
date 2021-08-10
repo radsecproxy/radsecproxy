@@ -3,6 +3,7 @@
 /* See LICENSE for licensing information. */
 
 #include <openssl/ssl.h>
+#include "hostport.h"
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 #define ASN1_STRING_get0_data(o) ((o)->data)
@@ -40,10 +41,13 @@ void sslinit();
 struct tls *tlsgettls(char *alt1, char *alt2);
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
 X509 *verifytlscert(SSL *ssl);
-int verifyconfcert(X509 *cert, struct clsrvconf *conf);
+int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *);
+char *getcertsubject(X509 *cert);
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
-int addmatchcertattr(struct clsrvconf *conf);
+int addmatchcertattr(struct clsrvconf *conf, const char *match);
+void freematchcertattr(struct clsrvconf *conf);
 void tlsreloadcrls();
+int tlssetsni(SSL *ssl, char *sni);
 int sslconnecttimeout(SSL *ssl, int timeout);
 int sslaccepttimeout (SSL *ssl, int timeout);
 #endif

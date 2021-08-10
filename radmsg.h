@@ -28,9 +28,6 @@
 #define RAD_Attr_Called_Station_Id 30
 #define RAD_Attr_Calling_Station_Id 31
 #define RAD_Attr_Proxy_State 33
-#define RAD_Attr_CHAP_Challenge 60
-#define RAD_Attr_Tunnel_Password 69
-#define RAD_Attr_Message_Authenticator 80
 #define RAD_Attr_Acct_Status_Type 40
 #define RAD_Attr_Acct_Input_Octets 42
 #define RAD_Attr_Acct_Output_Octets 43
@@ -40,6 +37,11 @@
 #define RAD_Attr_Acct_Output_Packets 48
 #define RAD_Attr_Acct_Terminate_Cause 49
 #define RAD_Attr_Event_Timestamp 55
+#define RAD_Attr_CHAP_Challenge 60
+#define RAD_Attr_Tunnel_Password 69
+#define RAD_Attr_Message_Authenticator 80
+#define RAD_Attr_CUI 89
+#define RAD_Attr_Operator_Name 126
 
 #define RAD_Acct_Status_Start 1
 #define RAD_Acct_Status_Stop 2
@@ -48,6 +50,7 @@
 #define RAD_Acct_Status_Accounting_On 7
 #define RAD_Acct_Status_Accounting_Off 8
 #define RAD_Acct_Status_Failed 15
+
 
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17

@@ -2,7 +2,7 @@ dnl Copyright (c) 2006-2010, UNINETT AS
 dnl Copyright (c) 2010-2013,2016, NORDUnet A/S
 dnl See LICENSE for licensing information.
 
-AC_INIT(radsecproxy, 1.8.2, https://radsecproxy.github.io)
+AC_INIT([radsecproxy],[1.9.0],[https://radsecproxy.github.io])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
@@ -59,7 +59,7 @@ AC_CHECK_LIB([nettle], [nettle_sha256_init],,
     [AC_MSG_ERROR([required library nettle not found])])
 
 dnl Check if we're on Solaris and set CFLAGS accordingly
-AC_CANONICAL_SYSTEM
+AC_CANONICAL_TARGET
 case "${target_os}" in
   solaris*)
     TARGET_CFLAGS="-DSYS_SOLARIS9 -D_POSIX_PTHREAD_SEMANTICS"
@@ -105,7 +105,8 @@ AC_SUBST(SYSCONFDIR)
 AC_SUBST(TARGET_CFLAGS)
 AC_SUBST(TARGET_LDFLAGS)
 AX_CHECK_SSL
-AC_OUTPUT([
+AC_CONFIG_FILES([
 	Makefile
 	tests/Makefile
 ])
+AC_OUTPUT

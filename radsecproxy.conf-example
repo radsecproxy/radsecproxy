@@ -203,6 +203,8 @@ server radius.example.com {
 # statusserver is optional, can be on or off. Off is default
 	tcpKeepalive on
 # tcp and tls connections also support TCP keepalives.
+# Optionally specify the SNI for the outgoing connection
+#       sni www.example.com
 }
 #server radius.example.com {
 #	type	dtls

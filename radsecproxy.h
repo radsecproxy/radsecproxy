@@ -11,6 +11,9 @@
 #include "radmsg.h"
 #include "gconfig.h"
 #include "rewrite.h"
+#include "hostport.h"
+
+#include <openssl/asn1.h>
 
 #define DEBUG_LEVEL 2
 
@@ -26,15 +29,9 @@
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
 
-/* We want PTHREAD_STACK_SIZE to be 32768, but some platforms
- * have a higher minimum value defined in PTHREAD_STACK_MIN. */
-#define PTHREAD_STACK_SIZE 32768
-#if defined(PTHREAD_STACK_MIN)
-#if PTHREAD_STACK_MIN > PTHREAD_STACK_SIZE
-#undef PTHREAD_STACK_SIZE
-#define PTHREAD_STACK_SIZE PTHREAD_STACK_MIN
-#endif
-#endif
+/* Target value for stack size.
+ * Some platforms might define higher minimums in PTHREAD_STACK_MIN. */
+#define THREAD_STACK_SIZE 32768
 
 /* For systems that only support RFC 2292 Socket API, but not RFC 3542
  * like Cygwin */
@@ -69,6 +66,7 @@ enum rsp_mac_type {
 
 enum rsp_server_state {
     RSP_SERVER_STATE_STARTUP = 0, /* default */
+    RSP_SERVER_STATE_BLOCKING_STARTUP,
     RSP_SERVER_STATE_CONNECTED,
     RSP_SERVER_STATE_RECONNECTING,
     RSP_SERVER_STATE_FAILING
@@ -100,6 +98,7 @@ struct options {
     uint8_t *fticks_key;
     uint8_t ipv4only;
     uint8_t ipv6only;
+    uint8_t sni;
 };
 
 struct commonprotoopts {
@@ -149,12 +148,8 @@ struct clsrvconf {
     uint8_t *secret;
     int secret_len;
     char *tls;
-    char *matchcertattr;
-    regex_t *certcnregex;
-    regex_t *certuriregex;
-    regex_t *certdnsregex;
-    struct in6_addr certipmatch;
-    int certipmatchaf;
+    struct list *matchcertattrs;
+    char **confmatchcertattrs;
     char *confrewritein;
     char *confrewriteout;
     char *confrewriteusername;
@@ -168,6 +163,7 @@ struct clsrvconf {
     uint8_t addttl;
     uint8_t keepalive;
     uint8_t loopprevention;
+    uint8_t blockingstartup;
     struct rewrite *rewritein;
     struct rewrite *rewriteout;
     pthread_mutex_t *lock; /* only used for updating clients so far */
@@ -176,6 +172,8 @@ struct clsrvconf {
     struct server *servers;
     char *fticks_viscountry;
     char *fticks_visinst;
+    uint8_t sni;
+    char *sniservername;
 };
 
 #include "tlscommon.h"
@@ -250,7 +248,7 @@ struct protodefs {
 
 #define RADLEN(x) ntohs(((uint16_t *)(x))[1])
 
-struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
+struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur, struct hostportres **hp);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf, uint8_t lock);

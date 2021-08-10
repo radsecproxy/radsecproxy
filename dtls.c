@@ -142,6 +142,7 @@ int dtlsread(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t
                     continue;
                 case SSL_ERROR_ZERO_RETURN:
                     debug(DBG_DBG, "dtlsread: got ssl shutdown");
+                    /* fallthrough */
                 default:
                     while ((error = ERR_get_error()))
                         debug(DBG_ERR, "dtlsread: SSL: %s", ERR_error_string(error, NULL));
@@ -304,11 +305,12 @@ void *dtlsservernew(void *arg) {
     unsigned long error;
     struct timeval timeout;
     struct addrinfo tmpsrvaddr;
-    char tmp[INET6_ADDRSTRLEN];
+    char tmp[INET6_ADDRSTRLEN], *subj;
+    struct hostportres *hp;
 
     debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
 
-    conf = find_clconf(handle, (struct sockaddr *)&params->addr, NULL);
+    conf = find_clconf(handle, (struct sockaddr *)&params->addr, NULL, &hp);
     if (!conf)
         goto exit;
 
@@ -342,7 +344,13 @@ void *dtlsservernew(void *arg) {
     accepted_tls = conf->tlsconf;
 
     while (conf) {
-        if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf)) {
+        if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf, NULL)) {
+            subj = getcertsubject(cert);
+            if(subj) {
+                debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, subject %s up",
+                    addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)), conf->name, subj);
+                free(subj);
+            }
             X509_free(cert);
             client = addclient(conf, 1);
             if (client) {
@@ -356,9 +364,10 @@ void *dtlsservernew(void *arg) {
             }
             goto exit;
         }
-        conf = find_clconf(handle, (struct sockaddr *)&params->addr, &cur);
+        conf = find_clconf(handle, (struct sockaddr *)&params->addr, &cur, &hp);
     }
-    debug(DBG_WARN, "dtlsservernew: ignoring request, no matching TLS client");
+    debug(DBG_WARN, "dtlsservernew: ignoring request, no matching TLS client for %s", 
+        addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
 
     if (cert)
     X509_free(cert);
@@ -419,7 +428,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
 #endif
         if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_RECVPKTINFO) {
             info6 = (struct in6_pktinfo *)CMSG_DATA(ctrlhdr);
-            debug(DBG_DBG, "udp packet to: %x", inet_ntop(AF_INET6, &info6->ipi6_addr, tmp, sizeof(tmp)));
+            debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET6, &info6->ipi6_addr, tmp, sizeof(tmp)));
 
             ((struct sockaddr_in6 *)to)->sin6_addr = info6->ipi6_addr;
             ((struct sockaddr_in6 *)to)->sin6_scope_id = info6->ipi6_ifindex;
@@ -461,7 +470,7 @@ void *dtlslistener(void *arg) {
             continue;
         }
 
-        conf = find_clconf(handle, (struct sockaddr *)&from, NULL);
+        conf = find_clconf(handle, (struct sockaddr *)&from, NULL, NULL);
         if (!conf) {
             debug(DBG_INFO, "dtlslistener: got UDP from unknown peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
             if (recv(s, buf, 4, 0) == -1)
@@ -480,6 +489,7 @@ void *dtlslistener(void *arg) {
             ssl = SSL_new(ctx);
             if (!ssl) {
                 pthread_mutex_unlock(&conf->tlsconf->lock);
+                debug(DBG_ERR, "dtlslistener: failed to create SSL connection");
                 continue;
             }
             bio = BIO_new_dgram(s, BIO_NOCLOSE);
@@ -508,10 +518,26 @@ void *dtlslistener(void *arg) {
             } else {
                 free(params);
             }
+        } else {
+            unsigned long error;
+            while ((error = ERR_get_error()))
+                debug(DBG_ERR, "dtlslistener: DTLS_listen failed: %s", ERR_error_string(error, NULL));
+            debug(DBG_ERR, "dtlslistener: DTLS_listen failed from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
         }
         pthread_mutex_unlock(&conf->tlsconf->lock);
     }
     return NULL;
+}
+
+static void cleanup_connection(struct server *server) {
+    if (server->ssl)
+        SSL_shutdown(server->ssl);
+    if (server->sock >= 0)
+        close(server->sock);
+    server->sock = -1;
+    if (server->ssl)
+        SSL_free(server->ssl);
+    server->ssl = NULL;
 }
 
 int dtlsconnect(struct server *server, int timeout, char *text) {
@@ -524,6 +550,8 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
     unsigned long error;
     BIO *bio;
     struct addrinfo *source = NULL;
+    char *subj;
+    struct list_node *entry;
 
     debug(DBG_DBG, "dtlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -532,8 +560,6 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
         server->state = RSP_SERVER_STATE_RECONNECTING;
 
     pthread_mutex_unlock(&server->lock);
-
-    hp = (struct hostportres *)list_first(server->conf->hostports)->data;
 
     if(server->conf->source) {
         source = resolvepassiveaddrinfo(server->conf->source, AF_UNSPEC, NULL, protodefs.socktype);
@@ -545,68 +571,94 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
 
     for (;;) {
         /* ensure previous connection is properly closed */
-        if (server->ssl)
-            SSL_shutdown(server->ssl);
-        if (server->sock >= 0)
-            close(server->sock);
-        if (server->ssl)
-            SSL_free(server->ssl);
-        server->ssl = NULL;
+        cleanup_connection(server);
 
         wait = connect_wait(start, server->connecttime, firsttry);
-        debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
-        sleep(wait);
-        firsttry = 0;
-
         gettimeofday(&now, NULL);
-        if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
-            debug(DBG_DBG, "tlsconnect: timeout");
+        if (timeout && (now.tv_sec - start.tv_sec) + wait > timeout) {
+            debug(DBG_DBG, "dtlsconnect: timeout");
             if (source) freeaddrinfo(source);
             return 0;
         }
+        if (wait) debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        sleep(wait);
+        firsttry = 0;
 
-        debug(DBG_INFO, "dtlsconnect: connecting to %s port %s", hp->host, hp->port);
+        for (entry = list_first(server->conf->hostports); entry; entry = list_next(entry)) {
+            hp = (struct hostportres *)entry->data;
+            debug(DBG_INFO, "dtlsconnect: trying to open DTLS connection to server %s (%s port %s)", server->conf->name, hp->host, hp->port);
+            if ((server->sock = bindtoaddr(source ? source : srcres, hp->addrinfo->ai_family, 0)) < 0) {
+                debug(DBG_ERR, "dtlsconnect: faild to bind socket for server %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                goto concleanup;
+            }
+            if (connect(server->sock, hp->addrinfo->ai_addr, hp->addrinfo->ai_addrlen)) {
+                debug(DBG_ERR, "dtlsconnect: faild to connect socket for server %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                goto concleanup;
+            }
 
-        if ((server->sock = bindtoaddr(source ? source : srcres, hp->addrinfo->ai_family, 0)) < 0)
-            continue;
-        if (connect(server->sock, hp->addrinfo->ai_addr, hp->addrinfo->ai_addrlen))
-            continue;
+            pthread_mutex_lock(&server->conf->tlsconf->lock);
+            if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))){
+                pthread_mutex_unlock(&server->conf->tlsconf->lock);
+                debug(DBG_ERR, "dtlsconnect: failed to get TLS context for server %s", server->conf->name);
+                goto concleanup;
+            }
 
-        pthread_mutex_lock(&server->conf->tlsconf->lock);
-        if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))){
+            server->ssl = SSL_new(ctx);
             pthread_mutex_unlock(&server->conf->tlsconf->lock);
-            continue;
-        }
+            if (!server->ssl) {
+                debug(DBG_ERR, "dtlsconnect: failed to create SSL conneciton for server %s", server->conf->name);
+                goto concleanup;
+            }
 
-        server->ssl = SSL_new(ctx);
-        pthread_mutex_unlock(&server->conf->tlsconf->lock);
-        if (!server->ssl)
-            continue;
+            if (server->conf->sni) {
+                struct in6_addr tmp;
+                char *servername = server->conf->sniservername ? server->conf->sniservername : 
+                    (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL : hp->host;
+                if (servername && !tlssetsni(server->ssl, servername)) {
+                    debug(DBG_ERR, "tlsconnect: set SNI %s failed", servername);
+                    goto concleanup;
+                }
+            }
 
-        bio = BIO_new_dgram(server->sock, BIO_CLOSE);
-        BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, hp->addrinfo->ai_addr);
-        SSL_set_bio(server->ssl, bio, bio);
-        if (sslconnecttimeout(server->ssl, 5) <= 0) {
-            while ((error = ERR_get_error()))
-                debug(DBG_ERR, "dtlsconnect: SSL connect to %s failed: %s", server->conf->name, ERR_error_string(error, NULL));
-            debug(DBG_ERR, "dtlsconnect: SSL connect to %s failed", server->conf->name, ERR_error_string(error, NULL));
-            continue;
-        }
-        socktimeout.tv_sec = 5;
-        socktimeout.tv_usec = 0;
-        if (BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &socktimeout) == -1)
-            debug(DBG_WARN, "dtlsconnect: BIO_CTRL_DGRAM_SET_RECV_TIMEOUT failed");
+            bio = BIO_new_dgram(server->sock, BIO_CLOSE);
+            BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, hp->addrinfo->ai_addr);
+            SSL_set_bio(server->ssl, bio, bio);
+            if (sslconnecttimeout(server->ssl, 5) <= 0) {
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "dtlsconnect: SSL connect to %s failed: %s", server->conf->name, ERR_error_string(error, NULL));
+                debug(DBG_ERR, "dtlsconnect: SSL connect to %s (%s port %s) failed", server->conf->name, hp->host, hp->port);
+                goto concleanup;
+            }
+            socktimeout.tv_sec = 5;
+            socktimeout.tv_usec = 0;
+            if (BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &socktimeout) == -1)
+                debug(DBG_WARN, "dtlsconnect: BIO_CTRL_DGRAM_SET_RECV_TIMEOUT failed");
 
-        cert = verifytlscert(server->ssl);
-        if (!cert)
-            continue;
-        if (verifyconfcert(cert, server->conf)) {
+            cert = verifytlscert(server->ssl);
+            if (!cert) {
+                debug(DBG_ERR, "tlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                goto concleanup;
+            }
+
+            if (verifyconfcert(cert, server->conf, hp)) {
+                subj = getcertsubject(cert);
+                if(subj) {
+                    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s (%s port %s), subject %s up", server->conf->name, hp->host, hp->port, subj);
+                    free(subj);
+                }
+                X509_free(cert);
+                break;
+            } else {
+                debug(DBG_ERR, "tlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
+            }
             X509_free(cert);
-            break;
+
+concleanup:
+            /* ensure previous connection is properly closed */
+            cleanup_connection(server);
         }
-        X509_free(cert);
+        if (server->ssl) break;
     }
-    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s up", server->conf->name);
 
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
@@ -645,7 +697,7 @@ int clientradputdtls(struct server *server, unsigned char *rad) {
                 return 0;
         }
     }
-    debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %d to DTLS peer %s", cnt, len, conf->name);
+    debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %zu to DTLS peer %s", cnt, len, conf->name);
     pthread_mutex_unlock(&server->lock);
     return 1;
 }

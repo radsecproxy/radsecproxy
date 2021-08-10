@@ -56,6 +56,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <assert.h>
+#include <poll.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
@@ -120,13 +121,13 @@ int prefixmatch(void *a1, void *a2, uint8_t len) {
 }
 
 /* returns next config with matching address, or NULL */
-struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *confs, struct list_node **cur, uint8_t server_p) {
+struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *confs, struct list_node **cur, uint8_t server_p, struct hostportres **hp) {
     struct list_node *entry;
     struct clsrvconf *conf;
 
     for (entry = (cur && *cur ? list_next(*cur) : list_first(confs)); entry; entry = list_next(entry)) {
 	conf = (struct clsrvconf *)entry->data;
-	if (conf->type == type && addressmatches(conf->hostports, addr, server_p)) {
+	if (conf->type == type && addressmatches(conf->hostports, addr, server_p, hp)) {
 	    if (cur)
 		*cur = entry;
 	    return conf;
@@ -135,12 +136,12 @@ struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *co
     return NULL;
 }
 
-struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur) {
-    return find_conf(type, addr, clconfs, cur, 0);
+struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur, struct hostportres **hp) {
+    return find_conf(type, addr, clconfs, cur, 0, hp);
 }
 
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur) {
-    return find_conf(type, addr, srvconfs, cur, 1);
+    return find_conf(type, addr, srvconfs, cur, 1, NULL);
 }
 
 /* returns next config of given type, or NULL */
@@ -841,14 +842,16 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
 
 int rewriteusername(struct request *rq, struct tlv *attr) {
     char *orig = (char *)tlv2str(attr);
+    if (!orig)
+        return 0;
     if (!dorewritemodattr(attr, rq->from->conf->rewriteusername)) {
-	free(orig);
-	return 0;
+        free(orig);
+        return 0;
     }
     if (strlen(orig) != attr->l || memcmp(orig, attr->v, attr->l))
-	rq->origusername = (char *)orig;
+        rq->origusername = (char *)orig;
     else
-	free(orig);
+        free(orig);
     return 1;
 }
 
@@ -978,6 +981,7 @@ uint8_t *radattr2ascii(struct tlv *attr) {
 
 void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     uint8_t *username, *logusername = NULL, *stationid, *replymsg, *tmpmsg;
+    uint8_t *operatorname, *cui;
     char *servername, *logstationid = NULL;
     uint8_t level = DBG_NOTICE;
     char tmp[INET6_ADDRSTRLEN];
@@ -1012,6 +1016,20 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
         }
         free(stationid);
     }
+    cui = radattr2ascii(radmsg_gettype(msg, RAD_Attr_CUI));
+    if(cui) {
+        if (asprintf((char **)&tmpmsg, " cui %s", cui) >= 0) {
+            free(cui);
+            cui = tmpmsg;
+        }
+    }
+    operatorname = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Operator_Name));
+    if (operatorname) {
+        if (asprintf((char **)&tmpmsg, " operator %s", operatorname) >= 0) {
+            free(operatorname);
+            operatorname = tmpmsg;
+        }
+    }
     replymsg = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Reply_Message));
     if (replymsg) {
         if (asprintf((char **)&tmpmsg, " (%s)", replymsg) >= 0) {
@@ -1024,10 +1042,10 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
         if (msg->code == RAD_Accounting_Response)
             level = DBG_INFO;
         if (logusername) {
-            debug(level, "%s for user %s%s from %s%s to %s (%s)",
-                radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "",
+            debug(level, "%s for user %s%s%s from %s%s to %s (%s)%s",
+                radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "", cui ? (char *)cui : "",
                 servername, replymsg ? (char *)replymsg : "", rq->from->conf->name,
-                addr2string(rq->from->addr, tmp, sizeof(tmp)));
+                addr2string(rq->from->addr, tmp, sizeof(tmp)), operatorname ? (char *)operatorname : "");
         } else {
             debug(level, "%s (response to %s) from %s to %s (%s)", radmsgtype2string(msg->code),
                 radmsgtype2string(rq->msg->code), servername,
@@ -1040,6 +1058,8 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     }
     free(username);
     free(logstationid);
+    free(cui);
+    free(operatorname);
     free(replymsg);
 }
 
@@ -1610,23 +1630,22 @@ void *clientwr(void *arg) {
 
 #define ZZZ 900
 
-    server->state = RSP_SERVER_STATE_STARTUP;
+    if (server->state != RSP_SERVER_STATE_BLOCKING_STARTUP)
+        server->state = RSP_SERVER_STATE_STARTUP;
     if (server->dynamiclookuparg && !dynamicconfig(server)) {
-	dynconffail = 1;
-	server->state = RSP_SERVER_STATE_FAILING;
-	debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, sleeping %ds",
+        dynconffail = 1;
+        server->state = RSP_SERVER_STATE_FAILING;
+        debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, Not trying again for %ds",
               __func__, server->conf->name, server->dynamiclookuparg, ZZZ);
-	sleep(ZZZ);
-	goto errexit;
+        goto errexitwait;
     }
     /* FIXME: Is resolving not always done by compileserverconfig(),
      * either as part of static configuration setup or by
      * dynamicconfig() above?  */
     if (!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype)) {
-        debug(DBG_WARN, "%s: resolve failed, sleeping %ds", __func__, ZZZ);
-	server->state = RSP_SERVER_STATE_FAILING;
-        sleep(ZZZ);
-        goto errexit;
+        debug(DBG_WARN, "%s: resolve failed, Not trying again for %ds", __func__, ZZZ);
+        server->state = RSP_SERVER_STATE_FAILING;
+        goto errexitwait;
     }
 
     memset(&timeout, 0, sizeof(struct timespec));
@@ -1636,20 +1655,19 @@ void *clientwr(void *arg) {
     laststatsrv = server->lastreply;
 
     if (conf->pdef->connecter) {
-	if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
-	    server->state = RSP_SERVER_STATE_FAILING;
-	    if (server->dynamiclookuparg) {
-                debug(DBG_WARN, "%s: connect failed, sleeping %ds",
-                      __func__, ZZZ);
-		sleep(ZZZ);
-	    }
-	    goto errexit;
-	}
-	if (pthread_create(&clientrdth, &pthread_attr, conf->pdef->clientconnreader, (void *)server)) {
-	    debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
-	    server->state = RSP_SERVER_STATE_FAILING;
-	    goto errexit;
-	}
+        if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+            server->state = RSP_SERVER_STATE_FAILING;
+            if (server->dynamiclookuparg) {
+                debug(DBG_WARN, "%s: connect failed, giving up. Not trying again for %ds", __func__, ZZZ);
+                goto errexitwait;
+            }
+            goto errexit;
+        }
+        if (pthread_create(&clientrdth, &pthread_attr, conf->pdef->clientconnreader, (void *)server)) {
+            debugerrno(errno, DBG_ERR, "clientwr: pthread_create failed");
+            server->state = RSP_SERVER_STATE_FAILING;
+            goto errexit;
+        }
     }
     server->state = RSP_SERVER_STATE_CONNECTED;
 
@@ -1784,6 +1802,16 @@ void *clientwr(void *arg) {
         }
     }
     }
+
+errexitwait:
+    /* flush request queue so we don't block incoming retries by removing blocked duplicates*/
+    for (i=0; i < MAX_REQUESTS; i++) {
+        rqout = server->requests + i;
+        pthread_mutex_lock(rqout->lock);
+        freerqoutdata(rqout);
+        pthread_mutex_unlock(rqout->lock);
+    }
+    sleep(ZZZ);
 errexit:
     if (server->dynamiclookuparg) {
 	removeserversubrealms(realms, conf);
@@ -2083,7 +2111,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
              * the srvconfs list.  */
 	    if (addserver(srvconf)) {
 		srvconf->servers->dynamiclookuparg = stringcopy(realm->name, 0);
-		srvconf->servers->state = RSP_SERVER_STATE_STARTUP;
+		srvconf->servers->state = srvconf->blockingstartup ? RSP_SERVER_STATE_BLOCKING_STARTUP : RSP_SERVER_STATE_STARTUP;
                 debug(DBG_DBG, "%s: new client writer for %s",
                       __func__, srvconf->servers->conf->name);
 		if (pthread_create(&clientth, &pthread_attr, clientwr, (void *)(srvconf->servers))) {
@@ -2141,10 +2169,12 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
 }
 
 int dynamicconfig(struct server *server) {
-    int ok, fd[2], status;
+    int ok = 0, fd[2], status;
     pid_t pid;
     struct clsrvconf *conf = server->conf;
     struct gconffile *cf = NULL;
+    struct pollfd fds[1];
+    FILE *pipein;
 
     /* for now we only learn hostname/address */
     debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
@@ -2172,10 +2202,25 @@ int dynamicconfig(struct server *server) {
     }
 
     close(fd[1]);
-    pushgconffile(&cf, fdopen(fd[0], "r"), conf->dynamiclookupcommand);
-    ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb,
-			  (void *) conf, NULL);
-    freegconf(&cf);
+    pipein = fdopen(fd[0], "r");
+    fds[0].fd = fd[0];
+    fds[0].events = POLLIN;
+    status = poll(fds, 1, 5000);
+    if (status < 0) {
+        debugerrno(errno, DBG_ERR, "dynamicconfig: error while waiting for command output");
+    } else if (status ==0) {
+        debug(DBG_WARN, "dynamicconfig: command did not return anything in time");
+        kill(pid, SIGKILL);
+    } else {
+        pipein = pushgconffile(&cf, pipein, conf->dynamiclookupcommand);
+        if (pipein) {
+            ok = getgenericconfig(&cf, NULL, "Server", CONF_CBK, confserver_cb, (void *) conf, NULL);
+            freegconf(&cf);
+            pipein = NULL;
+        }
+    }
+    if (pipein)
+        fclose(pipein);
 
     if (waitpid(pid, &status, 0) < 0) {
 	debugerrno(errno, DBG_ERR, "dynamicconfig: wait error");
@@ -2217,13 +2262,11 @@ void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->confsecret);
     free(conf->secret);
     free(conf->tls);
-    free(conf->matchcertattr);
-    if (conf->certcnregex)
-	regfree(conf->certcnregex);
-    if (conf->certuriregex)
-	regfree(conf->certuriregex);
+    freegconfmstr(conf->confmatchcertattrs);
+    freematchcertattr(conf);
     free(conf->confrewritein);
     free(conf->confrewriteout);
+    free(conf->sniservername);
     if (conf->rewriteusername) {
 	if (conf->rewriteusername->regex)
 	    regfree(conf->rewriteusername->regex);
@@ -2311,13 +2354,14 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     !mergeconfmstring(&dst->source, &src->source) ||
 	!mergeconfstring(&dst->confsecret, &src->confsecret) ||
 	!mergeconfstring(&dst->tls, &src->tls) ||
-	!mergeconfstring(&dst->matchcertattr, &src->matchcertattr) ||
+	!mergeconfmstring(&dst->confmatchcertattrs, &src->confmatchcertattrs) ||
 	!mergeconfstring(&dst->confrewritein, &src->confrewritein) ||
 	!mergeconfstring(&dst->confrewriteout, &src->confrewriteout) ||
 	!mergeconfstring(&dst->confrewriteusername, &src->confrewriteusername) ||
 	!mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand) ||
 	!mergeconfstring(&dst->fticks_viscountry, &src->fticks_viscountry) ||
-	!mergeconfstring(&dst->fticks_visinst, &src->fticks_visinst))
+	!mergeconfstring(&dst->fticks_visinst, &src->fticks_visinst) ||
+    !mergeconfstring(&dst->sniservername, &src->sniservername))
 	return 0;
     if (src->pdef)
 	dst->pdef = src->pdef;
@@ -2327,6 +2371,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	dst->retryinterval = src->retryinterval;
     if (src->retrycount != 255)
 	dst->retrycount = src->retrycount;
+    dst->blockingstartup = src->blockingstartup;
+    dst->sni = src->sni;
     return 1;
 }
 
@@ -2352,10 +2398,11 @@ int config_hostaf(const char *desc, int ipv4only, int ipv6only, int *af) {
 
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *existing;
-    char *conftype = NULL, *rewriteinalias = NULL;
+    char *conftype = NULL, *rewriteinalias = NULL, **matchcertattrs = NULL;
     long int dupinterval = LONG_MIN, addttl = LONG_MIN;
     uint8_t ipv4only = 0, ipv6only = 0;
     struct list_node *entry;
+    int i;
 
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -2374,7 +2421,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 	    "tls", CONF_STR, &conf->tls,
-	    "matchcertificateattribute", CONF_STR, &conf->matchcertattr,
+	    "MatchCertificateAttribute", CONF_MSTR, &matchcertattrs,
 	    "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
 	    "DuplicateInterval", CONF_LINT, &dupinterval,
@@ -2411,13 +2458,19 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-	conf->tlsconf = conf->tls
-            ? tlsgettls(conf->tls, NULL)
-            : tlsgettls("defaultClient", "default");
-	if (!conf->tlsconf)
-	    debugx(1, DBG_ERR, "error in block %s, no tls context defined", block);
-	if (conf->matchcertattr && !addmatchcertattr(conf))
-	    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+        conf->tlsconf = conf->tls
+                ? tlsgettls(conf->tls, NULL)
+                : tlsgettls("defaultClient", "default");
+        if (!conf->tlsconf)
+            debugx(1, DBG_ERR, "error in block %s, tls context not defined", block);
+        if (matchcertattrs) {
+            for (i=0; matchcertattrs[i]; i++){
+                if (!addmatchcertattr(conf, matchcertattrs[i])) {
+                    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+                }
+            }
+            freegconfmstr(matchcertattrs);
+        }
     }
 #endif
 
@@ -2478,7 +2531,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                 existing->tlsconf != conf->tlsconf &&
                 hostportmatches(existing->hostports, conf->hostports, 0)) {
 
-                debugx(1, DBG_ERR, "error in block %s, overlapping clients must reference the same tls block", block);
+                debugx(1, DBG_ERR, "error in block %s, masked by overlapping (equal or less specific IP/prefix) client %s with different tls block", block, existing->name);
             }
         }
     }
@@ -2494,19 +2547,23 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 }
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
+    int i;
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
     	conf->tlsconf = conf->tls
             ? tlsgettls(conf->tls, NULL)
             : tlsgettls("defaultServer", "default");
-	if (!conf->tlsconf) {
-	    debug(DBG_ERR, "error in block %s, no tls context defined", block);
-	    return 0;
-	}
-	if (conf->matchcertattr && !addmatchcertattr(conf)) {
-	    debug(DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
-	    return 0;
-	}
+        if (!conf->tlsconf) {
+            debug(DBG_ERR, "error in block %s, no tls context defined", block);
+            return 0;
+        }
+        if (conf->confmatchcertattrs) {
+            for (i=0; conf->confmatchcertattrs[i]; i++){
+                if (!addmatchcertattr(conf, conf->confmatchcertattrs[i])) {
+                    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+                }
+            }
+        }
     }
 #endif
 
@@ -2562,8 +2619,12 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (resconf) {
         conf->statusserver = resconf->statusserver;
         conf->certnamecheck = resconf->certnamecheck;
+        conf->blockingstartup = resconf->blockingstartup;
+        conf->type = resconf->type;
+        conf->sni = resconf->sni;
     } else {
         conf->certnamecheck = 1;
+        conf->sni = options.sni;
     }
 
     if (!getgenericconfig(cf, block,
@@ -2576,7 +2637,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "secret", CONF_STR_NOESC, &conf->confsecret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
             "tls", CONF_STR, &conf->tls,
-            "MatchCertificateAttribute", CONF_STR, &conf->matchcertattr,
+            "MatchCertificateAttribute", CONF_MSTR, &conf->confmatchcertattrs,
             "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 #endif
             "addTTL", CONF_LINT, &addttl,
@@ -2589,6 +2650,9 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "RetryCount", CONF_LINT, &retrycount,
             "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
             "LoopPrevention", CONF_BLN, &conf->loopprevention,
+            "BlockingStartup", CONF_BLN, &conf->blockingstartup,
+            "SNI", CONF_BLN, &conf->sni,
+            "SNIservername", CONF_STR, &conf->sniservername,
             NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");
@@ -2609,24 +2673,26 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 
     if (!conftype) {
-	debug(DBG_ERR, "error in block %s, option type missing", block);
-	goto errexit;
+        if (!resconf) {
+            debug(DBG_ERR, "error in block %s, option type missing", block);
+            goto errexit;
+        }
+    } else {
+        conf->type = protoname2int(conftype);
+        if (conf->type == 255) {
+            debug(DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
+            goto errexit;
+        }
+        free(conftype);
+        conftype = NULL;
+        conf->pdef = protodefs[conf->type];
     }
-    conf->type = protoname2int(conftype);
-    if (conf->type == 255) {
-	debug(DBG_ERR, "error in block %s, unknown transport %s", block, conftype);
-	goto errexit;
-    }
-    free(conftype);
-    conftype = NULL;
 
     conf->hostaf = AF_UNSPEC;
     if (config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf))
         debugx(1, DBG_ERR, "config error: ^");
     if (config_hostaf(block, ipv4only, ipv6only, &conf->hostaf))
         goto errexit;
-
-    conf->pdef = protodefs[conf->type];
 
     if (!conf->confrewritein)
 	conf->confrewritein = rewriteinalias;
@@ -2636,7 +2702,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (retryinterval != LONG_MIN) {
 	if (retryinterval < 1 || retryinterval > conf->pdef->retryintervalmax) {
-	    debug(DBG_ERR, "error in block %s, value of option RetryInterval is %d, must be 1-%d", block, retryinterval, conf->pdef->retryintervalmax);
+	    debug(DBG_ERR, "error in block %s, value of option RetryInterval is %ld, must be 1-%d", block, retryinterval, conf->pdef->retryintervalmax);
 	    goto errexit;
 	}
 	conf->retryinterval = (uint8_t)retryinterval;
@@ -2645,7 +2711,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (retrycount != LONG_MIN) {
 	if (retrycount < 0 || retrycount > conf->pdef->retrycountmax) {
-	    debug(DBG_ERR, "error in block %s, value of option RetryCount is %d, must be 0-%d", block, retrycount, conf->pdef->retrycountmax);
+	    debug(DBG_ERR, "error in block %s, value of option RetryCount is %ld, must be 0-%d", block, retrycount, conf->pdef->retrycountmax);
 	    goto errexit;
 	}
 	conf->retrycount = (uint8_t)retrycount;
@@ -2654,7 +2720,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (addttl != LONG_MIN) {
 	if (addttl < 1 || addttl > 255) {
-	    debug(DBG_ERR, "error in block %s, value of option addTTL is %d, must be 1-255", block, addttl);
+	    debug(DBG_ERR, "error in block %s, value of option addTTL is %ld, must be 1-255", block, addttl);
 	    goto errexit;
 	}
 	conf->addttl = (uint8_t)addttl;
@@ -2671,7 +2737,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             conf->statusserver = RSP_STATSRV_AUTO;
         else
             debugx(1, DBG_ERR, "config error in blocck %s: invalid StatusServer value: %s", block, statusserver);
+        free(statusserver);
     }
+
+    if(conf->sniservername)
+        conf->sni = 1;
 
     if (resconf) {
         if (!mergesrvconf(resconf, conf))
@@ -2859,6 +2929,7 @@ void getmainconfig(const char *configfile) {
         "FTicksPrefix", CONF_STR, &options.fticksprefix,
         "IPv4Only", CONF_BLN, &options.ipv4only,
         "IPv6Only", CONF_BLN, &options.ipv6only,
+        "SNI", CONF_BLN, &options.sni,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
@@ -3019,6 +3090,7 @@ int createpidfile(const char *pidfile) {
 int radsecproxy_main(int argc, char **argv) {
     pthread_t sigth;
     sigset_t sigset;
+    size_t stacksize;
     struct list_node *entry;
     uint8_t foreground = 0, pretend = 0, loglevel = 0;
     char *configfile = NULL, *pidfile = NULL;
@@ -3030,8 +3102,13 @@ int radsecproxy_main(int argc, char **argv) {
 
     if (pthread_attr_init(&pthread_attr))
 	debugx(1, DBG_ERR, "pthread_attr_init failed");
-    if (pthread_attr_setstacksize(&pthread_attr, PTHREAD_STACK_SIZE))
-	debugx(1, DBG_ERR, "pthread_attr_setstacksize failed");
+#if defined(PTHREAD_STACK_MIN)
+    stacksize = THREAD_STACK_SIZE > PTHREAD_STACK_MIN ? THREAD_STACK_SIZE : PTHREAD_STACK_MIN;
+#else
+    stacksize = THREAD_STACK_SIZE;
+#endif
+    if (pthread_attr_setstacksize(&pthread_attr, stacksize))
+        debug(DBG_WARN, "pthread_attr_setstacksize failed! Using system default. Memory footprint might be increased!");
 #if defined(HAVE_MALLOPT)
     if (mallopt(M_TRIM_THRESHOLD, 4 * 1024) != 1)
 	debugx(1, DBG_ERR, "mallopt failed");

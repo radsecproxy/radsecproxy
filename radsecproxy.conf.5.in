@@ -1,4 +1,4 @@
-.TH radsecproxy.conf 5 2020-08-06 "radsecproxy 1.8.2" ""
+.TH radsecproxy.conf 5 2021-05-28 "radsecproxy 1.9.0" ""
 
 .SH NAME
 radsecproxy.conf \- Radsec proxy configuration file
@@ -115,9 +115,8 @@ option \fB\-d\fR overrides this.
 This specifies where the log messages should go. By default the messages go to
 syslog with facility \fBLOG_DAEMON\fR. Using this option you can specify another
 syslog facility, or you may specify that logging should be to a particular file,
-not using syslog. The value must be either a file or syslog URL. The file URL is
-the standard one \fBfile:///var/log/radius.log\fR, specifying a local file that
-should be used. For syslog, you must use the syntax:
+not using syslog. The value must be either a file URL like \fBfile:///path/to/your/logfile.log\fR 
+or a syslog URL using the syntax:
 .BR "x\-syslog:///FACILITY" " where " FACILITY " must be one of "
 .BR LOG_DAEMON ,
 .BR LOG_MAIL ,
@@ -298,6 +297,15 @@ clients and servers. At most one of IPv4Only and IPv6Only can be enabled.
 Note that this can be overridden in client and server blocks, see below.
 .RE
 
+.BR "SNI (" on | off )
+.RS
+Server Name Indication (SNI) is an extension to the TLS protocol.  It allows a
+client to indicate which hostname it is trying to connect to at the start of
+the TLS handshake. Enabling this will use the extension for all TLS and DTLS
+servers which specify a hostname (not IP address). This can be overridden in 
+server blocks, see below.
+.RE
+
 .BI "Include " file
 .RS
 This is not a normal configuration option; it can be specified multiple times.
@@ -351,10 +359,11 @@ this might mask clients defined later, which then will never be matched.
 
 In the case of TLS/DTLS, the name of the client must match the FQDN or IP
 address in the client certificate (CN or SubectAltName:DNS or SubjectAltName:IP
-respectively). Note that this is not required when the client name is an IP
-prefix. If overlapping clients are defined (see section above), they will be
-searched for matching \fBMatchCertificateAttribute\fR, but they must reference
-the same tls block.
+respectively) and any \fBMatchCertificateAttribute\fR to be positively identified. 
+Note that no FQDN/IP is checked when using an IP prefix. 
+If overlapping clients are defined (see section above), they will be searched for 
+positive identification, but only among clients referencing the same tls block
+(selected by the first matching IP address or prefix).
 
 The allowed options in a client block are:
 
@@ -413,13 +422,21 @@ For a TLS/DTLS client, disable the default behaviour of matching CN or
 SubjectAltName against the specified hostname or IP address.
 .RE
 
-\fBmatchCertificateAttribute (\fR CN \fB|\fR SubjectAltName:URI \fB|\fR SubjectAltName:DNS \fB) :\fR/\fIregexp\fR/
+\fBMatchCertificateAttribute \fRCN:/\fIregexp\fR/
+.br
+\fBMatchCertificateAttribute \fRSubjectAltName:DNS:/\fIregexp\fR/
+.br
+\fBMatchCertificateAttribute \fRSubjectAltName:URI:/\fIregexp\fR/
 .br
 \fBMatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
+.br
+\fBMatchCertificateAttribute \fRSubjectAltName:rID:\fIoid\fR
+.br
+\fBMatchCertificateAttribute \fRSubjectAltName:otherName:\fIoid\fR:/\fIregexp\fR/
 .RS
 Perform additional validation of certificate attributes. Currently matching
-of CN and SubjectAltName types URI DNS and IP is supported. Note that currently this 
-option can only be specified once in a client block.
+of CN and SubjectAltName types URI, DNS, IP, rID, and otherName is supported. If specified
+multiple times, all terms must match for the certificate to be considered valid.
 .RE
 
 .BI "DuplicateInterval " seconds
@@ -602,6 +619,30 @@ See section
 \fBBASIC OPTIONS\fR for details on this option.
 .RE
 
+.BR "BlockingStartup (" on | off)
+.RS
+Start the dynamic server in blocking mode (default off), treating it as if it was already 
+connected and enqueue requests to this server. Queued requests will be sent out when the 
+connection is established. If however the dynamic lookup or the connection fails, the queued
+requests will be lost.
+(This is only considered for dynamic lookup servers. Ie when DynamicLookupCommand is specified)
+Warning: when the dynamic lookup and connection process is slow, this wil block the 
+respective realm for that time.
+.RE
+
+.BR "SNI (" on | off )
+
+.RS
+Override gobal SNI setting (see above). This is implicitly enabled if \fBSNIservername\fR
+is set.
+.RE
+
+.BI "SNIservername " sni
+.RS
+Explicitly set the \fIsni\fR to request from the server, in case the server is specified
+by IP address or to override the hostname. Implicitly enables \fBSNI\fR for this server.
+.RE
+
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
 
@@ -617,9 +658,7 @@ block. The details are not repeated here. Please refer to the definitions in the
 .br
 .BR "CertificateNameCheck (" on | off )
 .br
-\fBmatchCertificateAttribute (\fR CN \fB|\fR SubjectAltName:URI \fB|\fR SubjectAltName:DNS \fB) :\fR/\fIregexp\fR/
-.br
-\fBMatchCertificateAttribute \fRSubjectAltName:IP:\fIaddress\fR
+\fBMatchCertificateAttribute \fR...
 .br
 .BR "AddTTL " 1-255
 .br
@@ -778,7 +817,8 @@ The password to decrypt the private-key.
 .BI "PolicyOID " oid
 .RS
 Require the peers certificate to adhere to the policy specified by \fIoid\fR.
-This can be specified multiple times.
+When specified multiple times at least one policy must be valid in the peer
+certificate.
 .RE
 
 .BR "CRLCheck (" on | off )
@@ -936,7 +976,7 @@ the given vendor id are removed.
 .BR "WhitelistMode (" on | off )
 .RS
 Enable whitelist mode. All attributes except those configured with
-\fBWhitelistAttrbiute\fR or \fBWhitelistVendorAttribute\fR will be removed.
+\fBWhitelistAttribute\fR or \fBWhitelistVendorAttribute\fR will be removed.
 While whitelist mode is active, \fBRemoveAttribute\fR and
 \fBRemoveVendorAttribute\fR statements are ignored.
 .RE

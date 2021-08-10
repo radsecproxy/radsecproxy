@@ -59,8 +59,12 @@ static const struct protodefs protodefs = {
     initextraudp /* initextra */
 };
 
-static int client4_sock = -1;
-static int client6_sock = -1;
+struct client_sock {
+    struct sockaddr_storage *source;
+    int socket;
+};
+
+static struct list *client_sock;
 static struct gqueue *server_replyq = NULL;
 
 static struct addrinfo *srcres = NULL;
@@ -156,7 +160,7 @@ unsigned char *radudpget(int s, struct client **client, struct server **server) 
         }
 
         p = client
-            ? find_clconf(handle, (struct sockaddr *)&from, NULL)
+            ? find_clconf(handle, (struct sockaddr *)&from, NULL, NULL)
             : find_srvconf(handle, (struct sockaddr *)&from, NULL);
         if (!p) {
             debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
@@ -248,7 +252,7 @@ int clientradputudp(struct server *server, unsigned char *rad) {
     len = RADLEN(rad);
     ai = ((struct hostportres *)list_first(conf->hostports)->data)->addrinfo;
     if (sendto(server->sock, rad, len, 0, ai->ai_addr, ai->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %d to %s port %d", len, addr2string(ai->ai_addr, tmp, sizeof(tmp)), port_get(ai->ai_addr));
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %zu to %s port %d", len, addr2string(ai->ai_addr, tmp, sizeof(tmp)), port_get(ai->ai_addr));
 	return 1;
     }
 
@@ -317,54 +321,68 @@ void addclientudp(struct client *client) {
 }
 
 void addserverextraudp(struct clsrvconf *conf) {
-    struct addrinfo *source = NULL;
- 
+    struct addrinfo *source = NULL, *tmpaddrinfo;
+    struct list_node *entry;
+    char tmp[32];
+
     assert(list_first(conf->hostports) != NULL);
- 
+
     if(conf->source) {
         source = resolvepassiveaddrinfo(conf->source, AF_UNSPEC, NULL, protodefs.socktype);
         if(!source)
             debug(DBG_WARN, "addserver: could not resolve source address to bind for server %s, using default", conf->name);
     }
 
-    switch (((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
-        case AF_INET:
-            if (client4_sock < 0) {
-                client4_sock = bindtoaddr(source ? source : srcres, AF_INET, 0);
-                if (client4_sock < 0)
-                debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
-            }
-            conf->servers->sock = client4_sock;
-            break;
-        case AF_INET6:
-            if (client6_sock < 0) {
-                client6_sock = bindtoaddr(source ? source : srcres, AF_INET6, 0);
-                if (client6_sock < 0)
-                debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
-            }
-            conf->servers->sock = client6_sock;
-            break;
-        default:
-            debugx(1, DBG_ERR, "addserver: unsupported address family");
+    if (client_sock == NULL) {
+        client_sock = list_create();
     }
+    for (tmpaddrinfo = source ? source : srcres; tmpaddrinfo; tmpaddrinfo = tmpaddrinfo->ai_next) {
+        if (tmpaddrinfo->ai_family == AF_UNSPEC || tmpaddrinfo->ai_family == ((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
+            for(entry = list_first(client_sock); entry; entry = list_next(entry)){
+                if (memcmp(tmpaddrinfo->ai_addr, ((struct client_sock*)entry->data)->source, tmpaddrinfo->ai_addrlen) == 0) {
+                    conf->servers->sock = ((struct client_sock*)entry->data)->socket;
+                    debug(DBG_DBG, "addserverextraudp: reusing existing socket #%d (%s) for server %s", conf->servers->sock, addr2string(tmpaddrinfo->ai_addr, tmp, sizeof(tmp)), conf->name);
+                    break;
+                }
+            }
+            if (conf->servers->sock < 0) {
+                struct client_sock* cls = malloc(sizeof(struct client_sock));
+                if (!cls)
+                    debugx(1,DBG_ERR, "addserverextraudp: malloc failed");
+                cls->socket = bindtoaddr(tmpaddrinfo, tmpaddrinfo->ai_family,0);
+                cls->source = malloc(sizeof(struct sockaddr_storage));
+                if (!cls->source)
+                    debugx(1,DBG_ERR, "addserverextraudp: malloc failed");
+                memcpy(cls->source, tmpaddrinfo->ai_addr, tmpaddrinfo->ai_addrlen);
+                debug(DBG_DBG, "addserverextraudp: creating new socket #%d (%s) for server %s", cls->socket, addr2string((struct sockaddr *)cls->source, tmp, sizeof(tmp)), conf->name);
+                if (!list_push(client_sock, cls))
+                    debugx(1,DBG_ERR, "addserverextraudp: malloc failed");
+                conf->servers->sock = cls->socket;
+                break;
+            }
+        }
+    }
+    if (conf->servers->sock < 0)
+        debugx(1, DBG_ERR, "addserver: failed to create client socket for server %s", conf->name);
+
     if (source)
         freeaddrinfo(source);
 }
 
 void initextraudp() {
-    pthread_t cl4th, cl6th, srvth;
+    pthread_t clth, srvth;
+    struct list_node *entry;
 
     if (srcres) {
 	freeaddrinfo(srcres);
 	srcres = NULL;
     }
 
-    if (client4_sock >= 0)
-	if (pthread_create(&cl4th, &pthread_attr, udpclientrd, (void *)&client4_sock))
-	    debugx(1, DBG_ERR, "pthread_create failed");
-    if (client6_sock >= 0)
-	if (pthread_create(&cl6th, &pthread_attr, udpclientrd, (void *)&client6_sock))
-	    debugx(1, DBG_ERR, "pthread_create failed");
+    for (entry = list_first(client_sock); entry; entry = list_next(entry)) {
+        debug(DBG_DBG, "initextraudp: spinning up clientrd thread for socket #%d", ((struct client_sock*)entry->data)->socket);
+        if (pthread_create(&clth, &pthread_attr, udpclientrd, (void *)&((struct client_sock*)entry->data)->socket))
+            debugx(1, DBG_ERR, "pthread_create failed");
+    }
 
     if (find_clconf_type(handle, NULL)) {
 	server_replyq = newqueue();

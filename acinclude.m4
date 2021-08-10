@@ -5,7 +5,7 @@ AC_DEFUN([AX_CHECK_SSL],
 SSL_DIR=
 found_ssl="no"
 AC_ARG_WITH(ssl,
-    AC_HELP_STRING([--with-ssl],
+    AS_HELP_STRING([--with-ssl],
        [Use SSL (in specified installation directory)]),
     [check_ssl_dir="$withval"],
     [check_ssl_dir=])

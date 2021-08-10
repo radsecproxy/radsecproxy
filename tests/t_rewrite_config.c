@@ -23,7 +23,7 @@ main (int argc, char *argv[])
     numtests = 1;
 
     {
-        addattrs = malloc(2);
+        addattrs = malloc(2 * sizeof(char *));
         addattrs[0] = stringcopy("1:'1%00%001%41%2541", 0);
         addattrs[1] = NULL;
 
@@ -55,7 +55,7 @@ main (int argc, char *argv[])
     /* test issue #62 */
     {
         char *expectreplace = "\\1=86400";
-        char **modvattrs = malloc(2);
+        char **modvattrs = malloc(2 * sizeof(char *));
         rewritename= "issue62";
 
         modvattrs[0] = stringcopy("9:102:/^(h323-credit-time).*$/\\1=86400/",0);
@@ -79,8 +79,6 @@ main (int argc, char *argv[])
         } else {
             printf("not ok %d - rewrite config issue #62\n", numtests++);
         }
-
-        free(modvattrs);
     }
 
     return 0;
