@@ -2223,6 +2223,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
     freematchcertattr(conf);
     free(conf->confrewritein);
     free(conf->confrewriteout);
+    free(conf->sniservername);
     if (conf->rewriteusername) {
 	if (conf->rewriteusername->regex)
 	    regfree(conf->rewriteusername->regex);
@@ -2316,7 +2317,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	!mergeconfstring(&dst->confrewriteusername, &src->confrewriteusername) ||
 	!mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand) ||
 	!mergeconfstring(&dst->fticks_viscountry, &src->fticks_viscountry) ||
-	!mergeconfstring(&dst->fticks_visinst, &src->fticks_visinst))
+	!mergeconfstring(&dst->fticks_visinst, &src->fticks_visinst) ||
+    !mergeconfstring(&dst->sniservername, &src->sniservername))
 	return 0;
     if (src->pdef)
 	dst->pdef = src->pdef;
@@ -2327,6 +2329,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     if (src->retrycount != 255)
 	dst->retrycount = src->retrycount;
     dst->blockingstartup = src->blockingstartup;
+    dst->sni = src->sni;
     return 1;
 }
 
@@ -2575,8 +2578,10 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->certnamecheck = resconf->certnamecheck;
         conf->blockingstartup = resconf->blockingstartup;
         conf->type = resconf->type;
+        conf->sni = resconf->sni;
     } else {
         conf->certnamecheck = 1;
+        conf->sni = options.sni;
     }
 
     if (!getgenericconfig(cf, block,
@@ -2603,6 +2608,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
             "LoopPrevention", CONF_BLN, &conf->loopprevention,
             "BlockingStartup", CONF_BLN, &conf->blockingstartup,
+            "SNI", CONF_BLN, &conf->sni,
+            "SNIservername", CONF_STR, &conf->sniservername,
             NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");
@@ -2689,6 +2696,9 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             debugx(1, DBG_ERR, "config error in blocck %s: invalid StatusServer value: %s", block, statusserver);
         free(statusserver);
     }
+
+    if(conf->sniservername)
+        conf->sni = 1;
 
     if (resconf) {
         if (!mergesrvconf(resconf, conf))
@@ -2876,6 +2886,7 @@ void getmainconfig(const char *configfile) {
         "FTicksPrefix", CONF_STR, &options.fticksprefix,
         "IPv4Only", CONF_BLN, &options.ipv4only,
         "IPv6Only", CONF_BLN, &options.ipv6only,
+        "SNI", CONF_BLN, &options.sni,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");

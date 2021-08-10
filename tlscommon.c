@@ -1103,6 +1103,10 @@ void freematchcertattr(struct clsrvconf *conf) {
     }
 }
 
+int tlssetsni(SSL *ssl, char *sni) {
+    return SSL_set_tlsext_host_name(ssl, sni); 
+}
+
 int sslaccepttimeout (SSL *ssl, int timeout) {
     int socket, origflags, ndesc, r = -1, sockerr = 0;
     socklen_t errlen = sizeof(sockerr);

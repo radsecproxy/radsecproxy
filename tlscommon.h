@@ -47,6 +47,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 int addmatchcertattr(struct clsrvconf *conf, const char *match);
 void freematchcertattr(struct clsrvconf *conf);
 void tlsreloadcrls();
+int tlssetsni(SSL *ssl, char *sni);
 int sslconnecttimeout(SSL *ssl, int timeout);
 int sslaccepttimeout (SSL *ssl, int timeout);
 #endif

@@ -164,6 +164,16 @@ int tlsconnect(struct server *server, int timeout, char *text) {
                 debug(DBG_ERR, "tlsconnect: failed to create SSL conneciton for server %s", server->conf->name);
                 goto concleanup;
             }
+
+            if (server->conf->sni) {
+                struct in6_addr tmp;
+                char *servername = server->conf->sniservername ? server->conf->sniservername : 
+                    (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL : hp->host;
+                if (servername && !tlssetsni(server->ssl, servername)) {
+                    debug(DBG_ERR, "tlsconnect: set SNI %s failed", servername);
+                    goto concleanup;
+                }
+            }
             
             SSL_set_fd(server->ssl, server->sock);
             if (sslconnecttimeout(server->ssl, 5) <= 0) {

@@ -98,6 +98,7 @@ struct options {
     uint8_t *fticks_key;
     uint8_t ipv4only;
     uint8_t ipv6only;
+    uint8_t sni;
 };
 
 struct commonprotoopts {
@@ -171,6 +172,8 @@ struct clsrvconf {
     struct server *servers;
     char *fticks_viscountry;
     char *fticks_visinst;
+    uint8_t sni;
+    char *sniservername;
 };
 
 #include "tlscommon.h"

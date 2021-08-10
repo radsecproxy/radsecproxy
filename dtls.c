@@ -610,6 +610,16 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
                 goto concleanup;
             }
 
+            if (server->conf->sni) {
+                struct in6_addr tmp;
+                char *servername = server->conf->sniservername ? server->conf->sniservername : 
+                    (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL : hp->host;
+                if (servername && !tlssetsni(server->ssl, servername)) {
+                    debug(DBG_ERR, "tlsconnect: set SNI %s failed", servername);
+                    goto concleanup;
+                }
+            }
+
             bio = BIO_new_dgram(server->sock, BIO_CLOSE);
             BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, hp->addrinfo->ai_addr);
             SSL_set_bio(server->ssl, bio, bio);
