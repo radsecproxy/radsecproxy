@@ -115,6 +115,7 @@ struct request {
     struct client *from;
     struct server *to;
     char *origusername;
+    uint8_t rqcode;
     uint8_t rqid;
     uint8_t rqauth[16];
     uint8_t newid;

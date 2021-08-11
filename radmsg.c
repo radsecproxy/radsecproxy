@@ -121,7 +121,7 @@ int radmsg_copy_attrs(struct radmsg *dst,
     return n;
 }
 
-int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret, int secret_len) {
+int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret, int secret_len, uint8_t rqcode) {
     int result = 0;             /* Fail. */
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct hmac_md5_ctx hmacctx;
@@ -136,12 +136,9 @@ int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret, int se
     memset(authattr, 0, 16);
 
     /* Accounting packet Message-Authenticator is not calculated on request
-       authenticator, but on 16 zero byte
-       (Was unable to find RFC, this is what FreeRadius v3 does and expects)
-       FIXME: EXCEPT when answering a Status-Server request - but as radsecproxy
-       currently replies all Status-Server with Access-Accept even on accounting
-       ports such fix is not important for now. */
-    if (code == RAD_Accounting_Request || code == RAD_Accounting_Response) {
+       authenticator, but on 16 zero byte - except on Status-Server responses.
+       (Was unable to find RFC, this is what FreeRadius v3 does and expects) */
+    if ((code == RAD_Accounting_Request || code == RAD_Accounting_Response) && (rqcode != RAD_Status_Server)) {
         memcpy(save_reqauth, rad+4, 16);
         memset(rad+4, 0, 16);
     }
@@ -152,7 +149,7 @@ int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret, int se
 
     memcpy(authattr, save_authattr, 16);
 
-    if (code == RAD_Accounting_Request || code == RAD_Accounting_Response) {
+    if ((code == RAD_Accounting_Request || code == RAD_Accounting_Response) && (rqcode != RAD_Status_Server)) {
         memcpy(rad+4, save_reqauth, 16);
     }
 
@@ -190,7 +187,7 @@ int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec, i
     return result;
 }
 
-int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *secret, int secret_len) {
+int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *secret, int secret_len, uint8_t rqcode) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct hmac_md5_ctx hmacctx;
     uint8_t code, save_reqauth[16];
@@ -205,12 +202,9 @@ int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *
     memset(authattrval, 0, 16);
 
     /* Accounting packet Message-Authenticator is not calculated on request
-       authenticator, but on 16 zero byte
-       (Was unable to find RFC, this is what FreeRadius v3 does and expects)
-       FIXME: EXCEPT when answering a Status-Server request - but as radsecproxy
-       currently replies all Status-Server with Access-Accept even on accounting
-       ports such fix is not important for now. */
-    if (code == RAD_Accounting_Request || code == RAD_Accounting_Response) {
+       authenticator, but on 16 zero byte - except on Status-Server responses.
+       (Was unable to find RFC, this is what FreeRadius v3 does and expects) */
+    if ((code == RAD_Accounting_Request || code == RAD_Accounting_Response) && (rqcode != RAD_Status_Server)) {
         memcpy(save_reqauth, rad+4, 16);
         memset(rad+4, 0, 16);
     }
@@ -219,7 +213,7 @@ int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *
     hmac_md5_update(&hmacctx, RADLEN(rad), rad);
     hmac_md5_digest(&hmacctx, MD5_DIGEST_SIZE, authattrval);
 
-    if (code == RAD_Accounting_Request || code == RAD_Accounting_Response) {
+    if ((code == RAD_Accounting_Request || code == RAD_Accounting_Response) && (rqcode != RAD_Status_Server)) {
         memcpy(rad+4, save_reqauth, 16);
     }
 
@@ -254,7 +248,7 @@ uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
     return p;
 }
 
-uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len) {
+uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t rqcode) {
     struct list_node *node;
     struct tlv *tlv;
     int size;
@@ -286,7 +280,7 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len) {
             msgauth = ATTRVAL(p);
         p += tlv->l + 2;
     }
-    if (msgauth && !_createmessageauth(buf, msgauth, secret, secret_len)) {
+    if (msgauth && !_createmessageauth(buf, msgauth, secret, secret_len, rqcode)) {
 	free(buf);
 	return NULL;
     }
@@ -302,7 +296,7 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len) {
 }
 
 /* if secret set we also validate message authenticator if present */
-struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, int secret_len, uint8_t *rqauth) {
+struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, int secret_len, uint8_t rqcode, uint8_t *rqauth) {
     struct radmsg *msg;
     uint8_t t, l, *v = NULL, *p, auth[16];
     uint16_t len;
@@ -352,7 +346,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, int secret_len, uint8_t
 	if (t == RAD_Attr_Message_Authenticator && secret) {
 	    if (rqauth)
 		memcpy(buf + 4, rqauth, 16);
-	    if (l != 16 || !_checkmsgauth(buf, v, secret, secret_len)) {
+	    if (l != 16 || !_checkmsgauth(buf, v, secret, secret_len, rqcode)) {
 		debug(DBG_WARN, "buf2radmsg: message authentication failed");
 		if (rqauth)
 		    memcpy(buf + 4, msg->auth, 16);

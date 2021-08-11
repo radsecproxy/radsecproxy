@@ -448,7 +448,7 @@ int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
         if (!to->requests[id].rq) {
             rq->newid = id;
             rq->msg->id = id;
-            rq->buf = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len);
+            rq->buf = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len, rq->rqcode);
             if (!rq->buf) {
                 pthread_mutex_unlock(to->requests[id].lock);
                 debug(DBG_ERR, "sendrq: radmsg2buf failed");
@@ -527,7 +527,7 @@ void sendreply(struct request *rq) {
     struct client *to = rq->from;
 
     if (!rq->replybuf)
-	rq->replybuf = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len);
+	rq->replybuf = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len, rq->rqcode);
     radmsg_free(rq->msg);
     rq->msg = NULL;
     if (!rq->replybuf) {
@@ -1254,7 +1254,7 @@ int radsrv(struct request *rq) {
     int ttlres;
     char tmp[INET6_ADDRSTRLEN];
 
-    msg = buf2radmsg(rq->buf, from->conf->secret, from->conf->secret_len, NULL);
+    msg = buf2radmsg(rq->buf, from->conf->secret, from->conf->secret_len, 0, NULL);
     free(rq->buf);
     rq->buf = NULL;
 
@@ -1265,6 +1265,7 @@ int radsrv(struct request *rq) {
     }
 
     rq->msg = msg;
+    rq->rqcode = msg->code;
     rq->rqid = msg->id;
     memcpy(rq->rqauth, msg->auth, 16);
 
@@ -1425,7 +1426,7 @@ void replyh(struct server *server, unsigned char *buf) {
 	goto errunlock;
     }
 
-    msg = buf2radmsg(buf, server->conf->secret, server->conf->secret_len, rqout->rq->msg->auth);
+    msg = buf2radmsg(buf, server->conf->secret, server->conf->secret_len, rqout->rq->msg->code, rqout->rq->msg->auth);
 #ifdef DEBUG
     printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
