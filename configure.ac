@@ -11,6 +11,12 @@ AC_PROG_RANLIB
 AC_CHECK_FUNCS([mallopt])
 AC_REQUIRE_AUX_FILE([tap-driver.sh])
 
+m4_version_prereq(2.70, [], [AC_PROG_CC_C99])
+if test "$ac_cv_prog_cc_c99" = "no"; then
+  echo "requires C99 compatible compiler"
+  exit -1
+fi
+
 udp=yes
 AC_ARG_ENABLE(udp,
   [  --enable-udp whether to enable UDP transport: yes/no; default yes ],
