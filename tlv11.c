@@ -2,7 +2,6 @@
  * Copyright (c) 2010, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
-#define _GNU_SOURCE
 #ifdef SYS_SOLARIS9
 #include <sys/inttypes.h>
 #else
@@ -100,7 +99,7 @@ void rmtlv(struct list *tlvs, uint8_t t) {
 
 uint8_t *tlv2str(struct tlv *tlv) {
     if(!tlv)
-        return '\0';
+        return NULL;
     uint8_t *s = malloc(tlv->l + 1);
     if (s) {
 	memcpy(s, tlv->v, tlv->l);
@@ -122,27 +121,25 @@ struct tlv *resizetlv(struct tlv *tlv, uint8_t newlen) {
 }
 
 uint32_t tlv2longint(struct tlv *tlv) {
-    if(!tlv) return 0;
-    uint32_t n = 0;
-    n += tlv->v[3];
-    n += tlv->v[2] << 8;
-    n += tlv->v[1] << 16;
-    n += tlv->v[0] << 24;
-    return n;
+    if (!tlv) return 0;
+    if (tlv->l != sizeof(uint32_t)) return 0;
+    return ntohl(*(uint32_t *)tlv->v);
 }
 
 char* tlv2ipv4addr(struct tlv *tlv) {
-    if(!tlv) return 0;
-    char *rval = "undef";
-    if(tlv->v) {
-        uint8_t *v = tlv2str(tlv);
-	char *str;
-        if(asprintf(&str, "%d.%d.%d.%d", v[0], v[1], v[2], v[3]) >=0) {
-            rval = str;
-        }
-        free(v);
+    char *result;
+
+    if (!tlv) return NULL;
+    if (tlv->l != sizeof(in_addr_t)) return NULL;
+
+    result = malloc(INET_ADDRSTRLEN);
+    if (!result) return NULL;
+
+    if (!inet_ntop(AF_INET, tlv->v, result, INET_ADDRSTRLEN)) {
+        free(result);
+        return NULL;
     }
-    return rval;
+    return result;
 }
 
 /* Local Variables: */
