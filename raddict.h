@@ -1,8 +1,8 @@
-#ifndef RAD_DICT
-#define RAD_DICT
+#ifndef _RADDICT_H
+#define _RADDICT_H
 
 const char* RAD_Attr_Acct_Terminate_Cause_Dict[] = {
-        "User-Request",
+        [1] = "User-Request",
         "Lost-Carrier",
         "Lost-Service",
         "Idle-Timeout",
@@ -23,9 +23,9 @@ const char* RAD_Attr_Acct_Terminate_Cause_Dict[] = {
 };
 
 const char* RAD_Attr_Acct_Status_Type_Dict[] = {
-        "Start",
-        "Stop",
-        "Interim-Update",
+        [1] = "Start",
+        [2] = "Stop",
+        [3] = "Interim-Update",
         [7] = "Accounting-On",
         [8] = "Accounting-Off",
         [9] = "Tunnel-Start",
@@ -37,4 +37,6 @@ const char* RAD_Attr_Acct_Status_Type_Dict[] = {
         [15] = "Failed",
 };
 
-#endif
+#define RAD_Attr_Dict_Undef "UNKNOWN"
+
+#endif /*_RADDICT_H*/

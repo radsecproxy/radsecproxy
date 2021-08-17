@@ -55,8 +55,6 @@
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
 
-#define RAD_Dict_Unknown_Value "UNKNOWN"
-
 struct radmsg {
     uint8_t code;
     uint8_t id;
@@ -85,7 +83,16 @@ int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type);
 int attrvalidate(unsigned char *attrs, int length);
 struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr);
 int resizeattr(struct tlv *attr, uint8_t newlen);
-char* attrval2str(struct tlv *attr);
+
+/**
+ * convert the attribute value to its string representation form the dictionary 
+ * (see raddict.h)
+ * 
+ * @param attr the attribute to convert
+ * @return the string representation or NULL, if the attribute/value is not in the 
+ * dictionary
+ */
+const char* attrval2strdict(struct tlv *attr);
 
 #endif /*_RADMSG_H*/
 
