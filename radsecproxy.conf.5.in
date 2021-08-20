@@ -702,6 +702,12 @@ Enable sending Accounting-Response instead of ignoring Accounting-Requests when
 no \fBaccoutingServer\fR are configured.
 .RE
 
+.BR "AccountingLog (" on | off )
+.RS
+When responding to Accounting-Requests (\fBAccountingResponse on\fR), log the 
+accounting data.
+.RE
+
 .BI "ReplyMessage " message
 .RS
 Specify a message to be sent back to the client if a Access-Request is denied

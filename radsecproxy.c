@@ -1368,7 +1368,8 @@ int radsrv(struct request *rq) {
             debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), userascii);
             respond(rq, RAD_Access_Reject, realm->message, 1, 1);
         } else if (realm->accresp && msg->code == RAD_Accounting_Request) {
-            log_accounting_resp(from, msg, (char *)userascii);
+            if (realm->acclog) 
+                log_accounting_resp(from, msg, (char *)userascii);
             respond(rq, RAD_Accounting_Response, NULL, 1, 0);
         }
         goto exit;
@@ -1971,7 +1972,7 @@ void freerealm(struct realm *realm) {
     free(realm);
 }
 
-struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char *message, uint8_t accresp) {
+struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char *message, uint8_t accresp, uint8_t acclog) {
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
@@ -2035,6 +2036,7 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
     }
     realm->message = message;
     realm->accresp = accresp;
+    realm->acclog = acclog;
 
     if (regcomp(&realm->regex, regex ? regex : value + 1, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
 	debug(DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
@@ -2155,7 +2157,7 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
     if (!realm->subrealms)
 	return NULL;
 
-    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, stringcopy(realm->message, 0), realm->accresp);
+    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, stringcopy(realm->message, 0), realm->accresp, realm->acclog);
     if (!newrealm) {
 	list_destroy(realm->subrealms);
 	realm->subrealms = NULL;
@@ -2828,7 +2830,7 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
 
 int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char **servers = NULL, **accservers = NULL, *msg = NULL;
-    uint8_t accresp = 0;
+    uint8_t accresp = 0, acclog = 0;
 
     debug(DBG_DBG, "confrealm_cb called for %s", block);
 
@@ -2837,11 +2839,12 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
 			  "accountingServer", CONF_MSTR, &accservers,
 			  "ReplyMessage", CONF_STR, &msg,
 			  "AccountingResponse", CONF_BLN, &accresp,
+              "AccountingLog", CONF_BLN, &acclog,
 			  NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
 
-    addrealm(realms, val, servers, accservers, msg, accresp);
+    addrealm(realms, val, servers, accservers, msg, accresp, acclog);
     return 1;
 }
 
