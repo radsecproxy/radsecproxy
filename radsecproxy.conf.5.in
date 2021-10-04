@@ -828,7 +828,7 @@ Specify the list of accepted \fIciphers\fR. See
 Specify the \fIciphersuites\fR to be used for TLS1.3. See 
 .BR openssl-ciphers (1).
 .br
-Note this requires openssl 1.1.1
+Note this requires OpenSSL 1.1.1
 .RE
 
 .BR "TlsVersion " (
