@@ -105,6 +105,8 @@ tls default {
     # Optionally require that peer certs have one of the specified policyOIDs
     # policyoid     1.2.3 # this option can be used multiple times
     # policyoid     1.3.4
+	# Require at least TLS1.2, overriding system defaults
+	# TLSVersion TLS1_2:
 }
 
 # If you want one cert for all clients and another for all servers, use

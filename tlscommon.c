@@ -390,8 +390,10 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
         /* TLS_method() was introduced in OpenSSL 1.1.0. */
         ctx = SSL_CTX_new(TLS_method());
-        SSL_CTX_set_min_proto_version(ctx, conf->tlsminversion);
-        SSL_CTX_set_max_proto_version(ctx, conf->tlsmaxversion);
+        if (conf->tlsminversion >= 0)
+            SSL_CTX_set_min_proto_version(ctx, conf->tlsminversion);
+        if (conf->tlsmaxversion >= 0)
+            SSL_CTX_set_max_proto_version(ctx, conf->tlsmaxversion);
 #else
         /* No TLS_method(), use SSLv23_method() and disable SSLv2 and SSLv3. */
         ctx = SSL_CTX_new(SSLv23_method());
@@ -408,8 +410,10 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
         /* DTLS_method() seems to have been introduced in OpenSSL 1.0.2. */
         ctx = SSL_CTX_new(DTLS_method());
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
-        SSL_CTX_set_min_proto_version(ctx, conf->dtlsminversion);
-        SSL_CTX_set_max_proto_version(ctx, conf->dtlsmaxversion);
+        if (conf->dtlsminversion >= 0)
+            SSL_CTX_set_min_proto_version(ctx, conf->dtlsminversion);
+        if (conf->dtlsmaxversion >= 0)
+            SSL_CTX_set_max_proto_version(ctx, conf->dtlsmaxversion);
 #endif
 #else
         ctx = SSL_CTX_new(DTLSv1_method());
@@ -905,7 +909,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 	conf->cacheexpiry = expiry;
     }
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
-    conf->tlsminversion = TLS1_1_VERSION;
+    /* use -1 as 'not set' value */
+    conf->tlsminversion = conf->tlsmaxversion = conf->dtlsminversion = conf->dtlsmaxversion = -1;
     if (tlsversion) {
         if(!conf_tls_version(tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
             debug(DBG_ERR, "error in block %s, invalid TlsVersion %s", val, tlsversion);
