@@ -1241,6 +1241,49 @@ void rmclientrq(struct request *rq, uint8_t id) {
     }
 }
 
+static void log_accounting_resp(struct client *from, struct radmsg *msg, char *user) {
+    char tmp[INET6_ADDRSTRLEN];
+    const char* status_type = attrval2strdict(radmsg_gettype(msg, RAD_Attr_Acct_Status_Type));
+    char* nas_ip_address = tlv2ipv4addr(radmsg_gettype(msg, RAD_Attr_NAS_IP_Address));
+    char* framed_ip_address = tlv2ipv4addr(radmsg_gettype(msg, RAD_Attr_Framed_IP_Address));
+
+    time_t event_timestamp_i = tlv2longint(radmsg_gettype(msg, RAD_Attr_Event_Timestamp));
+    char event_timestamp[32]; /* timestamp should be at most 21 bytes, leave a few spare */
+
+    uint8_t *session_id = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Acct_Session_Id));
+    uint8_t *called_station_id = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Called_Station_Id));
+    uint8_t *calling_station_id = radattr2ascii(radmsg_gettype(msg, RAD_Attr_Calling_Station_Id));
+    const char* terminate_cause = attrval2strdict(radmsg_gettype(msg, RAD_Attr_Acct_Terminate_Cause));
+
+    strftime(event_timestamp, sizeof(event_timestamp), "%FT%TZ", gmtime(&event_timestamp_i));
+
+    debug(DBG_NOTICE, "Accounting %s (id %d) at %s from client %s (%s): { SID=%s, User-Name=%s, Ced-S-Id=%s, Cing-S-Id=%s, NAS-IP=%s, Framed-IP=%s, Sess-Time=%u, In-Packets=%u, In-Octets=%u, Out-Packets=%u, Out-Octets=%u, Terminate-Cause=%s }",
+        status_type ? status_type : "UNKNOWN",
+        msg->id,
+        event_timestamp_i ? event_timestamp : "UNKNOWN",
+        from->conf->name,
+        addr2string(from->addr, tmp, sizeof(tmp)),
+
+        session_id ? session_id : (uint8_t*)"",
+        user,
+        called_station_id ? called_station_id : (uint8_t*)"",
+        calling_station_id ? calling_station_id : (uint8_t*)"",
+        nas_ip_address ? nas_ip_address : "0.0.0.0",
+        framed_ip_address ? framed_ip_address : "0.0.0.0",
+        tlv2longint(radmsg_gettype(msg, RAD_Attr_Acct_Session_Time)),
+        tlv2longint(radmsg_gettype(msg, RAD_Attr_Acct_Input_Packets)),
+        tlv2longint(radmsg_gettype(msg, RAD_Attr_Acct_Input_Octets)),
+        tlv2longint(radmsg_gettype(msg, RAD_Attr_Acct_Output_Packets)),
+        tlv2longint(radmsg_gettype(msg, RAD_Attr_Acct_Output_Octets)),
+        terminate_cause ? terminate_cause : ""
+    );
+    free(framed_ip_address);
+    free(nas_ip_address);
+    free(session_id);
+    free(called_station_id);
+    free(calling_station_id);
+}
+
 /* Called from server readers, handling incoming requests from
  * clients. */
 /* returns 0 if validation/authentication fails, else 1 */
@@ -1321,13 +1364,15 @@ int radsrv(struct request *rq) {
     }
 
     if (!to) {
-	if (realm->message && msg->code == RAD_Access_Request) {
-	    debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), userascii);
-	    respond(rq, RAD_Access_Reject, realm->message, 1, 1);
-	} else if (realm->accresp && msg->code == RAD_Accounting_Request) {
-	    respond(rq, RAD_Accounting_Response, NULL, 1, 0);
-	}
-	goto exit;
+        if (realm->message && msg->code == RAD_Access_Request) {
+            debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), userascii);
+            respond(rq, RAD_Access_Reject, realm->message, 1, 1);
+        } else if (realm->accresp && msg->code == RAD_Accounting_Request) {
+            if (realm->acclog) 
+                log_accounting_resp(from, msg, (char *)userascii);
+            respond(rq, RAD_Accounting_Response, NULL, 1, 0);
+        }
+        goto exit;
     }
 
     if ((to->conf->loopprevention == 1
@@ -1927,7 +1972,7 @@ void freerealm(struct realm *realm) {
     free(realm);
 }
 
-struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char *message, uint8_t accresp) {
+struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char *message, uint8_t accresp, uint8_t acclog) {
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
@@ -1991,6 +2036,7 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
     }
     realm->message = message;
     realm->accresp = accresp;
+    realm->acclog = acclog;
 
     if (regcomp(&realm->regex, regex ? regex : value + 1, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
 	debug(DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
@@ -2111,7 +2157,7 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
     if (!realm->subrealms)
 	return NULL;
 
-    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, stringcopy(realm->message, 0), realm->accresp);
+    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, stringcopy(realm->message, 0), realm->accresp, realm->acclog);
     if (!newrealm) {
 	list_destroy(realm->subrealms);
 	realm->subrealms = NULL;
@@ -2784,7 +2830,7 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
 
 int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char **servers = NULL, **accservers = NULL, *msg = NULL;
-    uint8_t accresp = 0;
+    uint8_t accresp = 0, acclog = 0;
 
     debug(DBG_DBG, "confrealm_cb called for %s", block);
 
@@ -2793,11 +2839,12 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
 			  "accountingServer", CONF_MSTR, &accservers,
 			  "ReplyMessage", CONF_STR, &msg,
 			  "AccountingResponse", CONF_BLN, &accresp,
+              "AccountingLog", CONF_BLN, &acclog,
 			  NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
 
-    addrealm(realms, val, servers, accservers, msg, accresp);
+    addrealm(realms, val, servers, accservers, msg, accresp, acclog);
     return 1;
 }
 

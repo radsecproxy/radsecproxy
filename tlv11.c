@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <stdio.h>
 
 struct tlv *maketlv(uint8_t t, uint8_t l, void *v) {
     struct tlv *tlv;
@@ -97,6 +98,8 @@ void rmtlv(struct list *tlvs, uint8_t t) {
 }
 
 uint8_t *tlv2str(struct tlv *tlv) {
+    if(!tlv)
+        return NULL;
     uint8_t *s = malloc(tlv->l + 1);
     if (s) {
 	memcpy(s, tlv->v, tlv->l);
@@ -115,6 +118,28 @@ struct tlv *resizetlv(struct tlv *tlv, uint8_t newlen) {
         tlv->l = newlen;
     }
     return tlv;
+}
+
+uint32_t tlv2longint(struct tlv *tlv) {
+    if (!tlv) return 0;
+    if (tlv->l != sizeof(uint32_t)) return 0;
+    return ntohl(*(uint32_t *)tlv->v);
+}
+
+char* tlv2ipv4addr(struct tlv *tlv) {
+    char *result;
+
+    if (!tlv) return NULL;
+    if (tlv->l != sizeof(in_addr_t)) return NULL;
+
+    result = malloc(INET_ADDRSTRLEN);
+    if (!result) return NULL;
+
+    if (!inet_ntop(AF_INET, tlv->v, result, INET_ADDRSTRLEN)) {
+        free(result);
+        return NULL;
+    }
+    return result;
 }
 
 /* Local Variables: */

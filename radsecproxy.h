@@ -214,6 +214,7 @@ struct realm {
     char *name;
     char *message;
     uint8_t accresp;
+    uint8_t acclog;
     regex_t regex;
     uint32_t refcount;
     pthread_mutex_t refmutex;
