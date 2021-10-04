@@ -192,7 +192,9 @@ int tlsconnect(struct server *server, int timeout, char *text) {
             if (verifyconfcert(cert, server->conf, hp)) {
                 subj = getcertsubject(cert);
                 if(subj) {
-                    debug(DBG_WARN, "tlsconnect: TLS connection to %s (%s port %s), subject %s up", server->conf->name, hp->host, hp->port, subj);
+                    debug(DBG_WARN, "tlsconnect: TLS connection to %s (%s port %s), subject %s, %s with cipher %s up",
+                        server->conf->name, hp->host, hp->port, subj,
+                        SSL_get_version(server->ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(server->ssl)));
                     free(subj);
                 }
                 X509_free(cert);
@@ -587,8 +589,9 @@ void *tlsservernew(void *arg) {
         if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf, NULL)) {
             subj = getcertsubject(cert);
             if(subj) {
-                debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s up",
-                    addr2string((struct sockaddr *)&from,tmp, sizeof(tmp)), conf->name, subj);
+                debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s, %s with cipher %s up",
+                    addr2string((struct sockaddr *)&from,tmp, sizeof(tmp)), conf->name, subj,
+                    SSL_get_version(ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
                 free(subj);
             }
             X509_free(cert);
