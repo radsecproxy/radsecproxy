@@ -1,4 +1,7 @@
 unreleased changes
+	Misc:
+	- OpenSSL 3.0 compatibility (#70)
+	
 	Bug Fixes:
 	- Fix refused startup with openssl <1.1 (#82)
 	- Fix compiler issue for Fedora 33 on s390x (#84)

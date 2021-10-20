@@ -854,7 +854,8 @@ for DTLS.
 .BI "DhFile " file
 .RS
 DH parameter \fIfile\fR to use. See \fBopenssl-dhparam\fR(1)
-
+.br
+Note: starting with OpenSSL 3.0, use of custom DH parameters is discouraged.
 
 .SH "REWRITE BLOCK"
 .nf

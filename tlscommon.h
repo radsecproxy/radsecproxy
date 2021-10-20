@@ -26,7 +26,11 @@ struct tls {
     int tlsmaxversion;
     int dtlsminversion;
     int dtlsmaxversion;
+#if OPENSSL_VERSION_NUMBER >= 0x30000000
+    EVP_PKEY* dhparam;
+#else
     DH *dhparam;
+#endif
     uint32_t tlsexpiry;
     uint32_t dtlsexpiry;
     X509_VERIFY_PARAM *vpm;
