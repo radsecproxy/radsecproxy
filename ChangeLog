@@ -1,4 +1,4 @@
-unreleased changes
+2021-10-25 1.9.1
 	Misc:
 	- OpenSSL 3.0 compatibility (#70)
 	
