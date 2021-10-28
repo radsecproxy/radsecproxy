@@ -1,4 +1,4 @@
-.TH radsecproxy.conf 5 2021-05-28 "radsecproxy 1.9.0" ""
+.TH radsecproxy.conf 5 2021-10-25 "radsecproxy 1.9.1" ""
 
 .SH NAME
 radsecproxy.conf \- Radsec proxy configuration file
@@ -856,7 +856,7 @@ Specify the list of accepted \fIciphers\fR. See
 Specify the \fIciphersuites\fR to be used for TLS1.3. See 
 .BR openssl-ciphers (1).
 .br
-Note this requires openssl 1.1.1
+Note this requires OpenSSL 1.1.1
 .RE
 
 .BR "TlsVersion " (
@@ -870,6 +870,7 @@ Specify the TLS/DTLS protocol \fIversion\fR to be used.
 Specify the range of allowed protocol versions between \fIminversion\fR and 
 \fImaxversion\fR (inclusive). If either is left out, any version up to, or 
 starting from this version is allowed. E.g. "TLS1_2:" will allow TLSv1.2 or later.
+If omitted, use the system defaults set in openssl.conf
 .br
 Currently supported values are
 .BR SSL3 , TLS1 , TLS1_1 , TLS1_2 , TLS1_3
