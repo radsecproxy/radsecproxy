@@ -161,7 +161,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
             server->ssl = SSL_new(ctx);
             pthread_mutex_unlock(&server->conf->tlsconf->lock);
             if (!server->ssl) {
-                debug(DBG_ERR, "tlsconnect: failed to create SSL conneciton for server %s", server->conf->name);
+                debug(DBG_ERR, "tlsconnect: failed to create SSL connection for server %s", server->conf->name);
                 goto concleanup;
             }
 

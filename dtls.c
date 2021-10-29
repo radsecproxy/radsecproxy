@@ -588,11 +588,11 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
             hp = (struct hostportres *)entry->data;
             debug(DBG_INFO, "dtlsconnect: trying to open DTLS connection to server %s (%s port %s)", server->conf->name, hp->host, hp->port);
             if ((server->sock = bindtoaddr(source ? source : srcres, hp->addrinfo->ai_family, 0)) < 0) {
-                debug(DBG_ERR, "dtlsconnect: faild to bind socket for server %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                debug(DBG_ERR, "dtlsconnect: failed to bind socket for server %s (%s port %s)", server->conf->name, hp->host, hp->port);
                 goto concleanup;
             }
             if (connect(server->sock, hp->addrinfo->ai_addr, hp->addrinfo->ai_addrlen)) {
-                debug(DBG_ERR, "dtlsconnect: faild to connect socket for server %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                debug(DBG_ERR, "dtlsconnect: failed to connect socket for server %s (%s port %s)", server->conf->name, hp->host, hp->port);
                 goto concleanup;
             }
 
@@ -606,7 +606,7 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
             server->ssl = SSL_new(ctx);
             pthread_mutex_unlock(&server->conf->tlsconf->lock);
             if (!server->ssl) {
-                debug(DBG_ERR, "dtlsconnect: failed to create SSL conneciton for server %s", server->conf->name);
+                debug(DBG_ERR, "dtlsconnect: failed to create SSL connection for server %s", server->conf->name);
                 goto concleanup;
             }
 
