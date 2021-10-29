@@ -1,4 +1,4 @@
-.TH radsecproxy-hash 8 "5 May 2018"
+.TH radsecproxy-hash 8 "@RELEASEDATE@" "@PACKAGE_STRING@"
 
 .SH "NAME"
 radsecproxy-hash - print digests of Ethernet MAC addresses

@@ -1,4 +1,4 @@
-.TH radsecproxy 8 "5 July 2018"
+.TH radsecproxy 8 "@RELEASEDATE@" "@PACKAGE_STRING@"
 
 .SH "NAME"
 radsecproxy - a generic RADIUS proxy that provides both RADIUS UDP and TCP/TLS (RadSec) transport.
