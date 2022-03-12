@@ -626,12 +626,36 @@ static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match){
         && !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), &match->ipaddr, l)) ? 1 : 0 ;
 }
 
+static int compareWithModifiedHostname(char* certDNS, char* scriptHostName) {
+    int len = 0;
+    int len1 = 0, len2 = 0;
+    char* pos;
+    char* modifiedScriptHostName;
+    char *result;
+    char generic[] = "*";
+    pos = strchr(scriptHostName, '.');
+    len = strlen(pos);
+    modifiedScriptHostName = malloc(len + 1);
+    memcpy(modifiedScriptHostName, pos, len);
+    modifiedScriptHostName[len] = '\0';
+    len1 = strlen(generic);
+    len2 = strlen(modifiedScriptHostName);
+    result = malloc(len1 + len2 + 1); 
+    memcpy(result, generic, len1);
+    memcpy(result + len1, modifiedScriptHostName, len2 + 1);
+    if (strlen(certDNS) == strlen(result) && memcmp(result, certDNS, strlen(certDNS)) == 0)
+            return 1;
+    return 0;
+}
+
 static int _general_name_regex_match(char *v, int l, struct certattrmatch *match) {
     char *s;
     if (l <= 0 ) 
         return 0;
     if (match->exact) {
         if (l == strlen(match->exact) && memcmp(v, match->exact, l) == 0)
+            return 1;
+        if(compareWithModifiedHostname(v, match->exact))
             return 1;
         return 0;
     }
