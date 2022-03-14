@@ -638,7 +638,6 @@ static int compareWithModifiedHostname(char* certDNS, char* scriptHostName) {
     modifiedScriptHostName = malloc(len + 1);
     memcpy(modifiedScriptHostName, pos, len);
     modifiedScriptHostName[len] = '\0';
-    debug(DBG_DBG, "generic : %s", generic);
     debug(DBG_DBG, "modifiedScriptHostName : %s", modifiedScriptHostName);
     len1 = strlen(generic);
     len2 = strlen(modifiedScriptHostName);
