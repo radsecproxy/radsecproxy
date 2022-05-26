@@ -28,6 +28,8 @@
 #include <openssl/err.h>
 #include <openssl/md5.h>
 #include <openssl/x509v3.h>
+#include <openssl/ocsp.h>
+#include <openssl/bio.h>
 #include <assert.h>
 #include "debug.h"
 #include "hash.h"
@@ -81,6 +83,194 @@ void ssl_locking_callback(int mode, int type, const char *file, int line) {
        pthread_mutex_unlock(&ssl_locks[type]);
 }
 #endif
+
+typedef enum {
+    OCSP_STATUS_FAILED  = 0,
+    OCSP_STATUS_OK      = 1,
+    OCSP_STATUS_SKIPPED = 2,
+} ocsp_status_t;
+
+static int ocsp_parse_cert_url(X509 *cert, char **host_out, char **port_out, char **path_out) {
+    int found_uri = -1;
+    AUTHORITY_INFO_ACCESS *aia;
+    ACCESS_DESCRIPTION *ad;
+    int is_https;
+
+    aia = X509_get_ext_d2i(cert, NID_info_access, NULL, NULL);
+    for(int i=0; i < sk_ACCESS_DESCRIPTION_num(aia); i++) {
+        ad = sk_ACCESS_DESCRIPTION_value(aia, i);
+        if (OBJ_obj2nid(ad->method) != NID_ad_OCSP)
+            continue; // Additional autority information was not an OCSP information
+        if (ad->location->type != GEN_URI)
+            continue; // Additional information was not a URI
+        found_uri = 0;
+
+        if (OCSP_parse_url((char *) ad->location->d.ia5->data, host_out, port_out, path_out, &is_https))
+        return 1;
+    }
+
+    return found_uri;
+}
+static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X509 *issuer, X509 *cert, struct tls *tlsconf) {
+    OCSP_CERTID *certid = NULL;
+    OCSP_REQUEST *req = NULL;
+    OCSP_RESPONSE *resp = NULL;
+    OCSP_BASICRESP *bresp = NULL;
+    OCSP_REQ_CTX *ctx = NULL;
+    BIO *cbio = NULL;
+    char *host = NULL;
+    char *port = NULL;
+    char *path = NULL;
+    char hostheader[1024];
+    int ret;
+    ocsp_status_t ocsp_status = OCSP_STATUS_FAILED;
+    struct timeval now, when;
+    int status, reason;
+    long nsec = (5 * 60); // Grace period of 5 min for OCSP validity
+    long maxage = -1; // Don't require a specific freshness
+    ASN1_GENERALIZEDTIME *rev = NULL, *thisupd = NULL, *nextupd = NULL;
+
+    certid = OCSP_cert_to_id(NULL, cert, issuer);
+    req = OCSP_REQUEST_new();
+    OCSP_request_add0_id(req, certid);
+
+    // TODO: Check for Override URL
+    ret = ocsp_parse_cert_url(cert, &host, &port, &path);
+    if(ret <= 0) {
+        debug(DBG_DBG, "ocsp_check: Invalid or missing OCSP URL in certificate.");
+        if(tlsconf->ocsp_ignore_empty_url) {
+            ocsp_status = OCSP_STATUS_OK;
+        } else {
+            ocsp_status = OCSP_STATUS_SKIPPED;
+        }
+        goto ocsp_end;
+    }
+    if((strlen(host) + strlen(port) + 2) > sizeof(hostheader)) {
+        debug(DBG_DBG, "ocsp_check: OCSP URL was too long.");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+    snprintf(hostheader, sizeof(hostheader), "%s:%s", host, port);
+
+    cbio = BIO_new_connect(host);
+    BIO_set_conn_port(cbio, port);
+    ret = BIO_do_connect(cbio);
+    if(ret <= 0) {
+        debug(DBG_DBG, "ocsp_check: Could not connect to OCSP responder");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+
+    BIO_set_nbio(cbio, 1);
+
+    ctx = OCSP_sendreq_new(cbio, path, NULL, -1);
+    if(!ctx) {
+        debug(DBG_DBG, "ocsp_check: Could not create OCSP request");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+    if(!OCSP_REQ_CTX_add1_header(ctx, "Host", hostheader)) {
+        debug(DBG_DBG, "ocsp_check: Could not set Host header");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+    if(!OCSP_REQ_CTX_set1_req(ctx, req)) {
+        debug(DBG_DBG, "ocsp_cehck: Could not add data to OCSP request");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+
+    gettimeofday(&when, NULL);
+    // TODO: handle no timeout case
+    when.tv_sec += tlsconf->ocsp_timeout;
+    do {
+        ret = OCSP_sendreq_nbio(&resp, ctx);
+        gettimeofday(&now, NULL);
+        if(!timercmp(&now, &when, <))
+            break;
+    } while ((ret == -1) && BIO_should_retry(cbio));
+
+    if((ret == -1) && BIO_should_retry(cbio)) {
+        debug(DBG_DBG, "ocsp_check: Response timed out.");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+
+    if(ret == 0) {
+        debug(DBG_DBG, "ocsp_check: Could not get OCSP response");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+
+    status = OCSP_response_status(resp);
+    if(status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
+        debug(DBG_DBG, "ocsp_check: Response status %s", OCSP_response_status_str(status));
+        goto ocsp_end;
+    }
+
+    bresp = OCSP_response_get1_basic(resp);
+    if(!bresp) {
+        debug(DBG_DBG, "ocsp_check: Error in decoding OCSP response");
+        goto ocsp_end;
+    }
+
+    if(OCSP_basic_verify(bresp, X509_STORE_CTX_get0_untrusted(store_ctx), store, 0) != 1){
+        debug(DBG_DBG, "ocsp_check: Could not verify the basic OCSP response");
+        goto ocsp_end;
+    }
+
+    if(!OCSP_resp_find_status(bresp, certid, &status, &reason, &rev, &thisupd, &nextupd)) {
+        debug(DBG_DBG, "ocsp_check: Could not find response for the corresponding request in status");
+        goto ocsp_end;
+    }
+    if(!OCSP_check_validity(thisupd, nextupd, nsec, maxage)){
+        debug(DBG_DBG, "ocsp_check: Status times are invalid.");
+        goto ocsp_end;
+    }
+    switch (status) {
+    case V_OCSP_CERTSTATUS_GOOD:
+        debug(DBG_DBG, "ocsp_check: Cert status: good");
+        ocsp_status = OCSP_STATUS_OK;
+        break;
+    default:
+        debug(DBG_DBG, "ocsp_check: Cert status: %s", OCSP_cert_status_str(status));
+        if(reason != -1) {
+            debug(DBG_DBG, "ocsp_check: Reason: %s", OCSP_crl_reason_str(reason));
+        }
+    }
+
+ocsp_end:
+    OCSP_REQUEST_free(req);
+    OCSP_RESPONSE_free(resp);
+    OCSP_REQ_CTX_free(ctx);
+    free(host);
+    free(port);
+    free(rev);
+    free(thisupd);
+    free(nextupd);
+    BIO_free_all(cbio);
+
+    switch(ocsp_status) {
+    case OCSP_STATUS_OK:
+        debug(DBG_INFO, "ocsp_check: OCSP Response OK");
+        break;
+    case OCSP_STATUS_SKIPPED:
+        if (tlsconf->ocsp_softfail) {
+            debug(DBG_NOTICE, "ocsp_check: internal OCSP failure. Softfail active, assumig it is valid");
+            // Clearing OpenSSL Errors
+            while (ERR_get_error());
+        } else {
+            debug(DBG_NOTICE, "ocsp_check: internal OCSP failure. Softfail not active, treating as revoked.");
+            ocsp_status = OCSP_STATUS_FAILED;
+        }
+    default:
+        debug(DBG_NOTICE, "ocsp_check: OCSP-Response: Certificate has been revoked or is invalid");
+    }
+
+    return ocsp_status;
+}
+
+
 
 void sslinit(void) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000
@@ -150,8 +340,12 @@ static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
 
 static int verify_cb(int ok, X509_STORE_CTX *ctx) {
     char *buf = NULL;
-    X509 *err_cert;
+    X509 *err_cert, *issuer_cert;
     int err, depth;
+    struct tls *tlsconf;
+    SSL *ssl;
+    X509_STORE *store;
+    ocsp_status_t ocsp_return;
 
     err_cert = X509_STORE_CTX_get_current_cert(ctx);
     err = X509_STORE_CTX_get_error(ctx);
@@ -162,6 +356,30 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
         err = X509_V_ERR_CERT_CHAIN_TOO_LONG;
         X509_STORE_CTX_set_error(ctx, err);
     }
+
+    ssl = X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx());
+    tlsconf = (struct tls *)SSL_get_ex_data(ssl, RADSEC_TLS_EX_INDEX_TLSCONF);
+    if(tlsconf != NULL && tlsconf->ocspcheck) {
+        issuer_cert = X509_STORE_CTX_get0_current_issuer(ctx);
+        if (issuer_cert == NULL) {
+            // Issuer is unknown. We can't verify OCSP with unknown issuer.
+            if (ok != 0) {
+                debug(DBG_WARN, "verify error: Unknown issuer, skipping OCSP Check");
+                ok = 0;
+            }
+        } else if (issuer_cert == err_cert) {
+            // if the cert is selfsigned we don't need ocsp
+        } else {
+          store = (X509_STORE *)SSL_get_ex_data(ssl, RADSEC_TLS_EX_INDEX_STORE);
+          ocsp_return = ocsp_check(store, ctx, issuer_cert, err_cert, tlsconf);
+          if (ocsp_return == OCSP_STATUS_FAILED) {
+            err = X509_V_ERR_OCSP_VERIFY_FAILED;
+            X509_STORE_CTX_set_error(ctx, err);
+            ok = 0;
+          }
+        }
+    }
+
 
     if (!ok) {
         if (err_cert)
@@ -194,6 +412,8 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
         case X509_V_ERR_NO_EXPLICIT_POLICY:
             debug(DBG_WARN, "No Explicit Certificate Policy");
             break;
+        case X509_V_ERR_OCSP_VERIFY_FAILED:
+            debug(DBG_WARN, "OCSP verification failed");
         }
     }
 #ifdef DEBUG
@@ -1077,14 +1297,20 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     }
     conf->cacheexpiry = -1;
 
+    conf->ocsp_timeout = 10;
+
     if (!getgenericconfig(cf, block,
         "CACertificateFile", CONF_STR, &conf->cacertfile,
         "CACertificatePath", CONF_STR, &conf->cacertpath,
         "CertificateFile", CONF_STR, &conf->certfile,
         "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
         "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
-        "CacheExpiry", CONF_LINT, &conf->cacheexpiry,
+        "CacheExpiry", CONF_LINT, &expiry,
         "CRLCheck", CONF_BLN, &conf->crlcheck,
+        "OCSPCheck", CONF_BLN, &conf->ocspcheck,
+        "OCSPSoftFail", CONF_BLN, &conf->ocsp_softfail,
+        "OCSPIgnoreMissingURL", CONF_BLN, &conf->ocsp_ignore_empty_url,
+        "OCSPTimeout", CONF_LINT, &conf->ocsp_timeout,
         "PolicyOID", CONF_MSTR, &conf->policyoids,
         "CipherList", CONF_STR, &conf->cipherlist,
         "CipherSuites", CONF_STR, &conf->ciphersuites,
@@ -1168,6 +1394,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         dhfile = NULL;
 #endif
     }
+
+    // TODO set default value for OCSP timeout
 
     conf->name = stringcopy(val, 0);
     if (!conf->name) {

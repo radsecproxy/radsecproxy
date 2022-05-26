@@ -326,6 +326,9 @@ void *dtlslistener(void *arg) {
                 debug(DBG_ERR, "dtlslistener: failed to create SSL connection");
                 continue;
             }
+            SSL_set_ex_data(ssl, RADSEC_TLS_EX_INDEX_TLSCONF, (void *)conf->tlsconf);
+            SSL_set_ex_data(ssl, RADSEC_TLS_EX_INDEX_STORE, (void *)SSL_CTX_get_cert_store(ctx));
+
             bio = BIO_new_dgram(s, BIO_NOCLOSE);
             SSL_set_bio(ssl, bio, bio);
             SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
@@ -439,6 +442,10 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
             server->ssl = SSL_new(ctx);
             pthread_mutex_unlock(&server->conf->tlsconf->lock);
+
+            SSL_set_ex_data(server->ssl, RADSEC_TLS_EX_INDEX_TLSCONF, (void *)server->conf->tlsconf);
+            SSL_set_ex_data(server->ssl, RADSEC_TLS_EX_INDEX_STORE, (void *)SSL_CTX_get_cert_store(ctx));
+
             if (!server->ssl) {
                 debug(DBG_ERR, "dtlsconnect: failed to create SSL connection for server %s", server->conf->name);
                 goto concleanup;
