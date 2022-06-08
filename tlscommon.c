@@ -134,7 +134,6 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
     req = OCSP_REQUEST_new();
     OCSP_request_add0_id(req, certid);
 
-    // TODO: Check for Override URL
     ret = ocsp_parse_cert_url(cert, &host, &port, &path);
     if(ret <= 0) {
         debug(DBG_DBG, "ocsp_check: Invalid or missing OCSP URL in certificate.");
@@ -161,7 +160,10 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
         goto ocsp_end;
     }
 
-    BIO_set_nbio(cbio, 1);
+    if(tlsconf->ocsp_timeout) {
+        // only do async callbacks if we have a timeout configured.
+        BIO_set_nbio(cbio, 1);
+    }
 
     ctx = OCSP_sendreq_new(cbio, path, NULL, -1);
     if(!ctx) {
@@ -185,12 +187,14 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
     when.tv_sec += tlsconf->ocsp_timeout;
     do {
         ret = OCSP_sendreq_nbio(&resp, ctx);
-        gettimeofday(&now, NULL);
-        if(!timercmp(&now, &when, <))
-            break;
+        if(tlsconf->ocsp_timeout) {
+            gettimeofday(&now, NULL);
+            if(!timercmp(&now, &when, <))
+                break;
+        }
     } while ((ret == -1) && BIO_should_retry(cbio));
 
-    if((ret == -1) && BIO_should_retry(cbio)) {
+    if((ret == -1) && tlsconf->ocsp_timeout && BIO_should_retry(cbio)) {
         debug(DBG_DBG, "ocsp_check: Response timed out.");
         ocsp_status = OCSP_STATUS_SKIPPED;
         goto ocsp_end;
