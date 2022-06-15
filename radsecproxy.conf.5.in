@@ -964,6 +964,36 @@ for DTLS.
 DH parameter \fIfile\fR to use. See \fBopenssl-dhparam\fR(1)
 .br
 Note: starting with OpenSSL 3.0, use of custom DH parameters is discouraged.
+.RE
+
+.BR OCSPCheck
+( On | Off )
+.RS
+Enable OCSP Check for peer certificates (default is Off)
+.br
+If enabled, radsecproxy will request the certificate Status for every certificate in the chain up to the trust anchor.
+.RE
+
+.BR OCSPSoftFail
+( On | Off )
+.RS
+Define behavior in case of internal OCSP failures. If On, any internal OCSP error (e.g. missing OCSP URL in certificate, timeouts, invalid responses, ...) will not lead to a verification failure. If Off, on internal OCSP errors the certificate is considered invalid.
+.RE
+
+.BR OCSPIgnoreMissingURL
+( On | Off)
+.RS
+Define behavior in case a Certificate does not contain an OCSP URL. If On, in case of a missing OCSP URL in the certificate, the certificate is treated valid. This only takes effect if OCSPSoftFail is Off.
+.RE
+
+.BI "OCSPTimeout "seconds
+.RS
+Specify after how many \fIseconds\fR an OCSP request should be aborted. If OCSPSoftFail is Off, a timeout will result in an OCSP verification failure. Defaults to 10 seconds. 0 means no timeout.
+
+.BI "OCSPCheckDepth "depth
+.RS
+Specify how many certificates of the certificate chain should be checked. 0 means check the complete chain up to the trust anchor. 1 only checks the server certificates, 2 also checks the first intermediate certificate, and so on.
+Defaults to 0 (check the complete chain)
 
 .SH "REWRITE BLOCK"
 .nf
