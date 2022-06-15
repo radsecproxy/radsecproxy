@@ -29,6 +29,7 @@ struct tls {
     uint8_t ocsp_ignore_empty_url;
     uint8_t ocsp_softfail;
     uint32_t ocsp_timeout;
+    uint32_t ocsp_check_depth;
     char **policyoids;
     char *cipherlist;
     char *ciphersuites;

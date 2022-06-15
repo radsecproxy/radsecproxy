@@ -364,23 +364,28 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
     ssl = X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx());
     tlsconf = (struct tls *)SSL_get_ex_data(ssl, RADSEC_TLS_EX_INDEX_TLSCONF);
     if(tlsconf != NULL && tlsconf->ocspcheck) {
-        issuer_cert = X509_STORE_CTX_get0_current_issuer(ctx);
-        if (issuer_cert == NULL) {
-            // Issuer is unknown. We can't verify OCSP with unknown issuer.
-            if (ok != 0) {
-                debug(DBG_WARN, "verify error: Unknown issuer, skipping OCSP Check");
+        if(tlsconf->ocsp_check_depth && (tlsconf->ocsp_check_depth >= depth)) {
+            debug(DBG_DBG, "verify_cb: skipping OCSP Chck for certificate %i, ocsp check depth reached");
+        }
+        else {
+            issuer_cert = X509_STORE_CTX_get0_current_issuer(ctx);
+            if (issuer_cert == NULL) {
+                // Issuer is unknown. We can't verify OCSP with unknown issuer.
+                if (ok != 0) {
+                    debug(DBG_WARN, "verify error: Unknown issuer, skipping OCSP Check");
+                    ok = 0;
+                }
+            } else if (issuer_cert == err_cert) {
+                // if the cert is selfsigned we don't need ocsp
+            } else {
+              store = (X509_STORE *)SSL_get_ex_data(ssl, RADSEC_TLS_EX_INDEX_STORE);
+              ocsp_return = ocsp_check(store, ctx, issuer_cert, err_cert, tlsconf);
+              if (ocsp_return == OCSP_STATUS_FAILED) {
+                err = X509_V_ERR_OCSP_VERIFY_FAILED;
+                X509_STORE_CTX_set_error(ctx, err);
                 ok = 0;
+              }
             }
-        } else if (issuer_cert == err_cert) {
-            // if the cert is selfsigned we don't need ocsp
-        } else {
-          store = (X509_STORE *)SSL_get_ex_data(ssl, RADSEC_TLS_EX_INDEX_STORE);
-          ocsp_return = ocsp_check(store, ctx, issuer_cert, err_cert, tlsconf);
-          if (ocsp_return == OCSP_STATUS_FAILED) {
-            err = X509_V_ERR_OCSP_VERIFY_FAILED;
-            X509_STORE_CTX_set_error(ctx, err);
-            ok = 0;
-          }
         }
     }
 
@@ -1315,6 +1320,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         "OCSPSoftFail", CONF_BLN, &conf->ocsp_softfail,
         "OCSPIgnoreMissingURL", CONF_BLN, &conf->ocsp_ignore_empty_url,
         "OCSPTimeout", CONF_LINT, &conf->ocsp_timeout,
+        "OCSPCheckDepth", CONF_LINT, &conf->ocsp_check_depth,
         "PolicyOID", CONF_MSTR, &conf->policyoids,
         "CipherList", CONF_STR, &conf->cipherlist,
         "CipherSuites", CONF_STR, &conf->ciphersuites,
