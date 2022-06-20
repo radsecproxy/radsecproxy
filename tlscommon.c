@@ -106,8 +106,13 @@ static int ocsp_parse_cert_url(X509 *cert, char **host_out, char **port_out, cha
         found_uri = 0;
 
         if (OCSP_parse_url((char *) ad->location->d.ia5->data, host_out, port_out, path_out, &is_https))
-        return 1;
+        {
+            found_uri = 1;
+            break;
+        }
     }
+
+    AUTHORITY_INFO_ACCESS_free(aia);
 
     return found_uri;
 }
@@ -246,13 +251,11 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
 ocsp_end:
     OCSP_REQUEST_free(req);
     OCSP_RESPONSE_free(resp);
+    OCSP_BASICRESP_free(bresp);
     OCSP_REQ_CTX_free(ctx);
     free(host);
     free(port);
     free(path);
-    free(rev);
-    free(thisupd);
-    free(nextupd);
     BIO_free_all(cbio);
 
     switch(ocsp_status) {
