@@ -249,6 +249,7 @@ ocsp_end:
     OCSP_REQ_CTX_free(ctx);
     free(host);
     free(port);
+    free(path);
     free(rev);
     free(thisupd);
     free(nextupd);
