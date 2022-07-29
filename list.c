@@ -84,6 +84,34 @@ void *list_shift(struct list *list) {
     return data;
 }
 
+/* removes one specific list node from a list and returns its follower*/
+struct list_node *list_removenode(struct list *list, struct list_node *node) {
+    struct list_node *n;
+
+    if(!list || !list->first || !node)
+        return NULL;
+
+    if(list->first == node){
+        list->first = node->next;
+        free(node);
+        list->count--;
+        return list->first;
+    }
+
+    n = list->first;
+    for(; n->next; n = n->next) {
+        if(n->next == node) {
+            n->next = node->next;
+            free(node);
+            list->count--;
+            if(!n->next)
+                list->last = n;
+            return n->next;
+        }
+    }
+    return NULL;
+}
+
 /* removes all entries with matching data pointer */
 void list_removedata(struct list *list, void *data) {
     struct list_node *node, *t;

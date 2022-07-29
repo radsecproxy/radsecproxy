@@ -78,6 +78,8 @@
 static struct options options;
 static struct list *clconfs, *srvconfs;
 static struct list *realms;
+struct list *ocsp_caches;
+pthread_mutex_t ocsp_cache_mutex;
 
 #ifdef __CYGWIN__
 extern int __declspec(dllimport) optind;
@@ -3127,7 +3129,7 @@ void getmainconfig(const char *configfile) {
 	    "Server", CONF_CBK, confserver_cb, NULL,
 	    "Realm", CONF_CBK, confrealm_cb, NULL,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-	    "TLS", CONF_CBK, conftls_cb, NULL,
+	    "TLS", CONF_CBK, conftls_cb, &options,
 #endif
 	    "Rewrite", CONF_CBK, confrewrite_cb, NULL,
 	    "FTicksReporting", CONF_STR, &fticks_reporting_str,
@@ -3138,6 +3140,8 @@ void getmainconfig(const char *configfile) {
         "IPv4Only", CONF_BLN, &options.ipv4only,
         "IPv6Only", CONF_BLN, &options.ipv6only,
         "SNI", CONF_BLN, &options.sni,
+        "OCSPCaching", CONF_BLN, &options.ocsp_caching,
+        "OCSPMaxCacheTime", CONF_LINT, &options.ocsp_max_cache_time,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
@@ -3300,8 +3304,47 @@ int createpidfile(const char *pidfile) {
     return f && !fclose(f) && r >= 0;
 }
 
+void *ocsp_cache_cleanup(void *arg){
+    ASN1_TIME *now;
+    struct list_node *cur;
+    struct ocsp_cache_entry *entry;
+
+    time_t t;
+    for(;;){
+        debug(DBG_DBG, "ocsp_cache_cleanup: Running cleanup, currently %u list elements in total.", ocsp_caches->count);
+        t = time(NULL);
+        now = ASN1_TIME_adj(NULL, t, 0, 0);
+
+        pthread_mutex_lock(&ocsp_cache_mutex);
+
+        cur = list_first(ocsp_caches);
+        while(cur) {
+            entry = (struct ocsp_cache_entry *)cur->data;
+
+            if(ASN1_TIME_compare(entry->cache_until, now) == -1) {
+                // TODO Check if correct comparison.
+                // TODO find out correct OCSP_CERTID debug statement
+                debug(DBG_DBG, "ocsp_cache_cleanup: Removing cached OCSP response for certid TODO");
+                // Free all resources
+                OCSP_CERTID_free(entry->crtid);
+                ASN1_TIME_free(entry->cache_until);
+                // then free the entry itself
+                free(entry);
+                // finally remove the node
+                cur = list_removenode(ocsp_caches, cur);
+                continue;
+            }
+            cur = cur->next;
+        }
+        pthread_mutex_unlock(&ocsp_cache_mutex);
+        ASN1_TIME_free(now);
+        sleep(10);
+    }
+}
+
 int radsecproxy_main(int argc, char **argv) {
     pthread_t sigth;
+    pthread_t ocsp_cleanup_thr;
     sigset_t sigset;
     size_t stacksize;
     struct list_node *entry;
@@ -3385,6 +3428,15 @@ int radsecproxy_main(int argc, char **argv) {
     if (pthread_create(&sigth, &pthread_attr, sighandler, NULL))
         debugx(1, DBG_ERR, "pthread_create failed: sighandler");
 
+    if (options.ocsp_caching) {
+        // Initialize cache list
+        ocsp_caches = list_create();
+        if(!ocsp_caches)
+            debugx(1, DBG_ERR, "malloc failed");
+        pthread_mutex_init(&ocsp_cache_mutex, NULL);
+        if (pthread_create(&ocsp_cleanup_thr, &pthread_attr, ocsp_cache_cleanup, NULL))
+            debugx(1, DBG_ERR, "pthread_create failed: OCSP Cache cleanup thread");
+    }
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
 	srvconf = (struct clsrvconf *)entry->data;
 	if (srvconf->dynamiclookupcommand)

@@ -15,6 +15,7 @@
 #include "hostport.h"
 
 #include <openssl/asn1.h>
+#include <openssl/ocsp.h>
 
 #define DEBUG_LEVEL 2
 
@@ -101,6 +102,8 @@ struct options {
     uint8_t ipv4only;
     uint8_t ipv6only;
     uint8_t sni;
+    uint8_t ocsp_caching;
+    uint32_t ocsp_max_cache_time;
 };
 
 struct commonprotoopts {
@@ -136,6 +139,12 @@ struct gqueue {
     struct list *entries;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
+};
+
+struct ocsp_cache_entry {
+    OCSP_CERTID *crtid;
+    uint8_t ocsp_result;
+    ASN1_TIME *cache_until;
 };
 
 struct clsrvconf {
@@ -269,6 +278,8 @@ void replyh(struct server *server, uint8_t *buf, int buflen);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);
 uint8_t *radattr2ascii(struct tlv *attr); /* TODO: mv this to radmsg? */
 extern pthread_attr_t pthread_attr;
+extern struct list *ocsp_caches;
+extern pthread_mutex_t ocsp_cache_mutex;
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

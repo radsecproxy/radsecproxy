@@ -30,6 +30,8 @@ struct tls {
     uint8_t ocsp_softfail;
     uint32_t ocsp_timeout;
     uint32_t ocsp_check_depth;
+    uint8_t ocsp_caching;
+    uint32_t ocsp_max_cache_time;
     char **policyoids;
     char *cipherlist;
     char *ciphersuites;

@@ -23,6 +23,7 @@
 #include <regex.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <openssl/asn1.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
@@ -134,8 +135,37 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
     long nsec = (5 * 60); // Grace period of 5 min for OCSP validity
     long maxage = -1; // Don't require a specific freshness
     ASN1_GENERALIZEDTIME *rev = NULL, *thisupd = NULL, *nextupd = NULL;
+    ASN1_TIME *max_cache_time = NULL;
+    time_t t;
+    struct list_node *cur;
+    struct ocsp_cache_entry *entry;
 
     certid = OCSP_cert_to_id(NULL, cert, issuer);
+
+    if(tlsconf->ocsp_caching){
+        debug(DBG_DBG, "ocsp_check: Checking Cache");
+        pthread_mutex_lock(&ocsp_cache_mutex);
+        cur = list_first(ocsp_caches);
+        for( ; cur ; cur = cur->next ){
+            entry = (struct ocsp_cache_entry *)cur->data;
+            if(OCSP_id_cmp(entry->crtid, certid) == 0){
+                debug(DBG_DBG, "ocsp_check: Using cached OCSP response");
+                if(entry->ocsp_result){
+                    debug(DBG_DBG, "ocsp_check: Cached OCSP result: OK");
+                    ocsp_status = OCSP_STATUS_OK;
+                } else {
+                    debug(DBG_DBG, "ocsp_check: Cached OCSP result: Revoked");
+                    ocsp_status = OCSP_STATUS_FAILED;
+                }
+                pthread_mutex_unlock(&ocsp_cache_mutex);
+                OCSP_CERTID_free(certid);
+                goto ocsp_end;
+            }
+        }
+        pthread_mutex_unlock(&ocsp_cache_mutex);
+        debug(DBG_DBG, "ocsp_check: No cache entry found, checking live.");
+    }
+
     req = OCSP_REQUEST_new();
     OCSP_request_add0_id(req, certid);
 
@@ -240,12 +270,54 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
     case V_OCSP_CERTSTATUS_GOOD:
         debug(DBG_DBG, "ocsp_check: Cert status: good");
         ocsp_status = OCSP_STATUS_OK;
+        // todo: add to cache
+        break;
+    case V_OCSP_CERTSTATUS_REVOKED:
+        debug(DBG_DBG, "ocsp_check: Cert status: revoked");
+        if(reason == OCSP_REVOKED_STATUS_CERTIFICATEHOLD) {
+            debug(DBG_DBG, "ocsp_check: revoke reason: CERTIFICATE_HOLD. not caching.");
+            goto ocsp_end;
+        }
         break;
     default:
         debug(DBG_DBG, "ocsp_check: Cert status: %s", OCSP_cert_status_str(status));
         if(reason != -1) {
             debug(DBG_DBG, "ocsp_check: Reason: %s", OCSP_crl_reason_str(reason));
         }
+        goto ocsp_end;
+    }
+
+    if(tlsconf->ocsp_caching){
+        debug(DBG_DBG, "ocsp_check: Saving OCSP response in cache.");
+        // TODO: With this implementation, maybe some OCSP responses will be added multiple times.
+        //   This is currently a tradeoff between searching through the whole list and comparing every certid
+        //   and having potentially redundant data.
+        //
+        //   The cleanup process will take care of all OCSP cache entries, so this does not pose a security risk,
+        //   older OCSP cache entries will be deleted and if a newer one was inserted in between, it is still
+        //   valid to cache it.
+        //   This maybe could be circumvented by using a hash map instead of a list.
+
+        struct ocsp_cache_entry *entry = malloc(sizeof(struct ocsp_cache_entry));
+        if(!entry)
+            debugx(1, DBG_ERR, "malloc failed");
+
+        entry->crtid = OCSP_CERTID_dup(certid);
+        entry->ocsp_result = ocsp_status == OCSP_STATUS_OK;
+
+        t = time(NULL);
+        max_cache_time = ASN1_TIME_adj(NULL, t, 0, tlsconf->ocsp_max_cache_time);
+        // Caution: If the OCSP Response did not include a nextupd, then we just cache for the given time.
+        // It indicates that the OCSP server generates the OCSP responses at the time of the request,
+        // so caching them for the given time should be a good way to go.
+        if(nextupd == NULL || ASN1_TIME_compare(nextupd, max_cache_time) != -1)
+            entry->cache_until = ASN1_STRING_dup(max_cache_time);
+        else
+            entry->cache_until = ASN1_STRING_dup(nextupd);
+        ASN1_TIME_free(max_cache_time);
+
+        debug(DBG_DBG, "ocsp_check: Pushing OCSP response in list.");
+        list_push(ocsp_caches, entry);
     }
 
 ocsp_end:
@@ -1300,6 +1372,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     char *dtlsversion = NULL;
     char *dhfile = NULL;
     unsigned long error;
+    struct options *options = (struct options *) arg;
 
     debug(DBG_DBG, "conftls_cb called for %s", block);
 
@@ -1311,6 +1384,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     conf->cacheexpiry = -1;
 
     conf->ocsp_timeout = 10;
+    conf->ocsp_caching = options->ocsp_caching;
+    conf->ocsp_max_cache_time = options->ocsp_max_cache_time;
 
     if (!getgenericconfig(cf, block,
         "CACertificateFile", CONF_STR, &conf->cacertfile,
