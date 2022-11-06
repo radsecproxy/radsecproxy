@@ -2426,6 +2426,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "tls", CONF_STR, &conf->tls,
 	    "MatchCertificateAttribute", CONF_MSTR, &matchcertattrs,
 	    "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+	    "ServerName", CONF_STR, &conf->servername,
 #endif
 	    "DuplicateInterval", CONF_LINT, &dupinterval,
 	    "addTTL", CONF_LINT, &addttl,
@@ -2642,6 +2643,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "tls", CONF_STR, &conf->tls,
             "MatchCertificateAttribute", CONF_MSTR, &conf->confmatchcertattrs,
             "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+            "ServerName", CONF_STR, &conf->servername,
 #endif
             "addTTL", CONF_LINT, &addttl,
             "tcpKeepalive", CONF_BLN, &conf->keepalive,
