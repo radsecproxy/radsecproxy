@@ -416,6 +416,12 @@ exist, or the option is not specified and none of the defaults exist, the proxy
 will exit with an error.
 .RE
 
+.BI "ServerName " server_name
+.RS
+Instead of the definition in \fBHost\fR, use \fIserver_name\fR for the
+certificate name check.
+.RE
+
 .BR "CertificateNameCheck (" on | off )
 .RS
 For a TLS/DTLS client, disable the default behaviour of matching CN or
@@ -552,6 +558,13 @@ default to 1812 while TLS and DTLS will default to 2083.
 .RS
 Specify the source address and/or port to use for this server. See \fBSource...\fR 
 options above.
+.RE
+
+.BI "ServerName " server_name
+.RS
+Instead of the definition in \fBHost\fR, use \fIserver_name\fR for the
+certificate name check. Additionally, this name is used for SNI, unless
+\fBSNIservername\fR is set.
 .RE
 
 .BI "DynamicLookupCommand " command
