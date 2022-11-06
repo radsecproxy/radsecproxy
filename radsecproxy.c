@@ -2270,6 +2270,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->confrewritein);
     free(conf->confrewriteout);
     free(conf->sniservername);
+    free(conf->servername);
     if (conf->rewriteusername) {
 	if (conf->rewriteusername->regex)
 	    regfree(conf->rewriteusername->regex);
@@ -2364,7 +2365,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
 	!mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand) ||
 	!mergeconfstring(&dst->fticks_viscountry, &src->fticks_viscountry) ||
 	!mergeconfstring(&dst->fticks_visinst, &src->fticks_visinst) ||
-    !mergeconfstring(&dst->sniservername, &src->sniservername))
+    !mergeconfstring(&dst->sniservername, &src->sniservername) ||
+    !mergeconfstring(&dst->servername, &src->servername))
 	return 0;
     if (src->pdef)
 	dst->pdef = src->pdef;
