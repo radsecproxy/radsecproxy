@@ -542,7 +542,7 @@ static void cleanup_connection(struct server *server) {
 
 int dtlsconnect(struct server *server, int timeout, char *text) {
     struct timeval socktimeout, now, start;
-    time_t wait;
+    uint wait;
     int firsttry = 1;
     X509 *cert;
     SSL_CTX *ctx = NULL;
