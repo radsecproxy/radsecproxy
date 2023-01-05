@@ -32,7 +32,7 @@ static char **getlistenerargs();
 void *tcplistener(void *arg);
 int tcpconnect(struct server *server, int timeout, char * text);
 void *tcpclientrd(void *arg);
-int clientradputtcp(struct server *server, unsigned char *rad);
+int clientradputtcp(struct server *server, unsigned char *rad, int radlen);
 void tcpsetsrcres();
 
 static const struct protodefs protodefs = {
@@ -178,77 +178,74 @@ int tcpreadtimeout(int s, unsigned char *buf, int num, int timeout) {
 }
 
 /* timeout in seconds, 0 means no timeout (blocking) */
-unsigned char *radtcpget(int s, int timeout) {
+int radtcpget(int s, int timeout, uint8_t **buf) {
     int cnt, len;
-    unsigned char buf[4], *rad;
+    unsigned char init_buf[4];
 
     for (;;) {
-	cnt = tcpreadtimeout(s, buf, 4, timeout);
-	if (cnt < 1) {
-	    debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
-	    return NULL;
-	}
+        cnt = tcpreadtimeout(s, init_buf, 4, timeout);
+        if (cnt < 1) {
+            debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
+            return 0;
+        }
 
-	len = RADLEN(buf);
-	if (len < 4) {
-	    debug(DBG_ERR, "radtcpget: length too small");
-	    continue;
-	}
-	rad = malloc(len);
-	if (!rad) {
-	    debug(DBG_ERR, "radtcpget: malloc failed");
-	    continue;
-	}
-	memcpy(rad, buf, 4);
+        len = get_msg_length(init_buf);
+        if (len <= 0) {
+            debug(DBG_ERR, "radtcpget: invalid message length: %d", -len);
+            continue;
+        }
+        *buf = malloc(len);
+        if (!*buf) {
+            debug(DBG_ERR, "radtcpget: malloc failed");
+            continue;
+        }
+        memcpy(*buf, init_buf, 4);
 
-	cnt = tcpreadtimeout(s, rad + 4, len - 4, timeout);
-	if (cnt < 1) {
-	    debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
-	    free(rad);
-	    return NULL;
-	}
-
-	if (len >= 20)
-	    break;
-
-	free(rad);
-	debug(DBG_WARN, "radtcpget: packet smaller than minimum radius size");
+        cnt = tcpreadtimeout(s, *buf + 4, len - 4, timeout);
+        if (cnt < 1) {
+            debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
+            free(*buf);
+            return 0;
+        }
+        debug(DBG_DBG, "radtcpget: got %d bytes", len);
+        return len;
     }
-
-    debug(DBG_DBG, "radtcpget: got %d bytes", len);
-    return rad;
 }
 
-int clientradputtcp(struct server *server, unsigned char *rad) {
+int clientradputtcp(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
-    size_t len;
     struct clsrvconf *conf = server->conf;
 
     if (server->state != RSP_SERVER_STATE_CONNECTED)
-	return 0;
-    len = RADLEN(rad);
-    if ((cnt = write(server->sock, rad, len)) <= 0) {
-	debug(DBG_ERR, "clientradputtcp: write error");
-	return 0;
+        return 0;
+    if (radlen <= 0) {
+        debug(DBG_ERR, "clientradputtcp: invalid buffer (length)");
+        return 0;
     }
-    debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %zu to TCP peer %s", cnt, len, conf->name);
+    if ((cnt = write(server->sock, rad, radlen)) <= 0) {
+        debug(DBG_ERR, "clientradputtcp: write error");
+        return 0;
+    }
+    debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %zu to TCP peer %s", cnt, radlen, conf->name);
     return 1;
 }
 
 void *tcpclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
+    int len = 0;
 
     for (;;) {
-	buf = radtcpget(server->sock, server->dynamiclookuparg ? IDLE_TIMEOUT : 0);
-	if (!buf) {
-        if (server->dynamiclookuparg)
-		break;
-	    tcpconnect(server, 0, "tcpclientrd");
-	    continue;
-	}
+        len = radtcpget(server->sock, server->dynamiclookuparg ? IDLE_TIMEOUT : 0, &buf);
+        if (!buf || !len) {
+            if (server->dynamiclookuparg)
+            break;
+            tcpconnect(server, 0, "tcpclientrd");
+            continue;
+        }
 
-	replyh(server, buf);
+        replyh(server, buf, len);
+        buf = NULL;
     }
     server->clientrdgone = 1;
     pthread_mutex_lock(&server->newrq_mutex);
@@ -283,10 +280,10 @@ void *tcpserverwr(void *arg) {
 	}
 	reply = (struct request *)list_shift(replyq->entries);
 	pthread_mutex_unlock(&replyq->mutex);
-	cnt = write(client->sock, reply->replybuf, RADLEN(reply->replybuf));
+	cnt = write(client->sock, reply->replybuf, reply->replybuflen);
 	if (cnt > 0)
 	    debug(DBG_DBG, "tcpserverwr: sent %d bytes, Radius packet of length %d to %s",
-		  cnt, RADLEN(reply->replybuf), addr2string(client->addr, tmp, sizeof(tmp)));
+		  cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
 	else
 	    debug(DBG_ERR, "tcpserverwr: write error for %s", addr2string(client->addr, tmp, sizeof(tmp)));
 	freerq(reply);
@@ -298,32 +295,35 @@ void tcpserverrd(struct client *client) {
     uint8_t *buf;
     pthread_t tcpserverwrth;
     char tmp[INET6_ADDRSTRLEN];
+    int len = 0;
 
     debug(DBG_DBG, "tcpserverrd: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
 
     if (pthread_create(&tcpserverwrth, &pthread_attr, tcpserverwr, (void *)client)) {
-	debug(DBG_ERR, "tcpserverrd: pthread_create failed");
-	return;
+        debug(DBG_ERR, "tcpserverrd: pthread_create failed");
+        return;
     }
 
     for (;;) {
-	buf = radtcpget(client->sock, 0);
-	if (!buf) {
-	    debug(DBG_ERR, "tcpserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
-	    break;
-	}
-	debug(DBG_DBG, "tcpserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-	rq = newrequest();
-	if (!rq) {
-	    free(buf);
-	    continue;
-	}
-	rq->buf = buf;
-	rq->from = client;
-	if (!radsrv(rq)) {
-	    debug(DBG_ERR, "tcpserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-	    break;
-	}
+        len = radtcpget(client->sock, 0, &buf);
+        if (!buf || !len) {
+            debug(DBG_ERR, "tcpserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
+            break;
+        }
+        debug(DBG_DBG, "tcpserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+        rq = newrequest();
+        if (!rq) {
+            free(buf);
+            continue;
+        }
+        rq->buf = buf;
+        rq->buflen = len;
+        rq->from = client;
+        if (!radsrv(rq)) {
+            debug(DBG_ERR, "tcpserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+            break;
+        }
+        buf = NULL;
     }
 
     /* stop writer by setting s to -1 and give signal in case waiting for data */

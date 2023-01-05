@@ -31,7 +31,7 @@
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
 void *udpserverrd(void *arg);
-int clientradputudp(struct server *server, unsigned char *rad);
+int clientradputudp(struct server *server, unsigned char *rad, int radlen);
 void addclientudp(struct client *client);
 void addserverextraudp(struct clsrvconf *conf);
 void udpsetsrcres();
@@ -135,9 +135,9 @@ uint16_t port_get(struct sockaddr *sa) {
 /* exactly one of client and server must be non-NULL */
 /* return who we received from in *client or *server */
 /* return from in sa if not NULL */
-unsigned char *radudpget(int s, struct client **client, struct server **server) {
+int radudpget(int s, struct client **client, struct server **server, unsigned char **buf) {
     int cnt, len;
-    unsigned char buf[4], *rad = NULL;
+    unsigned char init_buf[4];
     struct sockaddr_storage from;
     struct sockaddr *fromcopy;
     socklen_t fromlen = sizeof(from);
@@ -148,12 +148,12 @@ unsigned char *radudpget(int s, struct client **client, struct server **server) 
     char tmp[INET6_ADDRSTRLEN];
 
     for (;;) {
-        if (rad) {
-            free(rad);
-            rad = NULL;
+        if (*buf) {
+            free(*buf);
+            *buf = NULL;
         }
 
-        cnt = recvfrom(s, buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
+        cnt = recvfrom(s, init_buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
         if (cnt == -1) {
             debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
             continue;
@@ -164,28 +164,34 @@ unsigned char *radudpget(int s, struct client **client, struct server **server) 
             : find_srvconf(handle, (struct sockaddr *)&from, NULL);
         if (!p) {
             debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
-            if (recv(s, buf, 4, 0) == -1)
+            if (recv(s, init_buf, 4, 0) == -1)
                 debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
             continue;
         }
 
-        len = RADLEN(buf);
-        if (len < 20) {
-            debug(DBG_WARN, "radudpget: length too small");
-            if (recv(s, buf, 4, 0) == -1)
+        len = get_msg_length(init_buf);
+        if (len <= 0) {
+            debug(DBG_WARN, "radudpget: invalid message length: %d", -len);
+            if (recv(s, init_buf, 4, 0) == -1)
+                debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
+            continue;
+        }
+        if (len > 4096) {
+            debug(DBG_WARN, "radudpget: length too big");
+            if (recv(s, init_buf, 4, 0) == -1)
                 debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
             continue;
         }
 
-        rad = malloc(len);
-        if (!rad) {
+        *buf = malloc(len);
+        if (!*buf) {
             debug(DBG_ERR, "radudpget: malloc failed");
-            if (recv(s, buf, 4, 0) == -1)
+            if (recv(s, init_buf, 4, 0) == -1)
                 debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
             continue;
         }
 
-        cnt = recv(s, rad, len, MSG_TRUNC);
+        cnt = recv(s, *buf, len, MSG_TRUNC);
         debug(DBG_DBG, "radudpget: got %d bytes from %s", cnt, addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 
         if (cnt < len) {
@@ -240,19 +246,22 @@ unsigned char *radudpget(int s, struct client **client, struct server **server) 
             *server = p->servers;
         break;
     }
-    return rad;
+    return len;
 }
 
-int clientradputudp(struct server *server, unsigned char *rad) {
-    size_t len;
+int clientradputudp(struct server *server, unsigned char *rad, int radlen) {
     struct clsrvconf *conf = server->conf;
     struct addrinfo *ai;
     char tmp[INET6_ADDRSTRLEN];
 
-    len = RADLEN(rad);
+    if (radlen <= 0) {
+        debug(DBG_ERR, "clientradputudp: invalid buffer (length)");
+        return 0;
+    }
+
     ai = ((struct hostportres *)list_first(conf->hostports)->data)->addrinfo;
-    if (sendto(server->sock, rad, len, 0, ai->ai_addr, ai->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %zu to %s port %d", len, addr2string(ai->ai_addr, tmp, sizeof(tmp)), port_get(ai->ai_addr));
+    if (sendto(server->sock, rad, radlen, 0, ai->ai_addr, ai->ai_addrlen) >= 0) {
+	debug(DBG_DBG, "clienradputudp: sent UDP of length %zu to %s port %d", radlen, addr2string(ai->ai_addr, tmp, sizeof(tmp)), port_get(ai->ai_addr));
 	return 1;
     }
 
@@ -264,11 +273,13 @@ void *udpclientrd(void *arg) {
     struct server *server;
     unsigned char *buf;
     int *s = (int *)arg;
+    int len = 0;
 
     for (;;) {
-	server = NULL;
-	buf = radudpget(*s, NULL, &server);
-	replyh(server, buf);
+        server = NULL;
+        len = radudpget(*s, NULL, &server, &buf);
+        replyh(server, buf, len);
+        buf = NULL;
     }
 }
 
@@ -277,15 +288,15 @@ void *udpserverrd(void *arg) {
     int *sp = (int *)arg;
 
     for (;;) {
-	rq = newrequest();
-	if (!rq) {
-	    sleep(5); /* malloc failed */
-	    continue;
-	}
-	rq->buf = radudpget(*sp, &rq->from, NULL);
-	rq->udpsock = *sp;
-    gettimeofday(&rq->created, NULL);
-	radsrv(rq);
+        rq = newrequest();
+        if (!rq) {
+            sleep(5); /* malloc failed */
+            continue;
+        }
+        rq->buflen = radudpget(*sp, &rq->from, NULL, &rq->buf);
+        rq->udpsock = *sp;
+        gettimeofday(&rq->created, NULL);
+        radsrv(rq);
     }
     free(sp);
     return NULL;
@@ -308,7 +319,7 @@ void *udpserverwr(void *arg) {
 	    memcpy(&to, reply->from->addr, SOCKADDRP_SIZE(reply->from->addr));
 	pthread_mutex_unlock(&replyq->mutex);
 	if (reply->from) {
-	    if (sendto(reply->udpsock, reply->replybuf, RADLEN(reply->replybuf), 0, (struct sockaddr *)&to, SOCKADDR_SIZE(to)) < 0)
+	    if (sendto(reply->udpsock, reply->replybuf, reply->replybuflen, 0, (struct sockaddr *)&to, SOCKADDR_SIZE(to)) < 0)
 		debug(DBG_WARN, "udpserverwr: send failed");
 	}
 	debug(DBG_DBG, "udpserverwr: refcount %d", reply->refcount);

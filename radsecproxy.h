@@ -111,6 +111,7 @@ struct request {
     uint32_t refcount;
 	pthread_mutex_t refmutex;
     uint8_t *buf, *replybuf;
+    int buflen, replybuflen;
     struct radmsg *msg;
     struct client *from;
     struct server *to;
@@ -240,14 +241,12 @@ struct protodefs {
     void *(*listener)(void*);
     int (*connecter)(struct server *, int, char *);
     void *(*clientconnreader)(void*);
-    int (*clientradput)(struct server *, unsigned char *);
+    int (*clientradput)(struct server *, unsigned char *, int);
     void (*addclient)(struct client *);
     void (*addserverextra)(struct clsrvconf *);
     void (*setsrcres)();
     void (*initextra)();
 };
-
-#define RADLEN(x) ntohs(((uint16_t *)(x))[1])
 
 struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur, struct hostportres **hp);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
@@ -259,7 +258,7 @@ struct gqueue *newqueue();
 struct request *newrequest();
 void freerq(struct request *rq);
 int radsrv(struct request *rq);
-void replyh(struct server *server, unsigned char *buf);
+void replyh(struct server *server, uint8_t *buf, int buflen);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);
 uint8_t *radattr2ascii(struct tlv *attr); /* TODO: mv this to radmsg? */
 extern pthread_attr_t pthread_attr;
