@@ -169,7 +169,7 @@ int raddtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
     if (cnt < 1)
         return 0;
 
-    len = get_msg_length(init_buf);
+    len = get_checked_rad_length(init_buf);
     if (len <= 0) {
         debug(DBG_ERR, "raddtlsget: invalid message length (%d)! closing connection!", -len);
         pthread_mutex_lock(lock);

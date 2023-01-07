@@ -26,7 +26,7 @@
  * @return int the length of the radius message if valid, or its negative value if invalid.
  * A 0 value is also consiedered invalid.
  */
-int get_msg_length(uint8_t *buf) {
+int get_checked_rad_length(uint8_t *buf) {
     int len = ntohs(buf[2]);
     if (len < RAD_Min_Length || len > RAD_Max_Length) {
         return -len;

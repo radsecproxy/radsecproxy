@@ -169,7 +169,7 @@ int radudpget(int s, struct client **client, struct server **server, unsigned ch
             continue;
         }
 
-        len = get_msg_length(init_buf);
+        len = get_checked_rad_length(init_buf);
         if (len <= 0) {
             debug(DBG_WARN, "radudpget: invalid message length: %d", -len);
             if (recv(s, init_buf, 4, 0) == -1)

@@ -188,7 +188,7 @@ int radtcpget(int s, int timeout, uint8_t **buf) {
         return 0;
     }
 
-    len = get_msg_length(init_buf);
+    len = get_checked_rad_length(init_buf);
     if (len <= 0) {
         debug(DBG_ERR, "radtcpget: invalid message length (%d)! closing connection!", -len);
         return 0;
