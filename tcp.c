@@ -182,34 +182,33 @@ int radtcpget(int s, int timeout, uint8_t **buf) {
     int cnt, len;
     unsigned char init_buf[4];
 
-    for (;;) {
-        cnt = tcpreadtimeout(s, init_buf, 4, timeout);
-        if (cnt < 1) {
-            debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
-            return 0;
-        }
-
-        len = get_msg_length(init_buf);
-        if (len <= 0) {
-            debug(DBG_ERR, "radtcpget: invalid message length: %d", -len);
-            continue;
-        }
-        *buf = malloc(len);
-        if (!*buf) {
-            debug(DBG_ERR, "radtcpget: malloc failed");
-            continue;
-        }
-        memcpy(*buf, init_buf, 4);
-
-        cnt = tcpreadtimeout(s, *buf + 4, len - 4, timeout);
-        if (cnt < 1) {
-            debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
-            free(*buf);
-            return 0;
-        }
-        debug(DBG_DBG, "radtcpget: got %d bytes", len);
-        return len;
+    cnt = tcpreadtimeout(s, init_buf, 4, timeout);
+    if (cnt < 1) {
+        debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
+        return 0;
     }
+
+    len = get_msg_length(init_buf);
+    if (len <= 0) {
+        debug(DBG_ERR, "radtcpget: invalid message length (%d)! closing connection!", -len);
+        return 0;
+    }
+
+    *buf = malloc(len);
+    if (!*buf) {
+        debug(DBG_ERR, "radtcpget: malloc failed! closing connection!");
+        return 0;
+    }
+    memcpy(*buf, init_buf, 4);
+
+    cnt = tcpreadtimeout(s, *buf + 4, len - 4, timeout);
+    if (cnt < 1) {
+        debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
+        free(*buf);
+        return 0;
+    }
+    debug(DBG_DBG, "radtcpget: got %d bytes", len);
+    return len;
 }
 
 int clientradputtcp(struct server *server, unsigned char *rad, int radlen) {
