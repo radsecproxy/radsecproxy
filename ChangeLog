@@ -1,3 +1,27 @@
+unreleased changes
+	New features:
+	- Optionally log accounting requests when respoinding directly (#72)
+	- SNI support for outgoing connections (#90)
+
+	Misc:
+	- Don't require server type to be set by dyndisc scripts
+
+	Bug Fixes:
+	- Fix radius message length handling
+
+2021-10-25 1.9.1
+	Misc:
+	- OpenSSL 3.0 compatibility (#70)
+	
+	Bug Fixes:
+	- Fix refused startup with openssl <1.1 (#82)
+	- Fix compiler issue for Fedora 33 on s390x (#84)
+	- Fix small memory leak in config parser
+	- Fix lazy certificate check when connecting to TLS servers
+	- Fix connect is aborted if first host in list has invalid certificate
+	- Fix setstacksize for glibc 2.34 (#91)
+	- Fix system defaults/settings for TLS version not honored (#92)
+
 2021-05-28 1.9.0
 	New features:
 	- Accept multiple source* configs for IPv4/v6

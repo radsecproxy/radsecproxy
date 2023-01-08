@@ -214,7 +214,7 @@ static int cookie_calculate_hash(struct sockaddr *peer, time_t time, uint8_t *re
 static int cookie_generate_cb(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len) {
     struct sockaddr_storage peer;
     struct timeval now;
-    uint8_t result[EVP_MAX_MD_SIZE];
+    uint8_t result[EVP_MAX_MD_SIZE] = {0};
     unsigned int resultlength;
 
     if (!cookie_secret_initialized) {
@@ -244,7 +244,7 @@ static int cookie_verify_cb(SSL *ssl, const unsigned char *cookie, unsigned int 
     struct sockaddr_storage peer;
     struct timeval now;
     time_t cookie_time;
-    uint8_t result[EVP_MAX_MD_SIZE];
+    uint8_t result[EVP_MAX_MD_SIZE] = {0};
     unsigned int resultlength;
 
     if (!cookie_secret_initialized)
@@ -390,8 +390,10 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
         /* TLS_method() was introduced in OpenSSL 1.1.0. */
         ctx = SSL_CTX_new(TLS_method());
-        SSL_CTX_set_min_proto_version(ctx, conf->tlsminversion);
-        SSL_CTX_set_max_proto_version(ctx, conf->tlsmaxversion);
+        if (conf->tlsminversion >= 0)
+            SSL_CTX_set_min_proto_version(ctx, conf->tlsminversion);
+        if (conf->tlsmaxversion >= 0)
+            SSL_CTX_set_max_proto_version(ctx, conf->tlsmaxversion);
 #else
         /* No TLS_method(), use SSLv23_method() and disable SSLv2 and SSLv3. */
         ctx = SSL_CTX_new(SSLv23_method());
@@ -408,8 +410,10 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
         /* DTLS_method() seems to have been introduced in OpenSSL 1.0.2. */
         ctx = SSL_CTX_new(DTLS_method());
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
-        SSL_CTX_set_min_proto_version(ctx, conf->dtlsminversion);
-        SSL_CTX_set_max_proto_version(ctx, conf->dtlsmaxversion);
+        if (conf->dtlsminversion >= 0)
+            SSL_CTX_set_min_proto_version(ctx, conf->dtlsminversion);
+        if (conf->dtlsmaxversion >= 0)
+            SSL_CTX_set_max_proto_version(ctx, conf->dtlsmaxversion);
 #endif
 #else
         ctx = SSL_CTX_new(DTLSv1_method());
@@ -492,12 +496,26 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #endif
 
     if (conf->dhparam) {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000
+        if (!SSL_CTX_set0_tmp_dh_pkey(ctx, conf->dhparam)) {
+#else
         if (!SSL_CTX_set_tmp_dh(ctx, conf->dhparam)) {
+#endif
             while ((error = ERR_get_error()))
                 debug(DBG_WARN, "tlscreatectx: SSL: %s", ERR_error_string(error, NULL));
             debug(DBG_WARN, "tlscreatectx: Failed to set dh params. Can continue, but some ciphers might not be available.");
         }
     }
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
+    else {
+        if (!SSL_CTX_set_dh_auto(ctx, 1)) {
+            while ((error = ERR_get_error()))
+                debug(DBG_WARN, "tlscreatectx: SSL: %s", ERR_error_string(error, NULL));
+            debug(DBG_WARN, "tlscreatectx: Failed to set automatic dh params. Can continue, but some ciphers might not be available.");
+        }
+    }
+#endif
+
     debug(DBG_DBG, "tlscreatectx: created TLS context %s", conf->name);
     return ctx;
 }
@@ -506,7 +524,7 @@ struct tls *tlsgettls(char *alt1, char *alt2) {
     struct tls *t;
 
     t = hash_read(tlsconfs, alt1, strlen(alt1));
-    if (!t)
+    if (!t && alt2)
 	t = hash_read(tlsconfs, alt2, strlen(alt2));
     return t;
 }
@@ -711,64 +729,67 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
     }
 
     if (r<1)
-        debug(DBG_WARN, "matchsubjaltname: no matching Subject Alt Name found! (%s)", fail);
+        debug(DBG_DBG, "matchsubjaltname: no matching Subject Alt Name found! (%s)", fail);
     free(fail);
 
     GENERAL_NAMES_free(alt);
     return r;
 }
 
-int certnamecheck(X509 *cert, struct list *hostports) {
-    struct list_node *entry;
-    struct hostportres *hp;
+int certnamecheck(X509 *cert, struct hostportres *hp) {
     int r = 0;
     struct certattrmatch match;
 
     memset(&match, 0, sizeof(struct certattrmatch));
 
-    for (entry = list_first(hostports); entry; entry = list_next(entry)) {
-        r = 0;
-        hp = (struct hostportres *)entry->data;
-        if (hp->prefixlen != 255) {
-            /* we disable the check for prefixes */
+    r = 0;
+    if (hp->prefixlen != 255) {
+        /* we disable the check for prefixes */
+        return 1;
+    }
+    if (inet_pton(AF_INET, hp->host, &match.ipaddr))
+        match.af = AF_INET;
+    else if (inet_pton(AF_INET6, hp->host, &match.ipaddr))
+        match.af = AF_INET6;
+    else
+        match.af = 0;
+    match.exact = hp->host;
+
+    if (match.af) {
+        match.matchfn = &certattr_matchip;
+        match.type = GEN_IPADD;
+        r = matchsubjaltname(cert, &match);
+    }
+    if (!r) {
+        match.matchfn = &certattr_matchregex;
+        match.type = GEN_DNS;
+        r = matchsubjaltname(cert, &match);
+    }
+    if (r) {
+        if (r > 0) {
+            debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
             return 1;
         }
-        if (inet_pton(AF_INET, hp->host, &match.ipaddr))
-            match.af = AF_INET;
-        else if (inet_pton(AF_INET6, hp->host, &match.ipaddr))
-            match.af = AF_INET6;
-        else
-            match.af = 0;
-        match.exact = hp->host;
-
-        if (match.af) {
-            match.matchfn = &certattr_matchip;
-            match.type = GEN_IPADD;
-            r = matchsubjaltname(cert, &match);
+        debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
+    } else { /* as per RFC 6125 6.4.4: CN MUST NOT be matched if SAN is present */
+        if (certattr_matchcn(cert, &match)) {
+            debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
+            return 1;
         }
-        if (!r) {
-            match.matchfn = &certattr_matchregex;
-            match.type = GEN_DNS;
-            r = matchsubjaltname(cert, &match);
-        }
-        if (r) {
-            if (r > 0) {
-                debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
-                return 1;
-            }
-            debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
-        } else {
-            if (certattr_matchcn(cert, &match)) {
-                debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
-                return 1;
-            }
-            debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
-        }
+        debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
     }
     return 0;
 }
 
-int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
+int certnamecheckany(X509 *cert, struct list *hostports) {
+    struct list_node *entry;
+    for (entry = list_first(hostports); entry; entry = list_next(entry)) {
+        if (certnamecheck(cert, (struct hostportres *)entry->data)) return 1;
+    }
+    return 0;
+}
+
+int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpconnected) {
     char *subject;
     int ok = 1;
     struct list_node *entry;
@@ -777,9 +798,16 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf) {
     debug(DBG_DBG, "verifyconfcert: verify certificate for host %s, subject %s", conf->name, subject);
     if (conf->certnamecheck) {
         debug(DBG_DBG, "verifyconfcert: verify hostname");
-        if (!certnamecheck(cert, conf->hostports)) {
-            debug(DBG_DBG, "verifyconfcert: certificate name check failed for host %s", conf->name);
-            ok = 0;
+        if (hpconnected) {
+            if (!certnamecheck(cert, hpconnected)) {
+                debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, hpconnected->host);
+                ok = 0;
+            }
+        } else {
+            if (!certnamecheckany(cert, conf->hostports)) {
+                debug(DBG_DBG, "verifyconfcert: no matching CN or SAN found for host %s", conf->name);
+                ok = 0;
+            }
         }
     }
 
@@ -895,7 +923,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 	conf->cacheexpiry = expiry;
     }
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
-    conf->tlsminversion = TLS1_1_VERSION;
+    /* use -1 as 'not set' value */
+    conf->tlsminversion = conf->tlsmaxversion = conf->dtlsminversion = conf->dtlsmaxversion = -1;
     if (tlsversion) {
         if(!conf_tls_version(tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
             debug(DBG_ERR, "error in block %s, invalid TlsVersion %s", val, tlsversion);
@@ -913,11 +942,27 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         dtlsversion = NULL;
     }
 #else
+    if (tlsversion || dtlsversion) {
         debug(DBG_ERR, "error in block %s, setting tls/dtls version requires openssl 1.1.0 or later", val);
         goto errexit;
+    }
 #endif
 
     if (dhfile) {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000
+        BIO *bio = BIO_new_file(dhfile, "r");
+        if (bio) {
+            conf->dhparam = EVP_PKEY_new();
+            if (!PEM_read_bio_Parameters(bio, &conf->dhparam)) {
+                BIO_free(bio);
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+                debug(DBG_ERR, "error in block %s: Failed to load DhFile %s.", val, dhfile);
+                goto errexit;
+            }
+            BIO_free(bio);
+        }
+#else
         FILE *dhfp = fopen(dhfile, "r");
         if (dhfp) {
             conf->dhparam = PEM_read_DHparams(dhfp, NULL, NULL, NULL);
@@ -934,6 +979,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         }
         free(dhfile);
         dhfile = NULL;
+#endif
     }
 
     conf->name = stringcopy(val, 0);
@@ -964,7 +1010,11 @@ errexit:
     free(tlsversion);
     free(dtlsversion);
     free(dhfile);
+#if OPENSSL_VERSION_NUMBER >= 0x30000000
+    EVP_PKEY_free(conf->dhparam);
+#else
     DH_free(conf->dhparam);
+#endif
     free(conf);
     return 0;
 }
@@ -1089,6 +1139,10 @@ void freematchcertattr(struct clsrvconf *conf) {
         list_destroy(conf->matchcertattrs);
         conf->matchcertattrs = NULL;
     }
+}
+
+int tlssetsni(SSL *ssl, char *sni) {
+    return SSL_set_tlsext_host_name(ssl, sni); 
 }
 
 int sslaccepttimeout (SSL *ssl, int timeout) {

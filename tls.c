@@ -23,17 +23,17 @@
 #include <assert.h>
 #include "radsecproxy.h"
 #include "hostport.h"
-
-#ifdef RADPROT_TLS
 #include "debug.h"
 #include "util.h"
+
+#ifdef RADPROT_TLS
 
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
 void *tlslistener(void *arg);
 int tlsconnect(struct server *server, int timeout, char *text);
 void *tlsclientrd(void *arg);
-int clientradputtls(struct server *server, unsigned char *rad);
+int clientradputtls(struct server *server, unsigned char *rad, int radlen);
 void tlssetsrcres();
 
 static const struct protodefs protodefs = {
@@ -82,9 +82,20 @@ void tlssetsrcres() {
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
 
+static void cleanup_connection(struct server *server) {
+    if (server->ssl)
+        SSL_shutdown(server->ssl);
+    if (server->sock >= 0)
+        close(server->sock);
+    server->sock = -1;
+    if (server->ssl)
+        SSL_free(server->ssl);
+    server->ssl = NULL;
+}
+
 int tlsconnect(struct server *server, int timeout, char *text) {
     struct timeval now, start;
-    time_t wait;
+    uint wait;
     int firsttry = 1;
     X509 *cert;
     SSL_CTX *ctx = NULL;
@@ -92,6 +103,8 @@ int tlsconnect(struct server *server, int timeout, char *text) {
     int origflags;
     struct addrinfo *source = NULL;
     char *subj;
+    struct list_node *entry;
+    struct hostportres *hp;
 
     debug(DBG_DBG, "tlsconnect: called from %s", text);
     pthread_mutex_lock(&server->lock);
@@ -108,15 +121,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
     gettimeofday(&start, NULL);
 
     for (;;) {
-        /* ensure previous connection is properly closed */
-        if (server->ssl)
-            SSL_shutdown(server->ssl);
-        if (server->sock >= 0)
-            close(server->sock);
-        if (server->ssl)
-            SSL_free(server->ssl);
-        server->ssl = NULL;
-
+        cleanup_connection(server);
         wait = connect_wait(start, server->connecttime, firsttry);
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) + wait > timeout) {
@@ -124,7 +129,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
             if (source) freeaddrinfo(source);
             return 0;
         }
-        debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        if (wait) debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
         sleep(wait);
         firsttry = 0;
 
@@ -135,46 +140,76 @@ int tlsconnect(struct server *server, int timeout, char *text) {
             return 0;
         }
 
-        debug(DBG_INFO, "tlsconnect: connecting to %s", server->conf->name);
-        if ((server->sock = connecttcphostlist(server->conf->hostports, source ? source : srcres)) < 0)
-            continue;
-        if (server->conf->keepalive)
-            enable_keepalive(server->sock);
+        for (entry = list_first(server->conf->hostports); entry; entry = list_next(entry)) {
+            hp = (struct hostportres *)entry->data;
+            debug(DBG_INFO, "tlsconnect: trying to open TLS connection to server %s (%s port %s)", server->conf->name, hp->host, hp->port);
+            if ((server->sock = connecttcp(hp->addrinfo, source ? source : srcres, list_count(server->conf->hostports) > 1 ? 5 : 30)) < 0 ) {
+                debug(DBG_ERR, "tlsconnect: TLS connection to %s (%s port %s) failed: TCP connect failed", server->conf->name, hp->host, hp->port);
+                goto concleanup;
+            }
 
-        pthread_mutex_lock(&server->conf->tlsconf->lock);
-        if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))){
+            if (server->conf->keepalive)
+                enable_keepalive(server->sock);
+
+            pthread_mutex_lock(&server->conf->tlsconf->lock);
+            if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))) {
+                pthread_mutex_unlock(&server->conf->tlsconf->lock);
+                debug(DBG_ERR, "tlsconnect: failed to get TLS context for server %s", server->conf->name);
+                goto concleanup;
+            }
+
+            server->ssl = SSL_new(ctx);
             pthread_mutex_unlock(&server->conf->tlsconf->lock);
-            continue;
-        }
+            if (!server->ssl) {
+                debug(DBG_ERR, "tlsconnect: failed to create SSL conneciton for server %s", server->conf->name);
+                goto concleanup;
+            }
 
-        server->ssl = SSL_new(ctx);
-        pthread_mutex_unlock(&server->conf->tlsconf->lock);
-        if (!server->ssl)
-            continue;
+            if (server->conf->sni) {
+                struct in6_addr tmp;
+                char *servername = server->conf->sniservername ? server->conf->sniservername : 
+                    (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL : hp->host;
+                if (servername && !tlssetsni(server->ssl, servername)) {
+                    debug(DBG_ERR, "tlsconnect: set SNI %s failed", servername);
+                    goto concleanup;
+                }
+            }
+            
+            SSL_set_fd(server->ssl, server->sock);
+            if (sslconnecttimeout(server->ssl, 5) <= 0) {
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "tlsconnect: SSL connect to %s failed: %s", server->conf->name, ERR_error_string(error, NULL));
+                debug(DBG_ERR, "tlsconnect: SSL connect to %s (%s port %s) failed", server->conf->name, hp->host, hp->port);
+                goto concleanup;
+            }
 
-        SSL_set_fd(server->ssl, server->sock);
-        if (sslconnecttimeout(server->ssl, 5) <= 0) {
-            while ((error = ERR_get_error()))
-                debug(DBG_ERR, "tlsconnect: SSL connect to %s failed: %s", server->conf->name, ERR_error_string(error, NULL));
-            debug(DBG_ERR, "tlsconnect: SSL connect to %s failed", server->conf->name);
-            continue;
-        }
+            cert = verifytlscert(server->ssl);
+            if (!cert) {
+                debug(DBG_ERR, "tlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                goto concleanup;
+            }
 
-        cert = verifytlscert(server->ssl);
-        if (!cert)
-            continue;
-        if (verifyconfcert(cert, server->conf)) {
-            subj = getcertsubject(cert);
-            if(subj) {
-                debug(DBG_WARN, "tlsconnect: TLS connection to %s, subject %s up", server->conf->name, subj);
-                free(subj);
+            if (verifyconfcert(cert, server->conf, hp)) {
+                subj = getcertsubject(cert);
+                if(subj) {
+                    debug(DBG_WARN, "tlsconnect: TLS connection to %s (%s port %s), subject %s, %s with cipher %s up",
+                        server->conf->name, hp->host, hp->port, subj,
+                        SSL_get_version(server->ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(server->ssl)));
+                    free(subj);
+                }
+                X509_free(cert);
+                break;
+            } else {
+                debug(DBG_ERR, "tlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
             }
             X509_free(cert);
-            break;
+
+concleanup:
+            /* ensure previous connection is properly closed */
+            cleanup_connection(server);
         }
-        X509_free(cert);
+        if (server->ssl) break;
     }
-    debug(DBG_WARN, "tlsconnect: TLS connection to %s up", server->conf->name);
 
     origflags = fcntl(server->sock, F_GETFL, 0);
     if (origflags == -1) {
@@ -272,37 +307,40 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
 }
 
 /* timeout in seconds, 0 means no timeout (blocking) */
-unsigned char *radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock) {
+int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
     int cnt, len;
-    unsigned char buf[4], *rad;
+    unsigned char init_buf[4];
 
-	cnt = sslreadtimeout(ssl, buf, 4, timeout, lock);
+	cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
 	if (cnt < 1)
-        return NULL;
+        return 0;
 
-	len = RADLEN(buf);
-	if (len < 20) {
-	    debug(DBG_ERR, "radtlsget: length too small, malformed packet! closing connection!");
+    len = get_checked_rad_length(init_buf);
+    if (len <= 0) {
+        debug(DBG_ERR, "radtlsget: invalid message length (%d)! closing connection!", -len);
         pthread_mutex_lock(lock);
         SSL_shutdown(ssl);
         pthread_mutex_unlock(lock);
-        return NULL;
-	}
-	rad = malloc(len);
-	if (!rad) {
-	    debug(DBG_ERR, "radtlsget: malloc failed");
-	    return NULL;
-	}
-	memcpy(rad, buf, 4);
+        return 0;
+    }
+    *buf = malloc(len);
+    if (!*buf) {
+        debug(DBG_ERR, "radtlsget: malloc failed! closing conneciton!");
+        pthread_mutex_lock(lock);
+        SSL_shutdown(ssl);
+        pthread_mutex_unlock(lock);
+        return 0;
+    }
+    memcpy(*buf, init_buf, 4);
 
-	cnt = sslreadtimeout(ssl, rad + 4, len - 4, timeout, lock);
-	if (cnt < 1) {
-	    free(rad);
-	    return NULL;
-	}
+    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
+    if (cnt < 1) {
+        free(*buf);
+        return 0;
+    }
 
     debug(DBG_DBG, "radtlsget: got %d bytes", len);
-    return rad;
+    return len;
 }
 
 int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
@@ -310,9 +348,9 @@ int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
     unsigned long error;
     struct pollfd fds[1];
 
-    if (!buf || !num) {
-            debug(DBG_ERR, "dosslwrite: was called with empty buffer!");
-            return -1;
+    if (!buf || num <= 0) {
+        debug(DBG_ERR, "dosslwrite: was called with empty or invalid buffer!");
+        return -1;
     }
 
     if(!may_block) {
@@ -338,9 +376,8 @@ int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
     return ret;
 }
 
-int clientradputtls(struct server *server, unsigned char *rad) {
+int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
-    size_t len;
     struct clsrvconf *conf = server->conf;
 
     pthread_mutex_lock(&server->lock);
@@ -349,13 +386,12 @@ int clientradputtls(struct server *server, unsigned char *rad) {
         return 0;
     }
 
-    len = RADLEN(rad);
-    if ((cnt = dosslwrite(server->ssl, rad, len, 0)) <= 0) {
+    if ((cnt = dosslwrite(server->ssl, rad, radlen, 0)) <= 0) {
         pthread_mutex_unlock(&server->lock);
         return 0;
     }
 
-    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %zu to TLS peer %s", cnt, len, conf->name);
+    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %zu to TLS peer %s", cnt, radlen, conf->name);
     pthread_mutex_unlock(&server->lock);
     return 1;
 }
@@ -364,31 +400,32 @@ void *tlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
     struct timeval now;
+    int len = 0;
 
     for (;;) {
-	buf = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock);
-	if (!buf) {
-        if (SSL_get_shutdown(server->ssl) || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF)) {
-            if (SSL_get_shutdown(server->ssl))
-                debug (DBG_WARN, "tlsclientrd: connection to server %s lost", server->conf->name);
-            else if (server->lostrqs)
-                debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
-            if (server->dynamiclookuparg)
-                break;
-            tlsconnect(server, 0, "tlsclientrd");
-        }
-        if (server->dynamiclookuparg) {
-            gettimeofday(&now, NULL);
-            if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
-                debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
-                break;
+        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
+        if (!buf || !len) {
+            if (SSL_get_shutdown(server->ssl) || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF)) {
+                if (SSL_get_shutdown(server->ssl))
+                    debug (DBG_WARN, "tlsclientrd: connection to server %s lost", server->conf->name);
+                else if (server->lostrqs)
+                    debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
+                if (server->dynamiclookuparg)
+                    break;
+                tlsconnect(server, 0, "tlsclientrd");
             }
+            if (server->dynamiclookuparg) {
+                gettimeofday(&now, NULL);
+                if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
+                    debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
+                    break;
+                }
+            }
+            continue;
         }
-        continue;
-    }
 
-	replyh(server, buf);
-
+        replyh(server, buf, len);
+        buf = NULL;
     }
     debug(DBG_INFO, "tlsclientrd: exiting for %s", server->conf->name);
     pthread_mutex_lock(&server->lock);
@@ -439,9 +476,9 @@ void *tlsserverwr(void *arg) {
             pthread_exit(NULL);
         }
 
-        if ((cnt = dosslwrite(client->ssl, reply->replybuf, RADLEN(reply->replybuf), 0)) > 0) {
+        if ((cnt = dosslwrite(client->ssl, reply->replybuf, reply->replybuflen, 0)) > 0) {
             debug(DBG_DBG, "tlsserverwr: sent %d bytes, Radius packet of length %d to %s",
-                cnt, RADLEN(reply->replybuf), addr2string(client->addr, tmp, sizeof(tmp)));
+                cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
         }
         pthread_mutex_unlock(&client->lock);
     	freerq(reply);
@@ -453,6 +490,7 @@ void tlsserverrd(struct client *client) {
     uint8_t *buf;
     pthread_t tlsserverwrth;
     char tmp[INET6_ADDRSTRLEN];
+    int len = 0;
 
     debug(DBG_DBG, "tlsserverrd: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
 
@@ -462,23 +500,25 @@ void tlsserverrd(struct client *client) {
     }
 
     for (;;) {
-	buf = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock);
-	if (!buf) {
-	    debug(DBG_ERR, "tlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
-	    break;
-	}
-	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-	rq = newrequest();
-	if (!rq) {
-	    free(buf);
-	    continue;
-	}
-	rq->buf = buf;
-	rq->from = client;
-	if (!radsrv(rq)) {
-	    debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-	    break;
-	}
+        len = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock, &buf);
+        if (!buf || !len) {
+            debug(DBG_ERR, "tlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
+            break;
+        }
+        debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+        rq = newrequest();
+        if (!rq) {
+            free(buf);
+            continue;
+        }
+        rq->buf = buf;
+        rq->buflen = len;
+        rq->from = client;
+        if (!radsrv(rq)) {
+            debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+            break;
+        }
+        buf = NULL;
     }
 
     /* stop writer by setting ssl to NULL and give signal in case waiting for data */
@@ -506,6 +546,7 @@ void *tlsservernew(void *arg) {
     struct client *client;
     struct tls *accepted_tls = NULL;
     char tmp[INET6_ADDRSTRLEN], *subj;
+    struct hostportres *hp;
 
     s = *(int *)arg;
     free(arg);
@@ -515,7 +556,7 @@ void *tlsservernew(void *arg) {
     }
     debug(DBG_WARN, "tlsservernew: incoming TLS connection from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 
-    conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
+    conf = find_clconf(handle, (struct sockaddr *)&from, &cur, &hp);
     if (conf) {
         pthread_mutex_lock(&conf->tlsconf->lock);
         ctx = tlsgetctx(handle, conf->tlsconf);
@@ -550,11 +591,12 @@ void *tlsservernew(void *arg) {
     }
 
     while (conf) {
-        if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf)) {
+        if (accepted_tls == conf->tlsconf && verifyconfcert(cert, conf, NULL)) {
             subj = getcertsubject(cert);
             if(subj) {
-                debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s up",
-                    addr2string((struct sockaddr *)&from,tmp, sizeof(tmp)), conf->name, subj);
+                debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s, %s with cipher %s up",
+                    addr2string((struct sockaddr *)&from,tmp, sizeof(tmp)), conf->name, subj,
+                    SSL_get_version(ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
                 free(subj);
             }
             X509_free(cert);
@@ -570,9 +612,10 @@ void *tlsservernew(void *arg) {
                 debug(DBG_WARN, "tlsservernew: failed to create new client instance");
             goto exit;
         }
-        conf = find_clconf(handle, (struct sockaddr *)&from, &cur);
+        conf = find_clconf(handle, (struct sockaddr *)&from, &cur, &hp);
     }
-    debug(DBG_WARN, "tlsservernew: ignoring request, no matching TLS client");
+    debug(DBG_WARN, "tlsservernew: ignoring request, no matching TLS client for %s", 
+        addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
     if (cert)
 	X509_free(cert);
 
