@@ -18,7 +18,21 @@
 #include "raddict.h"
 #include "util.h"
 
-#define RADLEN(x) ntohs(((uint16_t *)(x))[1])
+/**
+ * @brief Get the length of a radius message form its raw buffer.
+ * Note the buffer must contain at least the first 4 bytes.
+ * 
+ * @param buf raw message buffer
+ * @return int the length of the radius message if valid, or its negative value if invalid.
+ * A 0 value is also consiedered invalid.
+ */
+int get_checked_rad_length(uint8_t *buf) {
+    int len = ntohs(buf[2]);
+    if (len < RAD_Min_Length || len > RAD_Max_Length) {
+        return -len;
+    }
+    return len;
+}
 
 void radmsg_free(struct radmsg *msg) {
     if (msg) {
@@ -122,7 +136,7 @@ int radmsg_copy_attrs(struct radmsg *dst,
     return n;
 }
 
-int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret, int secret_len) {
+int _checkmsgauth(unsigned char *rad, int radlen, uint8_t *authattr, uint8_t *secret, int secret_len) {
     int result = 0;             /* Fail. */
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct hmac_md5_ctx hmacctx;
@@ -135,7 +149,7 @@ int _checkmsgauth(unsigned char *rad, uint8_t *authattr, uint8_t *secret, int se
     memset(authattr, 0, 16);
 
     hmac_md5_set_key(&hmacctx, secret_len, secret);
-    hmac_md5_update(&hmacctx, RADLEN(rad), rad);
+    hmac_md5_update(&hmacctx, radlen, rad);
     hmac_md5_digest(&hmacctx, sizeof(hash), hash);
 
     memcpy(authattr, auth, 16);
@@ -151,11 +165,10 @@ out:
     return result;
 }
 
-int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec, int sec_len) {
+int _validauth(unsigned char *rad, int len, unsigned char *reqauth, unsigned char *sec, int sec_len) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct md5_ctx mdctx;
     unsigned char hash[MD5_DIGEST_SIZE];
-    const unsigned int len = RADLEN(rad);
     int result = 0;             /* Fail. */
 
     pthread_mutex_lock(&lock);
@@ -174,7 +187,7 @@ int _validauth(unsigned char *rad, unsigned char *reqauth, unsigned char *sec, i
     return result;
 }
 
-int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *secret, int secret_len) {
+int _createmessageauth(unsigned char *rad, int radlen, unsigned char *authattrval, uint8_t *secret, int secret_len) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct hmac_md5_ctx hmacctx;
 
@@ -185,21 +198,21 @@ int _createmessageauth(unsigned char *rad, unsigned char *authattrval, uint8_t *
 
     memset(authattrval, 0, 16);
     hmac_md5_set_key(&hmacctx, secret_len, secret);
-    hmac_md5_update(&hmacctx, RADLEN(rad), rad);
+    hmac_md5_update(&hmacctx, radlen, rad);
     hmac_md5_digest(&hmacctx, MD5_DIGEST_SIZE, authattrval);
 
     pthread_mutex_unlock(&lock);
     return 1;
 }
 
-int _radsign(unsigned char *rad, unsigned char *sec, int sec_len) {
+int _radsign(unsigned char *rad, int radlen, unsigned char *sec, int sec_len) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct md5_ctx mdctx;
 
     pthread_mutex_lock(&lock);
 
     md5_init(&mdctx);
-    md5_update(&mdctx, RADLEN(rad), rad);
+    md5_update(&mdctx, radlen, rad);
     md5_update(&mdctx, sec_len, sec);
     md5_digest(&mdctx, MD5_DIGEST_SIZE, rad + 4);
 
@@ -219,24 +232,24 @@ uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
     return p;
 }
 
-uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len) {
+int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **buf) {
     struct list_node *node;
     struct tlv *tlv;
     int size;
-    uint8_t *buf, *p, *msgauth = NULL;
+    uint8_t *p, *msgauth = NULL;
 
     if (!msg || !msg->attrs)
-        return NULL;
+        return -1;
     size = 20;
     for (node = list_first(msg->attrs); node; node = list_next(node))
         size += 2 + ((struct tlv *)node->data)->l;
     if (size > 65535)
-        return NULL;
-    buf = malloc(size);
-    if (!buf)
-        return NULL;
+        return -1;
+    *buf = malloc(size);
+    if (!*buf)
+        return -1;
 
-    p = buf;
+    p = *buf;
     *p++ = msg->code;
     *p++ = msg->id;
     *(uint16_t *)p = htons(size);
@@ -251,41 +264,41 @@ uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len) {
             msgauth = ATTRVAL(p);
         p += tlv->l + 2;
     }
-    if (msgauth && !_createmessageauth(buf, msgauth, secret, secret_len)) {
-	free(buf);
-	return NULL;
+    if (msgauth && !_createmessageauth(*buf, size, msgauth, secret, secret_len)) {
+	free(*buf);
+	return -1;
     }
     if (secret) {
-	if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(buf, secret, secret_len)) {
-	    free(buf);
-	    return NULL;
+	if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(*buf, size, secret, secret_len)) {
+	    free(*buf);
+	    return -1;
 	}
 	if (msg->code == RAD_Accounting_Request)
-	    memcpy(msg->auth, buf + 4, 16);
+	    memcpy(msg->auth, *buf + 4, 16);
     }
-    return buf;
+    return size;
 }
 
 /* if secret set we also validate message authenticator if present */
-struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, int secret_len, uint8_t *rqauth) {
+struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len, uint8_t *rqauth) {
     struct radmsg *msg;
     uint8_t t, l, *v = NULL, *p, auth[16];
-    uint16_t len;
     struct tlv *attr;
 
-    len = RADLEN(buf);
-    if (len < 20)
-	return NULL;
+    if (len != ntohs(buf[2])) {
+        debug(DBG_WARN, "buf2radmsg: length field does not match buffer length, ignoring message");
+        return NULL;
+    }
 
     if (secret && buf[0] == RAD_Accounting_Request) {
 	memset(auth, 0, 16);
-	if (!_validauth(buf, auth, secret, secret_len)) {
+	if (!_validauth(buf, len, auth, secret, secret_len)) {
 	    debug(DBG_WARN, "buf2radmsg: Accounting-Request message authentication failed");
 	    return NULL;
 	}
     }
 
-    if (rqauth && secret && !_validauth(buf, rqauth, secret, secret_len)) {
+    if (rqauth && secret && !_validauth(buf, len, rqauth, secret, secret_len)) {
 	debug(DBG_WARN, "buf2radmsg: Invalid auth, ignoring reply");
 	return NULL;
     }
@@ -317,7 +330,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, uint8_t *secret, int secret_len, uint8_t
 	if (t == RAD_Attr_Message_Authenticator && secret) {
 	    if (rqauth)
 		memcpy(buf + 4, rqauth, 16);
-	    if (l != 16 || !_checkmsgauth(buf, v, secret, secret_len)) {
+	    if (l != 16 || !_checkmsgauth(buf, len, v, secret, secret_len)) {
 		debug(DBG_WARN, "buf2radmsg: message authentication failed");
 		if (rqauth)
 		    memcpy(buf + 4, msg->auth, 16);

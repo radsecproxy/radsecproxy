@@ -7,6 +7,8 @@
 
 #include "tlv11.h"
 
+#define RAD_Min_Length 20
+#define RAD_Max_Length 4096
 #define RAD_Max_Attr_Value_Length 253
 
 #define RAD_Access_Request 1
@@ -67,6 +69,7 @@ struct radmsg {
 #define ATTRVAL(x) ((x) + 2)
 #define ATTRVALLEN(x) ((x)[1] - 2)
 
+int get_checked_rad_length(uint8_t *buf);
 void radmsg_free(struct radmsg *);
 struct radmsg *radmsg_init(uint8_t, uint8_t, uint8_t *);
 int radmsg_add(struct radmsg *, struct tlv *);
@@ -76,8 +79,8 @@ int radmsg_copy_attrs(struct radmsg *dst,
                       const struct radmsg *src,
                       uint8_t type);
 uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv);
-uint8_t *radmsg2buf(struct radmsg *msg, uint8_t *, int);
-struct radmsg *buf2radmsg(uint8_t *, uint8_t *, int, uint8_t *);
+int radmsg2buf(struct radmsg *msg, uint8_t *, int, uint8_t **);
+struct radmsg *buf2radmsg(uint8_t *, int, uint8_t *, int, uint8_t *);
 uint8_t attrname2val(char *attrname);
 int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type);
 int attrvalidate(unsigned char *attrs, int length);

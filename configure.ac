@@ -11,6 +11,9 @@ AC_PROG_RANLIB
 AC_CHECK_FUNCS([mallopt])
 AC_REQUIRE_AUX_FILE([tap-driver.sh])
 
+RELEASEDATE=m4_esyscmd([date +%Y-%m-%d])
+AC_SUBST(RELEASEDATE)
+
 m4_version_prereq(2.70, [], [AC_PROG_CC_C99])
 if test "$ac_cv_prog_cc_c99" = "no"; then
   echo "requires C99 compatible compiler"
@@ -99,7 +102,7 @@ if test "x$dtls" = "xyes" ; then
 fi
 
 dnl Substitute variables such as sysconfdir
-AC_CONFIG_FILES([radsecproxy.8 radsecproxy.conf.5])
+AC_CONFIG_FILES([radsecproxy.8 radsecproxy-hash.8 radsecproxy.conf.5])
 
 dnl Expand sysconfdir early to avoid two layers of substitution
 test "x$prefix" = xNONE && prefix=$ac_default_prefix

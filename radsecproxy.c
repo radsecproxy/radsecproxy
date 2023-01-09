@@ -448,7 +448,7 @@ int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
         if (!to->requests[id].rq) {
             rq->newid = id;
             rq->msg->id = id;
-            rq->buf = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len);
+            rq->buflen = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len, &rq->buf);
             if (!rq->buf) {
                 pthread_mutex_unlock(to->requests[id].lock);
                 debug(DBG_ERR, "sendrq: radmsg2buf failed");
@@ -527,7 +527,7 @@ void sendreply(struct request *rq) {
     struct client *to = rq->from;
 
     if (!rq->replybuf)
-	rq->replybuf = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len);
+	rq->replybuflen = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len, &rq->replybuf);
     radmsg_free(rq->msg);
     rq->msg = NULL;
     if (!rq->replybuf) {
@@ -1297,7 +1297,7 @@ int radsrv(struct request *rq) {
     int ttlres;
     char tmp[INET6_ADDRSTRLEN];
 
-    msg = buf2radmsg(rq->buf, from->conf->secret, from->conf->secret_len, NULL);
+    msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
     free(rq->buf);
     rq->buf = NULL;
 
@@ -1449,7 +1449,7 @@ exit:
 }
 
 /* Called from client readers, handling replies from servers. */
-void replyh(struct server *server, unsigned char *buf) {
+void replyh(struct server *server, uint8_t *buf, int len) {
     struct client *from;
     struct rqout *rqout;
     int sublen, ttlres;
@@ -1470,7 +1470,7 @@ void replyh(struct server *server, unsigned char *buf) {
 	goto errunlock;
     }
 
-    msg = buf2radmsg(buf, server->conf->secret, server->conf->secret_len, rqout->rq->msg->auth);
+    msg = buf2radmsg(buf, len, server->conf->secret, server->conf->secret_len, rqout->rq->msg->auth);
 #ifdef DEBUG
     printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
@@ -1779,7 +1779,7 @@ void *clientwr(void *arg) {
 	    if (!timeout.tv_sec || rqout->expiry.tv_sec < timeout.tv_sec)
 		timeout.tv_sec = rqout->expiry.tv_sec;
 	    rqout->tries++;
-	    if (!conf->pdef->clientradput(server, rqout->rq->buf)) {
+	    if (!conf->pdef->clientradput(server, rqout->rq->buf, rqout->rq->buflen)) {
             debug(DBG_WARN, "clientwr: could not send request to server %s", conf->name);
             if (server->lostrqs < MAX_LOSTRQS)
                 server->lostrqs++;

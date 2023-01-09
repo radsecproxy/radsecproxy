@@ -214,7 +214,7 @@ static int cookie_calculate_hash(struct sockaddr *peer, time_t time, uint8_t *re
 static int cookie_generate_cb(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len) {
     struct sockaddr_storage peer;
     struct timeval now;
-    uint8_t result[EVP_MAX_MD_SIZE];
+    uint8_t result[EVP_MAX_MD_SIZE] = {0};
     unsigned int resultlength;
 
     if (!cookie_secret_initialized) {
@@ -244,7 +244,7 @@ static int cookie_verify_cb(SSL *ssl, const unsigned char *cookie, unsigned int 
     struct sockaddr_storage peer;
     struct timeval now;
     time_t cookie_time;
-    uint8_t result[EVP_MAX_MD_SIZE];
+    uint8_t result[EVP_MAX_MD_SIZE] = {0};
     unsigned int resultlength;
 
     if (!cookie_secret_initialized)

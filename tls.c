@@ -33,7 +33,7 @@ static char **getlistenerargs();
 void *tlslistener(void *arg);
 int tlsconnect(struct server *server, int timeout, char *text);
 void *tlsclientrd(void *arg);
-int clientradputtls(struct server *server, unsigned char *rad);
+int clientradputtls(struct server *server, unsigned char *rad, int radlen);
 void tlssetsrcres();
 
 static const struct protodefs protodefs = {
@@ -95,7 +95,7 @@ static void cleanup_connection(struct server *server) {
 
 int tlsconnect(struct server *server, int timeout, char *text) {
     struct timeval now, start;
-    time_t wait;
+    uint wait;
     int firsttry = 1;
     X509 *cert;
     SSL_CTX *ctx = NULL;
@@ -307,37 +307,40 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
 }
 
 /* timeout in seconds, 0 means no timeout (blocking) */
-unsigned char *radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock) {
+int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
     int cnt, len;
-    unsigned char buf[4], *rad;
+    unsigned char init_buf[4];
 
-	cnt = sslreadtimeout(ssl, buf, 4, timeout, lock);
+	cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
 	if (cnt < 1)
-        return NULL;
+        return 0;
 
-	len = RADLEN(buf);
-	if (len < 20) {
-	    debug(DBG_ERR, "radtlsget: length too small, malformed packet! closing connection!");
+    len = get_checked_rad_length(init_buf);
+    if (len <= 0) {
+        debug(DBG_ERR, "radtlsget: invalid message length (%d)! closing connection!", -len);
         pthread_mutex_lock(lock);
         SSL_shutdown(ssl);
         pthread_mutex_unlock(lock);
-        return NULL;
-	}
-	rad = malloc(len);
-	if (!rad) {
-	    debug(DBG_ERR, "radtlsget: malloc failed");
-	    return NULL;
-	}
-	memcpy(rad, buf, 4);
+        return 0;
+    }
+    *buf = malloc(len);
+    if (!*buf) {
+        debug(DBG_ERR, "radtlsget: malloc failed! closing conneciton!");
+        pthread_mutex_lock(lock);
+        SSL_shutdown(ssl);
+        pthread_mutex_unlock(lock);
+        return 0;
+    }
+    memcpy(*buf, init_buf, 4);
 
-	cnt = sslreadtimeout(ssl, rad + 4, len - 4, timeout, lock);
-	if (cnt < 1) {
-	    free(rad);
-	    return NULL;
-	}
+    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
+    if (cnt < 1) {
+        free(*buf);
+        return 0;
+    }
 
     debug(DBG_DBG, "radtlsget: got %d bytes", len);
-    return rad;
+    return len;
 }
 
 int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
@@ -345,9 +348,9 @@ int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
     unsigned long error;
     struct pollfd fds[1];
 
-    if (!buf || !num) {
-            debug(DBG_ERR, "dosslwrite: was called with empty buffer!");
-            return -1;
+    if (!buf || num <= 0) {
+        debug(DBG_ERR, "dosslwrite: was called with empty or invalid buffer!");
+        return -1;
     }
 
     if(!may_block) {
@@ -373,9 +376,8 @@ int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
     return ret;
 }
 
-int clientradputtls(struct server *server, unsigned char *rad) {
+int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
-    size_t len;
     struct clsrvconf *conf = server->conf;
 
     pthread_mutex_lock(&server->lock);
@@ -384,13 +386,12 @@ int clientradputtls(struct server *server, unsigned char *rad) {
         return 0;
     }
 
-    len = RADLEN(rad);
-    if ((cnt = dosslwrite(server->ssl, rad, len, 0)) <= 0) {
+    if ((cnt = dosslwrite(server->ssl, rad, radlen, 0)) <= 0) {
         pthread_mutex_unlock(&server->lock);
         return 0;
     }
 
-    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %zu to TLS peer %s", cnt, len, conf->name);
+    debug(DBG_DBG, "clientradputtls: Sent %d bytes, Radius packet of length %zu to TLS peer %s", cnt, radlen, conf->name);
     pthread_mutex_unlock(&server->lock);
     return 1;
 }
@@ -399,31 +400,32 @@ void *tlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
     struct timeval now;
+    int len = 0;
 
     for (;;) {
-	buf = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock);
-	if (!buf) {
-        if (SSL_get_shutdown(server->ssl) || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF)) {
-            if (SSL_get_shutdown(server->ssl))
-                debug (DBG_WARN, "tlsclientrd: connection to server %s lost", server->conf->name);
-            else if (server->lostrqs)
-                debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
-            if (server->dynamiclookuparg)
-                break;
-            tlsconnect(server, 0, "tlsclientrd");
-        }
-        if (server->dynamiclookuparg) {
-            gettimeofday(&now, NULL);
-            if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
-                debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
-                break;
+        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
+        if (!buf || !len) {
+            if (SSL_get_shutdown(server->ssl) || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF)) {
+                if (SSL_get_shutdown(server->ssl))
+                    debug (DBG_WARN, "tlsclientrd: connection to server %s lost", server->conf->name);
+                else if (server->lostrqs)
+                    debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
+                if (server->dynamiclookuparg)
+                    break;
+                tlsconnect(server, 0, "tlsclientrd");
             }
+            if (server->dynamiclookuparg) {
+                gettimeofday(&now, NULL);
+                if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
+                    debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
+                    break;
+                }
+            }
+            continue;
         }
-        continue;
-    }
 
-	replyh(server, buf);
-
+        replyh(server, buf, len);
+        buf = NULL;
     }
     debug(DBG_INFO, "tlsclientrd: exiting for %s", server->conf->name);
     pthread_mutex_lock(&server->lock);
@@ -474,9 +476,9 @@ void *tlsserverwr(void *arg) {
             pthread_exit(NULL);
         }
 
-        if ((cnt = dosslwrite(client->ssl, reply->replybuf, RADLEN(reply->replybuf), 0)) > 0) {
+        if ((cnt = dosslwrite(client->ssl, reply->replybuf, reply->replybuflen, 0)) > 0) {
             debug(DBG_DBG, "tlsserverwr: sent %d bytes, Radius packet of length %d to %s",
-                cnt, RADLEN(reply->replybuf), addr2string(client->addr, tmp, sizeof(tmp)));
+                cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
         }
         pthread_mutex_unlock(&client->lock);
     	freerq(reply);
@@ -488,6 +490,7 @@ void tlsserverrd(struct client *client) {
     uint8_t *buf;
     pthread_t tlsserverwrth;
     char tmp[INET6_ADDRSTRLEN];
+    int len = 0;
 
     debug(DBG_DBG, "tlsserverrd: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
 
@@ -497,23 +500,25 @@ void tlsserverrd(struct client *client) {
     }
 
     for (;;) {
-	buf = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock);
-	if (!buf) {
-	    debug(DBG_ERR, "tlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
-	    break;
-	}
-	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-	rq = newrequest();
-	if (!rq) {
-	    free(buf);
-	    continue;
-	}
-	rq->buf = buf;
-	rq->from = client;
-	if (!radsrv(rq)) {
-	    debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-	    break;
-	}
+        len = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock, &buf);
+        if (!buf || !len) {
+            debug(DBG_ERR, "tlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
+            break;
+        }
+        debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+        rq = newrequest();
+        if (!rq) {
+            free(buf);
+            continue;
+        }
+        rq->buf = buf;
+        rq->buflen = len;
+        rq->from = client;
+        if (!radsrv(rq)) {
+            debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+            break;
+        }
+        buf = NULL;
     }
 
     /* stop writer by setting ssl to NULL and give signal in case waiting for data */
