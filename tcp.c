@@ -125,7 +125,7 @@ int tcpconnect(struct server *server, int timeout, char *text) {
             hp = (struct hostportres *)entry->data;
             debug(DBG_INFO, "tcpconnect: trying to open TCP connection to server %s (%s port %s)", server->conf->name, hp->host, hp->port);
             if ((server->sock = connecttcp(hp->addrinfo, source ? source : srcres, list_count(server->conf->hostports) > 1 ? 5 : 30)) >= 0) {
-                debug(DBG_WARN, "tcpconnect: TCP connection to server %s (%s port %s) up", hp->host, hp->port);
+                debug(DBG_WARN, "tcpconnect: TCP connection to server %s (%s port %s) up", server->conf->name, hp->host, hp->port);
                 break;
             }
         }
