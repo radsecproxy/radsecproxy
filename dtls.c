@@ -571,6 +571,11 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
             bio = BIO_new_dgram(server->sock, BIO_CLOSE);
             BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, hp->addrinfo->ai_addr);
+            if (server->conf->dtlsmtu) {
+                SSL_set_options(server->ssl, SSL_OP_NO_QUERY_MTU);
+                if (!DTLS_set_link_mtu(server->ssl, server->conf->dtlsmtu))
+                    debug(DBG_WARN, "dtlsconnect: failed to set mtu %d", server->conf->dtlsmtu);
+            }
             SSL_set_bio(server->ssl, bio, bio);
             if (sslconnecttimeout(server->ssl, 5) <= 0) {
                 while ((error = ERR_get_error()))

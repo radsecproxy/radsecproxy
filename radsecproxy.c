@@ -2656,6 +2656,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "BlockingStartup", CONF_BLN, &conf->blockingstartup,
             "SNI", CONF_BLN, &conf->sni,
             "SNIservername", CONF_STR, &conf->sniservername,
+            "DTLSForceMTU", CONF_LINT, &conf->dtlsmtu,
             NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");

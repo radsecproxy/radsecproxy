@@ -643,6 +643,13 @@ Explicitly set the \fIsni\fR to request from the server, in case the server is s
 by IP address or to override the hostname. Implicitly enables \fBSNI\fR for this server.
 .RE
 
+.BI "DTLSForceMTU " mtu
+.RS
+Some non-Linux platforms are unable to query the MTU of a connection, causing DTLS to limit
+itself to 256 bytes and thus failing to connect. Manually set \fImtu\fR to a large enough value
+so the initial DTLS cleint-hello fits without fragmentation. 
+.RE
+
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
 

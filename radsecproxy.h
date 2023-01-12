@@ -175,6 +175,7 @@ struct clsrvconf {
     char *fticks_visinst;
     uint8_t sni;
     char *sniservername;
+    long dtlsmtu;
 };
 
 #include "tlscommon.h"
