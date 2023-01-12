@@ -314,11 +314,11 @@ void *dtlsservernew(void *arg) {
     if (!conf)
         goto exit;
 
-    if (!srcres)
-        dtlssetsrcres();
-    memcpy(&tmpsrvaddr, srcres, sizeof(struct addrinfo));
     tmpsrvaddr.ai_addr = (struct sockaddr *)&params->bind;
     tmpsrvaddr.ai_addrlen = SOCKADDR_SIZE(params->bind);
+    tmpsrvaddr.ai_family = params->bind.ss_family;
+    tmpsrvaddr.ai_socktype = protodefs.socktype;
+
     if ((s = bindtoaddr(&tmpsrvaddr, params->addr.ss_family, 1)) < 0)
         goto exit;
     if (connect(s, (struct sockaddr *)&params->addr, SOCKADDR_SIZE(params->addr)))
@@ -386,28 +386,34 @@ exit:
 
 int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, struct sockaddr *to, socklen_t tolen) {
     uint8_t controlbuf[128];
-    int ret, toaddrfound = 0;
+    int ret;
     struct cmsghdr *ctrlhdr;
     struct msghdr msghdr;
     struct in6_pktinfo *info6;
+    struct iovec iov[] = {{.iov_base=NULL, .iov_len=0}};
 
     char tmp[48];
 
     msghdr.msg_name = from;
     msghdr.msg_namelen = fromlen;
-    msghdr.msg_iov = NULL;
-    msghdr.msg_iovlen = 0;
+    msghdr.msg_iov = iov;
+    msghdr.msg_iovlen = (sizeof(iov)/sizeof(*(iov)));
     msghdr.msg_control = controlbuf;
     msghdr.msg_controllen = sizeof(controlbuf);
     msghdr.msg_flags = 0;
 
-    if ((ret = recvmsg(socket, &msghdr, MSG_PEEK | MSG_TRUNC)) < 0)
+    if ((ret = recvmsg(socket, &msghdr, MSG_PEEK | MSG_TRUNC)) < 0) {
+        debug(DBG_ERR, "getConnectionInfo: recvmsg failed: %s", strerror(errno));
         return ret;
+    }
 
     debug(DBG_DBG, "udp packet from %s", addr2string(from, tmp, sizeof(tmp)));
 
-    if (getsockname(socket, to, &tolen))
+    if (getsockname(socket, to, &tolen)) {
+        debug(DBG_ERR, "getConnectionInfo: getsockname failed");
         return -1;
+    }
+
     for (ctrlhdr = CMSG_FIRSTHDR(&msghdr); ctrlhdr; ctrlhdr = CMSG_NXTHDR(&msghdr, ctrlhdr)) {
 #if defined(IP_PKTINFO)
         if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_PKTINFO) {
@@ -415,7 +421,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
             debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, &(pktinfo->ipi_addr), tmp, sizeof(tmp)));
 
             ((struct sockaddr_in *)to)->sin_addr = pktinfo->ipi_addr;
-            toaddrfound = 1;
+            return ret;
         }
 #elif defined(IP_RECVDSTADDR)
         if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_RECVDSTADDR) {
@@ -423,19 +429,21 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
             debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, addr, tmp, sizeof(tmp)));
 
             ((struct sockaddr_in *)to)->sin_addr = *addr;
-            toaddrfound = 1;
+            return ret;
         }
 #endif
-        if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_RECVPKTINFO) {
+        if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_PKTINFO) {
             info6 = (struct in6_pktinfo *)CMSG_DATA(ctrlhdr);
             debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET6, &info6->ipi6_addr, tmp, sizeof(tmp)));
 
             ((struct sockaddr_in6 *)to)->sin6_addr = info6->ipi6_addr;
             ((struct sockaddr_in6 *)to)->sin6_scope_id = info6->ipi6_ifindex;
-            toaddrfound = 1;
+            return ret;
         }
     }
-    return toaddrfound ? ret : -1;
+
+    debug(DBG_DBG, "getConnecitonInfo: unable to get destination address, using listen info instead");
+    return ret;
 }
 
 void *dtlslistener(void *arg) {
@@ -467,6 +475,8 @@ void *dtlslistener(void *arg) {
 
         if (getConnectionInfo(s, (struct sockaddr *)&from, sizeof(from), (struct sockaddr *)&to, sizeof(to)) < 0) {
             debug(DBG_DBG, "dtlslistener: getConnectionInfo failed");
+            if (recv(s, buf, 4, 0) == -1)
+                debug(DBG_ERR, "dtlslistener: recv failed - %s", strerror(errno));
             continue;
         }
 
@@ -522,7 +532,7 @@ void *dtlslistener(void *arg) {
             unsigned long error;
             while ((error = ERR_get_error()))
                 debug(DBG_ERR, "dtlslistener: DTLS_listen failed: %s", ERR_error_string(error, NULL));
-            debug(DBG_ERR, "dtlslistener: DTLS_listen failed from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
+            debug(DBG_ERR, "dtlslistener: DTLS_listen failed or no cookie from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
         }
         pthread_mutex_unlock(&conf->tlsconf->lock);
     }

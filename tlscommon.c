@@ -1190,6 +1190,8 @@ int sslaccepttimeout (SSL *ssl, int timeout) {
                         want_write = 1;
                     case SSL_ERROR_WANT_READ:
                         continue;
+                    case SSL_ERROR_SYSCALL:
+                        debugerrno(errno, DBG_ERR, "sslaccepttimeout: syscall error ");
                 }
             }
         }

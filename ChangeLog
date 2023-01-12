@@ -1,6 +1,7 @@
 unreleased changes
 	Bug Fixes:
 	- Fix potential segfault in tcp log message
+	- Fix DTLS over IPv6
 
 2021-10-25 1.9.1
 	Misc:
