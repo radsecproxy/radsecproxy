@@ -390,7 +390,6 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
 
 void *dtlslistener(void *arg) {
     int ndesc, flags, s = *(int *)arg;
-    unsigned char buf[4];
     struct sockaddr_storage from, to;
     struct dtlsservernewparams *params;
     struct pollfd fds[1];
@@ -417,16 +416,14 @@ void *dtlslistener(void *arg) {
 
         if (getConnectionInfo(s, (struct sockaddr *)&from, sizeof(from), (struct sockaddr *)&to, sizeof(to)) < 0) {
             debug(DBG_DBG, "dtlslistener: getConnectionInfo failed");
-            if (recv(s, buf, 4, 0) == -1)
-                debug(DBG_ERR, "dtlslistener: recv failed - %s", strerror(errno));
+            sock_dgram_skip(s);
             continue;
         }
 
         conf = find_clconf(handle, (struct sockaddr *)&from, NULL, NULL);
         if (!conf) {
             debug(DBG_INFO, "dtlslistener: got UDP from unknown peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
-            if (recv(s, buf, 4, 0) == -1)
-                debug(DBG_ERR, "dtlslistener: recv failed - %s", strerror(errno));
+            sock_dgram_skip(s);
             continue;
         }
 

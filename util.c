@@ -277,6 +277,18 @@ uint connect_wait(struct timeval attempt_start, struct timeval last_success, int
     return now.tv_sec - attempt_start.tv_sec;
 }
 
+/**
+ * @brief Skip (discard) dgram frame at front of queue
+ * 
+ * @param socket the dgram socket
+ */
+void sock_dgram_skip(int socket) {
+    uint8_t dummy;
+
+    if (recv(socket, &dummy, sizeof(dummy), MSG_DONTWAIT) == -1)
+        debug(DBG_ERR, "sock_dgram_skip: recv failed - %s", strerror(errno));
+}
+
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
 /* End: */
