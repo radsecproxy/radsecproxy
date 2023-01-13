@@ -390,7 +390,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
     struct cmsghdr *ctrlhdr;
     struct msghdr msghdr;
     struct in6_pktinfo *info6;
-    struct iovec iov[] = {{.iov_base=NULL, .iov_len=0}};
+    struct iovec iov[] = {{NULL, 0}};
 
     char tmp[48];
 
