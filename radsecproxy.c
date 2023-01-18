@@ -1657,7 +1657,7 @@ void *clientwr(void *arg) {
 	    server->newrq = 0;
 	}
     if (server->conreset) {
-        debug(DBG_DBG, "clientwr: connection reset; resending all aoutstanding requests");
+        debug(DBG_DBG, "clientwr: connection reset; resending all outstanding requests");
         do_resend = 1;
         server->conreset = 0;
     }
