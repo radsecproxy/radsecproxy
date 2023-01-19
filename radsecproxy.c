@@ -1627,6 +1627,7 @@ void *clientwr(void *arg) {
         }
     }
     server->state = RSP_SERVER_STATE_CONNECTED;
+    server->conreset = 0;
 
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);
