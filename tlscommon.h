@@ -53,6 +53,7 @@ void freematchcertattr(struct clsrvconf *conf);
 void tlsreloadcrls();
 int sslconnecttimeout(SSL *ssl, int timeout);
 int sslaccepttimeout (SSL *ssl, int timeout);
+int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock);
 #endif
 
 /* Local Variables: */

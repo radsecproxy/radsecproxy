@@ -20,7 +20,6 @@
 #include <pthread.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include <assert.h>
 #include "radsecproxy.h"
 #include "hostport.h"
 #include "debug.h"
@@ -217,88 +216,6 @@ concleanup:
     pthread_mutex_unlock(&server->newrq_mutex);
     if (source) freeaddrinfo(source);
     return 1;
-}
-
-/* timeout in seconds, 0 means no timeout (blocking), returns when num bytes have been read, or timeout */
-/* returns 0 on timeout, -1 on error and num if ok */
-int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock) {
-    int ndesc, cnt = 0, len, sockerr = 0;
-    socklen_t errlen = sizeof(sockerr);
-    struct pollfd fds[1];
-    unsigned long error;
-    uint8_t want_write = 0;
-    assert(lock);
-
-    pthread_mutex_lock(lock);
-
-    for (len = 0; len < num; len += cnt) {
-        if (SSL_pending(ssl) == 0) {
-            fds[0].fd = SSL_get_fd(ssl);
-            fds[0].events = POLLIN;
-            if (want_write) {
-                fds[0].events |= POLLOUT;
-                want_write = 0;
-            }
-            pthread_mutex_unlock(lock);
-
-            ndesc = poll(fds, 1, timeout ? timeout * 1000 : -1);
-            if (ndesc == 0)
-                return ndesc;
-
-            pthread_mutex_lock(lock);
-            if (ndesc < 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                if (fds[0].revents & POLLERR) {
-                    if(!getsockopt(SSL_get_fd(ssl), SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
-                        debug(DBG_INFO, "sslreadtimeout: connection lost: %s", strerror(sockerr));
-                    else
-                        debug(DBG_INFO, "sslreadtimeout: connection lost: unknown error");
-                } else if (fds[0].revents & POLLHUP) {
-                    debug(DBG_INFO, "sslreadtimeout: connection lost: hang up");
-                } else if (fds[0].revents & POLLNVAL) {
-                    debug(DBG_ERR, "sslreadtimeout: connection error: fd not open");
-                }
-
-                SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
-                pthread_mutex_unlock(lock);
-                return -1;
-            }
-        }
-
-        cnt = SSL_read(ssl, buf + len, num - len);
-        if (cnt <= 0) {
-            switch (SSL_get_error(ssl, cnt)) {
-                case SSL_ERROR_WANT_WRITE:
-                    want_write = 1;
-                    /* fallthrough */
-                case SSL_ERROR_WANT_READ:
-                    cnt = 0;
-                    continue;
-                case SSL_ERROR_ZERO_RETURN:
-                    debug(DBG_DBG, "sslreadtimeout: got ssl shutdown");
-                    SSL_shutdown(ssl);
-                    break;
-                case SSL_ERROR_SYSCALL:
-                    if (errno)
-                        debugerrno(errno, DBG_INFO, "sslreadtimeout: connection lost");
-                    else
-                        debug(DBG_INFO, "sslreadtimeout: connection lost: EOF");
-                    /* fallthrough */
-                case SSL_ERROR_SSL:
-                    while ((error = ERR_get_error()))
-                        debug(DBG_ERR, "sslreadtimeout: SSL: %s", ERR_error_string(error, NULL));
-                    SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
-                    break;
-                default:
-                    debug(DBG_ERR, "sslreadtimeout: uncaught SSL error");
-                    SSL_shutdown(ssl);
-                    SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
-            }
-            pthread_mutex_unlock(lock);
-            return -1;
-        }
-    }
-    pthread_mutex_unlock(lock);
-    return cnt;
 }
 
 /* timeout in seconds, 0 means no timeout (blocking) */
