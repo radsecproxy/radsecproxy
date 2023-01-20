@@ -249,16 +249,16 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
             if (ndesc < 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
                 if (fds[0].revents & POLLERR) {
                     if(!getsockopt(SSL_get_fd(ssl), SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
-                        debug(DBG_INFO, "TLS Connection lost: %s", strerror(sockerr));
+                        debug(DBG_INFO, "sslreadtimeout: connection lost: %s", strerror(sockerr));
                     else
-                        debug(DBG_INFO, "TLS Connection lost: unknown error");
+                        debug(DBG_INFO, "sslreadtimeout: connection lost: unknown error");
                 } else if (fds[0].revents & POLLHUP) {
-                    debug(DBG_INFO, "TLS Connection lost: hang up");
+                    debug(DBG_INFO, "sslreadtimeout: connection lost: hang up");
                 } else if (fds[0].revents & POLLNVAL) {
-                    debug(DBG_INFO, "TLS Connection error: fd not open");
+                    debug(DBG_ERR, "sslreadtimeout: connection error: fd not open");
                 }
 
-                SSL_shutdown(ssl);
+                SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
                 pthread_mutex_unlock(lock);
                 return -1;
             }
@@ -269,25 +269,29 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
             switch (SSL_get_error(ssl, cnt)) {
                 case SSL_ERROR_WANT_WRITE:
                     want_write = 1;
+                    /* fallthrough */
                 case SSL_ERROR_WANT_READ:
                     cnt = 0;
                     continue;
                 case SSL_ERROR_ZERO_RETURN:
                     debug(DBG_DBG, "sslreadtimeout: got ssl shutdown");
+                    SSL_shutdown(ssl);
+                    break;
+                case SSL_ERROR_SYSCALL:
+                    debugerrno(errno, DBG_INFO, "sslreadtimeout: connection lost");
                     /* fallthrough */
-                default:
+                case SSL_ERROR_SSL:
                     while ((error = ERR_get_error()))
                         debug(DBG_ERR, "sslreadtimeout: SSL: %s", ERR_error_string(error, NULL));
-                    if (cnt == 0)
-                        debug(DBG_INFO, "sslreadtimeout: connection closed by remote host");
-                    else {
-                        debugerrno(errno, DBG_ERR, "sslreadtimeout: connection lost");
-                    }
-                    /* ensure ssl connection is shutdown */
+                    SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
+                    break;
+                default:
+                    debug(DBG_ERR, "sslreadtimeout: uncaught SSL error");
                     SSL_shutdown(ssl);
-                    pthread_mutex_unlock(lock);
-                    return -1;
+                    SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
             }
+            pthread_mutex_unlock(lock);
+            return -1;
         }
     }
     pthread_mutex_unlock(lock);
@@ -441,7 +445,7 @@ void *tlsserverwr(void *arg) {
     for (;;) {
         pthread_mutex_lock(&replyq->mutex);
         while (!list_first(replyq->entries)) {
-            if (client->ssl) {
+            if (!SSL_get_shutdown(client->ssl)) {
                 debug(DBG_DBG, "tlsserverwr: waiting for signal");
                 pthread_cond_wait(&replyq->cond, &replyq->mutex);
                 debug(DBG_DBG, "tlsserverwr: got signal");
@@ -453,12 +457,11 @@ void *tlsserverwr(void *arg) {
         pthread_mutex_unlock(&replyq->mutex);
 
         pthread_mutex_lock(&client->lock);
-        if (!client->ssl) {
-            /* ssl might have changed while waiting */
+        if (SSL_get_shutdown(client->ssl)) {
             if (reply)
                 freerq(reply);
             pthread_mutex_unlock(&client->lock);
-            debug(DBG_DBG, "tlsserverwr: exiting as requested");
+            debug(DBG_DBG, "tlsserverwr: ssl connection shutdown; exiting as requested");
             pthread_exit(NULL);
         }
 
@@ -480,34 +483,40 @@ void tlsserverrd(struct client *client) {
     debug(DBG_DBG, "tlsserverrd: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
 
     if (pthread_create(&tlsserverwrth, &pthread_attr, tlsserverwr, (void *)client)) {
-	debug(DBG_ERR, "tlsserverrd: pthread_create failed");
-	return;
+        debug(DBG_ERR, "tlsserverrd: pthread_create failed");
+        return;
     }
 
     for (;;) {
-	buf = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock);
-	if (!buf) {
-	    debug(DBG_ERR, "tlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
-	    break;
-	}
-	debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-	rq = newrequest();
-	if (!rq) {
-	    free(buf);
-	    continue;
-	}
-	rq->buf = buf;
-	rq->from = client;
-	if (!radsrv(rq)) {
-	    debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-	    break;
-	}
+        buf = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock);
+        if (!buf) {
+            pthread_mutex_lock(&client->lock);
+            if (SSL_get_shutdown(client->ssl))
+                debug(DBG_ERR, "tlsserverrd: connection from %s, client %s lost", addr2string(client->addr, tmp, sizeof(tmp)), client->conf->name);
+            else {
+                debug(DBG_WARN, "tlsserverrd: timeout from %s, client %s (no requests), closing connection", addr2string(client->addr, tmp, sizeof(tmp)), client->conf->name);
+                SSL_shutdown(client->ssl);
+            }
+            /* ensure shutdown state is set so tlsserverwr knows it can exit*/
+            SSL_set_shutdown(client->ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
+            pthread_mutex_unlock(&client->lock);
+            break;
+        }
+        debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+        rq = newrequest();
+        if (!rq) {
+            free(buf);
+            continue;
+        }
+        rq->buf = buf;
+        rq->from = client;
+        if (!radsrv(rq)) {
+            debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+            break;
+        }
     }
 
-    /* stop writer by setting ssl to NULL and give signal in case waiting for data */
-    pthread_mutex_lock(&client->lock);
-    client->ssl = NULL;
-    pthread_mutex_unlock(&client->lock);
+    /* signal writer so it can finish (based on SSL_shutdown) */
     pthread_mutex_lock(&client->replyq->mutex);
     pthread_cond_signal(&client->replyq->cond);
     pthread_mutex_unlock(&client->replyq->mutex);
