@@ -152,28 +152,28 @@ int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse) {
     struct addrinfo *res;
 
     for (res = addrinfo; res; res = res->ai_next) {
-	if (family != AF_UNSPEC && family != res->ai_family)
-	    continue;
-	s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-	if (s < 0) {
-	    debug(DBG_WARN, "bindtoaddr: socket failed");
-	    continue;
-	}
+        if (family != AF_UNSPEC && family != res->ai_family)
+            continue;
+        s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        if (s < 0) {
+            debugerrno(errno, DBG_WARN, "bindtoaddr: socket creation failed");
+            continue;
+        }
 
-	disable_DF_bit(s,res);
+        disable_DF_bit(s,res);
 
-	if (reuse)
-	    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1)
+        if (reuse)
+            if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "Failed to set SO_REUSEADDR");
 #ifdef IPV6_V6ONLY
-	if (family == AF_INET6)
-	    if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on)) == -1)
+        if (family == AF_INET6)
+            if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "Failed to set IPV6_V6ONLY");
 #endif
-	if (!bind(s, res->ai_addr, res->ai_addrlen))
-	    return s;
-	debug(DBG_WARN, "bindtoaddr: bind failed");
-	close(s);
+        if (!bind(s, res->ai_addr, res->ai_addrlen))
+            return s;
+        debug(DBG_WARN, "bindtoaddr: bind failed");
+        close(s);
     }
     return -1;
 }
