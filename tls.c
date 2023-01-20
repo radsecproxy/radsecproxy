@@ -278,7 +278,10 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
                     SSL_shutdown(ssl);
                     break;
                 case SSL_ERROR_SYSCALL:
-                    debugerrno(errno, DBG_INFO, "sslreadtimeout: connection lost");
+                    if (errno)
+                        debugerrno(errno, DBG_INFO, "sslreadtimeout: connection lost");
+                    else
+                        debug(DBG_INFO, "sslreadtimeout: connection lost: EOF");
                     /* fallthrough */
                 case SSL_ERROR_SSL:
                     while ((error = ERR_get_error()))
