@@ -1,4 +1,4 @@
-unreleased changes
+2023-01-23 1.9.2
 	Bug Fixes:
 	- Fix potential segfault in tcp log message
 	- Fix DTLS over IPv6
