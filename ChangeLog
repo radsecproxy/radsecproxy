@@ -2,6 +2,7 @@ unreleased changes
 	New features:
 	- Optionally log accounting requests when respoinding directly (#72)
 	- SNI support for outgoing connections (#90)
+	- Manual MTU setting for DTLS on non-linux platforms
 
 	Misc:
 	- Don't require server type to be set by dyndisc scripts
