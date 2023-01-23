@@ -234,7 +234,7 @@ struct protodefs {
     void (*setprotoopts)(struct commonprotoopts *);
     char **(*getlistenerargs)();
     void *(*listener)(void*);
-    int (*connecter)(struct server *, int, char *);
+    int (*connecter)(struct server *, int, int);
     void *(*clientconnreader)(void*);
     int (*clientradput)(struct server *, unsigned char *);
     void (*addclient)(struct client *);

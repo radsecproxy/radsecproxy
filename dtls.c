@@ -35,7 +35,7 @@
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
 void *dtlslistener(void *arg);
-int dtlsconnect(struct server *server, int timeout, char *text);
+int dtlsconnect(struct server *server, int timeout, int reconnect);
 void *dtlsclientrd(void *arg);
 int clientradputdtls(struct server *server, unsigned char *rad);
 void addserverextradtls(struct clsrvconf *conf);
@@ -489,7 +489,7 @@ static void cleanup_connection(struct server *server) {
     server->ssl = NULL;
 }
 
-int dtlsconnect(struct server *server, int timeout, char *text) {
+int dtlsconnect(struct server *server, int timeout, int reconnect) {
     struct timeval socktimeout, now, start;
     time_t wait;
     int firsttry = 1;
@@ -502,7 +502,7 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
     char *subj;
     struct list_node *entry;
 
-    debug(DBG_DBG, "dtlsconnect: called from %s", text);
+    debug(DBG_DBG, "dtlsconnect: %s to %s", reconnect ? "reconnecting" : "initial connection", server->conf->name);
     pthread_mutex_lock(&server->lock);
 
     if (server->state == RSP_SERVER_STATE_CONNECTED)
@@ -604,7 +604,7 @@ concleanup:
     gettimeofday(&server->connecttime, NULL);
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
-    server->conreset = 1;
+    server->conreset = reconnect;
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
     if (source) freeaddrinfo(source);
@@ -653,7 +653,7 @@ void *dtlsclientrd(void *arg) {
                 debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
             else if (server->lostrqs)
                 debug (DBG_WARN, "dtlsclientrd: server %s did not respond, closing connection.", server->conf->name);
-    	    dtlsconnect(server, 0, "dtlsclientrd");
+    	    dtlsconnect(server, 0, 1);
             server->lostrqs = 0;
         }
 	    continue;

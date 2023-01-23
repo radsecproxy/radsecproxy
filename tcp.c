@@ -30,7 +30,7 @@
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
 void *tcplistener(void *arg);
-int tcpconnect(struct server *server, int timeout, char * text);
+int tcpconnect(struct server *server, int timeout, int reconnect);
 void *tcpclientrd(void *arg);
 int clientradputtcp(struct server *server, unsigned char *rad);
 void tcpsetsrcres();
@@ -80,7 +80,7 @@ void tcpsetsrcres() {
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
 
-int tcpconnect(struct server *server, int timeout, char *text) {
+int tcpconnect(struct server *server, int timeout, int reconnect) {
     struct timeval now, start;
     int firsttry = 1;
     time_t wait;
@@ -88,7 +88,7 @@ int tcpconnect(struct server *server, int timeout, char *text) {
     struct list_node *entry;
     struct hostportres *hp;
 
-    debug(DBG_DBG, "tcpconnect: called from %s", text);
+    debug(DBG_DBG, "tcpconnect: %s to %s", reconnect ? "reconnecting" : "initial connection", server->conf->name);
     pthread_mutex_lock(&server->lock);
 
     if (server->state == RSP_SERVER_STATE_CONNECTED)
@@ -143,7 +143,7 @@ int tcpconnect(struct server *server, int timeout, char *text) {
     server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
-    server->conreset = 1;
+    server->conreset = reconnect;
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
 
@@ -244,7 +244,7 @@ void *tcpclientrd(void *arg) {
 	if (!buf) {
         if (server->dynamiclookuparg)
 		break;
-	    tcpconnect(server, 0, "tcpclientrd");
+	    tcpconnect(server, 0, 1);
 	    continue;
 	}
 

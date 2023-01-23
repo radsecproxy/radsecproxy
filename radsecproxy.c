@@ -1612,7 +1612,7 @@ void *clientwr(void *arg) {
     laststatsrv = server->lastreply;
 
     if (conf->pdef->connecter) {
-        if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+        if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, 0)) {
             server->state = RSP_SERVER_STATE_FAILING;
             if (server->dynamiclookuparg) {
                 debug(DBG_WARN, "%s: connect failed, sleeping %ds", __func__, ZZZ);
@@ -1627,7 +1627,6 @@ void *clientwr(void *arg) {
         }
     }
     server->state = RSP_SERVER_STATE_CONNECTED;
-    server->conreset = 0;
 
     for (;;) {
 	pthread_mutex_lock(&server->newrq_mutex);

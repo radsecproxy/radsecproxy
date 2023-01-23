@@ -30,7 +30,7 @@
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
 void *tlslistener(void *arg);
-int tlsconnect(struct server *server, int timeout, char *text);
+int tlsconnect(struct server *server, int timeout, int reconnect);
 void *tlsclientrd(void *arg);
 int clientradputtls(struct server *server, unsigned char *rad);
 void tlssetsrcres();
@@ -92,7 +92,7 @@ static void cleanup_connection(struct server *server) {
     server->ssl = NULL;
 }
 
-int tlsconnect(struct server *server, int timeout, char *text) {
+int tlsconnect(struct server *server, int timeout, int reconnect) {
     struct timeval now, start;
     time_t wait;
     int firsttry = 1;
@@ -105,7 +105,7 @@ int tlsconnect(struct server *server, int timeout, char *text) {
     struct list_node *entry;
     struct hostportres *hp;
 
-    debug(DBG_DBG, "tlsconnect: called from %s", text);
+    debug(DBG_DBG, "tlsconnect: %s to %s", reconnect ? "reconnecting" : "initial connection", server->conf->name);
     pthread_mutex_lock(&server->lock);
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
@@ -211,7 +211,7 @@ concleanup:
     server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
-    server->conreset = 1;
+    server->conreset = reconnect;
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
     if (source) freeaddrinfo(source);
@@ -322,7 +322,7 @@ void *tlsclientrd(void *arg) {
                 debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
             if (server->dynamiclookuparg)
                 break;
-            tlsconnect(server, 0, "tlsclientrd");
+            tlsconnect(server, 0, 1);
         }
         if (server->dynamiclookuparg) {
             gettimeofday(&now, NULL);
