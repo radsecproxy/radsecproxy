@@ -1657,7 +1657,7 @@ void *clientwr(void *arg) {
     laststatsrv = server->lastreply;
 
     if (conf->pdef->connecter) {
-        if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, "clientwr")) {
+        if (!conf->pdef->connecter(server, server->dynamiclookuparg ? 5 : 0, 0)) {
             server->state = RSP_SERVER_STATE_FAILING;
             if (server->dynamiclookuparg) {
                 debug(DBG_WARN, "%s: connect failed, giving up. Not trying again for %ds", __func__, ZZZ);
@@ -1702,7 +1702,7 @@ void *clientwr(void *arg) {
 	    server->newrq = 0;
 	}
     if (server->conreset) {
-        debug(DBG_DBG, "clientwr: connection reset; resending all aoutstanding requests");
+        debug(DBG_DBG, "clientwr: connection reset; resending all outstanding requests");
         do_resend = 1;
         server->conreset = 0;
     }

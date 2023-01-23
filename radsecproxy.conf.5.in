@@ -875,7 +875,7 @@ If omitted, use the system defaults set in openssl.conf
 Currently supported values are
 .BR SSL3 , TLS1 , TLS1_1 , TLS1_2 , TLS1_3
 for TLS and
-.BR DTLS1 , DTLS1_1
+.BR DTLS1 , DTLS1_1 , DTLS1_2
 for DTLS.
 .RE
 

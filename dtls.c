@@ -35,7 +35,7 @@
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs();
 void *dtlslistener(void *arg);
-int dtlsconnect(struct server *server, int timeout, char *text);
+int dtlsconnect(struct server *server, int timeout, int reconnect);
 void *dtlsclientrd(void *arg);
 int clientradputdtls(struct server *server, unsigned char *rad, int radlen);
 void addserverextradtls(struct clsrvconf *conf);
@@ -94,78 +94,11 @@ void dtlssetsrcres() {
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
 
-int dtlsread(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock) {
-    int len, cnt, sockerr = 0;
-    socklen_t errlen = sizeof(sockerr);
-    struct pollfd fds[1];
-    unsigned long error;
-    assert(lock);
-
-    pthread_mutex_lock(lock);
-
-    for (len = 0; len < num; len += cnt) {
-        if (!SSL_pending(ssl)) {
-            fds[0].fd = BIO_get_fd(SSL_get_rbio(ssl), NULL);
-            fds[0].events = POLLIN;
-
-            pthread_mutex_unlock(lock);
-
-            cnt = poll(fds, 1, timeout? timeout * 1000 : -1);
-            if (cnt == 0)
-                return cnt;
-
-            pthread_mutex_lock(lock);
-            if (cnt < 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                if (fds[0].revents & POLLERR) {
-                    if(!getsockopt(BIO_get_fd(SSL_get_rbio(ssl), NULL), SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
-                        debug(DBG_INFO, "DTLS Connection lost: %s", strerror(sockerr));
-                    else
-                        debug(DBG_INFO, "DTLS Connection lost: unknown error");
-                } else if (fds[0].revents & POLLHUP) {
-                    debug(DBG_INFO, "DTLS Connection lost: hang up");
-                } else if (fds[0].revents & POLLNVAL) {
-                    debug(DBG_INFO, "DTLS Connection error: fd not open");
-                }
-
-                SSL_shutdown(ssl);
-                pthread_mutex_unlock(lock);
-                return -1;
-            }
-        }
-
-        cnt = SSL_read(ssl, buf + len, num - len);
-        if (cnt <= 0)
-            switch (cnt = SSL_get_error(ssl, cnt)) {
-                case SSL_ERROR_WANT_READ:
-                case SSL_ERROR_WANT_WRITE:
-                    cnt = 0;
-                    continue;
-                case SSL_ERROR_ZERO_RETURN:
-                    debug(DBG_DBG, "dtlsread: got ssl shutdown");
-                    /* fallthrough */
-                default:
-                    while ((error = ERR_get_error()))
-                        debug(DBG_ERR, "dtlsread: SSL: %s", ERR_error_string(error, NULL));
-                    if (cnt == 0)
-                        debug(DBG_INFO, "dtlsread: connection closed by remote host");
-                    else {
-                        debugerrno(errno, DBG_ERR, "dtlsread: connection lost");
-                    }
-                    /* snsure ssl connection is shutdown */
-                    SSL_shutdown(ssl);
-                    pthread_mutex_unlock(lock);
-                    return -1;
-        }
-    }
-    pthread_mutex_unlock(lock);
-    return num;
-}
-
 int raddtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
     int cnt, len;
     unsigned char init_buf[4];
 
-    cnt = dtlsread(ssl, init_buf, 4, timeout, lock);
+    cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
     if (cnt < 1)
         return 0;
 
@@ -184,7 +117,7 @@ int raddtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
     }
     memcpy(*buf, init_buf, 4);
 
-    cnt = dtlsread(ssl, *buf + 4, len - 4, timeout, lock);
+    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
     if (cnt < 1) {
         free(*buf);
         return 0;
@@ -207,7 +140,7 @@ void *dtlsserverwr(void *arg) {
     for (;;) {
         pthread_mutex_lock(&replyq->mutex);
         while (!list_first(replyq->entries)) {
-            if (client->ssl) {
+            if (!SSL_get_shutdown(client->ssl)) {
                 debug(DBG_DBG, "dtlsserverwr: waiting for signal");
                 pthread_cond_wait(&replyq->cond, &replyq->mutex);
                 debug(DBG_DBG, "dtlsserverwr: got signal");
@@ -219,12 +152,12 @@ void *dtlsserverwr(void *arg) {
         pthread_mutex_unlock(&replyq->mutex);
 
         pthread_mutex_lock(&client->lock);
-        if (!client->ssl) {
+        if (SSL_get_shutdown(client->ssl)) {
             /* ssl might have changed while waiting */
             pthread_mutex_unlock(&client->lock);
             if (reply)
                 freerq(reply);
-            debug(DBG_DBG, "tlsserverwr: exiting as requested");
+            debug(DBG_DBG, "dtlsserverwr: ssl connection shutdown; exiting as requested");
             pthread_exit(NULL);
         }
 
@@ -266,7 +199,15 @@ void dtlsserverrd(struct client *client) {
     for (;;) {
         len = raddtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock, &buf);
         if (!buf || !len) {
-            debug(DBG_ERR, "dtlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
+            pthread_mutex_lock(&client->lock);
+            if (SSL_get_shutdown(client->ssl))
+                debug(DBG_ERR, "dtlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
+            else {
+                debug(DBG_WARN, "tlsserverrd: timeout from %s, client %s (no requests), closing connection", addr2string(client->addr, tmp, sizeof(tmp)), client->conf->name);
+                SSL_shutdown(client->ssl);
+            }
+            SSL_set_shutdown(client->ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
+            pthread_mutex_unlock(&client->lock);
             break;
         }
         debug(DBG_DBG, "dtlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
@@ -286,9 +227,6 @@ void dtlsserverrd(struct client *client) {
     }
 
     /* stop writer by setting ssl to NULL and give signal in case waiting for data */
-    pthread_mutex_lock(&client->lock);
-    client->ssl = NULL;
-    pthread_mutex_unlock(&client->lock);
     pthread_mutex_lock(&client->replyq->mutex);
     pthread_cond_signal(&client->replyq->cond);
     pthread_mutex_unlock(&client->replyq->mutex);
@@ -317,11 +255,12 @@ void *dtlsservernew(void *arg) {
     if (!conf)
         goto exit;
 
-    if (!srcres)
-        dtlssetsrcres();
-    memcpy(&tmpsrvaddr, srcres, sizeof(struct addrinfo));
+    memset(&tmpsrvaddr, 0, sizeof(struct addrinfo));
     tmpsrvaddr.ai_addr = (struct sockaddr *)&params->bind;
     tmpsrvaddr.ai_addrlen = SOCKADDR_SIZE(params->bind);
+    tmpsrvaddr.ai_family = params->bind.ss_family;
+    tmpsrvaddr.ai_socktype = protodefs.socktype;
+
     if ((s = bindtoaddr(&tmpsrvaddr, params->addr.ss_family, 1)) < 0)
         goto exit;
     if (connect(s, (struct sockaddr *)&params->addr, SOCKADDR_SIZE(params->addr)))
@@ -389,28 +328,34 @@ exit:
 
 int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, struct sockaddr *to, socklen_t tolen) {
     uint8_t controlbuf[128];
-    int ret, toaddrfound = 0;
+    int ret;
     struct cmsghdr *ctrlhdr;
     struct msghdr msghdr;
     struct in6_pktinfo *info6;
+    struct iovec iov[] = {{NULL, 0}};
 
     char tmp[48];
 
     msghdr.msg_name = from;
     msghdr.msg_namelen = fromlen;
-    msghdr.msg_iov = NULL;
-    msghdr.msg_iovlen = 0;
+    msghdr.msg_iov = iov;
+    msghdr.msg_iovlen = (sizeof(iov)/sizeof(*(iov)));
     msghdr.msg_control = controlbuf;
     msghdr.msg_controllen = sizeof(controlbuf);
     msghdr.msg_flags = 0;
 
-    if ((ret = recvmsg(socket, &msghdr, MSG_PEEK | MSG_TRUNC)) < 0)
+    if ((ret = recvmsg(socket, &msghdr, MSG_PEEK | MSG_TRUNC)) < 0) {
+        debug(DBG_ERR, "getConnectionInfo: recvmsg failed: %s", strerror(errno));
         return ret;
+    }
 
     debug(DBG_DBG, "udp packet from %s", addr2string(from, tmp, sizeof(tmp)));
 
-    if (getsockname(socket, to, &tolen))
+    if (getsockname(socket, to, &tolen)) {
+        debug(DBG_ERR, "getConnectionInfo: getsockname failed");
         return -1;
+    }
+
     for (ctrlhdr = CMSG_FIRSTHDR(&msghdr); ctrlhdr; ctrlhdr = CMSG_NXTHDR(&msghdr, ctrlhdr)) {
 #if defined(IP_PKTINFO)
         if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_PKTINFO) {
@@ -418,7 +363,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
             debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, &(pktinfo->ipi_addr), tmp, sizeof(tmp)));
 
             ((struct sockaddr_in *)to)->sin_addr = pktinfo->ipi_addr;
-            toaddrfound = 1;
+            return ret;
         }
 #elif defined(IP_RECVDSTADDR)
         if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_RECVDSTADDR) {
@@ -426,19 +371,21 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
             debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, addr, tmp, sizeof(tmp)));
 
             ((struct sockaddr_in *)to)->sin_addr = *addr;
-            toaddrfound = 1;
+            return ret;
         }
 #endif
-        if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_RECVPKTINFO) {
+        if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_PKTINFO) {
             info6 = (struct in6_pktinfo *)CMSG_DATA(ctrlhdr);
             debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET6, &info6->ipi6_addr, tmp, sizeof(tmp)));
 
             ((struct sockaddr_in6 *)to)->sin6_addr = info6->ipi6_addr;
             ((struct sockaddr_in6 *)to)->sin6_scope_id = info6->ipi6_ifindex;
-            toaddrfound = 1;
+            return ret;
         }
     }
-    return toaddrfound ? ret : -1;
+
+    debug(DBG_DBG, "getConnecitonInfo: unable to get destination address, using listen info instead");
+    return ret;
 }
 
 void *dtlslistener(void *arg) {
@@ -470,6 +417,8 @@ void *dtlslistener(void *arg) {
 
         if (getConnectionInfo(s, (struct sockaddr *)&from, sizeof(from), (struct sockaddr *)&to, sizeof(to)) < 0) {
             debug(DBG_DBG, "dtlslistener: getConnectionInfo failed");
+            if (recv(s, buf, 4, 0) == -1)
+                debug(DBG_ERR, "dtlslistener: recv failed - %s", strerror(errno));
             continue;
         }
 
@@ -525,7 +474,7 @@ void *dtlslistener(void *arg) {
             unsigned long error;
             while ((error = ERR_get_error()))
                 debug(DBG_ERR, "dtlslistener: DTLS_listen failed: %s", ERR_error_string(error, NULL));
-            debug(DBG_ERR, "dtlslistener: DTLS_listen failed from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
+            debug(DBG_ERR, "dtlslistener: DTLS_listen failed or no cookie from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
         }
         pthread_mutex_unlock(&conf->tlsconf->lock);
     }
@@ -543,7 +492,7 @@ static void cleanup_connection(struct server *server) {
     server->ssl = NULL;
 }
 
-int dtlsconnect(struct server *server, int timeout, char *text) {
+int dtlsconnect(struct server *server, int timeout, int reconnect) {
     struct timeval socktimeout, now, start;
     uint wait;
     int firsttry = 1;
@@ -556,7 +505,7 @@ int dtlsconnect(struct server *server, int timeout, char *text) {
     char *subj;
     struct list_node *entry;
 
-    debug(DBG_DBG, "dtlsconnect: called from %s", text);
+    debug(DBG_DBG, "dtlsconnect: %s to %s", reconnect ? "reconnecting" : "initial connection", server->conf->name);
     pthread_mutex_lock(&server->lock);
 
     if (server->state == RSP_SERVER_STATE_CONNECTED)
@@ -668,7 +617,7 @@ concleanup:
     gettimeofday(&server->connecttime, NULL);
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
-    server->conreset = 1;
+    server->conreset = reconnect;
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
     if (source) freeaddrinfo(source);
@@ -721,7 +670,7 @@ void *dtlsclientrd(void *arg) {
                     debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
                 else if (server->lostrqs)
                     debug (DBG_WARN, "dtlsclientrd: server %s did not respond, closing connection.", server->conf->name);
-                dtlsconnect(server, 0, "dtlsclientrd");
+                dtlsconnect(server, 0, 1);
                 server->lostrqs = 0;
             }
             continue;
