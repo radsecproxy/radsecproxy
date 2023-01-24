@@ -18,6 +18,9 @@
 #include "raddict.h"
 #include "util.h"
 
+/* radius message length is a 16bit value starting at byte 2, in network order*/
+#define RADLEN(buf) ntohs(*(uint16_t *)(buf+2))
+
 /**
  * @brief Get the length of a radius message form its raw buffer.
  * Note the buffer must contain at least the first 4 bytes.
@@ -27,7 +30,7 @@
  * A 0 value is also consiedered invalid.
  */
 int get_checked_rad_length(uint8_t *buf) {
-    int len = ntohs(buf[2]);
+    int len = RADLEN(buf);
     if (len < RAD_Min_Length || len > RAD_Max_Length) {
         return -len;
     }
@@ -285,7 +288,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
     uint8_t t, l, *v = NULL, *p, auth[16];
     struct tlv *attr;
 
-    if (len != ntohs(buf[2])) {
+    if (len != RADLEN(buf)) {
         debug(DBG_WARN, "buf2radmsg: length field does not match buffer length, ignoring message");
         return NULL;
     }

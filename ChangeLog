@@ -2,12 +2,19 @@ unreleased changes
 	New features:
 	- Optionally log accounting requests when respoinding directly (#72)
 	- SNI support for outgoing connections (#90)
+	- Manual MTU setting for DTLS on non-linux platforms
 
 	Misc:
 	- Don't require server type to be set by dyndisc scripts
 
 	Bug Fixes:
 	- Fix radius message length handling
+
+2023-01-23 1.9.2
+	Bug Fixes:
+	- Fix potential segfault in tcp log message
+	- Fix DTLS over IPv6
+	- Fix SSL shutdown/EOF for openssl 3.x (#108)
 
 2021-10-25 1.9.1
 	Misc:

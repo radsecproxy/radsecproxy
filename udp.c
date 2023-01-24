@@ -155,7 +155,7 @@ int radudpget(int s, struct client **client, struct server **server, unsigned ch
 
         cnt = recvfrom(s, init_buf, 4, MSG_PEEK | MSG_TRUNC, (struct sockaddr *)&from, &fromlen);
         if (cnt == -1) {
-            debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
+            debug(DBG_ERR, "radudpget: recvfrom failed - %s", strerror(errno));
             continue;
         }
 
@@ -164,30 +164,26 @@ int radudpget(int s, struct client **client, struct server **server, unsigned ch
             : find_srvconf(handle, (struct sockaddr *)&from, NULL);
         if (!p) {
             debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
-            if (recv(s, init_buf, 4, 0) == -1)
-                debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
+            sock_dgram_skip(s);
             continue;
         }
 
         len = get_checked_rad_length(init_buf);
         if (len <= 0) {
             debug(DBG_WARN, "radudpget: invalid message length: %d", -len);
-            if (recv(s, init_buf, 4, 0) == -1)
-                debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
+            sock_dgram_skip(s);
             continue;
         }
         if (len > 4096) {
             debug(DBG_WARN, "radudpget: length too big");
-            if (recv(s, init_buf, 4, 0) == -1)
-                debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
+            sock_dgram_skip(s);
             continue;
         }
 
         *buf = malloc(len);
         if (!*buf) {
             debug(DBG_ERR, "radudpget: malloc failed");
-            if (recv(s, init_buf, 4, 0) == -1)
-                debug(DBG_ERR, "radudpget: recv failed - %s", strerror(errno));
+            sock_dgram_skip(s);
             continue;
         }
 

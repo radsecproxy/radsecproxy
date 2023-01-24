@@ -649,6 +649,13 @@ Explicitly set the \fIsni\fR to request from the server, in case the server is s
 by IP address or to override the hostname. Implicitly enables \fBSNI\fR for this server.
 .RE
 
+.BI "DTLSForceMTU " mtu
+.RS
+Some non-Linux platforms are unable to query the MTU of a connection, causing DTLS to limit
+itself to 256 bytes and thus failing to connect. Manually set \fImtu\fR to a large enough value
+so the initial DTLS cleint-hello fits without fragmentation. 
+.RE
+
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
 
@@ -881,7 +888,7 @@ If omitted, use the system defaults set in openssl.conf
 Currently supported values are
 .BR SSL3 , TLS1 , TLS1_1 , TLS1_2 , TLS1_3
 for TLS and
-.BR DTLS1 , DTLS1_1
+.BR DTLS1 , DTLS1_1 , DTLS1_2
 for DTLS.
 .RE
 

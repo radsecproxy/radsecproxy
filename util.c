@@ -152,28 +152,28 @@ int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse) {
     struct addrinfo *res;
 
     for (res = addrinfo; res; res = res->ai_next) {
-	if (family != AF_UNSPEC && family != res->ai_family)
-	    continue;
-	s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-	if (s < 0) {
-	    debug(DBG_WARN, "bindtoaddr: socket failed");
-	    continue;
-	}
+        if (family != AF_UNSPEC && family != res->ai_family)
+            continue;
+        s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        if (s < 0) {
+            debugerrno(errno, DBG_WARN, "bindtoaddr: socket creation failed");
+            continue;
+        }
 
-	disable_DF_bit(s,res);
+        disable_DF_bit(s,res);
 
-	if (reuse)
-	    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1)
+        if (reuse)
+            if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "Failed to set SO_REUSEADDR");
 #ifdef IPV6_V6ONLY
-	if (family == AF_INET6)
-	    if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on)) == -1)
+        if (family == AF_INET6)
+            if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on)) == -1)
                 debugerrno(errno, DBG_WARN, "Failed to set IPV6_V6ONLY");
 #endif
-	if (!bind(s, res->ai_addr, res->ai_addrlen))
-	    return s;
-	debug(DBG_WARN, "bindtoaddr: bind failed");
-	close(s);
+        if (!bind(s, res->ai_addr, res->ai_addrlen))
+            return s;
+        debug(DBG_WARN, "bindtoaddr: bind failed");
+        close(s);
     }
     return -1;
 }
@@ -251,7 +251,7 @@ int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout
     return s;
 }
 
-uint connect_wait(struct timeval attempt_start, struct timeval last_success, int firsttry) {
+uint32_t connect_wait(struct timeval attempt_start, struct timeval last_success, int firsttry) {
     struct timeval now;
 
     gettimeofday(&now, NULL);
@@ -275,6 +275,18 @@ uint connect_wait(struct timeval attempt_start, struct timeval last_success, int
         return 60;
 
     return now.tv_sec - attempt_start.tv_sec;
+}
+
+/**
+ * @brief Skip (discard) dgram frame at front of queue
+ * 
+ * @param socket the dgram socket
+ */
+void sock_dgram_skip(int socket) {
+    uint8_t dummy;
+
+    if (recv(socket, &dummy, sizeof(dummy), MSG_DONTWAIT) == -1)
+        debug(DBG_ERR, "sock_dgram_skip: recv failed - %s", strerror(errno));
 }
 
 /* Local Variables: */
