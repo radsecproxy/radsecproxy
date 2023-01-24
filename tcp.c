@@ -83,7 +83,7 @@ void tcpsetsrcres() {
 int tcpconnect(struct server *server, int timeout, int reconnect) {
     struct timeval now, start;
     int firsttry = 1;
-    uint wait;
+    uint32_t wait;
     struct addrinfo *source = NULL;
     struct list_node *entry;
     struct hostportres *hp;

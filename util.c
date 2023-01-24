@@ -251,7 +251,7 @@ int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout
     return s;
 }
 
-uint connect_wait(struct timeval attempt_start, struct timeval last_success, int firsttry) {
+uint32_t connect_wait(struct timeval attempt_start, struct timeval last_success, int firsttry) {
     struct timeval now;
 
     gettimeofday(&now, NULL);

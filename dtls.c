@@ -491,7 +491,7 @@ static void cleanup_connection(struct server *server) {
 
 int dtlsconnect(struct server *server, int timeout, int reconnect) {
     struct timeval socktimeout, now, start;
-    uint wait;
+    uint32_t wait;
     int firsttry = 1;
     X509 *cert;
     SSL_CTX *ctx = NULL;
