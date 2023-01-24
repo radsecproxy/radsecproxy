@@ -2502,8 +2502,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         if (src->retrycount != 255)
             dst->retrycount = src->retrycount;
         dst->blockingstartup = src->blockingstartup;
+        dst->sni = src->sni;
     }
-    dst->sni = src->sni;
     return 1;
 }
 
