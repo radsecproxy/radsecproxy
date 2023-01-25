@@ -2182,16 +2182,13 @@ int dynamicconfigexternal(struct server *server) {
     struct pollfd fds[1];
     FILE *pipein;
 
-    /* for now we only learn hostname/address */
-    debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
-
     if (pipe(fd) > 0) {
-	debugerrno(errno, DBG_ERR, "dynamicconfig: pipe error");
+	debugerrno(errno, DBG_ERR, "dynamicconfigexternal: pipe error");
 	return 0;
     }
     pid = fork();
     if (pid < 0) {
-	debugerrno(errno, DBG_ERR, "dynamicconfig: fork error");
+	debugerrno(errno, DBG_ERR, "dynamicconfigexternal: fork error");
 	close(fd[0]);
 	close(fd[1]);
 	return 0;
@@ -2200,11 +2197,11 @@ int dynamicconfigexternal(struct server *server) {
 	close(fd[0]);
 	if (fd[1] != STDOUT_FILENO) {
 	    if (dup2(fd[1], STDOUT_FILENO) != STDOUT_FILENO)
-		debugx(1, DBG_ERR, "dynamicconfig: dup2 error for command %s", conf->dynamiclookupcommand);
+		debugx(1, DBG_ERR, "dynamicconfigexternal: dup2 error for command %s", conf->dynamiclookupcommand);
 	    close(fd[1]);
 	}
 	if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
-	    debugx(1, DBG_ERR, "dynamicconfig: exec error for command %s", conf->dynamiclookupcommand);
+	    debugx(1, DBG_ERR, "dynamicconfigexternal: exec error for command %s", conf->dynamiclookupcommand);
     }
 
     close(fd[1]);
@@ -2213,9 +2210,9 @@ int dynamicconfigexternal(struct server *server) {
     fds[0].events = POLLIN;
     status = poll(fds, 1, 5000);
     if (status < 0) {
-        debugerrno(errno, DBG_ERR, "dynamicconfig: error while waiting for command output");
+        debugerrno(errno, DBG_ERR, "dynamicconfigexternal: error while waiting for command output");
     } else if (status ==0) {
-        debug(DBG_WARN, "dynamicconfig: command did not return anything in time");
+        debug(DBG_WARN, "dynamicconfigexternal: command did not return anything in time");
         kill(pid, SIGKILL);
     } else {
         pipein = pushgconffile(&cf, pipein, conf->dynamiclookupcommand);
@@ -2229,12 +2226,12 @@ int dynamicconfigexternal(struct server *server) {
         fclose(pipein);
 
     if (waitpid(pid, &status, 0) < 0) {
-        debugerrno(errno, DBG_ERR, "dynamicconfig: wait error");
+        debugerrno(errno, DBG_ERR, "dynamicconfigexternal: wait error");
         return 0;
     }
 
     if (status) {
-        debug(DBG_INFO, "dynamicconfig: command exited with status %d",
+        debug(DBG_INFO, "dynamicconfigexternal: command exited with status %d",
               WEXITSTATUS(status));
         return 0;
     }
@@ -2249,11 +2246,11 @@ int dynamicconfigsrv(struct server *server, const char *srvstring) {
     char *servername;
     int i,j, srvcount = 0, result = 0;
 
-    debug(DBG_DBG, "dynamicconfig: starting SRV lookup (%s) for %s", conf->dynamiclookupcommand, srvstring);
+    debug(DBG_DBG, "dynamicconfigsrv: starting SRV lookup (%s) for %s", conf->dynamiclookupcommand, srvstring);
     srv = query_srv(srvstring, 2);
     
     if (!srv || !srv[0]) {
-        debug(DBG_NOTICE, "dynamicconfig: no SRV record for %s (%s)", server->dynamiclookuparg, srvstring);
+        debug(DBG_NOTICE, "dynamicconfigsrv: no SRV record for %s (%s)", server->dynamiclookuparg, srvstring);
         goto exitsrv;
     }
 
@@ -2297,7 +2294,6 @@ int dynamicconfigsrv(struct server *server, const char *srvstring) {
         goto exitservername;
     }
     result = compileserverconfig(conf, "dynamicconfig");
-    if (result) debug(DBG_INFO, "dynamicconfig: found dynamic server for realm %s", server->dynamiclookuparg);
 
 exitservername:
     free(servername);
@@ -2311,10 +2307,10 @@ exitsrv:
 int dynamicconfignaptr(struct server *server) {
     int i, result = 0;
     struct naptr_record **naptr;
-    debug(DBG_DBG, "dynamicconfig: starting NAPTR lookup (%s) for %s", server->conf->dynamiclookupcommand, server->dynamiclookuparg);
+    debug(DBG_DBG, "dynamicconfignaptr: starting NAPTR lookup (%s) for %s", server->conf->dynamiclookupcommand, server->dynamiclookuparg);
     naptr = query_naptr(server->dynamiclookuparg, 2);
     if (!naptr) {
-        debug(DBG_NOTICE, "dynamicconfig: no NAPTR record for %s", server->dynamiclookuparg);
+        debug(DBG_NOTICE, "dynamicconfignaptr: no NAPTR record for %s", server->dynamiclookuparg);
         return 0;
     }
 
@@ -2323,7 +2319,7 @@ int dynamicconfignaptr(struct server *server) {
             /* currently only the 'S' flag (perform SRV lookup) is supported */
             if (strncasecmp(naptr[i]->flags, "S", sizeof("S")) != 0) continue;
 
-            debug(DBG_DBG, "found matching NAPTR record: %s", naptr[i]->replacement);
+            debug(DBG_DBG, "dynamicconfignaptr: found matching NAPTR record: %s", naptr[i]->replacement);
             result = dynamicconfigsrv(server, naptr[i]->replacement);
             break;
         }
@@ -2357,6 +2353,9 @@ int dynamicconfig(struct server *server) {
 
     if (!result)
         debug(DBG_WARN, "dynamicconfig: failed to obtain dynamic server config for %s", server->dynamiclookuparg);
+    else
+        debug(DBG_NOTICE, "dynamicconfig: found dynamic server for realm %s", server->dynamiclookuparg);
+
     return result;
 }
 

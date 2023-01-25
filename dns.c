@@ -25,7 +25,7 @@ static uint16_t read_char_string(char *dest, const u_char *rdata, uint16_t offse
 
     len = *(rdata + offset++);
     if (offset+len > rdlen) {
-        debug(DBG_ERR,"error parsing char string, length is beyond radata!\n");
+        debug(DBG_ERR,"read_char_string: error parsing char string, length is beyond radata!\n");
         return -1;
     }
     memcpy(dest, rdata+offset, len);
@@ -60,7 +60,7 @@ static void *parse_srv_rr(ns_msg msg, ns_rr *rr) {
     response->port = ns_get16(rdata+4);
     len = ns_name_uncompress(ns_msg_base(msg), ns_msg_end(msg), rdata+6, response->host, NS_MAXDNAME);
     if (len == -1) {
-        debug(DBG_ERR, "error during dname uncompress");
+        debug(DBG_ERR, "parse_srv_rr: error during dname uncompress");
         free(response);
         return NULL;
     }
@@ -70,7 +70,7 @@ static void *parse_srv_rr(ns_msg msg, ns_rr *rr) {
         return NULL;
     }
 
-    debug(DBG_DBG, "parsed srv rr: host %s, port %d, priority %d, weight %d", response->host, response->port, response->priority, response->weight);
+    debug(DBG_DBG, "parse_srv_rr: parsed: host %s, port %d, priority %d, weight %d", response->host, response->port, response->priority, response->weight);
     return response;
 }
 
@@ -119,11 +119,11 @@ static void *parse_naptr_rr(ns_msg msg, ns_rr *rr){
 
     /* sanity check, should be exactly at the end of the rdata */
     if (offset + len != rdlen) {
-        debug(DBG_ERR,"sanity check failed! unexpected error while parsing naptr rr\n");
+        debug(DBG_ERR,"parse_naptr_rr: sanity check failed! unexpected error while parsing naptr rr\n");
         goto errexit;
     }
 
-    debug(DBG_DBG,"parsed naptr rr: service %s, regexp %s, replace %s, flags %s, order %d, preference %d", 
+    debug(DBG_DBG,"parse_naptr_rr: parsed: service %s, regexp %s, replace %s, flags %s, order %d, preference %d", 
         response->services, response->regexp, response->replacement, response->flags, response-> order, response->preference);
     return response;
 
@@ -170,12 +170,12 @@ static struct query_state *do_query(int type, const char *name, int timeout) {
     char *errstring;
     struct query_state *state = malloc(sizeof(struct query_state));
 
-    debug(DBG_DBG, "starting DNS query of type %d for %s", type, name);
+    debug(DBG_DBG, "do_query: starting DNS query of type %d for %s", type, name);
 
 #if __RES >= 19991006
     /* new thread-safe res_n* functions introduced in this version */
     if(res_ninit(&state->rs)){
-        debug(DBG_ERR, "resolver init failed\n");
+        debug(DBG_ERR, "do_query: resolver init failed\n");
         free(state);
         return NULL;
     }
@@ -211,20 +211,20 @@ static struct query_state *do_query(int type, const char *name, int timeout) {
             default:
                 errstring = "internal error";
         }
-        debug(DBG_NOTICE, "dns query failed: %s\n", errstring);
+        debug(DBG_NOTICE, "do_query: dns query failed: %s\n", errstring);
         query_cleanup(state);
         return NULL;
     }
 
     if (ns_initparse(state->buf, len, &state->msg) == -1) {
-        debug(DBG_ERR, "dns response parser init failed\n");
+        debug(DBG_ERR, "do_query: dns response parser init failed\n");
         query_cleanup(state);
         return NULL;
     }
 
     /* we should have a valid resopnse at this point, but check the response code anyway, to be sure */
     if (ns_msg_getflag(state->msg, ns_f_rcode) != ns_r_noerror) {
-        debug(DBG_ERR, "dns query returned error code %d\n", ns_msg_getflag(state->msg, ns_f_rcode) );
+        debug(DBG_ERR, "do_query: dns query returned error code %d\n", ns_msg_getflag(state->msg, ns_f_rcode) );
         query_cleanup(state);
         return NULL;
     }
@@ -251,10 +251,10 @@ static void **find_records(struct query_state *state, int type, int section, voi
     ns_rr rr;
     int rr_count, i, numresults=0;
 
-    debug(DBG_DBG, "looking for results of type %d in section %d", type, section);
+    debug(DBG_DBG, "find_records: looking for results of type %d in section %d", type, section);
 
     rr_count = ns_msg_count(state->msg, ns_s_an);
-    debug(DBG_DBG, "total %d records in section %d", rr_count, section);
+    debug(DBG_DBG, "find_records: total %d records in section %d", rr_count, section);
     result = calloc(rr_count + 1, sizeof(void *));
     if (!result) {
         debug(DBG_ERR,"malloc failed");
@@ -262,19 +262,19 @@ static void **find_records(struct query_state *state, int type, int section, voi
     }
     for (i = 0; i < rr_count; i++) {
          if (ns_parserr(&state->msg, ns_s_an, i, &rr)) {
-            debug(DBG_ERR, "error parsing record %d", i);
+            debug(DBG_ERR, "find_records: error parsing record %d", i);
             continue;
         }
         if (ns_rr_type(rr) == type) {
             record = parser(state->msg, &rr);
             if (!record) {
-                debug(DBG_ERR, "error parsing record %d", i);
+                debug(DBG_ERR, "find_records: error parsing record %d", i);
                 continue;
             }
             result[numresults++] = record;
         }
     }
-    debug(DBG_DBG, "%d records of desired type successfully parsed", numresults);
+    debug(DBG_DBG, "find_records: %d records of desired type successfully parsed", numresults);
     return result;
 }
 
