@@ -556,19 +556,29 @@ options above.
 
 .BI "DynamicLookupCommand " command
 .RS
-Execute the \fIcommand\fR to dynamically configure a server. The executable file
-should be given with full path and will be invoked with the name of the realm as
-its first and only argument. It should either print a valid \fBserver {...}\fR
-option on stdout and exit with a code of 0 or print nothing and exit with a
-non-zero exit code.
+Execute the \fIcommand\fR to dynamically configure a server for a realm given by 
+the username field in an Access-Request. 
+The command can take two special forms, naptr:\fIservice\fR or srv:\fIprefix\fR,
+or point to a script or executable.
 
-If the command exited with 0 an provided a valid server config, it will be combined
+The \fBnaptr:\fR and \fBsrv:\fR forms execute the corresponding DNS queries, either searching 
+for \fIservice\fR in NAPTR records (followed by SRV query), or querying for 
+\fIprefix\fB.realm\fR SRV records. Finally a server block will be constructed for 
+the dynamic realm taking this server block as a template and overriding the \fBhost\fR 
+entries with the content of the SRV records.
+
+Otherwise, the \fIcommand\fR should be an executable file or script, given with 
+full path, that will be invoked with the name of the realm as its first and only argument. 
+It should either print a valid \fBserver {...}\fR block containing at least one \fBhost\fR 
+statement on stdout and exit with a code of 0, or print nothing and exit with a non-zero 
+exit code. If the command exited with 0 and provided a valid server config, it will be combined
 with the statements in this server block, with the values returned by the command
 taking preference.
 
 An example of a shell script resolving the DNS NAPTR records
 for the realm and then the SRV records for each NAPTR matching
 \&'x-eduroam:radius.tls' is provided in \fItools/naptr\-eduroam.sh\fR.
+This is equivalent to configuring 'naptr:x-eduroam:radius.tls' directly.
 .RE
 
 .BR "StatusServer (" on | off | minimal | auto )

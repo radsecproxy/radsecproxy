@@ -14,6 +14,7 @@ radsecproxy_SOURCES = main.c
 
 librsp_a_SOURCES = \
 	debug.c debug.h \
+	dns.c dns.h \
 	dtls.c dtls.h \
 	fticks.c fticks.h fticks_hashmac.c fticks_hashmac.h \
 	gconfig.c gconfig.h \
@@ -42,7 +43,7 @@ AM_CFLAGS = \
 	-g -Wall -Werror -fno-strict-aliasing @SSL_CFLAGS@ @TARGET_CFLAGS@
 
 radsecproxy_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
-radsecproxy_LDADD = librsp.a @SSL_LIBS@
+radsecproxy_LDADD = librsp.a @SSL_LIBS@ @LIBS@
 radsecproxy_conf_LDFLAGS = @TARGET_LDFLAGS@
 radsecproxy_hash_LDADD = fticks_hashmac.o hash.o list.o
 

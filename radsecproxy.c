@@ -72,6 +72,7 @@
 #include "dtls.h"
 #include "fticks.h"
 #include "fticks_hashmac.h"
+#include "dns.h"
 
 static struct options options;
 static struct list *clconfs, *srvconfs;
@@ -89,6 +90,8 @@ pthread_attr_t pthread_attr;
 
 /* minimum required declarations to avoid reordering code */
 struct realm *adddynamicrealmserver(struct realm *realm, char *id);
+int compileserverconfig(struct clsrvconf *conf, const char *block);
+int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src);
 int dynamicconfig(struct server *server);
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 void freerealm(struct realm *realm);
@@ -2171,7 +2174,7 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
     return newrealm;
 }
 
-int dynamicconfig(struct server *server) {
+int dynamicconfigexternal(struct server *server) {
     int ok = 0, fd[2], status;
     pid_t pid;
     struct clsrvconf *conf = server->conf;
@@ -2179,29 +2182,26 @@ int dynamicconfig(struct server *server) {
     struct pollfd fds[1];
     FILE *pipein;
 
-    /* for now we only learn hostname/address */
-    debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
-
     if (pipe(fd) > 0) {
-	debugerrno(errno, DBG_ERR, "dynamicconfig: pipe error");
-	goto errexit;
+	debugerrno(errno, DBG_ERR, "dynamicconfigexternal: pipe error");
+	return 0;
     }
     pid = fork();
     if (pid < 0) {
-	debugerrno(errno, DBG_ERR, "dynamicconfig: fork error");
+	debugerrno(errno, DBG_ERR, "dynamicconfigexternal: fork error");
 	close(fd[0]);
 	close(fd[1]);
-	goto errexit;
+	return 0;
     } else if (pid == 0) {
 	/* child */
 	close(fd[0]);
 	if (fd[1] != STDOUT_FILENO) {
 	    if (dup2(fd[1], STDOUT_FILENO) != STDOUT_FILENO)
-		debugx(1, DBG_ERR, "dynamicconfig: dup2 error for command %s", conf->dynamiclookupcommand);
+		debugx(1, DBG_ERR, "dynamicconfigexternal: dup2 error for command %s", conf->dynamiclookupcommand);
 	    close(fd[1]);
 	}
 	if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
-	    debugx(1, DBG_ERR, "dynamicconfig: exec error for command %s", conf->dynamiclookupcommand);
+	    debugx(1, DBG_ERR, "dynamicconfigexternal: exec error for command %s", conf->dynamiclookupcommand);
     }
 
     close(fd[1]);
@@ -2210,9 +2210,9 @@ int dynamicconfig(struct server *server) {
     fds[0].events = POLLIN;
     status = poll(fds, 1, 5000);
     if (status < 0) {
-        debugerrno(errno, DBG_ERR, "dynamicconfig: error while waiting for command output");
+        debugerrno(errno, DBG_ERR, "dynamicconfigexternal: error while waiting for command output");
     } else if (status ==0) {
-        debug(DBG_WARN, "dynamicconfig: command did not return anything in time");
+        debug(DBG_WARN, "dynamicconfigexternal: command did not return anything in time");
         kill(pid, SIGKILL);
     } else {
         pipein = pushgconffile(&cf, pipein, conf->dynamiclookupcommand);
@@ -2226,22 +2226,137 @@ int dynamicconfig(struct server *server) {
         fclose(pipein);
 
     if (waitpid(pid, &status, 0) < 0) {
-	debugerrno(errno, DBG_ERR, "dynamicconfig: wait error");
-	goto errexit;
+        debugerrno(errno, DBG_ERR, "dynamicconfigexternal: wait error");
+        return 0;
     }
 
     if (status) {
-        debug(DBG_INFO, "dynamicconfig: command exited with status %d",
+        debug(DBG_INFO, "dynamicconfigexternal: command exited with status %d",
               WEXITSTATUS(status));
-        goto errexit;
+        return 0;
     }
 
-    if (ok)
-	return 1;
+    return ok;
+}
 
-errexit:
-    debug(DBG_WARN, "dynamicconfig: failed to obtain dynamic server config");
-    return 0;
+int dynamicconfigsrv(struct server *server, const char *srvstring) {
+    struct clsrvconf *conf = server->conf;
+    struct srv_record **srv;
+    char **hostports;
+    char *servername;
+    int i,j, srvcount = 0, result = 0;
+
+    debug(DBG_DBG, "dynamicconfigsrv: starting SRV lookup (%s) for %s", conf->dynamiclookupcommand, srvstring);
+    srv = querysrv(srvstring, 2);
+    
+    if (!srv || !srv[0]) {
+        debug(DBG_NOTICE, "dynamicconfigsrv: no SRV record for %s (%s)", server->dynamiclookuparg, srvstring);
+        goto exitsrv;
+    }
+
+    /* sort srv records by priority, ascending; counting the entries as a sideeffect */
+    for (i = 1; srv[i]; i++) {
+        struct srv_record *key = srv[i];
+        for (j= i-1; j >= 0 && srv[j]->priority > key->priority; j--)
+            srv[j+1] = srv[j];
+        srv[j+1] = key;
+    }
+    srvcount = i;
+
+    hostports = calloc(srvcount+1, sizeof(char *));
+    if (!hostports) {
+        debug(DBG_ERR, "malloc failed");
+        goto exitsrv;
+    }
+
+    for (i=0; srv[i]; i++) {
+        char *hostport = malloc(strlen(srv[i]->host) + sizeof(":65535"));
+        if (!hostport) {
+            debug(DBG_ERR, "malloc failed");
+            goto exithostport;
+        }
+        sprintf(hostport, "%s:%d", srv[i]->host, srv[i]->port);
+        hostports[i] = hostport;
+    }
+
+    servername = malloc(strlen("dynamic:") + strlen(server->dynamiclookuparg) + 1);
+    if (!servername) {
+        debug(DBG_ERR, "malloc failed");
+        goto exithostport;
+    }
+    sprintf(servername, "dynamic:%s", server->dynamiclookuparg);
+
+    conf->dynamiclookupcommand = NULL;
+    conf->name = servername;
+    conf->hostsrc = hostports;
+
+    if (!mergesrvconf(conf, NULL)) {
+        goto exitservername;
+    }
+    result = compileserverconfig(conf, "dynamicconfig");
+
+exitservername:
+    free(servername);
+exithostport:
+    freegconfmstr(hostports);
+exitsrv:
+    freesrvresponse(srv);
+    return result;
+}
+
+int dynamicconfignaptr(struct server *server) {
+    int i, result = 0;
+    struct naptr_record **naptr;
+    debug(DBG_DBG, "dynamicconfignaptr: starting NAPTR lookup (%s) for %s", server->conf->dynamiclookupcommand, server->dynamiclookuparg);
+    naptr = querynaptr(server->dynamiclookuparg, 2);
+    if (!naptr) {
+        debug(DBG_NOTICE, "dynamicconfignaptr: no NAPTR record for %s", server->dynamiclookuparg);
+        return 0;
+    }
+
+    for (i=0; naptr[i]; i++) {
+        if (strcasecmp(strchr(server->conf->dynamiclookupcommand,':') + 1, naptr[i]->services) == 0) {
+            /* currently only the 'S' flag (perform SRV lookup) is supported */
+            if (strncasecmp(naptr[i]->flags, "S", sizeof("S")) != 0) continue;
+
+            debug(DBG_DBG, "dynamicconfignaptr: found matching NAPTR record: %s", naptr[i]->replacement);
+            result = dynamicconfigsrv(server, naptr[i]->replacement);
+            break;
+        }
+    }
+    freenaptrresponse(naptr);
+    return result;
+}
+
+int dynamicconfig(struct server *server) {
+    struct clsrvconf *conf = server->conf;
+    char *srvquery, *srvext;
+    int result = 0;
+
+    debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
+    if (strncasecmp(conf->dynamiclookupcommand, "naptr:", sizeof("naptr:")-1) == 0){
+        result = dynamicconfignaptr(server);
+    }
+    else if (strncasecmp(conf->dynamiclookupcommand, "srv:", sizeof("srv:")-1) == 0) {
+        srvext = strchr(conf->dynamiclookupcommand, ':');
+        if (!srvext) return 0;
+        srvquery = malloc((strlen(srvext) + 1 + strlen(server->dynamiclookuparg) + 1) * sizeof(char));
+        if (!srvquery) return 0;
+        sprintf(srvquery, "%s%s%s", srvext + 1, conf->dynamiclookupcommand[strlen(conf->dynamiclookupcommand)-1] == '.' ? "" : ".", server->dynamiclookuparg);
+        
+        result = dynamicconfigsrv(server, srvquery);
+        free(srvquery);
+    }
+    else {
+        result = dynamicconfigexternal(server);
+    }
+
+    if (!result)
+        debug(DBG_WARN, "dynamicconfig: failed to obtain dynamic server config for %s", server->dynamiclookuparg);
+    else
+        debug(DBG_NOTICE, "dynamicconfig: found dynamic server for realm %s", server->dynamiclookuparg);
+
+    return result;
 }
 
 int setttlattr(struct options *opts, char *defaultattr) {
@@ -2262,7 +2377,6 @@ void freeclsrvconf(struct clsrvconf *conf) {
 	freegconfmstr(conf->hostsrc);
     free(conf->portsrc);
     freegconfmstr(conf->source);
-    free(conf->confsecret);
     free(conf->secret);
     free(conf->tls);
     freegconfmstr(conf->confmatchcertattrs);
@@ -2292,7 +2406,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
 int mergeconfstring(char **dst, char **src) {
     char *t;
 
-    if (*src) {
+    if (src && *src) {
 	*dst = *src;
 	*src = NULL;
 	return 1;
@@ -2333,7 +2447,7 @@ char **mstringcopy(char **in) {
 int mergeconfmstring(char ***dst, char ***src) {
     char **t;
 
-    if (*src) {
+    if (src && *src) {
 	*dst = *src;
 	*src = NULL;
 	return 1;
@@ -2349,33 +2463,46 @@ int mergeconfmstring(char ***dst, char ***src) {
     return 1;
 }
 
-/* assumes dst is a shallow copy */
+/**
+ * Merge config src into dst.
+ * Assumes that dst is a shallow copy. All values defined in src are
+ * moved to dst (no memory is duplicated, but pointers in src are set to NULL). 
+ * For NULL values in src the shallow data in dst is duplicated, resulting in a deep copy of dst.
+ * If src is NULL, simply a deep copy of dst is created.
+ * 
+ * @param dst the destination for the values
+ * @param src the source for the values, or NULL
+ * @return 1 if successful, 0 otherwise
+ */
 int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
-    if (!mergeconfstring(&dst->name, &src->name) ||
-	!mergeconfmstring(&dst->hostsrc, &src->hostsrc) ||
-	!mergeconfstring(&dst->portsrc, &src->portsrc) ||
-    !mergeconfmstring(&dst->source, &src->source) ||
-	!mergeconfstring(&dst->confsecret, &src->confsecret) ||
-	!mergeconfstring(&dst->tls, &src->tls) ||
-	!mergeconfmstring(&dst->confmatchcertattrs, &src->confmatchcertattrs) ||
-	!mergeconfstring(&dst->confrewritein, &src->confrewritein) ||
-	!mergeconfstring(&dst->confrewriteout, &src->confrewriteout) ||
-	!mergeconfstring(&dst->confrewriteusername, &src->confrewriteusername) ||
-	!mergeconfstring(&dst->dynamiclookupcommand, &src->dynamiclookupcommand) ||
-	!mergeconfstring(&dst->fticks_viscountry, &src->fticks_viscountry) ||
-	!mergeconfstring(&dst->fticks_visinst, &src->fticks_visinst) ||
-    !mergeconfstring(&dst->sniservername, &src->sniservername))
-	return 0;
-    if (src->pdef)
-	dst->pdef = src->pdef;
-    dst->statusserver = src->statusserver;
-    dst->certnamecheck = src->certnamecheck;
-    if (src->retryinterval != 255)
-	dst->retryinterval = src->retryinterval;
-    if (src->retrycount != 255)
-	dst->retrycount = src->retrycount;
-    dst->blockingstartup = src->blockingstartup;
-    dst->sni = src->sni;
+    if (!mergeconfstring(&dst->name, src ? &src->name : NULL) ||
+        !mergeconfmstring(&dst->hostsrc, src ? &src->hostsrc : NULL) ||
+        !mergeconfstring(&dst->portsrc, src ? &src->portsrc : NULL) ||
+        !mergeconfmstring(&dst->source, src ? &src->source : NULL) ||
+        !mergeconfstring((char **)&dst->secret, (char **) (src ? &src->secret : NULL)) ||
+        !mergeconfstring(&dst->tls, src ? &src->tls : NULL) ||
+        !mergeconfmstring(&dst->confmatchcertattrs, src ? &src->confmatchcertattrs : NULL) ||
+        !mergeconfstring(&dst->confrewritein, src ? &src->confrewritein : NULL) ||
+        !mergeconfstring(&dst->confrewriteout, src ? &src->confrewriteout : NULL) ||
+        !mergeconfstring(&dst->confrewriteusername, src ? &src->confrewriteusername : NULL) ||
+        !mergeconfstring(&dst->dynamiclookupcommand, src ? &src->dynamiclookupcommand : NULL) ||
+        !mergeconfstring(&dst->fticks_viscountry, src ? &src->fticks_viscountry : NULL) ||
+        !mergeconfstring(&dst->fticks_visinst, src ? &src->fticks_visinst : NULL) ||
+        !mergeconfstring(&dst->sniservername, src ? &src->sniservername : NULL))
+        return 0;
+
+    if (src) {
+        if (src->pdef)
+            dst->pdef = src->pdef;
+        dst->statusserver = src->statusserver;
+        dst->certnamecheck = src->certnamecheck;
+        if (src->retryinterval != 255)
+            dst->retryinterval = src->retryinterval;
+        if (src->retrycount != 255)
+            dst->retrycount = src->retrycount;
+        dst->blockingstartup = src->blockingstartup;
+        dst->sni = src->sni;
+    }
     return 1;
 }
 
@@ -2421,7 +2548,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "host", CONF_MSTR, &conf->hostsrc,
             "IPv4Only", CONF_BLN, &ipv4only,
             "IPv6Only", CONF_BLN, &ipv6only,
-	    "secret", CONF_STR_NOESC, &conf->confsecret,
+	    "secret", CONF_STR_NOESC, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 	    "tls", CONF_STR, &conf->tls,
 	    "MatchCertificateAttribute", CONF_MSTR, &matchcertattrs,
@@ -2516,14 +2643,12 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype))
 	debugx(1, DBG_ERR, "%s: resolve failed, exiting", __func__);
 
-    if (!conf->confsecret) {
-	if (!conf->pdef->secretdefault)
-	    debugx(1, DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
-	conf->confsecret = stringcopy(conf->pdef->secretdefault, 0);
-	if (!conf->confsecret)
-	    debugx(1, DBG_ERR, "malloc failed");
+    if (!conf->secret) {
+        if (!conf->pdef->secretdefault)
+            debugx(1, DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
+        if (!(conf->secret = (unsigned char *)stringcopy(conf->pdef->secretdefault, 0)))
+            debugx(1, DBG_ERR, "malloc failed");
     }
-    conf->secret = (unsigned char *)stringcopy(conf->confsecret, 0);
     conf->secret_len = unhex((char *)conf->secret, 1);
 
     if (conf->tlsconf) {
@@ -2551,6 +2676,11 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
     int i;
+
+    /* in case conf is a (partially) shallow copy, clear some old pointer so we don't accidentially free them in case of errors */
+    conf->hostports = NULL;
+    conf->matchcertattrs = NULL;
+
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
     	conf->tlsconf = conf->tls
@@ -2622,6 +2752,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (resconf) {
         conf->statusserver = resconf->statusserver;
         conf->certnamecheck = resconf->certnamecheck;
+        conf->secret_len = resconf->secret_len;
         conf->blockingstartup = resconf->blockingstartup;
         conf->type = resconf->type;
         conf->sni = resconf->sni;
@@ -2637,7 +2768,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                           "IPv6Only", CONF_BLN, &ipv6only,
             "port", CONF_STR, &conf->portsrc,
             "source", CONF_MSTR, &conf->source,
-            "secret", CONF_STR_NOESC, &conf->confsecret,
+            "secret", CONF_STR_NOESC, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
             "tls", CONF_STR, &conf->tls,
             "MatchCertificateAttribute", CONF_MSTR, &conf->confmatchcertattrs,
@@ -2744,6 +2875,21 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         free(statusserver);
     }
 
+    if (!conf->secret) {
+        if (!resconf) {
+            if (!conf->pdef->secretdefault) {
+                debug(DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
+                goto errexit;
+            }
+            if (!(conf->secret = (unsigned char *)stringcopy(conf->pdef->secretdefault,0))) {
+                debug(DBG_ERR, "malloc failed");
+                goto errexit;
+            }
+        }
+    }
+    if (conf->secret)
+        conf->secret_len = unhex((char *)conf->secret,1);
+
     if(conf->sniservername)
         conf->sni = 1;
 
@@ -2760,23 +2906,9 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 
     if (resconf || !conf->dynamiclookupcommand) {
-	if (!compileserverconfig(conf, block))
+        if (!compileserverconfig(conf, block))
             goto errexit;
     }
-
-    if (!conf->confsecret) {
-	if (!conf->pdef->secretdefault) {
-	    debug(DBG_ERR, "error in block %s, secret must be specified for transport type %s", block, conf->pdef->name);
-	    goto errexit;
-	}
-	conf->confsecret = stringcopy(conf->pdef->secretdefault, 0);
-	if (!conf->confsecret) {
-	    debug(DBG_ERR, "malloc failed");
-	    goto errexit;
-	}
-    }
-    conf->secret = (unsigned char *)stringcopy(conf->confsecret,0);
-    conf->secret_len = unhex((char *)conf->secret,1);
 
     if (resconf)
 	return 1;

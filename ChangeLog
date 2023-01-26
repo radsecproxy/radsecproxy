@@ -3,6 +3,7 @@ unreleased changes
 	- Optionally log accounting requests when respoinding directly (#72)
 	- SNI support for outgoing connections (#90)
 	- Manual MTU setting for DTLS on non-linux platforms
+	- Native dynamic discovery for NAPTR and SRV records (#2, #83)
 
 	Misc:
 	- Don't require server type to be set by dyndisc scripts

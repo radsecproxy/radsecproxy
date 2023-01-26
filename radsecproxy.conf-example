@@ -215,6 +215,15 @@ server radius.example.com {
 ## statusserver is optional, can be on or off. Off is default
 #}
 
+#server template for dynamic discovery, looking for NAPTR DNS records
+server dyndisc {
+	type tls
+	tls default
+	dynamicLookupCommand naptr:x-eduroam:radius.tls
+	#alternatively call a script that poerforms the lookup
+	#dynamicLookupCommand /usr/local/bin/naptr-eduroam.sh
+}
+
 # Equivalent to example.com
 realm /@example\.com$ {
 	server 2001:db8::1
@@ -231,7 +240,7 @@ realm /^anonymous$ {
 }
 # The realm below is equivalent to /.*
 realm * {
-	server radius.example.com
+	server dyndisc
 }
 # If you don't have a default server you probably want to
 # reject all unknowns. Optionally you can also include a message
