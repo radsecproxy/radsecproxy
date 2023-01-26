@@ -20,12 +20,12 @@
  * @param rdlen the rlden of the rr, to avoid reading beyond the record
  * @return the number of bytes read from rdata, or -1 in case of errors
  */
-static uint16_t read_char_string(char *dest, const u_char *rdata, uint16_t offset, uint16_t rdlen) {
+static uint16_t dnsreadcharstring(char *dest, const u_char *rdata, uint16_t offset, uint16_t rdlen) {
     uint16_t len;
 
     len = *(rdata + offset++);
     if (offset+len > rdlen) {
-        debug(DBG_ERR,"read_char_string: error parsing char string, length is beyond radata!\n");
+        debug(DBG_ERR,"dnsreadcharstring: error parsing char string, length is beyond radata!\n");
         return -1;
     }
     memcpy(dest, rdata+offset, len);
@@ -41,7 +41,7 @@ static uint16_t read_char_string(char *dest, const u_char *rdata, uint16_t offse
  * @param rr specific SRV resource record in msg
  * @return new srv_record from resource record
  */
-static void *parse_srv_rr(ns_msg msg, ns_rr *rr) {
+static void *parsesrvrr(ns_msg msg, ns_rr *rr) {
     struct srv_record *response;
     const u_char *rdata;
     int len;
@@ -60,7 +60,7 @@ static void *parse_srv_rr(ns_msg msg, ns_rr *rr) {
     response->port = ns_get16(rdata+4);
     len = ns_name_uncompress(ns_msg_base(msg), ns_msg_end(msg), rdata+6, response->host, NS_MAXDNAME);
     if (len == -1) {
-        debug(DBG_ERR, "parse_srv_rr: error during dname uncompress");
+        debug(DBG_ERR, "parsesrvrr: error during dname uncompress");
         free(response);
         return NULL;
     }
@@ -70,7 +70,7 @@ static void *parse_srv_rr(ns_msg msg, ns_rr *rr) {
         return NULL;
     }
 
-    debug(DBG_DBG, "parse_srv_rr: parsed: host %s, port %d, priority %d, weight %d", response->host, response->port, response->priority, response->weight);
+    debug(DBG_DBG, "parsesrvrr: parsed: host %s, port %d, priority %d, weight %d", response->host, response->port, response->priority, response->weight);
     return response;
 }
 
@@ -82,7 +82,7 @@ static void *parse_srv_rr(ns_msg msg, ns_rr *rr) {
  * @param rr specific SRV resource record in msg
  * @return new srv_record from resource record
  */
-static void *parse_naptr_rr(ns_msg msg, ns_rr *rr){ 
+static void *parsenaptrrr(ns_msg msg, ns_rr *rr){ 
     struct naptr_record *response;
     const u_char *rdata;
     uint16_t rdlen, offset=0;
@@ -102,15 +102,15 @@ static void *parse_naptr_rr(ns_msg msg, ns_rr *rr){
     response->preference = ns_get16(rdata+2);
 
     offset=4;
-    len = read_char_string(response->flags, rdata, offset, rdlen);
+    len = dnsreadcharstring(response->flags, rdata, offset, rdlen);
     if (len == -1) goto errexit;
     offset += len;
 
-    len = read_char_string(response->services, rdata, offset, rdlen);
+    len = dnsreadcharstring(response->services, rdata, offset, rdlen);
     if (len == -1) goto errexit;
     offset += len;
 
-    len = read_char_string(response->regexp, rdata, offset, rdlen);
+    len = dnsreadcharstring(response->regexp, rdata, offset, rdlen);
     if (len == -1) goto errexit;
     offset += len;
 
@@ -119,11 +119,11 @@ static void *parse_naptr_rr(ns_msg msg, ns_rr *rr){
 
     /* sanity check, should be exactly at the end of the rdata */
     if (offset + len != rdlen) {
-        debug(DBG_ERR,"parse_naptr_rr: sanity check failed! unexpected error while parsing naptr rr\n");
+        debug(DBG_ERR,"parsenaptrrr: sanity check failed! unexpected error while parsing naptr rr\n");
         goto errexit;
     }
 
-    debug(DBG_DBG,"parse_naptr_rr: parsed: service %s, regexp %s, replace %s, flags %s, order %d, preference %d", 
+    debug(DBG_DBG,"parsenaptrrr: parsed: service %s, regexp %s, replace %s, flags %s, order %d, preference %d", 
         response->services, response->regexp, response->replacement, response->flags, response-> order, response->preference);
     return response;
 
@@ -148,7 +148,7 @@ struct query_state {
  * 
  * @param state the query state to close
  */
-static void query_cleanup(struct query_state *state) {
+static void querycleanup(struct query_state *state) {
     if (state) {
 #if __RES >= 19991006
         res_nclose(&state->rs);
@@ -165,17 +165,17 @@ static void query_cleanup(struct query_state *state) {
  * @param name the DNS name to query
  * @return initilized query state, its buffer containing the response, or NULL in case of error
  */ 
-static struct query_state *do_query(int type, const char *name, int timeout) {
+static struct query_state *doquery(int type, const char *name, int timeout) {
     int len;
     char *errstring;
     struct query_state *state = malloc(sizeof(struct query_state));
 
-    debug(DBG_DBG, "do_query: starting DNS query of type %d for %s", type, name);
+    debug(DBG_DBG, "doquery: starting DNS query of type %d for %s", type, name);
 
 #if __RES >= 19991006
     /* new thread-safe res_n* functions introduced in this version */
     if(res_ninit(&state->rs)){
-        debug(DBG_ERR, "do_query: resolver init failed\n");
+        debug(DBG_ERR, "doquery: resolver init failed\n");
         free(state);
         return NULL;
     }
@@ -211,21 +211,21 @@ static struct query_state *do_query(int type, const char *name, int timeout) {
             default:
                 errstring = "internal error";
         }
-        debug(DBG_NOTICE, "do_query: dns query failed: %s\n", errstring);
-        query_cleanup(state);
+        debug(DBG_NOTICE, "doquery: dns query failed: %s\n", errstring);
+        querycleanup(state);
         return NULL;
     }
 
     if (ns_initparse(state->buf, len, &state->msg) == -1) {
-        debug(DBG_ERR, "do_query: dns response parser init failed\n");
-        query_cleanup(state);
+        debug(DBG_ERR, "doquery: dns response parser init failed\n");
+        querycleanup(state);
         return NULL;
     }
 
     /* we should have a valid resopnse at this point, but check the response code anyway, to be sure */
     if (ns_msg_getflag(state->msg, ns_f_rcode) != ns_r_noerror) {
-        debug(DBG_ERR, "do_query: dns query returned error code %d\n", ns_msg_getflag(state->msg, ns_f_rcode) );
-        query_cleanup(state);
+        debug(DBG_ERR, "doquery: dns query returned error code %d\n", ns_msg_getflag(state->msg, ns_f_rcode) );
+        querycleanup(state);
         return NULL;
     }
     /* TODO option to check for DNSSEC AD (authentic data) flag? */
@@ -245,16 +245,16 @@ static struct query_state *do_query(int type, const char *name, int timeout) {
  * @param parser implementation to turn the raw resrouce record into a usable format. 
  * @return the matching and parseable results
  */
-static void **find_records(struct query_state *state, int type, int section, void *parser(ns_msg, ns_rr *)) {
+static void **findrecords(struct query_state *state, int type, int section, void *parser(ns_msg, ns_rr *)) {
     void **result;
     void *record;
     ns_rr rr;
     int rr_count, i, numresults=0;
 
-    debug(DBG_DBG, "find_records: looking for results of type %d in section %d", type, section);
+    debug(DBG_DBG, "findrecords: looking for results of type %d in section %d", type, section);
 
     rr_count = ns_msg_count(state->msg, ns_s_an);
-    debug(DBG_DBG, "find_records: total %d records in section %d", rr_count, section);
+    debug(DBG_DBG, "findrecords: total %d records in section %d", rr_count, section);
     result = calloc(rr_count + 1, sizeof(void *));
     if (!result) {
         debug(DBG_ERR,"malloc failed");
@@ -262,46 +262,46 @@ static void **find_records(struct query_state *state, int type, int section, voi
     }
     for (i = 0; i < rr_count; i++) {
          if (ns_parserr(&state->msg, ns_s_an, i, &rr)) {
-            debug(DBG_ERR, "find_records: error parsing record %d", i);
+            debug(DBG_ERR, "findrecords: error parsing record %d", i);
             continue;
         }
         if (ns_rr_type(rr) == type) {
             record = parser(state->msg, &rr);
             if (!record) {
-                debug(DBG_ERR, "find_records: error parsing record %d", i);
+                debug(DBG_ERR, "findrecords: error parsing record %d", i);
                 continue;
             }
             result[numresults++] = record;
         }
     }
-    debug(DBG_DBG, "find_records: %d records of desired type successfully parsed", numresults);
+    debug(DBG_DBG, "findrecords: %d records of desired type successfully parsed", numresults);
     return result;
 }
 
-struct srv_record **query_srv(const char *name, int timeout) {
+struct srv_record **querysrv(const char *name, int timeout) {
     struct srv_record **result;
     struct query_state *state;
 
-    state = do_query(ns_t_srv, name, timeout);
+    state = doquery(ns_t_srv, name, timeout);
     if (!state) return NULL;
 
-    result = (struct srv_record **) find_records(state, ns_t_srv, ns_s_an, &parse_srv_rr);
+    result = (struct srv_record **) findrecords(state, ns_t_srv, ns_s_an, &parsesrvrr);
     /* TODO response could include A and AAAA records for the hosts, add this info to the returned result */
 
-    query_cleanup(state);
+    querycleanup(state);
     return result;
 }
 
-struct naptr_record **query_naptr(const char *name, int timeout){
+struct naptr_record **querynaptr(const char *name, int timeout){
     struct naptr_record **result;
     struct query_state *state;
 
-    state = do_query(ns_t_naptr, name, timeout);
+    state = doquery(ns_t_naptr, name, timeout);
     if(!state) return NULL;
 
-    result = (struct naptr_record **) find_records(state, ns_t_naptr, ns_s_an, &parse_naptr_rr);
+    result = (struct naptr_record **) findrecords(state, ns_t_naptr, ns_s_an, &parsenaptrrr);
 
-    query_cleanup(state);
+    querycleanup(state);
     return result;
 }
 
@@ -311,7 +311,7 @@ struct naptr_record **query_naptr(const char *name, int timeout){
  * 
  * @param list the list to free
  */
-void free_response_list(void **list) {
+void freeresponselist(void **list) {
     int i;
 
     if (list) {
@@ -322,10 +322,10 @@ void free_response_list(void **list) {
     }
 }
 
-void free_srv_response(struct srv_record **response) {
-    free_response_list((void **)response);
+void freesrvresponse(struct srv_record **response) {
+    freeresponselist((void **)response);
 }
 
-void free_naptr_response(struct naptr_record **response) {
-    free_response_list((void **)response);
+void freenaptrresponse(struct naptr_record **response) {
+    freeresponselist((void **)response);
 }

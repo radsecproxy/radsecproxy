@@ -2247,7 +2247,7 @@ int dynamicconfigsrv(struct server *server, const char *srvstring) {
     int i,j, srvcount = 0, result = 0;
 
     debug(DBG_DBG, "dynamicconfigsrv: starting SRV lookup (%s) for %s", conf->dynamiclookupcommand, srvstring);
-    srv = query_srv(srvstring, 2);
+    srv = querysrv(srvstring, 2);
     
     if (!srv || !srv[0]) {
         debug(DBG_NOTICE, "dynamicconfigsrv: no SRV record for %s (%s)", server->dynamiclookuparg, srvstring);
@@ -2300,7 +2300,7 @@ exitservername:
 exithostport:
     freegconfmstr(hostports);
 exitsrv:
-    free_srv_response(srv);
+    freesrvresponse(srv);
     return result;
 }
 
@@ -2308,7 +2308,7 @@ int dynamicconfignaptr(struct server *server) {
     int i, result = 0;
     struct naptr_record **naptr;
     debug(DBG_DBG, "dynamicconfignaptr: starting NAPTR lookup (%s) for %s", server->conf->dynamiclookupcommand, server->dynamiclookuparg);
-    naptr = query_naptr(server->dynamiclookuparg, 2);
+    naptr = querynaptr(server->dynamiclookuparg, 2);
     if (!naptr) {
         debug(DBG_NOTICE, "dynamicconfignaptr: no NAPTR record for %s", server->dynamiclookuparg);
         return 0;
@@ -2324,7 +2324,7 @@ int dynamicconfignaptr(struct server *server) {
             break;
         }
     }
-    free_naptr_response(naptr);
+    freenaptrresponse(naptr);
     return result;
 }
 

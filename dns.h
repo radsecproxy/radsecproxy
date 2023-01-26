@@ -31,36 +31,36 @@ struct srv_record {
 
 /**
  * query DNS NAPTR record for name
- * caller must free memory by calling free_naptr_response
+ * caller must free memory by calling freenaptrresponse
  * 
  * @param name the name to query
  * @param timeout query timeout
  * @return null terminated array of struct naptr_record*
  */
-struct naptr_record **query_naptr(const char *name, int timeout);
+struct naptr_record **querynaptr(const char *name, int timeout);
 
 /**
- * free memory allocated by query_naptr
+ * free memory allocated by querynaptr
  * 
  * @param response the response to free
  */
-void free_naptr_response(struct naptr_record **response);
+void freenaptrresponse(struct naptr_record **response);
 
 /** 
  * query a DNS SRV record for name.
- * caller must free memory by calling free_srv_response.
+ * caller must free memory by calling freesrvresponse.
  * 
  * @param name the name to query
  * @param timeout query timeout
  * @return null terminated array of struct srv_record*
  */
-struct srv_record **query_srv(const char *name, int timeout);
+struct srv_record **querysrv(const char *name, int timeout);
 
 /**
- * free memory allocated by query_srv
+ * free memory allocated by querysrv
  * 
  * @param response the response to free
  */
-void free_srv_response(struct srv_record **response);
+void freesrvresponse(struct srv_record **response);
 
 #endif /*_DNS_H*/
