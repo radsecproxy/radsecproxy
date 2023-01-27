@@ -167,6 +167,7 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
             if (server->conf->sni) {
                 struct in6_addr tmp;
                 char *servername = server->conf->sniservername ? server->conf->sniservername : 
+                    server->conf->servername ? server->conf->servername :
                     (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL : hp->host;
                 if (servername && !tlssetsni(server->ssl, servername)) {
                     debug(DBG_ERR, "tlsconnect: set SNI %s failed", servername);

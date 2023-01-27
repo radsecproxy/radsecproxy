@@ -4,6 +4,7 @@ unreleased changes
 	- SNI support for outgoing connections (#90)
 	- Manual MTU setting for DTLS on non-linux platforms
 	- Native dynamic discovery for NAPTR and SRV records (#2, #83)
+	- Optionally specify server name for certificate name check (#106)
 
 	Misc:
 	- Don't require server type to be set by dyndisc scripts

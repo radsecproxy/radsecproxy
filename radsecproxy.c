@@ -2384,6 +2384,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
     free(conf->confrewritein);
     free(conf->confrewriteout);
     free(conf->sniservername);
+    free(conf->servername);
     if (conf->rewriteusername) {
 	if (conf->rewriteusername->regex)
 	    regfree(conf->rewriteusername->regex);
@@ -2488,7 +2489,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         !mergeconfstring(&dst->dynamiclookupcommand, src ? &src->dynamiclookupcommand : NULL) ||
         !mergeconfstring(&dst->fticks_viscountry, src ? &src->fticks_viscountry : NULL) ||
         !mergeconfstring(&dst->fticks_visinst, src ? &src->fticks_visinst : NULL) ||
-        !mergeconfstring(&dst->sniservername, src ? &src->sniservername : NULL))
+        !mergeconfstring(&dst->sniservername, src ? &src->sniservername : NULL) ||
+        !mergeconfstring(&dst->servername, src ? &src->servername : NULL))
         return 0;
 
     if (src) {
@@ -2553,6 +2555,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "tls", CONF_STR, &conf->tls,
 	    "MatchCertificateAttribute", CONF_MSTR, &matchcertattrs,
 	    "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+	    "ServerName", CONF_STR, &conf->servername,
 #endif
 	    "DuplicateInterval", CONF_LINT, &dupinterval,
 	    "addTTL", CONF_LINT, &addttl,
@@ -2773,6 +2776,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "tls", CONF_STR, &conf->tls,
             "MatchCertificateAttribute", CONF_MSTR, &conf->confmatchcertattrs,
             "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+            "ServerName", CONF_STR, &conf->servername,
 #endif
             "addTTL", CONF_LINT, &addttl,
             "tcpKeepalive", CONF_BLN, &conf->keepalive,

@@ -141,6 +141,7 @@ struct clsrvconf {
     uint8_t type; /* RAD_UDP/RAD_TLS/RAD_TCP */
     const struct protodefs *pdef;
     char **hostsrc;
+    char *servername;
     int hostaf;
     char *portsrc;
     struct list *hostports;
