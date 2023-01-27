@@ -799,16 +799,11 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpcon
     if (conf->certnamecheck) {
         debug(DBG_DBG, "verifyconfcert: verify hostname");
         if (conf->servername) {
-            struct hostportres *servername = malloc(sizeof(struct hostportres));
-            servername->host = conf->servername;
-            servername->addrinfo = NULL;
-            servername->port = NULL;
-            servername->prefixlen = 255;
-            if (!certnamecheck(cert, servername)){
-                debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, servername->host);
+            struct hostportres servername = {conf->servername, NULL, 255, NULL};
+            if (!certnamecheck(cert, &servername)){
+                debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, servername.host);
                 ok = 0;
             }
-            free(servername);
         }
         else if (hpconnected) {
             if (!certnamecheck(cert, hpconnected)) {
