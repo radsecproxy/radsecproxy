@@ -416,10 +416,10 @@ exist, or the option is not specified and none of the defaults exist, the proxy
 will exit with an error.
 .RE
 
-.BI "ServerName " server_name
+.BI "ServerName " servername
 .RS
-Instead of the definition in \fBHost\fR, use \fIserver_name\fR for the
-certificate name check.
+Use \fIservername\fR for the certificate name check instead of \fBhost\fR or the
+client block name (e.g. if \fBhost\fR uses static IP address).
 .RE
 
 .BR "CertificateNameCheck (" on | off )
@@ -560,11 +560,11 @@ Specify the source address and/or port to use for this server. See \fBSource...\
 options above.
 .RE
 
-.BI "ServerName " server_name
+.BI "ServerName " servername
 .RS
-Instead of the definition in \fBHost\fR, use \fIserver_name\fR for the
-certificate name check. Additionally, this name is used for SNI, unless
-\fBSNIservername\fR is set.
+Use \fIservername\fR for the certificate name check instead of \fBhost\fR or the
+server block name (e.g. if \fBhost\fR uses static IP address). Additionally, this 
+name is used for SNI (if enabled), unless \fBSNIservername\fR is set.
 .RE
 
 .BI "DynamicLookupCommand " command
