@@ -1368,7 +1368,6 @@ int radsrv(struct request *rq) {
 
     if (!to) {
         if (realm->message && msg->code == RAD_Access_Request) {
-            debug(DBG_INFO, "radsrv: sending %s (id %d) to %s (%s) for %s", radmsgtype2string(RAD_Access_Reject), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), userascii);
             respond(rq, RAD_Access_Reject, realm->message, 1, 1);
         } else if (realm->accresp && msg->code == RAD_Accounting_Request) {
             if (realm->acclog) 
