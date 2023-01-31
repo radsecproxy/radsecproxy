@@ -40,10 +40,10 @@ radsecproxy_conf_SOURCES = \
 ####################
 AM_CPPFLAGS = -DSYSCONFDIR=\"$(sysconfdir)\"
 AM_CFLAGS = \
-	-g -Wall -Werror -fno-strict-aliasing @SSL_CFLAGS@ @TARGET_CFLAGS@
+	-g -Wall -Werror -fno-strict-aliasing @OPENSSL_INCLUDES@ @TARGET_CFLAGS@
 
-radsecproxy_LDFLAGS = @SSL_LDFLAGS@ @TARGET_LDFLAGS@
-radsecproxy_LDADD = librsp.a @SSL_LIBS@ @LIBS@
+radsecproxy_LDFLAGS = @OPENSSL_LDFLAGS@ @TARGET_LDFLAGS@
+radsecproxy_LDADD = librsp.a @OPENSSL_LIBS@ @LIBS@
 radsecproxy_conf_LDFLAGS = @TARGET_LDFLAGS@
 radsecproxy_hash_LDADD = fticks_hashmac.o hash.o list.o
 

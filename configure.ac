@@ -116,7 +116,7 @@ AC_SUBST(SYSCONFDIR)
 
 AC_SUBST(TARGET_CFLAGS)
 AC_SUBST(TARGET_LDFLAGS)
-AX_CHECK_SSL
+AX_CHECK_OPENSSL([],AC_MSG_FAILURE([could not locate OpenSSL. Specify its location using --with-openssl=]))
 AC_CONFIG_FILES([
 	Makefile
 	tests/Makefile
