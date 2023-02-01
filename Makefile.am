@@ -21,7 +21,7 @@ librsp_a_SOURCES = \
 	hash.c hash.h \
 	hostport.c hostport.h \
 	list.c list.h \
-	radmsg.c radmsg.h \
+	radmsg.c radmsg.h raddict.h \
 	radsecproxy.c radsecproxy.h \
 	rewrite.c rewrite.h \
 	tcp.c tcp.h \
@@ -47,14 +47,15 @@ radsecproxy_LDADD = librsp.a @OPENSSL_LIBS@ @LIBS@
 radsecproxy_conf_LDFLAGS = @TARGET_LDFLAGS@
 radsecproxy_hash_LDADD = fticks_hashmac.o hash.o list.o
 
-dist_man_MANS = radsecproxy.8 radsecproxy-hash.8 radsecproxy.conf.5
+man_MANS = radsecproxy.8 radsecproxy-hash.8 radsecproxy.conf.5
 
 EXTRA_DIST = \
 	LICENSE THANKS \
-	configure Makefile.in tests/Makefile.in \
-	compile config.guess config.sub install-sh missing depcomp \
-	radsecproxy.conf.5.xml radsecproxy.conf-example \
+	radsecproxy.conf-example \
 	tools/README tools/naptr-eduroam.sh tools/radsec-dynsrv.sh
+
+distclean-local:
+	rm -f @PACKAGE@-*.tar.gz
 
 ####################
 

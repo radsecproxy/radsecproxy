@@ -1,4 +1,5 @@
 *.o
+*.tar.gz
 *~
 .~/
 .gitignore
