@@ -800,7 +800,7 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpcon
     if (conf->certnamecheck) {
         debug(DBG_DBG, "verifyconfcert: verify hostname");
         if (conf->servername) {
-            struct hostportres servername = {conf->servername, NULL, 255, NULL};
+            struct hostportres servername = {.host = conf->servername, .port = NULL, .prefixlen = 255, .addrinfo = NULL};
             if (!certnamecheck(cert, &servername)){
                 debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, servername.host);
                 ok = 0;
