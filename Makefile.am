@@ -54,8 +54,14 @@ EXTRA_DIST = \
 	radsecproxy.conf-example \
 	tools/README tools/naptr-eduroam.sh tools/radsec-dynsrv.sh
 
+dist-sign: dist
+distcheck-sign: distcheck
+dist-sign distcheck-sign:
+	gpg --armor --detach-sign $(DIST_ARCHIVES)
+
 distclean-local:
 	rm -f @PACKAGE@-*.tar.gz
+	rm -f @PACKAGE@-*.tar.gz.asc
 
 ####################
 
