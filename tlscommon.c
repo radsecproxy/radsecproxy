@@ -1366,6 +1366,55 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
     return cnt;
 }
 
+/**
+ * @brief read radius message from ssl session
+ * 
+ * If errors are encountered (e.g. invalid message lengths) ssl session will be shut down)
+ * All ssl operations will be performed with aquired lock.
+ * Will allocate memory for buf.
+ * 
+ * @param ssl SSL session to read from
+ * @param timeout while reading. 0 means no timeout (blocking)
+ * @param lock to aquire
+ * @param buf newly allocated buffer containing the read bytes
+ * @return int number of bytes read, 0 on timeout or error
+ */
+int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
+    int cnt, len;
+    unsigned char init_buf[4];
+
+	cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
+	if (cnt < 1)
+        return 0;
+
+    len = get_checked_rad_length(init_buf);
+    if (len <= 0) {
+        debug(DBG_ERR, "radtlsget: invalid message length (%d)! closing connection!", -len);
+        pthread_mutex_lock(lock);
+        SSL_shutdown(ssl);
+        pthread_mutex_unlock(lock);
+        return 0;
+    }
+    *buf = malloc(len);
+    if (!*buf) {
+        debug(DBG_ERR, "radtlsget: malloc failed! closing conneciton!");
+        pthread_mutex_lock(lock);
+        SSL_shutdown(ssl);
+        pthread_mutex_unlock(lock);
+        return 0;
+    }
+    memcpy(*buf, init_buf, 4);
+
+    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
+    if (cnt < 1) {
+        free(*buf);
+        return 0;
+    }
+
+    debug(DBG_DBG, "radtlsget: got %d bytes", len);
+    return len;
+}
+
 #else
 /* Just to makes file non-empty, should rather avoid compiling this file when not needed */
 static void tlsdummy() {

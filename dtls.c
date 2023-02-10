@@ -94,39 +94,6 @@ void dtlssetsrcres() {
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
 
-int raddtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
-    int cnt, len;
-    unsigned char init_buf[4];
-
-    cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
-    if (cnt < 1)
-        return 0;
-
-    len = get_checked_rad_length(init_buf);
-    if (len <= 0) {
-        debug(DBG_ERR, "raddtlsget: invalid message length (%d)! closing connection!", -len);
-        pthread_mutex_lock(lock);
-        SSL_shutdown(ssl);
-        pthread_mutex_unlock(lock);
-        return 0;
-    }
-    *buf = malloc(len);
-    if (!*buf) {
-        debug(DBG_ERR, "raddtlsget: malloc failed");
-        return 0;
-    }
-    memcpy(*buf, init_buf, 4);
-
-    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
-    if (cnt < 1) {
-        free(*buf);
-        return 0;
-    }
-
-    debug(DBG_DBG, "raddtlsget: got %d bytes", len);
-    return len;
-}
-
 void *dtlsserverwr(void *arg) {
     int cnt;
     unsigned long error;
@@ -197,7 +164,7 @@ void dtlsserverrd(struct client *client) {
     }
 
     for (;;) {
-        len = raddtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock, &buf);
+        len = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock, &buf);
         if (!buf || !len) {
             pthread_mutex_lock(&client->lock);
             if (SSL_get_shutdown(client->ssl))
@@ -666,7 +633,7 @@ void *dtlsclientrd(void *arg) {
     int len = 0;
 
     for (;;) {
-        len = raddtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
+        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
         if (!buf) {
             if(SSL_get_shutdown(server->ssl) || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF)) {
                 if (SSL_get_shutdown(server->ssl))

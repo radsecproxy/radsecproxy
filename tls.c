@@ -231,43 +231,6 @@ concleanup:
     return 1;
 }
 
-/* timeout in seconds, 0 means no timeout (blocking) */
-int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
-    int cnt, len;
-    unsigned char init_buf[4];
-
-	cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
-	if (cnt < 1)
-        return 0;
-
-    len = get_checked_rad_length(init_buf);
-    if (len <= 0) {
-        debug(DBG_ERR, "radtlsget: invalid message length (%d)! closing connection!", -len);
-        pthread_mutex_lock(lock);
-        SSL_shutdown(ssl);
-        pthread_mutex_unlock(lock);
-        return 0;
-    }
-    *buf = malloc(len);
-    if (!*buf) {
-        debug(DBG_ERR, "radtlsget: malloc failed! closing conneciton!");
-        pthread_mutex_lock(lock);
-        SSL_shutdown(ssl);
-        pthread_mutex_unlock(lock);
-        return 0;
-    }
-    memcpy(*buf, init_buf, 4);
-
-    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
-    if (cnt < 1) {
-        free(*buf);
-        return 0;
-    }
-
-    debug(DBG_DBG, "radtlsget: got %d bytes", len);
-    return len;
-}
-
 int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
     int ret;
     unsigned long error;

@@ -55,6 +55,8 @@ int tlssetsni(SSL *ssl, char *sni);
 int sslconnecttimeout(SSL *ssl, int timeout);
 int sslaccepttimeout (SSL *ssl, int timeout);
 int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock);
+int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf);
+
 #endif
 
 /* Local Variables: */
