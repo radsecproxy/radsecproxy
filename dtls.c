@@ -94,100 +94,6 @@ void dtlssetsrcres() {
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
 
-void *dtlsserverwr(void *arg) {
-    int cnt;
-    struct client *client = (struct client *)arg;
-    struct gqueue *replyq;
-    struct request *reply;
-    char tmp[INET6_ADDRSTRLEN];
-
-    debug(DBG_DBG, "dtlsserverwr: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
-    replyq = client->replyq;
-    for (;;) {
-        pthread_mutex_lock(&replyq->mutex);
-        while (!list_first(replyq->entries)) {
-            if (!SSL_get_shutdown(client->ssl)) {
-                debug(DBG_DBG, "dtlsserverwr: waiting for signal");
-                pthread_cond_wait(&replyq->cond, &replyq->mutex);
-                debug(DBG_DBG, "dtlsserverwr: got signal");
-            } else
-                break;
-        }
-
-        reply = (struct request *)list_shift(replyq->entries);
-        pthread_mutex_unlock(&replyq->mutex);
-
-        pthread_mutex_lock(&client->lock);
-        if (SSL_get_shutdown(client->ssl)) {
-            pthread_mutex_unlock(&client->lock);
-            if (reply)
-                freerq(reply);
-            debug(DBG_DBG, "dtlsserverwr: ssl connection shutdown; exiting as requested");
-            pthread_exit(NULL);
-        }
-
-        if ((cnt = sslwrite(client->ssl, reply->replybuf, reply->replybuflen, 1)) > 0) {
-            debug(DBG_DBG, "dtlsserverwr: sent %d bytes, Radius packet of length %d to %s",
-                cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
-        }
-        pthread_mutex_unlock(&client->lock);
-        freerq(reply);
-    }
-}
-
-void dtlsserverrd(struct client *client) {
-    struct request *rq;
-    uint8_t *buf;
-    pthread_t dtlsserverwrth;
-    char tmp[INET6_ADDRSTRLEN];
-    int len = 0;
-
-    debug(DBG_DBG, "dtlsserverrd: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
-
-    if (pthread_create(&dtlsserverwrth, &pthread_attr, dtlsserverwr, (void *)client)) {
-	debug(DBG_ERR, "dtlsserverrd: pthread_create failed");
-	return;
-    }
-
-    for (;;) {
-        len = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock, &buf);
-        if (!buf || !len) {
-            pthread_mutex_lock(&client->lock);
-            if (SSL_get_shutdown(client->ssl))
-                debug(DBG_ERR, "dtlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
-            else {
-                debug(DBG_WARN, "tlsserverrd: timeout from %s, client %s (no requests), closing connection", addr2string(client->addr, tmp, sizeof(tmp)), client->conf->name);
-                SSL_shutdown(client->ssl);
-            }
-            SSL_set_shutdown(client->ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
-            pthread_mutex_unlock(&client->lock);
-            break;
-        }
-        debug(DBG_DBG, "dtlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-        rq = newrequest();
-        if (!rq) {
-            free(buf);
-            continue;
-        }
-        rq->buf = buf;
-        rq->buflen = len;
-        rq->from = client;
-        if (!radsrv(rq)) {
-            debug(DBG_ERR, "dtlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-            break;
-        }
-        buf = NULL;
-    }
-
-    /* stop writer by setting ssl to NULL and give signal in case waiting for data */
-    pthread_mutex_lock(&client->replyq->mutex);
-    pthread_cond_signal(&client->replyq->cond);
-    pthread_mutex_unlock(&client->replyq->mutex);
-    debug(DBG_DBG, "dtlsserverrd: waiting for writer to end");
-    pthread_join(dtlsserverwrth, NULL);
-    debug(DBG_DBG, "dtlsserverrd: reader for %s exiting", addr2string(client->addr, tmp, sizeof(tmp)));
-}
-
 void *dtlsservernew(void *arg) {
     struct dtlsservernewparams *params = (struct dtlsservernewparams *)arg;
     struct client *client;
@@ -252,7 +158,7 @@ void *dtlsservernew(void *arg) {
                 client->sock = s;
                 client->addr = addr_copy((struct sockaddr *)&params->addr);
                 client->ssl = params->ssl;
-                dtlsserverrd(client);
+                tlsserverrd(client);
                 removeclient(client);
             } else {
                 debug(DBG_WARN, "dtlsservernew: failed to create new client instance");
