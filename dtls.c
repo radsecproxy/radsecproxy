@@ -96,7 +96,6 @@ void dtlssetsrcres() {
 
 void *dtlsserverwr(void *arg) {
     int cnt;
-    unsigned long error;
     struct client *client = (struct client *)arg;
     struct gqueue *replyq;
     struct request *reply;
@@ -120,7 +119,6 @@ void *dtlsserverwr(void *arg) {
 
         pthread_mutex_lock(&client->lock);
         if (SSL_get_shutdown(client->ssl)) {
-            /* ssl might have changed while waiting */
             pthread_mutex_unlock(&client->lock);
             if (reply)
                 freerq(reply);
@@ -128,22 +126,10 @@ void *dtlsserverwr(void *arg) {
             pthread_exit(NULL);
         }
 
-        while ((cnt = SSL_write(client->ssl, reply->replybuf, reply->replybuflen)) <= 0) {
-            switch (SSL_get_error(client->ssl, cnt)) {
-                case SSL_ERROR_WANT_READ:
-                case SSL_ERROR_WANT_WRITE:
-                    continue;
-                default:
-                    while ((error = ERR_get_error()))
-                        debug(DBG_ERR, "dtlsserverwr: SSL: %s", ERR_error_string(error, NULL));
-                    pthread_mutex_unlock(&client->lock);
-                    freerq(reply);
-                    debug(DBG_DBG, "tlsserverwr: SSL error. exiting.");
-                    pthread_exit(NULL);
-            }
+        if ((cnt = sslwrite(client->ssl, reply->replybuf, reply->replybuflen, 1)) > 0) {
+            debug(DBG_DBG, "dtlsserverwr: sent %d bytes, Radius packet of length %d to %s",
+                cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
         }
-        debug(DBG_DBG, "dtlsserverwr: sent %d bytes, Radius packet of length %d to %s",
-            cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
         pthread_mutex_unlock(&client->lock);
         freerq(reply);
     }
@@ -596,7 +582,6 @@ concleanup:
 
 int clientradputdtls(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
-    unsigned long error;
     struct clsrvconf *conf = server->conf;
 
     if (radlen <= 0) {
@@ -610,18 +595,11 @@ int clientradputdtls(struct server *server, unsigned char *rad, int radlen) {
         return 0;
     }
 
-    while ((cnt = SSL_write(server->ssl, rad, radlen)) <= 0) {
-        switch (SSL_get_error(server->ssl, cnt)) {
-            case SSL_ERROR_WANT_READ:
-            case SSL_ERROR_WANT_WRITE:
-                continue;
-            default:
-                while ((error = ERR_get_error()))
-                    debug(DBG_ERR, "clientradputdtls: DTLS: %s", ERR_error_string(error, NULL));
-                pthread_mutex_unlock(&server->lock);
-                return 0;
-        }
+    if ((cnt = sslwrite(server->ssl, rad, radlen, 0)) <= 0 ) {
+        pthread_mutex_unlock(&server->lock);
+        return 0;
     }
+
     debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %zu to DTLS peer %s", cnt, radlen, conf->name);
     pthread_mutex_unlock(&server->lock);
     return 1;

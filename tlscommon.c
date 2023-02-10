@@ -1367,6 +1367,70 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
 }
 
 /**
+ * @brief write to a ssl session.
+ * 
+ * When called as blocking, it will only return once the data has been fully written,
+ * an error has occured or the SSL session has been shut down.
+ * 
+ * @param ssl SSL session to write to
+ * @param buf buffer to write
+ * @param num number of bytes from buffer to write
+ * @param blocking block until num bytes have been written or error occurs
+ * @return int number of bytes written or 0 if it would block, or -1 on error
+ */
+int sslwrite(SSL *ssl, void *buf, int num, uint8_t blocking) {
+    int ret = -1;
+    unsigned long error;
+    struct pollfd fds[1];
+
+    uint8_t want_read = 0;
+
+    if (!buf || num <= 0) {
+        debug(DBG_ERR, "dosslwrite: was called with empty or invalid buffer!");
+        return -1;
+    }
+
+    while (!SSL_get_shutdown(ssl)) {
+        fds[0].fd = SSL_get_fd(ssl);
+        fds[0].events = POLLOUT;
+        if (want_read) {
+            fds[0].events = fds[0].events | POLLIN;
+            want_read = 0;
+        }
+        ret = poll(fds, 1, blocking ? 1000 : 0);
+        if (ret == 0) {
+            if (blocking) continue;
+            return -1;
+        }
+        
+        if (ret < 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            if (fds[0].revents & POLLERR) {
+                debug(DBG_INFO, "sslwrite: socket error");
+            } else if (fds[0].revents & POLLHUP) {
+                debug(DBG_INFO, "sslwrite: socket hang up");
+            } else if (fds[0].revents & POLLNVAL) {
+                debug(DBG_ERR, "sslwrite: fd not open");
+            }
+            return -1;
+        }
+
+        if ((ret = SSL_write(ssl, buf, num)) <= 0) {
+            switch (SSL_get_error(ssl, ret)) {
+                case SSL_ERROR_WANT_READ:
+                    want_read = 1;
+                case SSL_ERROR_WANT_WRITE:
+                    continue;
+                default:
+                    while ((error = ERR_get_error()))
+                        debug(DBG_ERR, "sslwrite: SSL: %s", ERR_error_string(error, NULL));
+            }
+        }
+        break;
+    }
+    return ret;
+}
+
+/**
  * @brief read radius message from ssl session
  * 
  * If errors are encountered (e.g. invalid message lengths) ssl session will be shut down)

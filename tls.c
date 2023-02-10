@@ -231,39 +231,6 @@ concleanup:
     return 1;
 }
 
-int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
-    int ret;
-    unsigned long error;
-    struct pollfd fds[1];
-
-    if (!buf || num <= 0) {
-        debug(DBG_ERR, "dosslwrite: was called with empty or invalid buffer!");
-        return -1;
-    }
-
-    if(!may_block) {
-        fds[0].fd = SSL_get_fd(ssl);
-        fds[0].events = POLLOUT;
-        if (poll(fds, 1, 0) <= 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            debug(DBG_DBG, "dosslwrite: socket not ready or buffer full; avoid blocking...");
-            return -1;
-        }
-    }
-
-    while ((ret = SSL_write(ssl, buf, num)) <= 0) {
-        switch (SSL_get_error(ssl, ret)) {
-            case SSL_ERROR_WANT_READ:
-            case SSL_ERROR_WANT_WRITE:
-                continue;
-            default:
-                while ((error = ERR_get_error()))
-                    debug(DBG_ERR, "dosslwrite: SSL: %s", ERR_error_string(error, NULL));
-                return ret;
-        }
-    }
-    return ret;
-}
-
 int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
     struct clsrvconf *conf = server->conf;
@@ -274,7 +241,7 @@ int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
         return 0;
     }
 
-    if ((cnt = dosslwrite(server->ssl, rad, radlen, 0)) <= 0) {
+    if ((cnt = sslwrite(server->ssl, rad, radlen, 0)) <= 0) {
         pthread_mutex_unlock(&server->lock);
         return 0;
     }
@@ -363,7 +330,7 @@ void *tlsserverwr(void *arg) {
             pthread_exit(NULL);
         }
 
-        if ((cnt = dosslwrite(client->ssl, reply->replybuf, reply->replybuflen, 0)) > 0) {
+        if ((cnt = sslwrite(client->ssl, reply->replybuf, reply->replybuflen, 1)) > 0) {
             debug(DBG_DBG, "tlsserverwr: sent %d bytes, Radius packet of length %d to %s",
                 cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
         }
