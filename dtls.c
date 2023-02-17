@@ -514,6 +514,7 @@ int clientradputdtls(struct server *server, unsigned char *rad, int radlen) {
 void *dtlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
+    struct timeval now;
     int len = 0;
 
     for (;;) {
@@ -524,8 +525,17 @@ void *dtlsclientrd(void *arg) {
                     debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
                 else if (server->lostrqs)
                     debug (DBG_WARN, "dtlsclientrd: server %s did not respond, closing connection.", server->conf->name);
+                if (server->dynamiclookuparg)
+                    break;
                 dtlsconnect(server, 0, 1);
                 server->lostrqs = 0;
+            }
+            if (server->dynamiclookuparg) {
+                gettimeofday(&now, NULL);
+                if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
+                    debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
+                    break;
+                }
             }
             continue;
         }
