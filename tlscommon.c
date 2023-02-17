@@ -1283,7 +1283,7 @@ int sslconnecttimeout(SSL *ssl, int timeout) {
  * @param buf destination buffer
  * @param num number of bytes to read
  * @param timeout maximum time to wait for data, 0 waits indefinetely
- * @param lock the lock to aquire before performing any operation on the ssl conneciton
+ * @param lock the lock to aquire before performing any operation on the ssl connection
  * @return number of bytes received, 0 on timeout, -1 on error (connection lost)
  */
 int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock) {
