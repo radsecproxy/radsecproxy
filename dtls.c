@@ -519,7 +519,7 @@ void *dtlsclientrd(void *arg) {
 
     for (;;) {
         len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
-        if (!buf) {
+        if (!buf || !len) {
             if(SSL_get_shutdown(server->ssl) || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF)) {
                 if (SSL_get_shutdown(server->ssl))
                     debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
