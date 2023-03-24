@@ -208,7 +208,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
         return ret;
     }
 
-    debug(DBG_DBG, "udp packet from %s", addr2string(from, tmp, sizeof(tmp)));
+    debug(DBG_DBG, "udp packet from: %s", addr2string(from, tmp, sizeof(tmp)));
 
     if (getsockname(socket, to, &tolen)) {
         debug(DBG_ERR, "getConnectionInfo: getsockname failed");
