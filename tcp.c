@@ -306,7 +306,7 @@ void *tcpserverwr(void *arg) {
 
 void tcpserverrd(struct client *client) {
     struct request *rq;
-    uint8_t *buf;
+    uint8_t *buf = NULL;
     pthread_t tcpserverwrth;
     char tmp[INET6_ADDRSTRLEN];
     int len = 0;
@@ -328,6 +328,7 @@ void tcpserverrd(struct client *client) {
         rq = newrequest();
         if (!rq) {
             free(buf);
+            buf = NULL;
             continue;
         }
         rq->buf = buf;

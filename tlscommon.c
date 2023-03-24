@@ -1530,7 +1530,7 @@ void *tlsserverwr(void *arg) {
  */
 void tlsserverrd(struct client *client) {
     struct request *rq;
-    uint8_t *buf;
+    uint8_t *buf = NULL;
     pthread_t tlsserverwrth;
     char tmp[INET6_ADDRSTRLEN];
     int len = 0;
@@ -1561,6 +1561,7 @@ void tlsserverrd(struct client *client) {
         rq = newrequest();
         if (!rq) {
             free(buf);
+            buf = NULL;
             continue;
         }
         rq->buf = buf;

@@ -253,7 +253,7 @@ int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
 
 void *tlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
-    unsigned char *buf;
+    unsigned char *buf = NULL;
     struct timeval now;
     int len = 0;
 
