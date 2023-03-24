@@ -1366,6 +1366,222 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
     return cnt;
 }
 
+/**
+ * @brief write to a ssl session.
+ * 
+ * When called as blocking, it will only return once the data has been fully written,
+ * an error has occured or the SSL session has been shut down.
+ * 
+ * @param ssl SSL session to write to
+ * @param buf buffer to write
+ * @param num number of bytes from buffer to write
+ * @param blocking block until num bytes have been written or error occurs
+ * @return int number of bytes written or 0 if it would block, or -1 on error
+ */
+int sslwrite(SSL *ssl, void *buf, int num, uint8_t blocking) {
+    int ret = -1;
+    unsigned long error;
+    struct pollfd fds[1];
+
+    uint8_t want_read = 0;
+
+    if (!buf || num <= 0) {
+        debug(DBG_ERR, "dosslwrite: was called with empty or invalid buffer!");
+        return -1;
+    }
+
+    while (!SSL_get_shutdown(ssl)) {
+        fds[0].fd = SSL_get_fd(ssl);
+        fds[0].events = POLLOUT;
+        if (want_read) {
+            fds[0].events = fds[0].events | POLLIN;
+            want_read = 0;
+        }
+        ret = poll(fds, 1, blocking ? 1000 : 0);
+        if (ret == 0) {
+            if (blocking) continue;
+            return -1;
+        }
+        
+        if (ret < 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            if (fds[0].revents & POLLERR) {
+                debug(DBG_INFO, "sslwrite: socket error");
+            } else if (fds[0].revents & POLLHUP) {
+                debug(DBG_INFO, "sslwrite: socket hang up");
+            } else if (fds[0].revents & POLLNVAL) {
+                debug(DBG_ERR, "sslwrite: fd not open");
+            }
+            return -1;
+        }
+
+        if ((ret = SSL_write(ssl, buf, num)) <= 0) {
+            switch (SSL_get_error(ssl, ret)) {
+                case SSL_ERROR_WANT_READ:
+                    want_read = 1;
+                case SSL_ERROR_WANT_WRITE:
+                    continue;
+                default:
+                    while ((error = ERR_get_error()))
+                        debug(DBG_ERR, "sslwrite: SSL: %s", ERR_error_string(error, NULL));
+            }
+        }
+        break;
+    }
+    return ret;
+}
+
+/**
+ * @brief read radius message from ssl session
+ * 
+ * If errors are encountered (e.g. invalid message lengths) ssl session will be shut down)
+ * All ssl operations will be performed with aquired lock.
+ * Will allocate memory for buf.
+ * 
+ * @param ssl SSL session to read from
+ * @param timeout while reading. 0 means no timeout (blocking)
+ * @param lock to aquire
+ * @param buf newly allocated buffer containing the read bytes
+ * @return int number of bytes read, 0 on timeout or error
+ */
+int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
+    int cnt, len;
+    unsigned char init_buf[4];
+
+	cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
+	if (cnt < 1)
+        return 0;
+
+    len = get_checked_rad_length(init_buf);
+    if (len <= 0) {
+        debug(DBG_ERR, "radtlsget: invalid message length (%d)! closing connection!", -len);
+        pthread_mutex_lock(lock);
+        SSL_shutdown(ssl);
+        pthread_mutex_unlock(lock);
+        return 0;
+    }
+    *buf = malloc(len);
+    if (!*buf) {
+        debug(DBG_ERR, "radtlsget: malloc failed! closing conneciton!");
+        pthread_mutex_lock(lock);
+        SSL_shutdown(ssl);
+        pthread_mutex_unlock(lock);
+        return 0;
+    }
+    memcpy(*buf, init_buf, 4);
+
+    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
+    if (cnt < 1) {
+        free(*buf);
+        return 0;
+    }
+
+    debug(DBG_DBG, "radtlsget: got %d bytes", len);
+    return len;
+}
+
+void *tlsserverwr(void *arg) {
+    int cnt;
+    struct client *client = (struct client *)arg;
+    struct gqueue *replyq;
+    struct request *reply;
+    char tmp[INET6_ADDRSTRLEN];
+
+    debug(DBG_DBG, "tlsserverwr: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
+    replyq = client->replyq;
+    for (;;) {
+        pthread_mutex_lock(&replyq->mutex);
+        while (!list_first(replyq->entries)) {
+            if (!SSL_get_shutdown(client->ssl)) {
+                debug(DBG_DBG, "tlsserverwr: waiting for signal");
+                pthread_cond_wait(&replyq->cond, &replyq->mutex);
+                debug(DBG_DBG, "tlsserverwr: got signal");
+            } else
+                break;
+        }
+
+        reply = (struct request *)list_shift(replyq->entries);
+        pthread_mutex_unlock(&replyq->mutex);
+
+        pthread_mutex_lock(&client->lock);
+        if (SSL_get_shutdown(client->ssl)) {
+            if (reply)
+                freerq(reply);
+            pthread_mutex_unlock(&client->lock);
+            debug(DBG_DBG, "tlsserverwr: ssl connection shutdown; exiting as requested");
+            pthread_exit(NULL);
+        }
+
+        if ((cnt = sslwrite(client->ssl, reply->replybuf, reply->replybuflen, 1)) > 0) {
+            debug(DBG_DBG, "tlsserverwr: sent %d bytes, Radius packet of length %d to %s",
+                cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
+        }
+        pthread_mutex_unlock(&client->lock);
+    	freerq(reply);
+    }
+}
+
+/**
+ * @brief server read-loop for SSL sessions
+ * 
+ * Read radius messages from SSL session and call radsrv.
+ * Write loop will be started implicitly
+ * 
+ * @param client the calling client
+ */
+void tlsserverrd(struct client *client) {
+    struct request *rq;
+    uint8_t *buf;
+    pthread_t tlsserverwrth;
+    char tmp[INET6_ADDRSTRLEN];
+    int len = 0;
+
+    debug(DBG_DBG, "tlsserverrd: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
+
+    if (pthread_create(&tlsserverwrth, &pthread_attr, tlsserverwr, (void *)client)) {
+        debug(DBG_ERR, "tlsserverrd: pthread_create failed");
+        return;
+    }
+
+    for (;;) {
+        len = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock, &buf);
+        if (!buf || !len) {
+            pthread_mutex_lock(&client->lock);
+            if (SSL_get_shutdown(client->ssl))
+                debug(DBG_ERR, "tlsserverrd: connection from %s, client %s lost", addr2string(client->addr, tmp, sizeof(tmp)), client->conf->name);
+            else {
+                debug(DBG_WARN, "tlsserverrd: timeout from %s, client %s (no requests), closing connection", addr2string(client->addr, tmp, sizeof(tmp)), client->conf->name);
+                SSL_shutdown(client->ssl);
+            }
+            /* ensure shutdown state is set so tlsserverwr knows it can exit*/
+            SSL_set_shutdown(client->ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
+            pthread_mutex_unlock(&client->lock);
+            break;
+        }
+        debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+        rq = newrequest();
+        if (!rq) {
+            free(buf);
+            continue;
+        }
+        rq->buf = buf;
+        rq->buflen = len;
+        rq->from = client;
+        if (!radsrv(rq)) {
+            debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+            break;
+        }
+        buf = NULL;
+    }
+
+    /* signal writer so it can finish (based on SSL_shutdown) */
+    pthread_mutex_lock(&client->replyq->mutex);
+    pthread_cond_signal(&client->replyq->cond);
+    pthread_mutex_unlock(&client->replyq->mutex);
+    debug(DBG_DBG, "tlsserverrd: waiting for writer to end");
+    pthread_join(tlsserverwrth, NULL);
+    debug(DBG_DBG, "tlsserverrd: reader for %s exiting", addr2string(client->addr, tmp, sizeof(tmp)));
+}
+
 #else
 /* Just to makes file non-empty, should rather avoid compiling this file when not needed */
 static void tlsdummy() {

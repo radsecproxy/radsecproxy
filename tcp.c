@@ -177,7 +177,8 @@ int tcpreadtimeout(int s, unsigned char *buf, int num, int timeout) {
     return num;
 }
 
-/* timeout in seconds, 0 means no timeout (blocking) */
+/* timeout in seconds, 0 means no timeout (blocking)
+   return 0 on timeout, <0 on error */
 int radtcpget(int s, int timeout, uint8_t **buf) {
     int cnt, len;
     unsigned char init_buf[4];
@@ -185,19 +186,19 @@ int radtcpget(int s, int timeout, uint8_t **buf) {
     cnt = tcpreadtimeout(s, init_buf, 4, timeout);
     if (cnt < 1) {
         debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
-        return 0;
+        return cnt;
     }
 
     len = get_checked_rad_length(init_buf);
     if (len <= 0) {
         debug(DBG_ERR, "radtcpget: invalid message length (%d)! closing connection!", -len);
-        return 0;
+        return len;
     }
 
     *buf = malloc(len);
     if (!*buf) {
         debug(DBG_ERR, "radtcpget: malloc failed! closing connection!");
-        return 0;
+        return -1;
     }
     memcpy(*buf, init_buf, 4);
 
@@ -205,7 +206,7 @@ int radtcpget(int s, int timeout, uint8_t **buf) {
     if (cnt < 1) {
         debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
         free(*buf);
-        return 0;
+        return cnt;
     }
     debug(DBG_DBG, "radtcpget: got %d bytes", len);
     return len;
@@ -232,14 +233,28 @@ int clientradputtcp(struct server *server, unsigned char *rad, int radlen) {
 void *tcpclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
+    struct timeval now;
     int len = 0;
 
     for (;;) {
-        len = radtcpget(server->sock, server->dynamiclookuparg ? IDLE_TIMEOUT : 0, &buf);
-        if (!buf || !len) {
-            if (server->dynamiclookuparg)
-            break;
-            tcpconnect(server, 0, 1);
+        len = radtcpget(server->sock, server->conf->retryinterval * (server->conf->retrycount+1), &buf);
+        if (!buf || len <= 0) {
+            if (len < 0 || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF) ) {
+                if (len < 0)
+                    debug (DBG_WARN, "tlsclientrd: connection to server %s lost", server->conf->name);
+                else if (server->lostrqs)
+                    debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
+                if (server->dynamiclookuparg)
+                    break;
+                tcpconnect(server, 0, 1);
+            }
+            if (server->dynamiclookuparg) {
+                gettimeofday(&now, NULL);
+                if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
+                    debug(DBG_INFO, "tcpclientrd: idle timeout for %s", server->conf->name);
+                    break;
+                }
+            }
             continue;
         }
 

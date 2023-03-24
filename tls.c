@@ -231,76 +231,6 @@ concleanup:
     return 1;
 }
 
-/* timeout in seconds, 0 means no timeout (blocking) */
-int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
-    int cnt, len;
-    unsigned char init_buf[4];
-
-	cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
-	if (cnt < 1)
-        return 0;
-
-    len = get_checked_rad_length(init_buf);
-    if (len <= 0) {
-        debug(DBG_ERR, "radtlsget: invalid message length (%d)! closing connection!", -len);
-        pthread_mutex_lock(lock);
-        SSL_shutdown(ssl);
-        pthread_mutex_unlock(lock);
-        return 0;
-    }
-    *buf = malloc(len);
-    if (!*buf) {
-        debug(DBG_ERR, "radtlsget: malloc failed! closing conneciton!");
-        pthread_mutex_lock(lock);
-        SSL_shutdown(ssl);
-        pthread_mutex_unlock(lock);
-        return 0;
-    }
-    memcpy(*buf, init_buf, 4);
-
-    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
-    if (cnt < 1) {
-        free(*buf);
-        return 0;
-    }
-
-    debug(DBG_DBG, "radtlsget: got %d bytes", len);
-    return len;
-}
-
-int dosslwrite(SSL *ssl, void *buf, int num, uint8_t may_block){
-    int ret;
-    unsigned long error;
-    struct pollfd fds[1];
-
-    if (!buf || num <= 0) {
-        debug(DBG_ERR, "dosslwrite: was called with empty or invalid buffer!");
-        return -1;
-    }
-
-    if(!may_block) {
-        fds[0].fd = SSL_get_fd(ssl);
-        fds[0].events = POLLOUT;
-        if (poll(fds, 1, 0) <= 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            debug(DBG_DBG, "dosslwrite: socket not ready or buffer full; avoid blocking...");
-            return -1;
-        }
-    }
-
-    while ((ret = SSL_write(ssl, buf, num)) <= 0) {
-        switch (SSL_get_error(ssl, ret)) {
-            case SSL_ERROR_WANT_READ:
-            case SSL_ERROR_WANT_WRITE:
-                continue;
-            default:
-                while ((error = ERR_get_error()))
-                    debug(DBG_ERR, "dosslwrite: SSL: %s", ERR_error_string(error, NULL));
-                return ret;
-        }
-    }
-    return ret;
-}
-
 int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
     struct clsrvconf *conf = server->conf;
@@ -311,7 +241,7 @@ int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
         return 0;
     }
 
-    if ((cnt = dosslwrite(server->ssl, rad, radlen, 0)) <= 0) {
+    if ((cnt = sslwrite(server->ssl, rad, radlen, 0)) <= 0) {
         pthread_mutex_unlock(&server->lock);
         return 0;
     }
@@ -366,101 +296,6 @@ void *tlsclientrd(void *arg) {
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
     return NULL;
-}
-
-void *tlsserverwr(void *arg) {
-    int cnt;
-    struct client *client = (struct client *)arg;
-    struct gqueue *replyq;
-    struct request *reply;
-    char tmp[INET6_ADDRSTRLEN];
-
-    debug(DBG_DBG, "tlsserverwr: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
-    replyq = client->replyq;
-    for (;;) {
-        pthread_mutex_lock(&replyq->mutex);
-        while (!list_first(replyq->entries)) {
-            if (!SSL_get_shutdown(client->ssl)) {
-                debug(DBG_DBG, "tlsserverwr: waiting for signal");
-                pthread_cond_wait(&replyq->cond, &replyq->mutex);
-                debug(DBG_DBG, "tlsserverwr: got signal");
-            } else
-                break;
-        }
-
-        reply = (struct request *)list_shift(replyq->entries);
-        pthread_mutex_unlock(&replyq->mutex);
-
-        pthread_mutex_lock(&client->lock);
-        if (SSL_get_shutdown(client->ssl)) {
-            if (reply)
-                freerq(reply);
-            pthread_mutex_unlock(&client->lock);
-            debug(DBG_DBG, "tlsserverwr: ssl connection shutdown; exiting as requested");
-            pthread_exit(NULL);
-        }
-
-        if ((cnt = dosslwrite(client->ssl, reply->replybuf, reply->replybuflen, 0)) > 0) {
-            debug(DBG_DBG, "tlsserverwr: sent %d bytes, Radius packet of length %d to %s",
-                cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
-        }
-        pthread_mutex_unlock(&client->lock);
-    	freerq(reply);
-    }
-}
-
-void tlsserverrd(struct client *client) {
-    struct request *rq;
-    uint8_t *buf;
-    pthread_t tlsserverwrth;
-    char tmp[INET6_ADDRSTRLEN];
-    int len = 0;
-
-    debug(DBG_DBG, "tlsserverrd: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
-
-    if (pthread_create(&tlsserverwrth, &pthread_attr, tlsserverwr, (void *)client)) {
-        debug(DBG_ERR, "tlsserverrd: pthread_create failed");
-        return;
-    }
-
-    for (;;) {
-        len = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock, &buf);
-        if (!buf || !len) {
-            pthread_mutex_lock(&client->lock);
-            if (SSL_get_shutdown(client->ssl))
-                debug(DBG_ERR, "tlsserverrd: connection from %s, client %s lost", addr2string(client->addr, tmp, sizeof(tmp)), client->conf->name);
-            else {
-                debug(DBG_WARN, "tlsserverrd: timeout from %s, client %s (no requests), closing connection", addr2string(client->addr, tmp, sizeof(tmp)), client->conf->name);
-                SSL_shutdown(client->ssl);
-            }
-            /* ensure shutdown state is set so tlsserverwr knows it can exit*/
-            SSL_set_shutdown(client->ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
-            pthread_mutex_unlock(&client->lock);
-            break;
-        }
-        debug(DBG_DBG, "tlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-        rq = newrequest();
-        if (!rq) {
-            free(buf);
-            continue;
-        }
-        rq->buf = buf;
-        rq->buflen = len;
-        rq->from = client;
-        if (!radsrv(rq)) {
-            debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-            break;
-        }
-        buf = NULL;
-    }
-
-    /* signal writer so it can finish (based on SSL_shutdown) */
-    pthread_mutex_lock(&client->replyq->mutex);
-    pthread_cond_signal(&client->replyq->cond);
-    pthread_mutex_unlock(&client->replyq->mutex);
-    debug(DBG_DBG, "tlsserverrd: waiting for writer to end");
-    pthread_join(tlsserverwrth, NULL);
-    debug(DBG_DBG, "tlsserverrd: reader for %s exiting", addr2string(client->addr, tmp, sizeof(tmp)));
 }
 
 void *tlsservernew(void *arg) {

@@ -94,147 +94,6 @@ void dtlssetsrcres() {
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
 
-int raddtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
-    int cnt, len;
-    unsigned char init_buf[4];
-
-    cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
-    if (cnt < 1)
-        return 0;
-
-    len = get_checked_rad_length(init_buf);
-    if (len <= 0) {
-        debug(DBG_ERR, "raddtlsget: invalid message length (%d)! closing connection!", -len);
-        pthread_mutex_lock(lock);
-        SSL_shutdown(ssl);
-        pthread_mutex_unlock(lock);
-        return 0;
-    }
-    *buf = malloc(len);
-    if (!*buf) {
-        debug(DBG_ERR, "raddtlsget: malloc failed");
-        return 0;
-    }
-    memcpy(*buf, init_buf, 4);
-
-    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
-    if (cnt < 1) {
-        free(*buf);
-        return 0;
-    }
-
-    debug(DBG_DBG, "raddtlsget: got %d bytes", len);
-    return len;
-}
-
-void *dtlsserverwr(void *arg) {
-    int cnt;
-    unsigned long error;
-    struct client *client = (struct client *)arg;
-    struct gqueue *replyq;
-    struct request *reply;
-    char tmp[INET6_ADDRSTRLEN];
-
-    debug(DBG_DBG, "dtlsserverwr: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
-    replyq = client->replyq;
-    for (;;) {
-        pthread_mutex_lock(&replyq->mutex);
-        while (!list_first(replyq->entries)) {
-            if (!SSL_get_shutdown(client->ssl)) {
-                debug(DBG_DBG, "dtlsserverwr: waiting for signal");
-                pthread_cond_wait(&replyq->cond, &replyq->mutex);
-                debug(DBG_DBG, "dtlsserverwr: got signal");
-            } else
-                break;
-        }
-
-        reply = (struct request *)list_shift(replyq->entries);
-        pthread_mutex_unlock(&replyq->mutex);
-
-        pthread_mutex_lock(&client->lock);
-        if (SSL_get_shutdown(client->ssl)) {
-            /* ssl might have changed while waiting */
-            pthread_mutex_unlock(&client->lock);
-            if (reply)
-                freerq(reply);
-            debug(DBG_DBG, "dtlsserverwr: ssl connection shutdown; exiting as requested");
-            pthread_exit(NULL);
-        }
-
-        while ((cnt = SSL_write(client->ssl, reply->replybuf, reply->replybuflen)) <= 0) {
-            switch (SSL_get_error(client->ssl, cnt)) {
-                case SSL_ERROR_WANT_READ:
-                case SSL_ERROR_WANT_WRITE:
-                    continue;
-                default:
-                    while ((error = ERR_get_error()))
-                        debug(DBG_ERR, "dtlsserverwr: SSL: %s", ERR_error_string(error, NULL));
-                    pthread_mutex_unlock(&client->lock);
-                    freerq(reply);
-                    debug(DBG_DBG, "tlsserverwr: SSL error. exiting.");
-                    pthread_exit(NULL);
-            }
-        }
-        debug(DBG_DBG, "dtlsserverwr: sent %d bytes, Radius packet of length %d to %s",
-            cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
-        pthread_mutex_unlock(&client->lock);
-        freerq(reply);
-    }
-}
-
-void dtlsserverrd(struct client *client) {
-    struct request *rq;
-    uint8_t *buf;
-    pthread_t dtlsserverwrth;
-    char tmp[INET6_ADDRSTRLEN];
-    int len = 0;
-
-    debug(DBG_DBG, "dtlsserverrd: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
-
-    if (pthread_create(&dtlsserverwrth, &pthread_attr, dtlsserverwr, (void *)client)) {
-	debug(DBG_ERR, "dtlsserverrd: pthread_create failed");
-	return;
-    }
-
-    for (;;) {
-        len = raddtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock, &buf);
-        if (!buf || !len) {
-            pthread_mutex_lock(&client->lock);
-            if (SSL_get_shutdown(client->ssl))
-                debug(DBG_ERR, "dtlsserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
-            else {
-                debug(DBG_WARN, "tlsserverrd: timeout from %s, client %s (no requests), closing connection", addr2string(client->addr, tmp, sizeof(tmp)), client->conf->name);
-                SSL_shutdown(client->ssl);
-            }
-            SSL_set_shutdown(client->ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
-            pthread_mutex_unlock(&client->lock);
-            break;
-        }
-        debug(DBG_DBG, "dtlsserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-        rq = newrequest();
-        if (!rq) {
-            free(buf);
-            continue;
-        }
-        rq->buf = buf;
-        rq->buflen = len;
-        rq->from = client;
-        if (!radsrv(rq)) {
-            debug(DBG_ERR, "dtlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
-            break;
-        }
-        buf = NULL;
-    }
-
-    /* stop writer by setting ssl to NULL and give signal in case waiting for data */
-    pthread_mutex_lock(&client->replyq->mutex);
-    pthread_cond_signal(&client->replyq->cond);
-    pthread_mutex_unlock(&client->replyq->mutex);
-    debug(DBG_DBG, "dtlsserverrd: waiting for writer to end");
-    pthread_join(dtlsserverwrth, NULL);
-    debug(DBG_DBG, "dtlsserverrd: reader for %s exiting", addr2string(client->addr, tmp, sizeof(tmp)));
-}
-
 void *dtlsservernew(void *arg) {
     struct dtlsservernewparams *params = (struct dtlsservernewparams *)arg;
     struct client *client;
@@ -299,7 +158,7 @@ void *dtlsservernew(void *arg) {
                 client->sock = s;
                 client->addr = addr_copy((struct sockaddr *)&params->addr);
                 client->ssl = params->ssl;
-                dtlsserverrd(client);
+                tlsserverrd(client);
                 removeclient(client);
             } else {
                 debug(DBG_WARN, "dtlsservernew: failed to create new client instance");
@@ -349,7 +208,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
         return ret;
     }
 
-    debug(DBG_DBG, "udp packet from %s", addr2string(from, tmp, sizeof(tmp)));
+    debug(DBG_DBG, "udp packet from: %s", addr2string(from, tmp, sizeof(tmp)));
 
     if (getsockname(socket, to, &tolen)) {
         debug(DBG_ERR, "getConnectionInfo: getsockname failed");
@@ -629,7 +488,6 @@ concleanup:
 
 int clientradputdtls(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
-    unsigned long error;
     struct clsrvconf *conf = server->conf;
 
     if (radlen <= 0) {
@@ -643,18 +501,11 @@ int clientradputdtls(struct server *server, unsigned char *rad, int radlen) {
         return 0;
     }
 
-    while ((cnt = SSL_write(server->ssl, rad, radlen)) <= 0) {
-        switch (SSL_get_error(server->ssl, cnt)) {
-            case SSL_ERROR_WANT_READ:
-            case SSL_ERROR_WANT_WRITE:
-                continue;
-            default:
-                while ((error = ERR_get_error()))
-                    debug(DBG_ERR, "clientradputdtls: DTLS: %s", ERR_error_string(error, NULL));
-                pthread_mutex_unlock(&server->lock);
-                return 0;
-        }
+    if ((cnt = sslwrite(server->ssl, rad, radlen, 0)) <= 0 ) {
+        pthread_mutex_unlock(&server->lock);
+        return 0;
     }
+
     debug(DBG_DBG, "clientradputdtls: Sent %d bytes, Radius packet of length %zu to DTLS peer %s", cnt, radlen, conf->name);
     pthread_mutex_unlock(&server->lock);
     return 1;
@@ -663,18 +514,28 @@ int clientradputdtls(struct server *server, unsigned char *rad, int radlen) {
 void *dtlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
+    struct timeval now;
     int len = 0;
 
     for (;;) {
-        len = raddtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
-        if (!buf) {
+        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
+        if (!buf || !len) {
             if(SSL_get_shutdown(server->ssl) || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF)) {
                 if (SSL_get_shutdown(server->ssl))
                     debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
                 else if (server->lostrqs)
                     debug (DBG_WARN, "dtlsclientrd: server %s did not respond, closing connection.", server->conf->name);
+                if (server->dynamiclookuparg)
+                    break;
                 dtlsconnect(server, 0, 1);
                 server->lostrqs = 0;
+            }
+            if (server->dynamiclookuparg) {
+                gettimeofday(&now, NULL);
+                if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
+                    debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
+                    break;
+                }
             }
             continue;
         }
