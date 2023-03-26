@@ -2371,6 +2371,10 @@ int setttlattr(struct options *opts, char *defaultattr) {
 void freeclsrvconf(struct clsrvconf *conf) {
     assert(conf);
     debug(DBG_DBG, "%s: freeing %p (%s)", __func__, conf, conf->name ? conf->name : "incomplete");
+#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
+    freegconfmstr(conf->confmatchcertattrs);
+    freematchcertattr(conf);
+#endif
     free(conf->name);
     if (conf->hostsrc)
 	freegconfmstr(conf->hostsrc);
@@ -2378,8 +2382,6 @@ void freeclsrvconf(struct clsrvconf *conf) {
     freegconfmstr(conf->source);
     free(conf->secret);
     free(conf->tls);
-    freegconfmstr(conf->confmatchcertattrs);
-    freematchcertattr(conf);
     free(conf->confrewritein);
     free(conf->confrewriteout);
     free(conf->sniservername);
@@ -2529,11 +2531,14 @@ int config_hostaf(const char *desc, int ipv4only, int ipv6only, int *af) {
 
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *existing;
-    char *conftype = NULL, *rewriteinalias = NULL, **matchcertattrs = NULL;
+    char *conftype = NULL, *rewriteinalias = NULL;
     long int dupinterval = LONG_MIN, addttl = LONG_MIN;
     uint8_t ipv4only = 0, ipv6only = 0;
     struct list_node *entry;
-    int i;
+#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
+        char **matchcertattrs = NULL;
+#endif
+
 
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -2596,6 +2601,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         if (!conf->tlsconf)
             debugx(1, DBG_ERR, "error in block %s, tls context not defined", block);
         if (matchcertattrs) {
+            int i;
             for (i=0; matchcertattrs[i]; i++){
                 if (!addmatchcertattr(conf, matchcertattrs[i])) {
                     debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
@@ -2677,7 +2683,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 }
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
-    int i;
+
 
     /* in case conf is a (partially) shallow copy, clear some old pointer so we don't accidentially free them in case of errors */
     conf->hostports = NULL;
@@ -2693,6 +2699,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
             return 0;
         }
         if (conf->confmatchcertattrs) {
+            int i;
             for (i=0; conf->confmatchcertattrs[i]; i++){
                 if (!addmatchcertattr(conf, conf->confmatchcertattrs[i])) {
                     debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);

@@ -1585,8 +1585,7 @@ void tlsserverrd(struct client *client) {
 
 #else
 /* Just to makes file non-empty, should rather avoid compiling this file when not needed */
-static void tlsdummy() {
-}
+typedef int make_compilers_happy;
 #endif
 
 /* Local Variables: */
