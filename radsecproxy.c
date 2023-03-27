@@ -1745,7 +1745,7 @@ void *clientwr(void *arg) {
     if (server->state == RSP_SERVER_STATE_CONNECTED && !(conf->statusserver == RSP_STATSRV_OFF)) {
         gettimeofday(&now, NULL);
         if ((conf->statusserver == RSP_STATSRV_ON && now.tv_sec - (server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec) > STATUS_SERVER_PERIOD) ||
-            (conf->statusserver == RSP_STATSRV_MINIMAL && statusserver_requested && now.tv_sec - laststatsrv.tv_sec > STATUS_SERVER_PERIOD) ||
+            ((conf->statusserver == RSP_STATSRV_MINIMAL || conf->statusserver == RSP_STATSRV_ON) && statusserver_requested && now.tv_sec - laststatsrv.tv_sec > STATUS_SERVER_PERIOD) ||
             (conf->statusserver == RSP_STATSRV_AUTO && server->lastreply.tv_sec >= laststatsrv.tv_sec)) {
 
             laststatsrv = now;
