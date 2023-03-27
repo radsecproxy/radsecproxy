@@ -1,16 +1,18 @@
-unreleased changes
+2023-03-27 1.10.0-rc1
 	New features:
+	- Native dynamic discovery for NAPTR and SRV records (#2, #83)
 	- Optionally log accounting requests when respoinding directly (#72)
 	- SNI support for outgoing connections (#90)
-	- Manual MTU setting for DTLS on non-linux platforms
-	- Native dynamic discovery for NAPTR and SRV records (#2, #83)
 	- Optionally specify server name for certificate name check (#106)
+	- Manual MTU setting for DTLS on non-linux platforms
 
 	Misc:
 	- Don't require server type to be set by dyndisc scripts
+	- Improve locating openssl lib using pkg-config
 
 	Bug Fixes:
 	- Fix radius message length handling
+	- Fix DTLS lost request and timeout handling
 
 2023-01-23 1.9.2
 	Bug Fixes:
