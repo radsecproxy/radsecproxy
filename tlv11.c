@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <sys/socket.h>
 #include <stdio.h>
 
 struct tlv *maketlv(uint8_t t, uint8_t l, void *v) {
