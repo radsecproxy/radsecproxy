@@ -1239,8 +1239,9 @@ void rmclientrq(struct request *rq, uint8_t id) {
 
     r = rq->from->rqs[id];
     if (r) {
-	freerq(r);
-	rq->from->rqs[id] = NULL;
+        rq->from->rqs[id] = NULL;
+        rq->from = NULL;
+        freerq(r);
     }
 }
 
@@ -1812,6 +1813,8 @@ errexitwait:
     for (i=0; i < MAX_REQUESTS; i++) {
         rqout = server->requests + i;
         pthread_mutex_lock(rqout->lock);
+        if (rqout->rq)
+            rmclientrq(rqout->rq, rqout->rq->rqid);
         freerqoutdata(rqout);
         pthread_mutex_unlock(rqout->lock);
     }
