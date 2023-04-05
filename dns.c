@@ -169,6 +169,11 @@ static struct query_state *doquery(int type, const char *name, int timeout) {
     int len;
     char *errstring;
     struct query_state *state = malloc(sizeof(struct query_state));
+    if (!state) {
+        debug(DBG_ERR,"malloc failed");
+        return NULL;
+    }
+    memset(state, 0, sizeof(struct query_state));
 
     debug(DBG_DBG, "doquery: starting DNS query of type %d for %s", type, name);
 
