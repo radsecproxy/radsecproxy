@@ -67,7 +67,8 @@ AC_ARG_ENABLE(dtls,
 AC_CHECK_LIB([nettle], [nettle_sha256_init],,
     [AC_MSG_ERROR([required library nettle not found])])
 
-LIBS="-lresolv $LIBS"
+# check if we need -lresolv
+AC_CHECK_LIB([resolv], [inet_aton])
 
 dnl Check if we're on Solaris and set CFLAGS accordingly
 AC_CANONICAL_TARGET
