@@ -594,6 +594,16 @@ for the realm and then the SRV records for each NAPTR matching
 This is equivalent to configuring 'naptr:x-eduroam:radius.tls' directly.
 .RE
 
+.BI "IgnoreSRVHost " host
+.RS
+When using \fBDynamicLooupCommand\fR with the \fBnaptr:\fR or \fBsrv:\fR forms,
+ignore the specified \fIhost\fR. This option can be repeated a number of times
+to exclude multiple host.
+
+This is designed to help against self-loops, especially for operators running
+multiple radsecproxy servers with identical configuration in a redundancy setup.
+.RE
+
 .BR "StatusServer (" on | off | minimal | auto )
 .RS
 Enable the use of status-server messages for this server (default \fBoff\fR).  If
