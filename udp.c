@@ -267,7 +267,7 @@ int clientradputudp(struct server *server, unsigned char *rad, int radlen) {
 
 void *udpclientrd(void *arg) {
     struct server *server;
-    unsigned char *buf;
+    unsigned char *buf = NULL;
     int *s = (int *)arg;
     int len = 0;
 
