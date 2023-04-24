@@ -1569,6 +1569,9 @@ void tlsserverrd(struct client *client) {
         rq->from = client;
         if (!radsrv(rq)) {
             debug(DBG_ERR, "tlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+            SSL_shutdown(client->ssl);
+            /* ensure shutdown state is set so tlsserverwr knows it can exit*/
+            SSL_set_shutdown(client->ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
             break;
         }
         buf = NULL;
