@@ -219,6 +219,10 @@ void dtlsserverrd(struct client *client) {
         rq->from = client;
         if (!radsrv(rq)) {
             debug(DBG_ERR, "dtlsserverrd: message authentication/validation failed, closing connection from %s", addr2string(client->addr, tmp, sizeof(tmp)));
+            pthread_mutex_lock(&client->lock);
+            SSL_shutdown(client->ssl);
+            SSL_set_shutdown(client->ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
+            pthread_mutex_unlock(&client->lock);
             break;
         }
     }
