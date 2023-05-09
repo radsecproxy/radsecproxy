@@ -82,6 +82,9 @@ case "${target_os}" in
     fi
     TARGET_LDFLAGS="-lpthread -lsocket -lnsl"
     ;;
+  darwin*)
+    TARGET_CFLAGS="-D__APPLE_USE_RFC_3542 -Wno-deprecated-declarations -Wall -pedantic -Wno-long-long -pthread"
+    ;;
   *)
     TARGET_CFLAGS="-Wall -pedantic -Wno-long-long -pthread"
     TARGET_LDFLAGS=""
