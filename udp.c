@@ -29,13 +29,13 @@
 #include "util.h"
 
 static void setprotoopts(struct commonprotoopts *opts);
-static char **getlistenerargs();
+static char **getlistenerargs(void);
 void *udpserverrd(void *arg);
 int clientradputudp(struct server *server, unsigned char *rad, int radlen);
 void addclientudp(struct client *client);
 void addserverextraudp(struct clsrvconf *conf);
-void udpsetsrcres();
-void initextraudp();
+void udpsetsrcres(void);
+void initextraudp(void);
 
 static const struct protodefs protodefs = {
     "udp",
@@ -80,11 +80,11 @@ static void setprotoopts(struct commonprotoopts *opts) {
     protoopts = opts;
 }
 
-static char **getlistenerargs() {
+static char **getlistenerargs(void) {
     return protoopts ? protoopts->listenargs : NULL;
 }
 
-void udpsetsrcres() {
+void udpsetsrcres(void) {
     if (!srcres)
 	srcres =
             resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,
@@ -376,7 +376,7 @@ void addserverextraudp(struct clsrvconf *conf) {
         freeaddrinfo(source);
 }
 
-void initextraudp() {
+void initextraudp(void) {
     pthread_t clth, srvth;
     struct list_node *entry;
 

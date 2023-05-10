@@ -33,14 +33,14 @@
 #include "hostport.h"
 
 static void setprotoopts(struct commonprotoopts *opts);
-static char **getlistenerargs();
+static char **getlistenerargs(void);
 void *dtlslistener(void *arg);
 int dtlsconnect(struct server *server, int timeout, int reconnect);
 void *dtlsclientrd(void *arg);
 int clientradputdtls(struct server *server, unsigned char *rad, int radlen);
 void addserverextradtls(struct clsrvconf *conf);
-void dtlssetsrcres();
-void initextradtls();
+void dtlssetsrcres(void);
+void initextradtls(void);
 
 static const struct protodefs protodefs = {
     "dtls",
@@ -77,7 +77,7 @@ static void setprotoopts(struct commonprotoopts *opts) {
     protoopts = opts;
 }
 
-static char **getlistenerargs() {
+static char **getlistenerargs(void) {
     return protoopts ? protoopts->listenargs : NULL;
 }
 
@@ -87,7 +87,7 @@ struct dtlsservernewparams {
     SSL *ssl;
 };
 
-void dtlssetsrcres() {
+void dtlssetsrcres(void) {
     if (!srcres)
 	srcres =
             resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,

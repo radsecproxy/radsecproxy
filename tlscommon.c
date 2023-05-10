@@ -74,7 +74,7 @@ void ssl_locking_callback(int mode, int type, const char *file, int line) {
 }
 #endif
 
-void sslinit() {
+void sslinit(void) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000
     int i;
 
@@ -572,7 +572,7 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
     return NULL;
 }
 
-void tlsreloadcrls() {
+void tlsreloadcrls(void) {
     struct tls *conf;
     struct hash_entry *entry;
     struct timeval now;

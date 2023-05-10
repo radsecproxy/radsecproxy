@@ -24,7 +24,7 @@ static void list_free_helper_(struct list *list, int free_data_flag) {
 /* Public functions. */
 
 /* allocates and initialises list structure; returns NULL if malloc fails */
-struct list *list_create() {
+struct list *list_create(void) {
     struct list *list = malloc(sizeof(struct list));
     if (list)
 	memset(list, 0, sizeof(struct list));

@@ -10,7 +10,7 @@
 #include "fticks_hashmac.h"
 
 void
-usage()
+usage(void)
 {
   fprintf(stderr,
 	  "usage: radsecproxy-hash [-h] [-k key] [mac]...\n"

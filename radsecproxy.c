@@ -163,7 +163,7 @@ struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur) {
     return NULL;
 }
 
-struct gqueue *newqueue() {
+struct gqueue *newqueue(void) {
     struct gqueue *q;
 
     q = malloc(sizeof(struct gqueue));
@@ -1180,7 +1180,7 @@ exit:
 }
 
 
-struct request *newrequest() {
+struct request *newrequest(void) {
     struct request *rq;
 
     rq = malloc(sizeof(struct request));
@@ -1593,7 +1593,7 @@ errunlock:
     return;
 }
 
-struct request *createstatsrvrq() {
+struct request *createstatsrvrq(void) {
     struct request *rq;
     struct tlv *attr;
 
@@ -1903,7 +1903,7 @@ void createlisteners(uint8_t type) {
 	createlistener(type, NULL);
 }
 
-void randinit() {
+void randinit(void) {
     time_t t;
     pid_t pid;
 

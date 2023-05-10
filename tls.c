@@ -28,12 +28,12 @@
 #ifdef RADPROT_TLS
 
 static void setprotoopts(struct commonprotoopts *opts);
-static char **getlistenerargs();
+static char **getlistenerargs(void);
 void *tlslistener(void *arg);
 int tlsconnect(struct server *server, int timeout, int reconnect);
 void *tlsclientrd(void *arg);
 int clientradputtls(struct server *server, unsigned char *rad, int radlen);
-void tlssetsrcres();
+void tlssetsrcres(void);
 
 static const struct protodefs protodefs = {
     "tls",
@@ -70,11 +70,11 @@ static void setprotoopts(struct commonprotoopts *opts) {
     protoopts = opts;
 }
 
-static char **getlistenerargs() {
+static char **getlistenerargs(void) {
     return protoopts ? protoopts->listenargs : NULL;
 }
 
-void tlssetsrcres() {
+void tlssetsrcres(void) {
     if (!srcres)
 	srcres =
             resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,

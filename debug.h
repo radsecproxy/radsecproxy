@@ -17,15 +17,15 @@
 
 void debug_init(char *ident);
 void debug_set_level(uint8_t level);
-void debug_timestamp_on();
-void debug_tid_on();
-uint8_t debug_get_level();
+void debug_timestamp_on(void);
+void debug_tid_on(void);
+uint8_t debug_get_level(void);
 void debug(uint8_t level, char *format, ...);
 void debugx(int status, uint8_t level, char *format, ...);
 void debugerrno(int err, uint8_t level, char *format, ...);
 void debugerrnox(int err, uint8_t level, char *format, ...);
 int debug_set_destination(char *dest, int log_type);
-void debug_reopen_log();
+void debug_reopen_log(void);
 void fticks_debug(const char *format, ...);
 
 /* Local Variables: */

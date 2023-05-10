@@ -28,12 +28,12 @@
 #include "debug.h"
 #include "util.h"
 static void setprotoopts(struct commonprotoopts *opts);
-static char **getlistenerargs();
+static char **getlistenerargs(void);
 void *tcplistener(void *arg);
 int tcpconnect(struct server *server, int timeout, int reconnect);
 void *tcpclientrd(void *arg);
 int clientradputtcp(struct server *server, unsigned char *rad, int radlen);
-void tcpsetsrcres();
+void tcpsetsrcres(void);
 
 static const struct protodefs protodefs = {
     "tcp",
@@ -69,11 +69,11 @@ static void setprotoopts(struct commonprotoopts *opts) {
     protoopts = opts;
 }
 
-static char **getlistenerargs() {
+static char **getlistenerargs(void) {
     return protoopts ? protoopts->listenargs : NULL;
 }
 
-void tcpsetsrcres() {
+void tcpsetsrcres(void) {
     if (!srcres)
 	srcres =
             resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,

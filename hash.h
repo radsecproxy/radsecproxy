@@ -19,7 +19,7 @@ struct hash_entry {
 };
 
 /* allocates and initialises hash structure; returns NULL if malloc fails */
-struct hash *hash_create();
+struct hash *hash_create(void);
 
 /* frees all memory associated with the hash */
 void hash_destroy(struct hash *hash);

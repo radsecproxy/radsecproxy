@@ -58,15 +58,15 @@ void debug_set_level(uint8_t level) {
     }
 }
 
-void debug_timestamp_on() {
+void debug_timestamp_on(void) {
     debug_timestamp = 1;
 }
 
-void debug_tid_on() {
+void debug_tid_on(void) {
     debug_tid = 1;
 }
 
-uint8_t debug_get_level() {
+uint8_t debug_get_level(void) {
     return debug_level;
 }
 

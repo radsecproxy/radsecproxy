@@ -7,7 +7,7 @@
 #include "hash.h"
 
 /* allocates and initialises hash structure; returns NULL if malloc fails */
-struct hash *hash_create() {
+struct hash *hash_create(void) {
     struct hash *h = malloc(sizeof(struct hash));
     if (!h)
 	return NULL;

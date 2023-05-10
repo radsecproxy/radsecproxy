@@ -41,7 +41,7 @@ struct tls {
 };
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-void sslinit();
+void sslinit(void);
 struct tls *tlsgettls(char *alt1, char *alt2);
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
 X509 *verifytlscert(SSL *ssl);
@@ -50,7 +50,7 @@ char *getcertsubject(X509 *cert);
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 int addmatchcertattr(struct clsrvconf *conf, const char *match);
 void freematchcertattr(struct clsrvconf *conf);
-void tlsreloadcrls();
+void tlsreloadcrls(void);
 int tlssetsni(SSL *ssl, char *sni);
 int sslconnecttimeout(SSL *ssl, int timeout);
 int sslaccepttimeout (SSL *ssl, int timeout);

@@ -21,7 +21,7 @@ struct list {
 };
 
 /* allocates and initialises list structure; returns NULL if malloc fails */
-struct list *list_create();
+struct list *list_create(void);
 
 /* frees all memory associated with the list */
 void list_destroy(struct list *list);
