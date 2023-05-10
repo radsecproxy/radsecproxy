@@ -79,7 +79,6 @@ int debug_set_destination(char *dest, int log_type) {
         LOG_DAEMON, LOG_MAIL, LOG_USER, LOG_LOCAL0,
 	LOG_LOCAL1, LOG_LOCAL2, LOG_LOCAL3, LOG_LOCAL4,
 	LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7 };
-    extern int errno;
     int i;
 
     if (!strncasecmp(dest, "file:///", 8)) {
@@ -127,9 +126,7 @@ int debug_set_destination(char *dest, int log_type) {
     exit(1);
 }
 
-void debug_reopen_log() {
-    extern int errno;
-
+void debug_reopen_log(void) {
     /* not a file, noop, return success */
     if (!debug_filepath) {
 	debug(DBG_ERR, "skipping reopen");
