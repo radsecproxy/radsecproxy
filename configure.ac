@@ -1,5 +1,6 @@
 dnl Copyright (c) 2006-2010, UNINETT AS
 dnl Copyright (c) 2010-2013,2016, NORDUnet A/S
+dnl Copyright (c) 2023, SWITCH
 dnl See LICENSE for licensing information.
 
 AC_INIT([radsecproxy],[1.10.0-rc1],[https://radsecproxy.github.io])

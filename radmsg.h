@@ -1,5 +1,6 @@
-/* Copyright (c) 2007-2008, UNINETT AS */
-/* Copyright (c) 2015, NORDUnet A/S */
+/* Copyright (c) 2007-2008, UNINETT AS
+ * Copyright (c) 2015, NORDUnet A/S
+ * Copyright (c) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
 #ifndef _RADMSG_H

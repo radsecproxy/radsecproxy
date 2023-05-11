@@ -1,5 +1,6 @@
 /* Copyright (c) 2007-2009, UNINETT AS
- * Copyright (c) 2012, NORDUnet A/S */
+ * Copyright (c) 2012, NORDUnet A/S
+ * Copyright (c) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
 #include <signal.h>

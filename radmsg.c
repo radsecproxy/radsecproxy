@@ -1,4 +1,5 @@
-/* Copyright (c) 2007-2009, UNINETT AS */
+/* Copyright (c) 2007-2009, UNINETT AS
+ * Copyright (c) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
 #ifdef SYS_SOLARIS9

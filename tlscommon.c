@@ -1,5 +1,6 @@
 /* Copyright (c) 2007-2009, UNINETT AS
- * Copyright (c) 2010-2011,2015-2016, NORDUnet A/S */
+ * Copyright (c) 2010-2011,2015-2016, NORDUnet A/S
+ * Copyright (c) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
