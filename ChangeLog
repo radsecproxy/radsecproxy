@@ -12,7 +12,12 @@
 
 	Bug Fixes:
 	- Fix radius message length handling
-	- Fix DTLS lost request and timeout handling
+
+2023-05-02 1.9.3
+	Bug Fixes:
+	- Fix shutdown TLS connection on malformed radius message (#122)
+	- Fix handling of lost requests in DTLS
+	- Fix flush requests when dyndisc fails 
 
 2023-01-23 1.9.2
 	Bug Fixes:
