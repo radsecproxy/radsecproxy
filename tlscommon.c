@@ -36,10 +36,14 @@
 #include "radsecproxy.h"
 
 static struct hash *tlsconfs = NULL;
+static struct tls *tlsdefaultpsk = NULL;
 
 #define COOKIE_SECRET_LENGTH 16
 static unsigned char cookie_secret[COOKIE_SECRET_LENGTH];
 static uint8_t cookie_secret_initialized = 0;
+
+int RSP_EX_DATA_CONFIG;
+int RSP_EX_DATA_CONFIG_LIST;
 
 struct certattrmatch {
     int (*matchfn)(GENERAL_NAME *, struct certattrmatch *);
@@ -97,6 +101,8 @@ void sslinit(void) {
     SSL_load_error_strings();
 #else
     OPENSSL_init_ssl(0, NULL);
+    RSP_EX_DATA_CONFIG = CRYPTO_get_ex_new_index(CRYPTO_EX_INDEX_SSL, 0, NULL, NULL, NULL, NULL);
+    RSP_EX_DATA_CONFIG_LIST = CRYPTO_get_ex_new_index(CRYPTO_EX_INDEX_SSL, 0, NULL, NULL, NULL, NULL);
 #endif
 }
 
@@ -310,6 +316,124 @@ static void ssl_info_callback(const SSL *ssl, int where, int ret) {
 }
 #endif
 
+const unsigned char tls13_aes128gcmsha256_id[] = { 0x13, 0x01 };
+
+int psk_use_session_cb(SSL *ssl, const EVP_MD *md, const unsigned char **id, size_t *idlen, SSL_SESSION **sess) {
+    struct clsrvconf *conf = NULL;
+    STACK_OF(SSL_CIPHER) *ciphers;
+    const SSL_CIPHER *cipher;
+
+    conf = (struct clsrvconf *) SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG);
+    if (!conf || !conf->pskid || !conf->pskkey) {
+        debug(DBG_DBG, "psk_use_session_cb: no PSK data configured for tls connection");
+        *sess = NULL;
+        return 1;
+    }
+
+    debug(DBG_DBG, "psk_use_session_cb: using PSK id %s, key length %d", conf->pskid, conf->pskkeylen);
+
+    *sess = SSL_SESSION_new();
+    if (! *sess) {
+        debug(DBG_ERR, "psk_use_session_cb: failed to create new SSL session");
+        return 0;
+    }
+
+    *id = (unsigned char *) conf->pskid;
+    *idlen = strlen(conf->pskid);
+    if (!SSL_SESSION_set1_master_key(*sess, (unsigned char *) conf->pskkey, conf->pskkeylen)) {
+        debug(DBG_ERR, "psk_use_session_cb: failed to set PSK key");
+        return 0;
+    }
+
+    if (!SSL_SESSION_set_protocol_version(*sess, TLS1_3_VERSION)) {
+        debug(DBG_ERR, "psk_use_session_cb: failed to set tls version 1.3, mandatory for PSK!");
+        return 0;
+    }
+
+    ciphers = SSL_get1_supported_ciphers(ssl);
+    if (!ciphers) {
+        debug(DBG_ERR, "psk_use_session_cb: failed to get supported ciphers");
+        return 0;
+    }
+    cipher = sk_SSL_CIPHER_value(ciphers,0);
+    if (!cipher) {
+        debug(DBG_ERR, "psk_use_session_cb: first supported cipher is null!");
+        return 0;
+    }
+    debug(DBG_DBG, "psk_use_session_db: setting session cipher %s", SSL_CIPHER_get_name(cipher));
+    if (!SSL_SESSION_set_cipher(*sess, cipher)) {
+        debug(DBG_ERR, "psk_use_session_db: failed to set session cipher");
+        return 0;
+    }
+
+    /*disable certificate verification since we don't expect one for PSK*/
+    SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
+
+    return 1;
+}
+
+int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SESSION **sess) {
+    struct clsrvconf *conf = NULL;
+    struct list* candidates = NULL;
+    struct list_node *node = NULL;
+    const SSL_CIPHER *cipher;
+
+    candidates = (struct list *) SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST);
+    if (!candidates) {
+        debug(DBG_DBG, "psk_find_session_cb: no candidate list found in ssl object");
+        *sess = NULL;
+        return 1;
+    }
+    for(node = list_first(candidates); node; node = list_next(node)) {
+        struct clsrvconf *candidate = (struct clsrvconf *)node->data;
+        if (candidate->pskid && strcmp((const char *)id, candidate->pskid) == 0) {
+            conf = candidate;
+            break;
+        }
+    }
+    if (!conf) {
+        debug(DBG_DBG, "psk_find_session_cb: no client with PSK id %s found", id);
+        *sess = NULL;
+        return 1;
+    }
+
+    debug(DBG_DBG, "psk_find_session_cb: PSK id %s matches client %s, key length %d", conf->pskid, conf->name, conf->pskkeylen);
+    if (!SSL_set_ex_data(ssl, RSP_EX_DATA_CONFIG, conf)) {
+        debug(DBG_ERR, "psk_find_session_cb: failed to set ssl ex data");
+        return 0;
+    }
+
+     *sess = SSL_SESSION_new();
+    if (! *sess) {
+        debug(DBG_ERR, "psk_find_session_cb: failed to create new SSL session");
+        return 0;
+    }
+    if (!SSL_SESSION_set1_master_key(*sess, (unsigned char *) conf->pskkey, conf->pskkeylen)) {
+        debug(DBG_ERR, "psk_find_session_cb: failed to set PSK key");
+        return 0;
+    }
+
+    if (!SSL_SESSION_set_protocol_version(*sess, TLS1_3_VERSION)) {
+        debug(DBG_ERR, "psk_find_session_cb: failed to set tls version 1.3, mandatory for PSK!");
+        return 0;
+    }
+
+    cipher = SSL_get_pending_cipher(ssl);
+    if (!cipher) {
+         debug(DBG_ERR, "psk_find_session_cb: failed to get pending cipher");
+         return 0;
+    }
+    debug(DBG_DBG, "psk_find_session_cb: setting session cipher %s", SSL_CIPHER_get_name(cipher));
+    if (!SSL_SESSION_set_cipher(*sess, cipher)) {
+        debug(DBG_ERR, "psk_find_session_cb: failed t set session cipher");
+        return 0;
+    }
+
+    SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
+
+    return 1;
+}
+
 static X509_VERIFY_PARAM *createverifyparams(char **poids) {
     X509_VERIFY_PARAM *pm;
     ASN1_OBJECT *pobject;
@@ -337,12 +461,17 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     X509_STORE *x509_s;
     unsigned long error;
 
+    if (!conf->cacertfile && !conf->cacertpath) {
+        debug(DBG_DBG, "tlsaddcacrl: No cacertifle or cacertpath specified for TLS %s, skip adding CAs", conf->name);
+        return 1;
+    }
+
     SSL_CTX_set_cert_store(ctx, X509_STORE_new());
     if (!SSL_CTX_load_verify_locations(ctx, conf->cacertfile, conf->cacertpath)) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-	debug(DBG_ERR, "tlsaddcacrl: Error updating TLS context %s", conf->name);
-	return 0;
+    debug(DBG_ERR, "tlsaddcacrl: Error updating TLS context %s", conf->name);
+        return 0;
     }
 
     calist = conf->cacertfile ? SSL_load_client_CA_file(conf->cacertfile) : NULL;
@@ -359,16 +488,14 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     if (!calist) {
 	while ((error = ERR_get_error()))
 	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-	debug(DBG_ERR, "tlsaddcacrl: Error adding CA subjects in TLS context %s", conf->name);
-	return 0;
+    debug(DBG_ERR, "tlsaddcacrl: Error adding CA subjects in TLS context %s", conf->name);
+        return 0;
     }
     ERR_clear_error(); /* add_dir_cert_subj returns errors on success */
     SSL_CTX_set_client_CA_list(ctx, calist);
 
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
-    SSL_CTX_set_cookie_generate_cb(ctx, cookie_generate_cb);
-    SSL_CTX_set_cookie_verify_cb(ctx, cookie_verify_cb);
 
     if (conf->crlcheck || conf->vpm) {
 	x509_s = SSL_CTX_get_cert_store(ctx);
@@ -450,14 +577,18 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
         SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
         SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
     }
-    if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
-        !SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
-        !SSL_CTX_check_private_key(ctx)) {
-        while ((error = ERR_get_error()))
-            debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-        debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
-        SSL_CTX_free(ctx);
-        return NULL;
+    if (conf->certfile) {
+        if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
+            !SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+            !SSL_CTX_check_private_key(ctx)) {
+            while ((error = ERR_get_error()))
+                debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
+            SSL_CTX_free(ctx);
+            return NULL;
+        }
+    } else {
+        debug(DBG_NOTICE, "tlscreatectx: no certificate specified! TLS %s can only be used for TLS-PSK", conf->name);
     }
 
     if (conf->policyoids) {
@@ -518,6 +649,12 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     }
 #endif
 
+    SSL_CTX_set_cookie_generate_cb(ctx, cookie_generate_cb);
+    SSL_CTX_set_cookie_verify_cb(ctx, cookie_verify_cb);
+    SSL_CTX_set_psk_use_session_callback(ctx, psk_use_session_cb);
+    SSL_CTX_set_psk_find_session_callback(ctx, psk_find_session_cb);
+    SSL_CTX_set_options(ctx, SSL_CTX_get_options(ctx) & !SSL_OP_ALLOW_NO_DHE_KEX);
+
     debug(DBG_DBG, "tlscreatectx: created TLS context %s", conf->name);
     return ctx;
 }
@@ -529,6 +666,20 @@ struct tls *tlsgettls(char *alt1, char *alt2) {
     if (!t && alt2)
 	t = hash_read(tlsconfs, alt2, strlen(alt2));
     return t;
+}
+
+struct tls *tlsgetdefaultpsk(void) {
+    if (!tlsdefaultpsk) {
+        if (!(tlsdefaultpsk = malloc(sizeof(struct tls)))) {
+            debug(DBG_ERR, "malloc failed");
+            return NULL;
+        }
+
+        tlsdefaultpsk->name = "_psk_default";
+        tlsdefaultpsk->ciphersuites = "TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256";
+        tlsdefaultpsk->tlsminversion = TLS1_3_VERSION;
+    }
+    return tlsdefaultpsk; 
 }
 
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
@@ -834,6 +985,7 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpcon
 }
 
 char *getcertsubject(X509 *cert) {
+    if (!cert) return NULL;
     return print_x509_name(X509_get_subject_name(cert));
 }
 
@@ -916,13 +1068,17 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 	debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
 	goto errexit;
     }
-    if (!conf->certfile || !conf->certkeyfile) {
-	debug(DBG_ERR, "conftls_cb: TLSCertificateFile and TLSCertificateKeyFile must be specified in block %s", val);
-	goto errexit;
-    }
-    if (!conf->cacertfile && !conf->cacertpath) {
-	debug(DBG_ERR, "conftls_cb: CA Certificate file or path need to be specified in block %s", val);
-	goto errexit;
+    if (!conf->certfile) {
+        debug(DBG_DBG, "conftls_db: tls %s has no certificate specified, can only be used for PSK", val);
+    } else {
+        if (!conf->certkeyfile) {
+            debug(DBG_ERR, "conftls_cb: TLSCertificateKeyFile must be specified together with TLSCertificateFile in block %s", val);
+            goto errexit;
+        }
+        if (!conf->cacertfile && !conf->cacertpath) {
+            debug(DBG_ERR, "conftls_cb: CA Certificate file or path need to be specified together with TLSCertificateFile in block %s", val);
+            goto errexit;
+        }
     }
     if (expiry != LONG_MIN) {
 	if (expiry < 0) {

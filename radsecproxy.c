@@ -148,6 +148,17 @@ struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_
     return find_conf(type, addr, srvconfs, cur, 1, NULL);
 }
 
+struct list *find_all_clconf(uint8_t type, struct sockaddr *addr, struct list_node *cur, struct hostportres **hp) {
+    struct list *list = list_create();
+    struct clsrvconf *ref = (struct clsrvconf *)cur->data;
+    struct clsrvconf *next = ref;
+    do {
+        if (next->tlsconf == ref->tlsconf && next->pskid && next->pskkeylen)
+            list_push(list, next);
+    } while ((next = find_clconf(type, addr, &cur, hp)) != NULL);
+    return list;
+}
+
 /* returns next config of given type, or NULL */
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur) {
     struct list_node *entry;
@@ -2561,6 +2572,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "secret", CONF_STR_NOESC, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 	    "tls", CONF_STR, &conf->tls,
+        "PSKidentity", CONF_STR, &conf->pskid,
+        "PSKkey", CONF_STR_NOESC, &conf->pskkey,
 	    "MatchCertificateAttribute", CONF_MSTR, &matchcertattrs,
 	    "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 	    "ServerName", CONF_STR, &conf->servername,
@@ -2599,11 +2612,14 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-        conf->tlsconf = conf->tls
-                ? tlsgettls(conf->tls, NULL)
-                : tlsgettls("defaultClient", "default");
+        conf->tlsconf = conf->tls ?
+                tlsgettls(conf->tls, NULL) :
+                conf->pskkey ?
+                    tlsgetdefaultpsk() : tlsgettls("defaultClient", "default");
         if (!conf->tlsconf)
             debugx(1, DBG_ERR, "error in block %s, tls context not defined", block);
+        if (!conf->pskkey && !conf->tlsconf->certfile)
+            debugx(1, DBG_ERR, "error in block %s, tls context %s has no certificate", block, conf->tlsconf->name);
         if (matchcertattrs) {
             int i;
             for (i=0; matchcertattrs[i]; i++){
@@ -2675,6 +2691,13 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             }
         }
     }
+    if (conf->pskkey){ 
+        conf->pskkeylen = unhex((char *)conf->pskkey, 1);
+        if (!conf->pskid) {
+            conf->pskid = stringcopy(conf->name,0);
+            debug(DBG_DBG, "confclientcb: using client name %s as PSKidentity", block);
+        }
+    }
 
     conf->lock = malloc(sizeof(pthread_mutex_t));
     if (!conf->lock)
@@ -2695,11 +2718,16 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-    	conf->tlsconf = conf->tls
-            ? tlsgettls(conf->tls, NULL)
-            : tlsgettls("defaultServer", "default");
+    	conf->tlsconf = conf->tls ?
+            tlsgettls(conf->tls, NULL) :
+            conf->pskkey ?
+                tlsgetdefaultpsk() : tlsgettls("defaultServer", "default");
         if (!conf->tlsconf) {
             debug(DBG_ERR, "error in block %s, no tls context defined", block);
+            return 0;
+        }
+        if (!conf->pskkey && !conf->tlsconf->certfile){
+            debug(DBG_ERR, "error in block %s, tls context %s has no certificate", block, conf->tlsconf->name);
             return 0;
         }
         if (conf->confmatchcertattrs) {
@@ -2784,6 +2812,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "secret", CONF_STR_NOESC, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
             "tls", CONF_STR, &conf->tls,
+            "PSKidentity", CONF_STR, &conf->pskid,
+            "PSKkey", CONF_STR_NOESC, &conf->pskkey,
             "MatchCertificateAttribute", CONF_MSTR, &conf->confmatchcertattrs,
             "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
             "ServerName", CONF_STR, &conf->servername,
@@ -2904,6 +2934,13 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (conf->secret)
         conf->secret_len = unhex((char *)conf->secret,1);
 
+    if (conf->pskkey){
+        conf->pskkeylen = unhex((char *)conf->pskkey, 1);
+        if (!conf->pskid) {
+            debug (DBG_ERR, "error in block %s, PSKidentity must be set to use PSK", block);
+            goto errexit;
+        }
+    }
     if(conf->sniservername)
         conf->sni = 1;
 

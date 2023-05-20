@@ -3,6 +3,9 @@
  * Copyright (c) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
+#ifndef _TLSCOMMON_H
+#define _TLSCOMMON_H
+
 #include <openssl/ssl.h>
 #include "hostport.h"
 
@@ -42,8 +45,13 @@ struct tls {
 };
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
+
+extern int RSP_EX_DATA_CONFIG;
+extern int RSP_EX_DATA_CONFIG_LIST;
+
 void sslinit(void);
 struct tls *tlsgettls(char *alt1, char *alt2);
+struct tls *tlsgetdefaultpsk(void);
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
 X509 *verifytlscert(SSL *ssl);
 int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *);
@@ -61,6 +69,8 @@ int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf);
 void tlsserverrd(struct client *client);
 
 #endif
+
+#endif /*_TLSCOMMON_H*/
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

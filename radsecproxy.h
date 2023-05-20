@@ -150,6 +150,9 @@ struct clsrvconf {
     uint8_t *secret;
     int secret_len;
     char *tls;
+    char *pskid;
+    uint8_t *pskkey;
+    int pskkeylen;
     struct list *matchcertattrs;
     char **confmatchcertattrs;
     char *confrewritein;
@@ -252,6 +255,7 @@ struct protodefs {
 
 struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_node **cur, struct hostportres **hp);
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
+struct list *find_all_clconf(uint8_t type, struct sockaddr *addr, struct list_node *cur, struct hostportres **hp);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf, uint8_t lock);
 void removelockedclient(struct client *client);
