@@ -1,4 +1,4 @@
-2023-03-27 1.10.0-rc1
+2023-05-26 1.10.0
 	New features:
 	- Native dynamic discovery for NAPTR and SRV records (#2, #83)
 	- Optionally log accounting requests when respoinding directly (#72)
