@@ -712,6 +712,17 @@ found.
 
 The allowed options in a realm block are:
 
+.BR "Subrealms (" No | Include | Only )
+.RS
+For non-regex realms, determine if the realm should be matched exactly
+(\fBSubrealms No\fR), if subrealms should be included (\fBSubrealms Include\fR)
+or if this realm block should only apply to subrealms of the given realm
+(\fBSubrealms Only\fR). \fBSubrealms No\fR is the default. If this option is set
+in regex- or wildcard realm blocks, it is ignored and a warning is issued. See
+the \fBREALM BLOCK NAMES AND MATCHING\fR section below for further information
+on possible use cases.
+.RE
+
 .BI "Server " server
 .br
 .BI "AccountingServer " server
@@ -767,6 +778,14 @@ the matching is done on the entire attribute value, you can also use rules like
 /^[a\-k].*@example\e.com$/ to get some of the users in this domain to use one
 server, while other users could be matched by another realm block and use
 another server.
+
+The configuration option \fBSubrealms\fR allows for an additional, more
+foolproof handling of realms than regex matching.  With this option, you can
+specify whether subrealms of the given realm should also be treated the same.
+The option \fBSubrealms Only\fR, for example, allows for a realm block where all
+subdomain requests for the given realm are rejected. This is especially helpful
+when dynamic lookup in connection with a default routing path is used, but only
+the primary domain is actually routed.
 
 .SS "SERVER SELECTION"
 
