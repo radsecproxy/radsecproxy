@@ -1978,27 +1978,74 @@ void freerealm(struct realm *realm) {
     free(realm);
 }
 
-struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char *message, uint8_t accresp, uint8_t acclog) {
-    int n;
+struct realm *addrealm(struct list *realmlist, char *value, enum rsp_subrealm subrealm_policy, char **servers, char **accservers, char *message, uint8_t accresp, uint8_t acclog) {
+    int n, add_r;
     struct realm *realm;
     char *s, *regex = NULL;
 
     if (*value == '/') {
+        if(subrealm_policy != RSP_SUBREALM_NO)
+            debug(DBG_WARN, "addrealm: the realm was a regex, but a subrealm config was found. Ignoring subrealm config.");
 	/* regexp, remove optional trailing / if present */
 	if (value[strlen(value) - 1] == '/')
 	    value[strlen(value) - 1] = '\0';
     } else {
 	/* not a regexp, let us make it one */
-	if (*value == '*' && !value[1])
+	if (*value == '*' && !value[1]) {
 	    regex = stringcopy(".*", 0);
-	else {
+            if(subrealm_policy != RSP_SUBREALM_NO)
+                debug(DBG_WARN, "addrealm: wildcard realm, but a subrealm config was found. Ignoring subrealm config, because wildcard already includes all subrealms.");
+        } else {
 	    for (n = 0, s = value; *s;)
 		if (*s++ == '.')
 		    n++;
-	    regex = malloc(strlen(value) + n + 3);
+            switch(subrealm_policy){
+            case RSP_SUBREALM_NO:
+                add_r = 3;
+                break;
+            case RSP_SUBREALM_INCLUDE:
+                add_r = 13;
+                break;
+            case RSP_SUBREALM_ONLY:
+                add_r = 10;
+                break;
+            default:
+                debug(DBG_ERR, "addrealm: invalid subrealm policy");
+                realm = NULL;
+                goto exit;
+            }
+	    regex = malloc(strlen(value) + n + add_r);
 	    if (regex) {
 		regex[0] = '@';
-		for (n = 1, s = value; *s; s++) {
+                switch(subrealm_policy) {
+                case RSP_SUBREALM_INCLUDE:
+                    regex[1] = '(';
+                    regex[2] = '[';
+                    regex[3] = '^';
+                    regex[4] = '@';
+                    regex[5] = ']';
+                    regex[6] = '*';
+                    regex[7] = '\\';
+                    regex[8] = '.';
+                    regex[9] = ')';
+                    regex[10] = '?';
+                    n = 11;
+                    break;
+                case RSP_SUBREALM_ONLY:
+                    regex[1] = '[';
+                    regex[2] = '^';
+                    regex[3] = '@';
+                    regex[4] = ']';
+                    regex[5] = '*';
+                    regex[6] = '\\';
+                    regex[7] = '.';
+                    n = 8;
+                    break;
+                default:
+                    n = 1;
+                    break;
+                }
+		for (s = value; *s; s++) {
 		    if (*s == '.')
 			regex[n++] = '\\';
 		    regex[n++] = *s;
@@ -2163,7 +2210,7 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
     if (!realm->subrealms)
 	return NULL;
 
-    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, stringcopy(realm->message, 0), realm->accresp, realm->acclog);
+    newrealm = addrealm(realm->subrealms, realmname, RSP_SUBREALM_NO, NULL, NULL, stringcopy(realm->message, 0), realm->accresp, realm->acclog);
     if (!newrealm) {
 	list_destroy(realm->subrealms);
 	realm->subrealms = NULL;
@@ -2976,12 +3023,13 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
 }
 
 int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    char **servers = NULL, **accservers = NULL, *msg = NULL;
-    uint8_t accresp = 0, acclog = 0;
+    char **servers = NULL, **accservers = NULL, *msg = NULL, *subrealms = NULL;
+    uint8_t accresp = 0, acclog = 0, subrealm_policy = 0;
 
     debug(DBG_DBG, "confrealm_cb called for %s", block);
 
     if (!getgenericconfig(cf, block,
+			  "subrealms", CONF_STR, &subrealms,
 			  "server", CONF_MSTR, &servers,
 			  "accountingServer", CONF_MSTR, &accservers,
 			  "ReplyMessage", CONF_STR, &msg,
@@ -2991,7 +3039,17 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
 
-    addrealm(realms, val, servers, accservers, msg, accresp, acclog);
+    if((subrealms == NULL) || strcasecmp(subrealms, "No") == 0) {
+        subrealm_policy = RSP_SUBREALM_NO;
+    } else if (strcasecmp(subrealms, "Include") == 0) {
+        subrealm_policy = RSP_SUBREALM_INCLUDE;
+    } else if (strcasecmp(subrealms, "Only") == 0) {
+        subrealm_policy = RSP_SUBREALM_ONLY;
+    } else {
+        debugx(1, DBG_ERR, "Invalid configuration for subrealms in realm block %s: %s is not a valid option", val, subrealms);
+    }
+
+    addrealm(realms, val, subrealm_policy, servers, accservers, msg, accresp, acclog);
     return 1;
 }
 

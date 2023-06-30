@@ -80,6 +80,12 @@ enum rsp_statsrv {
 	RSP_STATSRV_AUTO
 };
 
+enum rsp_subrealm {
+    RSP_SUBREALM_NO = 0,
+    RSP_SUBREALM_INCLUDE,
+    RSP_SUBREALM_ONLY
+};
+
 struct options {
     char *pidfile;
     char *logdestination;
