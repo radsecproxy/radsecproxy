@@ -356,7 +356,7 @@ errexit:
     return 0;
 }
 
-uint8_t hexdigit2int(char d) {
+static uint8_t hexdigit2int(char d) {
     if (d >= '0' && d <= '9')
 	return d - '0';
     if (d >= 'a' && d <= 'f')
@@ -366,20 +366,34 @@ uint8_t hexdigit2int(char d) {
     return 0;
 }
 
-int unhex(char *s, uint8_t process_null) {
-    int len = 0;
-    char *t;
-    for (t = s; *t; s++) {
-        if (*t == '%' && isxdigit((int)t[1]) && isxdigit((int)t[2]) &&
-            (process_null || !(t[1]=='0' && t[2]=='0'))) {
-            *s = 16 * hexdigit2int(t[1]) + hexdigit2int(t[2]);
+static int ishexbyte(char *str, uint8_t accept_null) {
+    if (str[0] && str[1])
+        return (isxdigit((int)str[0]) && isxdigit((int)str[1]) &&
+            (accept_null || !(str[0]=='0' && str[1]=='0')));
+    return 0;
+}
+
+static char hextochar(char *hex) {
+    return 16 * hexdigit2int(hex[0]) + hexdigit2int(hex[1]);
+}
+
+int unhex(char *str, uint8_t process_null) {
+    char *t = str, *s = str;
+    while (*t) {
+        if (t[0] == '%' && ishexbyte(t+1, process_null)) {
+            *s++ = hextochar(t+1);
             t += 3;
+        } else if (t[0] == '%' && t[1] == '%') {
+            t += 2;
+            while (ishexbyte(t, process_null)) {
+                *s++ = hextochar(t);
+                t += 2;
+            }
         } else
-            *s = *t++;
-        len++;
+            *s++ = *t++;
     }
     *s = '\0';
-    return len;
+    return (s - str);
 }
 
 typedef int (*t_fptr)(struct gconffile **, void *, char *, char *, char *);
