@@ -425,7 +425,6 @@ void *tlsservernew(void *arg) {
         removeclient(client);
     } else
         debug(DBG_WARN, "tlsservernew: failed to create new client instance");
-    goto exit;
 
 exit:
     if (cert)
