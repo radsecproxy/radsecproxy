@@ -29,6 +29,7 @@
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
+#define PSK_MIN_LENGTH 16
 
 /* Target value for stack size.
  * Some platforms might define higher minimums in PTHREAD_STACK_MIN. */

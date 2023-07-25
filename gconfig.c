@@ -261,7 +261,7 @@ int getlinefromcf(struct gconffile *cf, char *line, const size_t size) {
 }
 
 int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, int *conftype) {
-    char line[1024];
+    char line[2048];
     char *tokens[3], *s;
     int tcount;
 
@@ -273,7 +273,7 @@ int getconfigline(struct gconffile **cf, char *block, char **opt, char **val, in
 	return 1;
 
     for (;;) {
-	if (!getlinefromcf(*cf, line, 1024)) {
+	if (!getlinefromcf(*cf, line, 2048)) {
 	    if (popgconf(cf))
 		continue;
 	    return 1;
