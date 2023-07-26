@@ -356,6 +356,7 @@ int psk_use_session_cb(SSL *ssl, const EVP_MD *md, const unsigned char **id, siz
         return 0;
     }
     cipher = sk_SSL_CIPHER_value(ciphers,0);
+    sk_SSL_CIPHER_free(ciphers);
     if (!cipher) {
         debug(DBG_ERR, "psk_use_session_cb: first supported cipher is null!");
         return 0;
@@ -588,7 +589,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
             return NULL;
         }
     } else {
-        debug(DBG_NOTICE, "tlscreatectx: no certificate specified! TLS %s can only be used for TLS-PSK", conf->name);
+        debug(DBG_DBG, "tlscreatectx: no certificate specified, TLS %s can only be used for TLS-PSK", conf->name);
     }
 
     if (conf->policyoids) {
@@ -653,7 +654,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     SSL_CTX_set_cookie_verify_cb(ctx, cookie_verify_cb);
     SSL_CTX_set_psk_use_session_callback(ctx, psk_use_session_cb);
     SSL_CTX_set_psk_find_session_callback(ctx, psk_find_session_cb);
-    SSL_CTX_set_options(ctx, SSL_CTX_get_options(ctx) & !SSL_OP_ALLOW_NO_DHE_KEX);
+    SSL_CTX_set_options(ctx, SSL_CTX_get_options(ctx) & ~SSL_OP_ALLOW_NO_DHE_KEX);
 
     debug(DBG_DBG, "tlscreatectx: created TLS context %s", conf->name);
     return ctx;
@@ -670,7 +671,7 @@ struct tls *tlsgettls(char *alt1, char *alt2) {
 
 struct tls *tlsgetdefaultpsk(void) {
     if (!tlsdefaultpsk) {
-        if (!(tlsdefaultpsk = malloc(sizeof(struct tls)))) {
+        if (!(tlsdefaultpsk = calloc(1, sizeof(struct tls)))) {
             debug(DBG_ERR, "malloc failed");
             return NULL;
         }

@@ -154,7 +154,7 @@ struct list *find_all_clconf(uint8_t type, struct sockaddr *addr, struct list_no
     struct clsrvconf *next = ref;
     do {
         if (next->tlsconf == ref->tlsconf && next->pskid && next->pskkeylen)
-            list_push(list, next);
+            if(!list_push(list, next)) debug(DBG_ERR, "malloc failed");
     } while ((next = find_clconf(type, addr, &cur, hp)) != NULL);
     return list;
 }

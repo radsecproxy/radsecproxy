@@ -171,6 +171,11 @@ client radius.example.com {
 	type dtls
 # secret is optional for DTLS
 }
+client localhost {
+	type tls
+	pskkey mysecretpresharedkey
+	#a client using TLS-PSK with implicit default psk context and using client name as psk-identity
+}
 
 server 127.0.0.1 {
 	type	UDP
@@ -214,6 +219,12 @@ server radius.example.com {
 #	StatusServer on
 ## statusserver is optional, can be on or off. Off is default
 #}
+server radius.example.com {
+	type tls
+	pskidentity my.psk.identity
+	pskkey mysecretpresharedkey
+	#a minimal TLS-PSK server config using implicit default psk context
+}
 
 #server template for dynamic discovery, looking for NAPTR DNS records
 server dyndisc {
