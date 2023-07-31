@@ -2699,7 +2699,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             debugx(1, DBG_ERR, "error in block %s, PSKkey must be at least %d bytes", block, PSK_MIN_LENGTH);
         if (!conf->pskid) {
             conf->pskid = stringcopy(conf->name,0);
-            debug(DBG_DBG, "confclientcb: using client name %s as PSKidentity", block);
+            debug(DBG_DBG, "confclientcb: using client name %s as PSKidentity", conf->name);
         }
     }
 
