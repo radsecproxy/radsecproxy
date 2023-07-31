@@ -36,7 +36,10 @@
 #include "radsecproxy.h"
 
 static struct hash *tlsconfs = NULL;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
 static struct tls *tlsdefaultpsk = NULL;
+#endif
 
 #define COOKIE_SECRET_LENGTH 16
 static unsigned char cookie_secret[COOKIE_SECRET_LENGTH];
@@ -316,8 +319,7 @@ static void ssl_info_callback(const SSL *ssl, int where, int ret) {
 }
 #endif
 
-const unsigned char tls13_aes128gcmsha256_id[] = { 0x13, 0x01 };
-
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
 int psk_use_session_cb(SSL *ssl, const EVP_MD *md, const unsigned char **id, size_t *idlen, SSL_SESSION **sess) {
     struct clsrvconf *conf = NULL;
     STACK_OF(SSL_CIPHER) *ciphers;
@@ -434,6 +436,7 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
 
     return 1;
 }
+#endif
 
 static X509_VERIFY_PARAM *createverifyparams(char **poids) {
     X509_VERIFY_PARAM *pm;
@@ -652,9 +655,11 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 
     SSL_CTX_set_cookie_generate_cb(ctx, cookie_generate_cb);
     SSL_CTX_set_cookie_verify_cb(ctx, cookie_verify_cb);
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
     SSL_CTX_set_psk_use_session_callback(ctx, psk_use_session_cb);
     SSL_CTX_set_psk_find_session_callback(ctx, psk_find_session_cb);
     SSL_CTX_set_options(ctx, SSL_CTX_get_options(ctx) & ~SSL_OP_ALLOW_NO_DHE_KEX);
+#endif
 
     debug(DBG_DBG, "tlscreatectx: created TLS context %s", conf->name);
     return ctx;
@@ -670,6 +675,7 @@ struct tls *tlsgettls(char *alt1, char *alt2) {
 }
 
 struct tls *tlsgetdefaultpsk(void) {
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
     if (!tlsdefaultpsk) {
         if (!(tlsdefaultpsk = calloc(1, sizeof(struct tls)))) {
             debug(DBG_ERR, "malloc failed");
@@ -680,7 +686,11 @@ struct tls *tlsgetdefaultpsk(void) {
         tlsdefaultpsk->ciphersuites = "TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256";
         tlsdefaultpsk->tlsminversion = TLS1_3_VERSION;
     }
-    return tlsdefaultpsk; 
+    return tlsdefaultpsk;
+#else
+    debugx(1,DBG_ERR, "tlsgetdefaultpsk: use of TLS1.3-PSK requires openssl >= 1.1.1");
+    return NULL;
+#endif
 }
 
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
