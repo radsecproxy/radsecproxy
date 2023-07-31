@@ -3051,6 +3051,26 @@ int setprotoopts(uint8_t type, char **listenargs, char **sourcearg) {
     return 1;
 }
 
+void warnpskreuse(struct list_node *entry, struct clsrvconf *conf, char *type, uint8_t warnidentity) {
+    for (; entry; entry = list_next(entry)) {
+        struct clsrvconf *existing = (struct clsrvconf *)entry->data;
+        if (existing->pskkey && existing->pskkeylen==conf->secret_len &&
+            memcmp(existing->pskkey, conf->secret, conf->secret_len)==0)
+                debug(DBG_WARN, "WARNING: reuse of shared secrets as psk keys is NOT RECOMMENDED! (%s %s vs %s)", type, conf->name, existing->name);
+        if (!conf->pskkey)
+            continue;
+        if (existing->secret_len==conf->pskkeylen &&
+            memcmp(existing->secret, conf->pskkey, conf->pskkeylen)==0)
+                debug(DBG_WARN, "WARNING: reuse of shared secrets as psk keys is NOT RECOMMENDED! (%s %s vs %s)", type, conf->name, existing->name);
+        if (existing->pskkey && existing->pskkeylen==conf->pskkeylen &&
+            memcmp(existing->pskkey, conf->pskkey, conf->pskkeylen) == 0)
+                debug(DBG_WARN, "WARNING: reuse of psk keys is NOT RECOMMENDED! (%s %s vs %s)", type, conf->name, existing->name);
+        
+        if (warnidentity && existing->pskid && strcmp(existing->pskid, conf->pskid)==0)
+            debug(DBG_WARN, "WARNING: reuse of psk identities is NOT RECOMMENDED! (%s %s vs %s)", type, conf->name, existing->name);
+    }
+}
+
 void getmainconfig(const char *configfile) {
     long int addttl = LONG_MIN, loglevel = LONG_MIN;
     struct gconffile *cfs;
@@ -3062,6 +3082,7 @@ void getmainconfig(const char *configfile) {
     uint8_t *fticks_mac_str = NULL;
     uint8_t *fticks_key_str = NULL;
     int i;
+    struct list_node *entry;
 
     cfs = openconfigfile(configfile);
     memset(&options, 0, sizeof(options));
@@ -3176,6 +3197,11 @@ void getmainconfig(const char *configfile) {
     for (i = 0; i < RAD_PROTOCOUNT; i++)
 	if (listenargs[i] || sourceargs[i])
 	    setprotoopts(i, listenargs[i], sourceargs[i]);
+
+    for (entry = list_first(clconfs); entry; entry = list_next(entry))
+        warnpskreuse(list_next(entry), (struct clsrvconf *)entry->data, "client", 1);
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry))
+        warnpskreuse(list_next(entry), (struct clsrvconf *)entry->data, "server", 0);
 }
 
 void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8_t *loglevel, char **configfile, char **pidfile) {
