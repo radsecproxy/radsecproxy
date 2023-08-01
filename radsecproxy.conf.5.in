@@ -62,8 +62,11 @@ blocktype name {
 .RE
 
 Option value characters can also be written in hex for options requiring a
-string type value. This is done by writing the character % followed by two
-hexadecimal digits. If a % is used without two following hexadecimal digits, the
+string type value. 
+A % character followed by two hexadecimal digits will be replaced by its byte
+value. Longer hex strings can be escaped with %%. In this case all following
+hexadecimal digit pairs will be replace by byte values until the first non-hex
+character. If a % is used without two following hexadecimal digits, the
 % and the following characters are used as written. If you want to write a % and
 not use this decoding, you may of course write % in hex; i.e., %25. As %00 would
 terminate a string, this value is not converted in most cases, except when used
@@ -504,6 +507,32 @@ the proxy. The User-Name attribute is written back to the original value if a
 matching response is later sent back to the client. Example usage:
 
 RewriteAttribute User-Name:/^(.*)@local$/\e1@example.com/
+.RE
+
+.BI "PSKkey " key
+.RS
+For TLS, use TLS-PSK (pre shared key) instead of certificate based authentication.
+If specified, \fBPSKidentity\fR must also be provided.
+The \fIkey\fR must be at least 16 bytes long. To provide the \fIkey\fR in hex, use 
+the %% escaping (see CONFIGURATION SYNTAX).
+
+In addition to the psk, peers must also agree on the key derivation hash function.
+For this, the server simply uses the hash funciton of the negotiated cipher as this
+negotiation must yield a compatible cipher anyway.
+To ensure unambiguous cipher and hash selection, only use ciphers with the same
+hash function in the \fBCipherSuites\fR of the \fBtls\fR block. If no \fBtls\fR 
+block is specified, a default config with SHA256 is used.
+
+Note: only TLS1.3 PSK is supported and only for TLS, not DTLS (pending openssl DTLS1.3 support).
+.RE
+
+.BI "PSKidentity " identity
+.RS
+The TLS-PSK \fIidentity\fR to identify the client. When omitted, the \fBclient \fIname\fR is
+used as the identity.
+When using TLS-PSK, all clients are identified by thier PSK identity, however it
+is highly recommended to limit the allowed source address(es) using the
+\fBHost \fIaddress\fR option.
 
 
 .SH "SERVER BLOCK"
@@ -672,6 +701,19 @@ Some non-Linux platforms are unable to query the MTU of a connection, causing DT
 itself to 256 bytes and thus failing to connect. Manually set \fImtu\fR to a large enough value
 so the initial DTLS cleint-hello fits without fragmentation. 
 .RE
+
+.BI "PSKkey " key
+.br
+.BI "PSKidentity " identity 
+.RS
+The meaning of these options are very similar as for the client block, with minor differences.
+.br
+- The \fIidentity\fR must always be provided and cannot be derived from the \fBserver \fIname\fR.
+.br
+- For the key derivation hash funciton, the hash function of the first cipher in the \fBCipherSuites\fR
+of the referenced \fBtls\fR block is used.
+.RE
+
 
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.

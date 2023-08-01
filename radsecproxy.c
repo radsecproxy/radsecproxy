@@ -148,6 +148,17 @@ struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_
     return find_conf(type, addr, srvconfs, cur, 1, NULL);
 }
 
+struct list *find_all_clconf(uint8_t type, struct sockaddr *addr, struct list_node *cur, struct hostportres **hp) {
+    struct list *list = list_create();
+    struct clsrvconf *ref = (struct clsrvconf *)cur->data;
+    struct clsrvconf *next = ref;
+    do {
+        if (next->tlsconf == ref->tlsconf && next->pskid && next->pskkeylen)
+            if(!list_push(list, next)) debug(DBG_ERR, "malloc failed");
+    } while ((next = find_clconf(type, addr, &cur, hp)) != NULL);
+    return list;
+}
+
 /* returns next config of given type, or NULL */
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur) {
     struct list_node *entry;
@@ -2386,24 +2397,26 @@ void freeclsrvconf(struct clsrvconf *conf) {
     freegconfmstr(conf->source);
     free(conf->secret);
     free(conf->tls);
+    free(conf->pskid);
+    free(conf->pskkey);
     free(conf->confrewritein);
     free(conf->confrewriteout);
     free(conf->sniservername);
     free(conf->servername);
     if (conf->rewriteusername) {
-	if (conf->rewriteusername->regex)
-	    regfree(conf->rewriteusername->regex);
-	free(conf->rewriteusername->replacement);
-	free(conf->rewriteusername);
+        if (conf->rewriteusername->regex)
+            regfree(conf->rewriteusername->regex);
+        free(conf->rewriteusername->replacement);
+        free(conf->rewriteusername);
     }
     free(conf->dynamiclookupcommand);
     conf->rewritein=NULL;
     conf->rewriteout=NULL;
     if (conf->hostports)
-	freehostports(conf->hostports);
+        freehostports(conf->hostports);
     if (conf->lock) {
-	pthread_mutex_destroy(conf->lock);
-	free(conf->lock);
+        pthread_mutex_destroy(conf->lock);
+        free(conf->lock);
     }
     /* not touching ssl_ctx, clients and servers */
     free(conf);
@@ -2561,6 +2574,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "secret", CONF_STR_NOESC, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 	    "tls", CONF_STR, &conf->tls,
+        "PSKidentity", CONF_STR, &conf->pskid,
+        "PSKkey", CONF_STR_NOESC, &conf->pskkey,
 	    "MatchCertificateAttribute", CONF_MSTR, &matchcertattrs,
 	    "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 	    "ServerName", CONF_STR, &conf->servername,
@@ -2599,11 +2614,14 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-        conf->tlsconf = conf->tls
-                ? tlsgettls(conf->tls, NULL)
-                : tlsgettls("defaultClient", "default");
+        conf->tlsconf = conf->tls ?
+                tlsgettls(conf->tls, NULL) :
+                conf->pskkey ?
+                    tlsgetdefaultpsk() : tlsgettls("defaultClient", "default");
         if (!conf->tlsconf)
             debugx(1, DBG_ERR, "error in block %s, tls context not defined", block);
+        if (!conf->pskkey && !conf->tlsconf->certfile)
+            debugx(1, DBG_ERR, "error in block %s, tls context %s has no certificate", block, conf->tlsconf->name);
         if (matchcertattrs) {
             int i;
             for (i=0; matchcertattrs[i]; i++){
@@ -2675,6 +2693,15 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             }
         }
     }
+    if (conf->pskkey){ 
+        conf->pskkeylen = unhex((char *)conf->pskkey, 1);
+        if (conf->pskkeylen < PSK_MIN_LENGTH)
+            debugx(1, DBG_ERR, "error in block %s, PSKkey must be at least %d bytes", block, PSK_MIN_LENGTH);
+        if (!conf->pskid) {
+            conf->pskid = stringcopy(conf->name,0);
+            debug(DBG_DBG, "confclientcb: using client name %s as PSKidentity", conf->name);
+        }
+    }
 
     conf->lock = malloc(sizeof(pthread_mutex_t));
     if (!conf->lock)
@@ -2695,11 +2722,16 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-    	conf->tlsconf = conf->tls
-            ? tlsgettls(conf->tls, NULL)
-            : tlsgettls("defaultServer", "default");
+    	conf->tlsconf = conf->tls ?
+            tlsgettls(conf->tls, NULL) :
+            conf->pskkey ?
+                tlsgetdefaultpsk() : tlsgettls("defaultServer", "default");
         if (!conf->tlsconf) {
             debug(DBG_ERR, "error in block %s, no tls context defined", block);
+            return 0;
+        }
+        if (!conf->pskkey && !conf->tlsconf->certfile){
+            debug(DBG_ERR, "error in block %s, tls context %s has no certificate", block, conf->tlsconf->name);
             return 0;
         }
         if (conf->confmatchcertattrs) {
@@ -2784,6 +2816,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "secret", CONF_STR_NOESC, &conf->secret,
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
             "tls", CONF_STR, &conf->tls,
+            "PSKidentity", CONF_STR, &conf->pskid,
+            "PSKkey", CONF_STR_NOESC, &conf->pskkey,
             "MatchCertificateAttribute", CONF_MSTR, &conf->confmatchcertattrs,
             "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
             "ServerName", CONF_STR, &conf->servername,
@@ -2904,6 +2938,15 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (conf->secret)
         conf->secret_len = unhex((char *)conf->secret,1);
 
+    if (conf->pskkey){
+        conf->pskkeylen = unhex((char *)conf->pskkey, 1);
+        if (conf->pskkeylen < PSK_MIN_LENGTH)
+            debugx(1, DBG_ERR, "error in block %s, PSKkey must be at least %d bytes", block, PSK_MIN_LENGTH);
+        if (!conf->pskid) {
+            debug (DBG_ERR, "error in block %s, PSKidentity must be set to use PSK", block);
+            goto errexit;
+        }
+    }
     if(conf->sniservername)
         conf->sni = 1;
 
@@ -3008,6 +3051,26 @@ int setprotoopts(uint8_t type, char **listenargs, char **sourcearg) {
     return 1;
 }
 
+void warnpskreuse(struct list_node *entry, struct clsrvconf *conf, char *type, uint8_t warnidentity) {
+    for (; entry; entry = list_next(entry)) {
+        struct clsrvconf *existing = (struct clsrvconf *)entry->data;
+        if (existing->pskkey && existing->pskkeylen==conf->secret_len &&
+            memcmp(existing->pskkey, conf->secret, conf->secret_len)==0)
+                debug(DBG_WARN, "WARNING: reuse of shared secrets as psk keys is NOT RECOMMENDED! (%s %s vs %s)", type, conf->name, existing->name);
+        if (!conf->pskkey)
+            continue;
+        if (existing->secret_len==conf->pskkeylen &&
+            memcmp(existing->secret, conf->pskkey, conf->pskkeylen)==0)
+                debug(DBG_WARN, "WARNING: reuse of shared secrets as psk keys is NOT RECOMMENDED! (%s %s vs %s)", type, conf->name, existing->name);
+        if (existing->pskkey && existing->pskkeylen==conf->pskkeylen &&
+            memcmp(existing->pskkey, conf->pskkey, conf->pskkeylen) == 0)
+                debug(DBG_WARN, "WARNING: reuse of psk keys is NOT RECOMMENDED! (%s %s vs %s)", type, conf->name, existing->name);
+        
+        if (warnidentity && existing->pskid && strcmp(existing->pskid, conf->pskid)==0)
+            debug(DBG_WARN, "WARNING: reuse of psk identities is NOT RECOMMENDED! (%s %s vs %s)", type, conf->name, existing->name);
+    }
+}
+
 void getmainconfig(const char *configfile) {
     long int addttl = LONG_MIN, loglevel = LONG_MIN;
     struct gconffile *cfs;
@@ -3019,6 +3082,7 @@ void getmainconfig(const char *configfile) {
     uint8_t *fticks_mac_str = NULL;
     uint8_t *fticks_key_str = NULL;
     int i;
+    struct list_node *entry;
 
     cfs = openconfigfile(configfile);
     memset(&options, 0, sizeof(options));
@@ -3133,6 +3197,11 @@ void getmainconfig(const char *configfile) {
     for (i = 0; i < RAD_PROTOCOUNT; i++)
 	if (listenargs[i] || sourceargs[i])
 	    setprotoopts(i, listenargs[i], sourceargs[i]);
+
+    for (entry = list_first(clconfs); entry; entry = list_next(entry))
+        warnpskreuse(list_next(entry), (struct clsrvconf *)entry->data, "client", 1);
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry))
+        warnpskreuse(list_next(entry), (struct clsrvconf *)entry->data, "server", 0);
 }
 
 void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8_t *loglevel, char **configfile, char **pidfile) {
