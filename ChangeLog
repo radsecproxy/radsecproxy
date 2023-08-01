@@ -1,3 +1,8 @@
+unreleased changes
+	New features:
+	- TLS-PSK (#112)
+	- Long hex-strings in config
+
 2023-05-26 1.10.0
 	New features:
 	- Native dynamic discovery for NAPTR and SRV records (#2, #83)
