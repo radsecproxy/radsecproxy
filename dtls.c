@@ -425,7 +425,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
                     server->conf->servername ? server->conf->servername :
                     (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL : hp->host;
                 if (servername && !tlssetsni(server->ssl, servername)) {
-                    debug(DBG_ERR, "tlsconnect: set SNI %s failed", servername);
+                    debug(DBG_ERR, "dtlsconnect: set SNI %s failed", servername);
                     goto concleanup;
                 }
             }
@@ -451,7 +451,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
             cert = verifytlscert(server->ssl);
             if (!cert) {
-                debug(DBG_ERR, "tlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                debug(DBG_ERR, "dtlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
                 goto concleanup;
             }
 
@@ -464,7 +464,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
                 X509_free(cert);
                 break;
             } else {
-                debug(DBG_ERR, "tlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                debug(DBG_ERR, "dtlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
             }
             X509_free(cert);
 
@@ -523,7 +523,7 @@ void *dtlsclientrd(void *arg) {
         if (!buf || !len) {
             if(SSL_get_shutdown(server->ssl) || server->lostrqs) {
                 if (SSL_get_shutdown(server->ssl))
-                    debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
+                    debug (DBG_WARN, "dtlscleintrd: connection to server %s lost", server->conf->name);
                 else if (server->lostrqs)
                     debug (DBG_WARN, "dtlsclientrd: server %s did not respond, closing connection.", server->conf->name);
                 if (server->dynamiclookuparg)
@@ -534,7 +534,7 @@ void *dtlsclientrd(void *arg) {
             if (server->dynamiclookuparg) {
                 gettimeofday(&now, NULL);
                 if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
-                    debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
+                    debug(DBG_INFO, "dtlsclientrd: idle timeout for %s", server->conf->name);
                     break;
                 }
             }
