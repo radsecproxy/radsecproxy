@@ -91,6 +91,7 @@ pthread_attr_t pthread_attr;
 
 /* minimum required declarations to avoid reordering code */
 struct realm *adddynamicrealmserver(struct realm *realm, char *id);
+void *clientwr(void *arg);
 int compileserverconfig(struct clsrvconf *conf, const char *block);
 int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src);
 int dynamicconfig(struct server *server);
@@ -299,42 +300,43 @@ void freeserver(struct server *server, uint8_t destroymutex) {
     struct rqout *rqout, *end;
 
     if (!server)
-	return;
+        return;
 
     removeclientrqs_sendrq_freeserver_lock(1);
     if (server->requests) {
-	rqout = server->requests;
-	for (end = rqout + MAX_REQUESTS; rqout < end; rqout++) {
-	    freerqoutdata(rqout);
-	    pthread_mutex_destroy(rqout->lock);
-	    free(rqout->lock);
-	}
-	free(server->requests);
+        rqout = server->requests;
+        for (end = rqout + MAX_REQUESTS; rqout < end; rqout++) {
+            freerqoutdata(rqout);
+            pthread_mutex_destroy(rqout->lock);
+            free(rqout->lock);
+        }
+        free(server->requests);
     }
     free(server->dynamiclookuparg);
     if (server->ssl) {
         SSL_free(server->ssl);
     }
     if (destroymutex) {
-	pthread_mutex_destroy(&server->lock);
-	pthread_cond_destroy(&server->newrq_cond);
-	pthread_mutex_destroy(&server->newrq_mutex);
+        pthread_mutex_destroy(&server->lock);
+        pthread_cond_destroy(&server->newrq_cond);
+        pthread_mutex_destroy(&server->newrq_mutex);
     }
     removeclientrqs_sendrq_freeserver_lock(0);
     free(server);
 }
 
-int addserver(struct clsrvconf *conf) {
+int addserver(struct clsrvconf *conf, const char *dynamiclookuparg) {
     int i;
+    pthread_t clientth;
 
     if (conf->servers) {
-	debug(DBG_ERR, "addserver: currently works with just one server per conf");
-	return 0;
+        debug(DBG_ERR, "addserver: currently works with just one server per conf");
+        return 0;
     }
     conf->servers = malloc(sizeof(struct server));
     if (!conf->servers) {
-	debug(DBG_ERR, "malloc failed");
-	return 0;
+        debug(DBG_ERR, "malloc failed");
+        return 0;
     }
     memset(conf->servers, 0, sizeof(struct server));
     conf->servers->conf = conf;
@@ -343,44 +345,57 @@ int addserver(struct clsrvconf *conf) {
 
     conf->servers->sock = -1;
     if (conf->pdef->addserverextra)
-	conf->pdef->addserverextra(conf);
+        conf->pdef->addserverextra(conf);
 
     conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct rqout));
     if (!conf->servers->requests) {
-	debug(DBG_ERR, "malloc failed");
-	goto errexit;
+        debug(DBG_ERR, "malloc failed");
+        goto errexit;
     }
     for (i = 0; i < MAX_REQUESTS; i++) {
-	conf->servers->requests[i].lock = malloc(sizeof(pthread_mutex_t));
-	if (!conf->servers->requests[i].lock) {
-	    debug(DBG_ERR, "malloc failed");
-	    goto errexit;
-	}
-	if (pthread_mutex_init(conf->servers->requests[i].lock, NULL)) {
-	    debugerrno(errno, DBG_ERR, "mutex init failed");
-	    free(conf->servers->requests[i].lock);
-	    conf->servers->requests[i].lock = NULL;
-	    goto errexit;
-	}
+        conf->servers->requests[i].lock = malloc(sizeof(pthread_mutex_t));
+        if (!conf->servers->requests[i].lock) {
+            debug(DBG_ERR, "malloc failed");
+            goto errexit;
+        }
+        if (pthread_mutex_init(conf->servers->requests[i].lock, NULL)) {
+            debugerrno(errno, DBG_ERR, "mutex init failed");
+            free(conf->servers->requests[i].lock);
+            conf->servers->requests[i].lock = NULL;
+            goto errexit;
+        }
     }
     if (pthread_mutex_init(&conf->servers->lock, NULL)) {
-	debugerrno(errno, DBG_ERR, "mutex init failed");
-	goto errexit;
+        debugerrno(errno, DBG_ERR, "mutex init failed");
+        goto errexit;
     }
     conf->servers->newrq = 0;
     conf->servers->conreset = 0;
     if (pthread_mutex_init(&conf->servers->newrq_mutex, NULL)) {
-	debugerrno(errno, DBG_ERR, "mutex init failed");
-	pthread_mutex_destroy(&conf->servers->lock);
-	goto errexit;
+        debugerrno(errno, DBG_ERR, "mutex init failed");
+        pthread_mutex_destroy(&conf->servers->lock);
+        goto errexit;
     }
     if (pthread_cond_init(&conf->servers->newrq_cond, NULL)) {
-	debugerrno(errno, DBG_ERR, "mutex init failed");
-	pthread_mutex_destroy(&conf->servers->newrq_mutex);
-	pthread_mutex_destroy(&conf->servers->lock);
-	goto errexit;
+        debugerrno(errno, DBG_ERR, "mutex init failed");
+        pthread_mutex_destroy(&conf->servers->newrq_mutex);
+        pthread_mutex_destroy(&conf->servers->lock);
+        goto errexit;
     }
 
+    conf->servers->state =
+        conf->blockingstartup ? RSP_SERVER_STATE_BLOCKING_STARTUP : RSP_SERVER_STATE_STARTUP;
+    if (conf->dynamiclookupcommand)
+        conf->servers->dynamiclookuparg = stringcopy(dynamiclookuparg, 0);
+
+    debug(DBG_DBG, "%s: starting new client writer for %s", __func__, conf->name);
+    if (pthread_create(&clientth, &pthread_attr, clientwr, (void *)(conf->servers))) {
+        debugerrno(errno, DBG_ERR, "addserver: pthread_create failed");
+        freeserver(conf->servers, 1);
+        conf->servers = NULL;
+        return 0;
+    } else
+        pthread_detach(clientth);
     return 1;
 
 errexit:
@@ -731,69 +746,128 @@ int hasdynamicserver(struct list *srvconfs) {
     struct list_node *entry;
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry))
-        if (((struct clsrvconf *)entry->data)->servers->dynamiclookuparg)
-	    return 1;
+        if (((struct clsrvconf *)entry->data)->servers &&
+            ((struct clsrvconf *)entry->data)->servers->dynamiclookuparg &&
+            ((struct clsrvconf *)entry->data)->servers->state != RSP_SERVER_STATE_FAILING)
+            return 1;
     return 0;
+}
+
+/**
+ * @brief create a shallow clone of srv (i.e. copy srv, but keep all pointers)
+ * if srv->parent is set (srv already is a clone), clone the parent instead.
+ * 
+ * @param srv
+ * @return struct clsrvconf*
+ */
+static struct clsrvconf *shallowcloneserver(struct clsrvconf *srv) {
+    struct clsrvconf *clone;
+    clone = malloc(sizeof(struct clsrvconf));
+    if (!clone) {
+        debug(DBG_ERR, "malloc failed");
+        return NULL;
+    }
+    if (srv->parent) {
+        *clone = *srv->parent;
+        clone->parent = srv->parent;
+    } else {
+        *clone = *srv;
+        clone->parent = srv;
+    }
+    clone->shallow = 1;
+    return clone;
+}
+
+/**
+ * @brief internal helper: search for srv in servers and replace value with shallow copy if found.
+ * 
+ * @param servers
+ * @param srv
+ * @return 1 if srv was found in servers
+ */
+static int resetserversubrealm(struct list *servers, struct clsrvconf *srv) {
+    struct list_node *entry;
+
+    for (entry = list_first(servers); entry; entry=list_next(entry)) {
+        if (entry->data == srv) {
+            entry->data = shallowcloneserver(srv);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * @brief internal helper: clear srvconf list, freeing all associated memory
+ * 
+ * @param srvconfs 
+ */
+static void clearsrvconflist(struct realm* realm, struct list *srvconfs) {
+    struct clsrvconf *srvconf;
+
+    while ((srvconf = list_shift(srvconfs))) {
+        if (srvconf->dynamiclookupcommand && !srvconf->servers)
+            freeclsrvconf(srvconf);
+        freerealm(realm);
+    }
+    list_destroy(srvconfs);
 }
 
 /* helper function, only used by removeserversubrealms() */
 void _internal_removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
-    struct list_node *entry, *entry2;
+    struct list_node *entry;
     struct realm *realm;
-    struct list *srvconfs;
 
     for (entry = list_first(realmlist); entry;) {
-	realm = newrealmref((struct realm *)entry->data);
-    entry = list_next(entry);
-	pthread_mutex_lock(&realm->mutex);
+        realm = newrealmref((struct realm *)entry->data);
+        /* might remove entry from the list, so determine next entry now */
+        entry = list_next(entry);
+        pthread_mutex_lock(&realm->mutex);
 
-	if (realm->srvconfs) {
-	    srvconfs = realm->srvconfs;
-	    for (entry2 = list_first(realm->srvconfs); entry2; entry2 = list_next(entry2))
-		if (entry2->data == srv)
-		    freerealm(realm);
-	    list_removedata(srvconfs, srv);
-	}
-	if (realm->accsrvconfs) {
-	    srvconfs = realm->accsrvconfs;
-	    for (entry2 = list_first(realm->accsrvconfs); entry2; entry2 = list_next(entry2))
-		if (entry2->data == srv)
-		    freerealm(realm);
-	    list_removedata(srvconfs, srv);
-	}
+        if (resetserversubrealm(realm->srvconfs, srv) |
+            resetserversubrealm(realm->accsrvconfs, srv)) {
 
-	/* remove subrealm if no dynamic servers left */
-	if (!hasdynamicserver(realm->srvconfs) && !hasdynamicserver(realm->accsrvconfs)) {
-	    while (list_shift(realm->srvconfs))
-		freerealm(realm);
-	    list_destroy(realm->srvconfs);
-	    realm->srvconfs = NULL;
-	    while (list_shift(realm->accsrvconfs))
-		freerealm(realm);
-	    list_destroy(realm->accsrvconfs);
-	    realm->accsrvconfs = NULL;
-	    list_removedata(realmlist, realm);
-	}
-	pthread_mutex_unlock(&realm->mutex);
-	freerealm(realm);
+            /* remove subrealm if no dynamic servers left */
+            if (!hasdynamicserver(realm->srvconfs) && !hasdynamicserver(realm->accsrvconfs)) {
+                clearsrvconflist(realm, realm->srvconfs);
+                realm->srvconfs = NULL;
+
+                clearsrvconflist(realm, realm->accsrvconfs);
+                realm->accsrvconfs = NULL;
+
+                list_removedata(realmlist, realm);
+                debug(DBG_DBG,"removeserversubrealms: removing expired subrealm %s", realm->name);
+            }
+        }
+        pthread_mutex_unlock(&realm->mutex);
+        freerealm(realm);
     }
 }
 
+/**
+ * @brief remove an active server from a subrealm
+ * After completion, the caller has the only reference to srv and is responsible for freeing it.
+ * The subrealm the server belonged to might be freed if there are no dynamic servers left, and
+ * with it all srvconfs. 
+ * 
+ * @param realmlist the realmlist from which to remove the server
+ * @param srv the server to remove
+ */
 void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
     struct list_node *entry;
     struct realm *realm;
 
     for (entry = list_first(realmlist); entry; entry = list_next(entry)) {
-	realm = (struct realm *)entry->data;
-	pthread_mutex_lock(&realm->mutex);
-	if (realm->subrealms) {
-	    _internal_removeserversubrealms(realm->subrealms, srv);
-	    if (!list_first(realm->subrealms)) {
-		list_destroy(realm->subrealms);
-		realm->subrealms = NULL;
-	    }
-	}
-	pthread_mutex_unlock(&realm->mutex);
+        realm = (struct realm *)entry->data;
+        pthread_mutex_lock(&realm->mutex);
+        if (realm->subrealms) {
+            _internal_removeserversubrealms(realm->subrealms, srv);
+            if (!list_first(realm->subrealms)) {
+                list_destroy(realm->subrealms);
+                realm->subrealms = NULL;
+            }
+        }
+        pthread_mutex_unlock(&realm->mutex);
     }
 }
 
@@ -1149,35 +1223,39 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
     char *id = (char *)tlv2str(username);
 
     if (!id)
-	return NULL;
+        return NULL;
     /* returns with lock on realm */
     *realm = id2realm(realms, id);
     if (!*realm)
-	goto exit;
+        goto exit;
     debug(DBG_DBG, "found matching realm: %s", (*realm)->name);
     srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
     if (srvconf && !(*realm)->parent && !srvconf->servers && srvconf->dynamiclookupcommand) {
-	subrealm = adddynamicrealmserver(*realm, id);
-	if (subrealm) {
-	    pthread_mutex_lock(&subrealm->mutex);
-	    pthread_mutex_unlock(&(*realm)->mutex);
-	    freerealm(*realm);
-	    *realm = subrealm;
+        subrealm = adddynamicrealmserver(*realm, id);
+        if (subrealm) {
+            pthread_mutex_lock(&subrealm->mutex);
+            pthread_mutex_unlock(&(*realm)->mutex);
+            freerealm(*realm);
+            *realm = subrealm;
             debug(DBG_DBG, "added realm: %s", (*realm)->name);
-	    srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
+            srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
             debug(DBG_DBG, "found conf for new realm: %s", srvconf->name);
-	}
+        }
+    } else if (srvconf && !srvconf->servers && srvconf->dynamiclookupcommand) {
+        if (addserver(srvconf, (*realm)->name)) {
+            srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
+            debug(DBG_DBG, "found conf for realm: %s", srvconf->name);
+        }
     }
     if (srvconf) {
         debug(DBG_DBG, "found matching conf: %s", srvconf->name);
-	server = srvconf->servers;
+        server = srvconf->servers;
     }
 
 exit:
     free(id);
     return server;
 }
-
 
 struct request *newrequest(void) {
     struct request *rq;
@@ -1621,7 +1699,7 @@ void *clientwr(void *arg) {
     struct server *server = (struct server *)arg;
     struct rqout *rqout = NULL;
     pthread_t clientrdth;
-    int i, dynconffail = 0;
+    int i;
     time_t secs;
     uint8_t rnd, do_resend = 0, statusserver_requested = 0;
     struct timeval now, laststatsrv;
@@ -1636,8 +1714,7 @@ void *clientwr(void *arg) {
 
     if (server->state != RSP_SERVER_STATE_BLOCKING_STARTUP)
         server->state = RSP_SERVER_STATE_STARTUP;
-    if (server->dynamiclookuparg && !dynamicconfig(server)) {
-        dynconffail = 1;
+    if (!conf->hostports && server->dynamiclookuparg && !dynamicconfig(server)) {
         server->state = RSP_SERVER_STATE_FAILING;
         debug(DBG_WARN, "%s: dynamicconfig(%s: %s) failed, Not trying again for %ds",
               __func__, server->conf->name, server->dynamiclookuparg, ZZZ);
@@ -1719,13 +1796,13 @@ void *clientwr(void *arg) {
 
     for (i = 0; i < MAX_REQUESTS; i++) {
         if (server->clientrdgone) {
-		server->state = RSP_SERVER_STATE_FAILING;
-                if (conf->pdef->connecter)
-                    pthread_join(clientrdth, NULL);
-		goto errexit;
-	    }
+            server->state = RSP_SERVER_STATE_FAILING;
+            if (conf->pdef->connecter)
+                pthread_join(clientrdth, NULL);
+            goto errexit;
+        }
 
-	    for (; i < MAX_REQUESTS; i++) {
+            for (; i < MAX_REQUESTS; i++) {
 		rqout = server->requests + i;
 		if (rqout->rq) {
 		    pthread_mutex_lock(rqout->lock);
@@ -1819,12 +1896,11 @@ errexitwait:
     }
     sleep(ZZZ);
 errexit:
+    debug(DBG_DBG,"clientwr: server %s (%s) finished, cleaning up", server->conf->name, 
+        server->dynamiclookuparg ? server->dynamiclookuparg : "static");
     if (server->dynamiclookuparg) {
-	removeserversubrealms(realms, conf);
-	if (dynconffail)
-	    free(conf);
-	else
-	    freeclsrvconf(conf);
+        removeserversubrealms(realms, conf);
+        freeclsrvconf(conf);
     }
     freeserver(server, 1);
     return NULL;
@@ -2094,49 +2170,33 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
     struct list_node *entry;
     struct clsrvconf *conf, *srvconf;
     struct list *subrealmservers = NULL;
-    pthread_t clientth;
 
     if (list_first(srvconfs)) {
-	subrealmservers = list_create();
-	if (!subrealmservers)
-	    return NULL;
+        subrealmservers = list_create();
+        if (!subrealmservers)
+            return NULL;
     }
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
-	conf = (struct clsrvconf *)entry->data;
-	if (!conf->servers && conf->dynamiclookupcommand) {
-	    srvconf = malloc(sizeof(struct clsrvconf));
-	    if (!srvconf) {
-		debug(DBG_ERR, "malloc failed");
-		continue;
-	    }
+        conf = (struct clsrvconf *)entry->data;
+        if (!conf->servers && conf->dynamiclookupcommand) {
             debug(DBG_DBG, "%s: copying config %s", __func__, conf->name);
-	    *srvconf = *conf;
-            /* Shallow copy -- sharing all the pointers.  addserver()
-             * will take care of servers (which btw has to be NUL) but
-             * the rest of them are shared with the config found in
-             * the srvconfs list.  */
-	    if (addserver(srvconf)) {
-		srvconf->servers->dynamiclookuparg = stringcopy(realm->name, 0);
-		srvconf->servers->state = srvconf->blockingstartup ? RSP_SERVER_STATE_BLOCKING_STARTUP : RSP_SERVER_STATE_STARTUP;
-                debug(DBG_DBG, "%s: new client writer for %s",
-                      __func__, srvconf->servers->conf->name);
-		if (pthread_create(&clientth, &pthread_attr, clientwr, (void *)(srvconf->servers))) {
-		    debugerrno(errno, DBG_ERR, "pthread_create failed");
-		    freeserver(srvconf->servers, 1);
-		    srvconf->servers = NULL;
-		} else
-		    pthread_detach(clientth);
+            srvconf = shallowcloneserver(conf);
+            if (!srvconf)
+                continue;
 
-	    }
-	    conf = srvconf;
-	}
-	if (conf->servers) {
-	    if (list_push(subrealmservers, conf))
-		newrealmref(realm);
-	    else
-		debug(DBG_ERR, "malloc failed");
-	}
+            if (!addserver(srvconf, realm->name)) {
+                free(srvconf);
+                continue;
+            }
+            conf = srvconf;
+        }
+        if (conf->servers) {
+            if (list_push(subrealmservers, conf))
+                newrealmref(realm);
+            else
+                debug(DBG_ERR, "malloc failed");
+        }
     }
     return subrealmservers;
 }
@@ -2287,7 +2347,6 @@ int dynamicconfigsrv(struct server *server, const char *srvstring) {
     }
     sprintf(servername, "dynamic:%s", server->dynamiclookuparg);
 
-    conf->dynamiclookupcommand = NULL;
     conf->name = servername;
     conf->hostsrc = hostports;
 
@@ -2373,37 +2432,39 @@ int setttlattr(struct options *opts, char *defaultattr) {
 void freeclsrvconf(struct clsrvconf *conf) {
     assert(conf);
     debug(DBG_DBG, "%s: freeing %p (%s)", __func__, conf, conf->name ? conf->name : "incomplete");
+    if(!conf->shallow) {
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-    freegconfmstr(conf->confmatchcertattrs);
-    freematchcertattr(conf);
+        freegconfmstr(conf->confmatchcertattrs);
+        freematchcertattr(conf);
 #endif
-    free(conf->name);
-    if (conf->hostsrc)
-	freegconfmstr(conf->hostsrc);
-    free(conf->portsrc);
-    freegconfmstr(conf->source);
-    free(conf->secret);
-    free(conf->tls);
-    free(conf->confrewritein);
-    free(conf->confrewriteout);
-    free(conf->sniservername);
-    free(conf->servername);
-    if (conf->rewriteusername) {
-	if (conf->rewriteusername->regex)
-	    regfree(conf->rewriteusername->regex);
-	free(conf->rewriteusername->replacement);
-	free(conf->rewriteusername);
+        free(conf->name);
+        if (conf->hostsrc)
+        freegconfmstr(conf->hostsrc);
+        free(conf->portsrc);
+        freegconfmstr(conf->source);
+        free(conf->secret);
+        free(conf->tls);
+        free(conf->confrewritein);
+        free(conf->confrewriteout);
+        free(conf->sniservername);
+        free(conf->servername);
+        if (conf->rewriteusername) {
+        if (conf->rewriteusername->regex)
+            regfree(conf->rewriteusername->regex);
+        free(conf->rewriteusername->replacement);
+        free(conf->rewriteusername);
+        }
+        free(conf->dynamiclookupcommand);
+        conf->rewritein=NULL;
+        conf->rewriteout=NULL;
+        if (conf->hostports)
+        freehostports(conf->hostports);
+        if (conf->lock) {
+        pthread_mutex_destroy(conf->lock);
+        free(conf->lock);
+        }
+        /* not touching ssl_ctx, clients and servers */
     }
-    free(conf->dynamiclookupcommand);
-    conf->rewritein=NULL;
-    conf->rewriteout=NULL;
-    if (conf->hostports)
-	freehostports(conf->hostports);
-    if (conf->lock) {
-	pthread_mutex_destroy(conf->lock);
-	free(conf->lock);
-    }
-    /* not touching ssl_ctx, clients and servers */
     free(conf);
 }
 
@@ -2508,6 +2569,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         dst->blockingstartup = src->blockingstartup;
         dst->sni = src->sni;
     }
+    dst->shallow=0;
     return 1;
 }
 
@@ -2543,11 +2605,9 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
 
     debug(DBG_DBG, "confclient_cb called for %s", block);
-
-    conf = malloc(sizeof(struct clsrvconf));
+    conf = calloc(1, sizeof(struct clsrvconf));
     if (!conf)
-	debugx(1, DBG_ERR, "malloc failed");
-    memset(conf, 0, sizeof(struct clsrvconf));
+        debugx(1, DBG_ERR, "malloc failed");
     conf->certnamecheck = 1;
 
     if (!getgenericconfig(
@@ -2712,34 +2772,31 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 #endif
 
     if (!conf->portsrc) {
-	conf->portsrc = stringcopy(conf->pdef->portdefault, 0);
-	if (!conf->portsrc) {
-	    debug(DBG_ERR, "malloc failed");
-	    return 0;
-	}
+        conf->portsrc = stringcopy(conf->pdef->portdefault, 0);
+        if (!conf->portsrc) {
+            debug(DBG_ERR, "malloc failed");
+            return 0;
+        }
     }
 
     if (conf->retryinterval == 255)
-	conf->retryinterval = conf->pdef->retryintervaldefault;
+        conf->retryinterval = conf->pdef->retryintervaldefault;
     if (conf->retrycount == 255)
-	conf->retrycount = conf->pdef->retrycountdefault;
+        conf->retrycount = conf->pdef->retrycountdefault;
 
-    conf->rewritein = conf->confrewritein
-        ? getrewrite(conf->confrewritein, NULL)
-        : getrewrite("defaultServer", "default");
+    conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL)
+                                          : getrewrite("defaultServer", "default");
     if (conf->confrewriteout)
-	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
+        conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
 
     if (!addhostport(&conf->hostports, conf->hostsrc, conf->portsrc, 0)) {
-	debug(DBG_ERR, "error in block %s, failed to parse %s", block, *conf->hostsrc);
-	return 0;
+        debug(DBG_ERR, "error in block %s, failed to parse %s", block, *conf->hostsrc);
+        return 0;
     }
 
-    if (!conf->dynamiclookupcommand &&
-        !resolvehostports(conf->hostports, conf->hostaf,
-                          conf->pdef->socktype)) {
-	debug(DBG_ERR, "%s: resolve failed", __func__);
-	return 0;
+    if (!resolvehostports(conf->hostports, conf->hostaf, conf->pdef->socktype)) {
+        debug(DBG_ERR, "%s: resolve failed", __func__);
+        return 0;
     }
     return 1;
 }
@@ -2752,12 +2809,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     debug(DBG_DBG, "confserver_cb called for %s", block);
 
-    conf = malloc(sizeof(struct clsrvconf));
+    conf = calloc(1, sizeof(struct clsrvconf));
     if (!conf) {
-	debug(DBG_ERR, "malloc failed");
-	return 0;
+        debug(DBG_ERR, "malloc failed");
+        return 0;
     }
-    memset(conf, 0, sizeof(struct clsrvconf));
     conf->loopprevention = UCHAR_MAX; /* Uninitialized.  */
     resconf = (struct clsrvconf *)arg;
     if (resconf) {
@@ -2911,10 +2967,6 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         free(conf);
         conf = resconf;
         confmerged = 1;
-        if (conf->dynamiclookupcommand) {
-            free(conf->dynamiclookupcommand);
-            conf->dynamiclookupcommand = NULL;
-        }
     }
 
     if (resconf || !conf->dynamiclookupcommand) {
@@ -3325,7 +3377,7 @@ int radsecproxy_main(int argc, char **argv) {
 	srvconf = (struct clsrvconf *)entry->data;
 	if (srvconf->dynamiclookupcommand)
 	    continue;
-	if (!addserver(srvconf))
+	if (!addserver(srvconf, NULL))
 	    debugx(1, DBG_ERR, "failed to add server");
 	if (pthread_create(&srvconf->servers->clientth, &pthread_attr, clientwr,
 			   (void *)(srvconf->servers)))

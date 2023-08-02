@@ -138,6 +138,8 @@ struct gqueue {
 };
 
 struct clsrvconf {
+    uint8_t shallow;
+    struct clsrvconf *parent;
     char *name;
     uint8_t type; /* RAD_UDP/RAD_TLS/RAD_TCP */
     const struct protodefs *pdef;
