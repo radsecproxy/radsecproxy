@@ -262,6 +262,9 @@ void *tcpclientrd(void *arg) {
         replyh(server, buf, len);
         buf = NULL;
     }
+    shutdown(server->sock, SHUT_RDWR);
+    close(server->sock);
+    
     server->clientrdgone = 1;
     pthread_mutex_lock(&server->newrq_mutex);
     pthread_cond_signal(&server->newrq_cond);
