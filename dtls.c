@@ -131,7 +131,7 @@ void *dtlsservernew(void *arg) {
 
     if (sslaccepttimeout(params->ssl, 30) <= 0) {
         while ((error = ERR_get_error()))
-            debug(DBG_ERR, "dtlsservernew: SSL accept from %s failed: %s", conf->name, ERR_error_string(error, NULL));
+            debug(DBG_ERR, "dtlsservernew: SSL accept from %s (%s) failed: %s", conf->name, addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)), ERR_error_string(error, NULL));
         debug(DBG_ERR, "dtlsservernew: SSL_accept failed");
         goto exit;
     }
