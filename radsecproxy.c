@@ -986,9 +986,9 @@ uint8_t *radattr2ascii(struct tlv *attr) {
 void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     uint8_t *username, *logusername = NULL, *stationid, *replymsg, *tmpmsg;
     uint8_t *operatorname, *cui;
-    char *servername, *logstationid = NULL;
+    char *servername;
     uint8_t level = DBG_NOTICE;
-    char tmp[INET6_ADDRSTRLEN];
+    char tmp[INET6_ADDRSTRLEN], logstationid[128] = {0};
 
     servername = server ? server->conf->name : "_self_";
     username = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_User_Name));
@@ -997,7 +997,6 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     }
     stationid = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Calling_Station_Id));
     if (stationid) {
-        logstationid = calloc(128, sizeof(char));
         sprintf((char *)logstationid, " stationid ");
         switch (options.log_mac) {
             case RSP_MAC_VENDOR_HASHED:
@@ -1047,7 +1046,7 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
             level = DBG_INFO;
         if (logusername) {
             debug(level, "%s for user %s%s%s from %s%s to %s (%s)%s",
-                radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "", cui ? (char *)cui : "",
+                radmsgtype2string(msg->code), logusername, logstationid, cui ? (char *)cui : "",
                 servername, replymsg ? (char *)replymsg : "", rq->from->conf->name,
                 addr2string(rq->from->addr, tmp, sizeof(tmp)), operatorname ? (char *)operatorname : "");
         } else {
@@ -1057,11 +1056,10 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
         }
     } else if(msg->code == RAD_Access_Request) {
         debug(level, "missing response to %s for user %s%s from %s (%s) to %s",
-            radmsgtype2string(msg->code), logusername, logstationid ? logstationid : "",
+            radmsgtype2string(msg->code), logusername, logstationid,
             rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)), servername);
     }
     free(username);
-    free(logstationid);
     free(cui);
     free(operatorname);
     free(replymsg);
