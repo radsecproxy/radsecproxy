@@ -364,7 +364,7 @@ void *tlsservernew(void *arg) {
         struct clsrvconf *selected = SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG);
         conf = selected ? selected : conf;
         while ((error = ERR_get_error()))
-            debug(DBG_ERR, "tlsservernew: SSL accept from %s failed: %s", conf->name, ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlsservernew: SSL accept from %s (%s) failed: %s", conf->name, addr2string((struct sockaddr*)&from, tmp, sizeof(tmp)), ERR_error_string(error, NULL));
         debug(DBG_ERR, "tlsservernew: SSL_accept failed");
         list_free(SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST));
         goto exit;
