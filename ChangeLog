@@ -1,6 +1,7 @@
 unreleased 1.10.1
 	Bug Fiexes:
 	- Fix tcp connection not closed after idle timeout
+	- Fix tls/dtls logging (#127, #132)
 
 2023-05-26 1.10.0
 	New features:
