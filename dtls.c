@@ -112,7 +112,7 @@ void *dtlsservernew(void *arg) {
     debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
 
     if (!(conf = find_clconf(handle, (struct sockaddr *)&params->addr, &cur, &hp))) {
-        debug(DBG_WARN, "dtlsservernew ignoring unknown TLS client %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
+        debug(DBG_WARN, "dtlsservernew ignoring unknown DTLS client %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
         goto exit;
     }
 
@@ -131,7 +131,7 @@ void *dtlsservernew(void *arg) {
     BIO_ctrl(SSL_get_rbio(params->ssl), BIO_CTRL_DGRAM_SET_CONNECTED, 0,(struct sockaddr *)&params->addr);
 
     if (!SSL_set_ex_data(params->ssl, RSP_EX_DATA_CONFIG_LIST, find_all_clconf(handle, (struct sockaddr *)&params->addr, cur, &hp))) {
-            debug(DBG_WARN, "tlsservernew: failed to set ex data");
+            debug(DBG_WARN, "dtlsservernew: failed to set ex data");
     }
 
     if (sslaccepttimeout(params->ssl, 30) <= 0) {
@@ -161,7 +161,7 @@ void *dtlsservernew(void *arg) {
     accepted_tls = conf->tlsconf;
 
     if (SSL_session_reused(params->ssl)) {
-        debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, PSK identity %s wtih cipher %s up",
+        debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, PSK identity %s wtih cipher %s up",
                 addr2string((struct sockaddr *)&params->addr,tmp, sizeof(tmp)), conf->name, conf->pskid,
                 SSL_CIPHER_get_name(SSL_get_current_cipher(params->ssl)));
     } else {
@@ -169,7 +169,7 @@ void *dtlsservernew(void *arg) {
             if (!conf->pskid && accepted_tls == conf->tlsconf && (verifyconfcert(cert, conf, NULL))) {
                 subj = getcertsubject(cert);
                 if(subj) {
-                    debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s, %s with cipher %s up",
+                    debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, subject %s, %s with cipher %s up",
                         addr2string((struct sockaddr *)&params->addr,tmp, sizeof(tmp)), conf->name, subj,
                         SSL_get_version(params->ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(params->ssl)));
                     free(subj);
@@ -182,7 +182,7 @@ void *dtlsservernew(void *arg) {
     }
 
     if (!conf) {
-        debug(DBG_WARN, "tlsservernew: ignoring request, no matching TLS client for %s", 
+        debug(DBG_WARN, "dtlsservernew: ignoring request, no matching DTLS client for %s", 
             addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
         goto exit;
     }
@@ -195,7 +195,7 @@ void *dtlsservernew(void *arg) {
         tlsserverrd(client);
         removeclient(client);
     } else
-        debug(DBG_WARN, "tlsservernew: failed to create new client instance");
+        debug(DBG_WARN, "dtlsservernew: failed to create new client instance");
 
 exit:
     if (cert)
@@ -445,7 +445,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
             }
 
             if (!SSL_set_ex_data(server->ssl, RSP_EX_DATA_CONFIG, server->conf)) {
-                debug(DBG_WARN, "tlsconnect: failed to set ex data");
+                debug(DBG_WARN, "dtlsconnect: failed to set ex data");
             }
 
             if (server->conf->sni) {
@@ -454,7 +454,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
                     server->conf->servername ? server->conf->servername :
                     (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL : hp->host;
                 if (servername && !tlssetsni(server->ssl, servername)) {
-                    debug(DBG_ERR, "tlsconnect: set SNI %s failed", servername);
+                    debug(DBG_ERR, "dtlsconnect: set SNI %s failed", servername);
                     goto concleanup;
                 }
             }
@@ -480,11 +480,11 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
             if (server->conf->pskid && server->conf->pskkey) {
                 if (SSL_session_reused(server->ssl)) {
-                    debug(DBG_WARN, "tlsconnect: TLS connection to %s (%s port %s), PSK identity %s with cipher %s up",
+                    debug(DBG_WARN, "dtlsconnect: DTLS connection to %s (%s port %s), PSK identity %s with cipher %s up",
                         server->conf->name, hp->host, hp->port, server->conf->pskid, SSL_CIPHER_get_name(SSL_get_current_cipher(server->ssl)));
                     break;
                 } else {
-                    debug(DBG_ERR, "tlsconnect: TLS PSK set for %s (%s port %s) but not used in session, rejecting connection", 
+                    debug(DBG_ERR, "dtlsconnect: DTLS PSK set for %s (%s port %s) but not used in session, rejecting connection", 
                         server->conf->name, hp->host, hp->port);
                     goto concleanup;
                 }
@@ -492,7 +492,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
             cert = verifytlscert(server->ssl);
             if (!cert) {
-                debug(DBG_ERR, "tlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                debug(DBG_ERR, "dtlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
                 goto concleanup;
             }
 
@@ -505,7 +505,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
                 X509_free(cert);
                 break;
             } else {
-                debug(DBG_ERR, "tlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
+                debug(DBG_ERR, "dtlsconnect: certificate verification failed for %s (%s port %s)", server->conf->name, hp->host, hp->port);
             }
             X509_free(cert);
 
@@ -564,7 +564,7 @@ void *dtlsclientrd(void *arg) {
         if (!buf || !len) {
             if(SSL_get_shutdown(server->ssl) || server->lostrqs) {
                 if (SSL_get_shutdown(server->ssl))
-                    debug (DBG_WARN, "tlscleintrd: connection to server %s lost", server->conf->name);
+                    debug (DBG_WARN, "dtlscleintrd: connection to server %s lost", server->conf->name);
                 else if (server->lostrqs)
                     debug (DBG_WARN, "dtlsclientrd: server %s did not respond, closing connection.", server->conf->name);
                 if (server->dynamiclookuparg)
@@ -575,7 +575,7 @@ void *dtlsclientrd(void *arg) {
             if (server->dynamiclookuparg) {
                 gettimeofday(&now, NULL);
                 if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
-                    debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
+                    debug(DBG_INFO, "dtlsclientrd: idle timeout for %s", server->conf->name);
                     break;
                 }
             }
