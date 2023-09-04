@@ -2186,7 +2186,7 @@ struct list *createsubrealmservers(struct realm *realm, struct list *srvconfs) {
                 continue;
 
             if (!addserver(srvconf, realm->name)) {
-                free(srvconf);
+                freeclsrvconf(srvconf);
                 continue;
             }
             conf = srvconf;
