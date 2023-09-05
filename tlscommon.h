@@ -59,7 +59,7 @@ char *getcertsubject(X509 *cert);
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 int addmatchcertattr(struct clsrvconf *conf, const char *match);
 void freematchcertattr(struct clsrvconf *conf);
-void tlsreloadcrls(void);
+void tlsreload(void);
 int tlssetsni(SSL *ssl, char *sni);
 int sslconnecttimeout(SSL *ssl, int timeout);
 int sslaccepttimeout (SSL *ssl, int timeout);

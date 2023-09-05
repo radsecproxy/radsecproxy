@@ -472,28 +472,28 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
 
     SSL_CTX_set_cert_store(ctx, X509_STORE_new());
     if (!SSL_CTX_load_verify_locations(ctx, conf->cacertfile, conf->cacertpath)) {
-	while ((error = ERR_get_error()))
-	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-    debug(DBG_ERR, "tlsaddcacrl: Error updating TLS context %s", conf->name);
+        while ((error = ERR_get_error()))
+            debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+        debug(DBG_ERR, "tlsaddcacrl: Error updating TLS context %s", conf->name);
         return 0;
     }
 
-    calist = conf->cacertfile ? SSL_load_client_CA_file(conf->cacertfile) : NULL;
-    if (!conf->cacertfile || calist) {
-	if (conf->cacertpath) {
-	    if (!calist)
-		calist = sk_X509_NAME_new_null();
-	    if (!SSL_add_dir_cert_subjects_to_stack(calist, conf->cacertpath)) {
-		sk_X509_NAME_free(calist);
-		calist = NULL;
-	    }
-	}
+    calist = sk_X509_NAME_new_null();
+    if (conf->cacertfile) {
+        debug(DBG_DBG, "tlsaddcacrl: loading subject names from file %s", conf->cacertfile);
+        if (!SSL_add_file_cert_subjects_to_stack(calist, conf->certfile)) {
+            while ((error = ERR_get_error()))
+                debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlsaddcacrl: failed to load CA subject names from file %s", conf->cacertfile);
+        }
     }
-    if (!calist) {
-	while ((error = ERR_get_error()))
-	    debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-    debug(DBG_ERR, "tlsaddcacrl: Error adding CA subjects in TLS context %s", conf->name);
-        return 0;
+    if (conf->cacertpath) {
+        debug(DBG_DBG, "tlsaddcacrl: loading subject names from path %s", conf->cacertpath);
+        if (!SSL_add_dir_cert_subjects_to_stack(calist, conf->cacertpath)) {
+            while ((error = ERR_get_error()))
+                debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlsaddcacrl: failed to load CA subject names from path %s", conf->cacertpath);
+        }
     }
     ERR_clear_error(); /* add_dir_cert_subj returns errors on success */
     SSL_CTX_set_client_CA_list(ctx, calist);
@@ -510,6 +510,25 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     }
 
     debug(DBG_DBG, "tlsaddcacrl: updated TLS context %s", conf->name);
+    return 1;
+}
+
+static int tlsloadclientcert(SSL_CTX *ctx, struct tls *conf) {
+    unsigned long error;
+
+    if (conf->certfile) {
+        if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
+            !SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+            !SSL_CTX_check_private_key(ctx)) {
+            while ((error = ERR_get_error()))
+                debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlsloadclientcert: Error loading certificate and/or key in TLS context %s", conf->name);
+            ERR_clear_error();
+            return 0;
+        }
+    } else {
+        debug(DBG_DBG, "tlsloadclientcert: no certificate specified, TLS %s can only be used for TLS-PSK", conf->name);
+    }
     return 1;
 }
 
@@ -581,18 +600,9 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
         SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
         SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
     }
-    if (conf->certfile) {
-        if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
-            !SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
-            !SSL_CTX_check_private_key(ctx)) {
-            while ((error = ERR_get_error()))
-                debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-            debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
-            SSL_CTX_free(ctx);
-            return NULL;
-        }
-    } else {
-        debug(DBG_DBG, "tlscreatectx: no certificate specified, TLS %s can only be used for TLS-PSK", conf->name);
+    if (!tlsloadclientcert(ctx, conf)) {
+        SSL_CTX_free(ctx);
+        return NULL;
     }
 
     if (conf->policyoids) {
@@ -735,30 +745,47 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
     return NULL;
 }
 
-void tlsreloadcrls(void) {
+void tlsreload(void) {
     struct tls *conf;
     struct hash_entry *entry;
     struct timeval now;
+    SSL_CTX *newctx;
 
-    debug (DBG_NOTICE, "reloading CRLs");
+    debug (DBG_NOTICE, "reloading certs, CAs, CRLs");
 
     gettimeofday(&now, NULL);
 
     for (entry = hash_first(tlsconfs); entry; entry = hash_next(entry)) {
-	conf = (struct tls *)entry->data;
+        conf = (struct tls *)entry->data;
 #ifdef RADPROT_TLS
-	if (conf->tlsctx) {
-	    if (conf->tlsexpiry)
-		conf->tlsexpiry = now.tv_sec + conf->cacheexpiry;
-	    tlsaddcacrl(conf->tlsctx, conf);
-	}
+        if (conf->tlsctx) {
+            pthread_mutex_lock(&conf->lock);
+            if (conf->tlsexpiry)
+                conf->tlsexpiry = now.tv_sec + conf->cacheexpiry;
+            newctx = tlscreatectx(RAD_TLS, conf);
+            if (!newctx) {
+                debug(DBG_ERR, "tlsreload: failed to create new TLS context for %s, context is NOT updated!", conf->name);
+            } else {
+                SSL_CTX_free(conf->tlsctx);
+                conf->tlsctx = newctx;
+            }
+            pthread_mutex_unlock(&conf->lock);
+        }
 #endif
 #ifdef RADPROT_DTLS
-	if (conf->dtlsctx) {
-	    if (conf->dtlsexpiry)
-		conf->dtlsexpiry = now.tv_sec + conf->cacheexpiry;
-	    tlsaddcacrl(conf->dtlsctx, conf);
-	}
+        if (conf->dtlsctx) {
+            pthread_mutex_lock(&conf->lock);
+            if (conf->dtlsexpiry)
+                conf->dtlsexpiry = now.tv_sec + conf->cacheexpiry;
+            newctx = tlscreatectx(RAD_DTLS, conf);
+            if (!newctx) {
+                debug(DBG_ERR, "tlsreload: failed to create new DTLS context for %s, context is NOT updated!", conf->name);
+            } else {
+                SSL_CTX_free(conf->dtlsctx);
+                conf->dtlsctx = newctx;
+            }
+            pthread_mutex_unlock(&conf->lock);
+        }
 #endif
     }
 }

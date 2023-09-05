@@ -3287,7 +3287,7 @@ void *sighandler(void *arg) {
             debug(DBG_INFO, "sighandler: got SIGHUP");
 	    debug_reopen_log();
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-	    tlsreloadcrls();
+	    tlsreload();
 #endif
             break;
         case SIGPIPE:
