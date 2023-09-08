@@ -867,18 +867,22 @@ The allowed options in a tls block are:
 
 .BI "CACertificateFile " file
 .RS
-The CA certificate file used to verify the peers certificate.
+The CA certificate file used to verify the peers certificate. The \fIfile\fR can
+include multiple certificates as well as CRLs.
 .RE
 
 .BI "CACertificatePath " path
 .RS
-The path to search for CA or intermediate certificates.
+The path to search for CA or intermediate certificates and CRLs. All files must 
+have hashed symbolic links to be found. See
+.BR openssl-rehash (1).
 .RE
 
 .BI "CertificateFile " file
 .RS
 The server certificate this proxy will use. The file may also contain a
-certificate chain.
+certificate chain. Any missing certificates to complete the chain will be searched
+for in the \fBCACertificateFile\fR and \fBCACertificatePath\fR.
 .RE
 
 .BI "CertificateKeyFile " file
@@ -901,7 +905,8 @@ certificate.
 
 .BR "CRLCheck (" on | off )
 .RS
-Enable checking peer certificate against the CRL (default off). 
+Enable checking peer certificate against the CRL (default off). Note if enabled, all
+CAs in this context MUST provide a CRL, otherwise they are considered untrusted.
 .br
 Note that radsecproxy does not fetch the CRLs itself. This has to be done 
 separately, e.g. with 
@@ -912,9 +917,12 @@ separately, e.g. with
 .RS
 Specify how many \fIseconds\fR the CA and CRL information should be cached. By
 default, the CA and CRL are loaded at startup and cached indefinetely. After the
-configured time, the CA CRL are re-read. Alternatively, reloading the CA and CRL
+configured time, the CA and CRL are re-read. Alternatively, reloading the CA and CRL
 can be triggered by sending a SIGHUP to the radsecproxy process. This option may
-be set to zero to disable caching.
+be set to zero to disable caching, but be warned: this might have a huge performance
+impact.
+.br
+Any negative value will disable the cache expiry.
 .RE
 
 .BI "CipherList " ciphers
