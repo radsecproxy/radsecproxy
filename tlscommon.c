@@ -509,25 +509,6 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     return 1;
 }
 
-static int tlsloadclientcert(SSL_CTX *ctx, struct tls *conf) {
-    unsigned long error;
-
-    if (conf->certfile) {
-        if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
-            !SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
-            !SSL_CTX_check_private_key(ctx)) {
-            while ((error = ERR_get_error()))
-                debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-            debug(DBG_ERR, "tlsloadclientcert: Error loading certificate and/or key in TLS context %s", conf->name);
-            ERR_clear_error();
-            return 0;
-        }
-    } else {
-        debug(DBG_DBG, "tlsloadclientcert: no certificate specified, TLS %s can only be used for TLS-PSK", conf->name);
-    }
-    return 1;
-}
-
 static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     SSL_CTX *ctx = NULL;
     unsigned long error;
@@ -596,9 +577,19 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
         SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
         SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
     }
-    if (!tlsloadclientcert(ctx, conf)) {
-        SSL_CTX_free(ctx);
-        return NULL;
+    if (conf->certfile) {
+        if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
+            !SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+            !SSL_CTX_check_private_key(ctx)) {
+            while ((error = ERR_get_error()))
+                debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlsloadclientcert: Error loading certificate and/or key in TLS context %s", conf->name);
+            ERR_clear_error();
+            SSL_CTX_free(ctx);
+            return NULL;
+        }
+    } else {
+        debug(DBG_DBG, "tlsloadclientcert: no certificate specified, TLS %s can only be used for TLS-PSK", conf->name);
     }
 
     if (conf->policyoids) {
@@ -1186,13 +1177,11 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     pthread_mutex_init(&conf->lock, NULL);
 
     if (!tlsconfs)
-	tlsconfs = hash_create();
+        tlsconfs = hash_create();
     if (!hash_insert(tlsconfs, val, strlen(val), conf)) {
-	debug(DBG_ERR, "conftls_cb: malloc failed");
-	goto errexit;
+        debug(DBG_ERR, "conftls_cb: malloc failed");
+        goto errexit;
     }
-    if (!tlsgetctx(RAD_TLS, conf))
-	debug(DBG_ERR, "conftls_cb: error creating ctx for TLS block %s", val);
     debug(DBG_DBG, "conftls_cb: added TLS block %s", val);
     return 1;
 

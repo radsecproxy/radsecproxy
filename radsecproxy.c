@@ -2546,16 +2546,50 @@ int config_hostaf(const char *desc, int ipv4only, int ipv6only, int *af) {
     return 0;
 }
 
+static int confapplytls(struct clsrvconf *conf, const char *block) {
+#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
+    if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
+        conf->tlsconf = conf->tls ?
+            tlsgettls(conf->tls, NULL) :
+            conf->pskkey ?
+                tlsgetdefaultpsk() : tlsgettls("defaultServer", "default");
+        if (!conf->tlsconf) {
+            debug(DBG_ERR, "error in block %s, no tls context defined", block);
+            return 0;
+        }
+        if (!conf->pskkey && !conf->tlsconf->certfile){
+            debug(DBG_ERR, "error in block %s, tls context %s has no certificate", block, conf->tlsconf->name);
+            return 0;
+        }
+        if (conf->confmatchcertattrs) {
+            int i;
+            for (i=0; conf->confmatchcertattrs[i]; i++){
+                if (!addmatchcertattr(conf, conf->confmatchcertattrs[i])) {
+                    debug(DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+                    return 0;
+                }
+            }
+        }
+        if (!tlsgetctx(conf->type, conf->tlsconf)) {
+            debug(DBG_ERR, "failed to initialize TLS context %s for block %s", conf->tlsconf->name, block);
+            return 0;
+        }
+    }
+    return 1;
+#else
+    debug(DBG_ERR,"cannot apply tls config, radsecproxy was not compiled with TLS/DTLS support")
+    return 0;
+#endif
+
+    return 1;
+}
+
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *existing;
     char *conftype = NULL, *rewriteinalias = NULL;
     long int dupinterval = LONG_MIN, addttl = LONG_MIN;
     uint8_t ipv4only = 0, ipv6only = 0;
     struct list_node *entry;
-#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-        char **matchcertattrs = NULL;
-#endif
-
 
     debug(DBG_DBG, "confclient_cb called for %s", block);
 
@@ -2576,7 +2610,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "tls", CONF_STR, &conf->tls,
         "PSKidentity", CONF_STR, &conf->pskid,
         "PSKkey", CONF_STR_NOESC, &conf->pskkey,
-	    "MatchCertificateAttribute", CONF_MSTR, &matchcertattrs,
+	    "MatchCertificateAttribute", CONF_MSTR,  &conf->confmatchcertattrs,
 	    "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
 	    "ServerName", CONF_STR, &conf->servername,
 #endif
@@ -2612,27 +2646,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     free(conftype);
     conf->pdef = protodefs[conf->type];
 
-#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-    if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-        conf->tlsconf = conf->tls ?
-                tlsgettls(conf->tls, NULL) :
-                conf->pskkey ?
-                    tlsgetdefaultpsk() : tlsgettls("defaultClient", "default");
-        if (!conf->tlsconf)
-            debugx(1, DBG_ERR, "error in block %s, tls context not defined", block);
-        if (!conf->pskkey && !conf->tlsconf->certfile)
-            debugx(1, DBG_ERR, "error in block %s, tls context %s has no certificate", block, conf->tlsconf->name);
-        if (matchcertattrs) {
-            int i;
-            for (i=0; matchcertattrs[i]; i++){
-                if (!addmatchcertattr(conf, matchcertattrs[i])) {
-                    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
-                }
-            }
-            freegconfmstr(matchcertattrs);
-        }
-    }
-#endif
+    if (!confapplytls(conf, block))
+        debugx(1, DBG_ERR, "config error: ^");
 
     conf->hostaf = AF_UNSPEC;
     if (config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf))
@@ -2720,30 +2735,8 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     conf->hostports = NULL;
     conf->matchcertattrs = NULL;
 
-#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-    if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-    	conf->tlsconf = conf->tls ?
-            tlsgettls(conf->tls, NULL) :
-            conf->pskkey ?
-                tlsgetdefaultpsk() : tlsgettls("defaultServer", "default");
-        if (!conf->tlsconf) {
-            debug(DBG_ERR, "error in block %s, no tls context defined", block);
-            return 0;
-        }
-        if (!conf->pskkey && !conf->tlsconf->certfile){
-            debug(DBG_ERR, "error in block %s, tls context %s has no certificate", block, conf->tlsconf->name);
-            return 0;
-        }
-        if (conf->confmatchcertattrs) {
-            int i;
-            for (i=0; conf->confmatchcertattrs[i]; i++){
-                if (!addmatchcertattr(conf, conf->confmatchcertattrs[i])) {
-                    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
-                }
-            }
-        }
-    }
-#endif
+    if (!confapplytls(conf, block))
+        return 0;
 
     if (!conf->portsrc) {
 	conf->portsrc = stringcopy(conf->pdef->portdefault, 0);
