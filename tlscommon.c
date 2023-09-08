@@ -470,13 +470,20 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
         return 1;
     }
 
-    SSL_CTX_set_cert_store(ctx, X509_STORE_new());
-    if (!SSL_CTX_load_verify_locations(ctx, conf->cacertfile, conf->cacertpath)) {
+    x509_s = X509_STORE_new();
+    if (!X509_STORE_load_locations(x509_s, conf->cacertfile, conf->cacertpath)) {
         while ((error = ERR_get_error()))
             debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-        debug(DBG_ERR, "tlsaddcacrl: Error updating TLS context %s", conf->name);
+        debug(DBG_ERR, "tlsaddcacrl: Error loading CAs and CRLs in TLS context %s", conf->name);
+
+        X509_STORE_free(x509_s);
         return 0;
     }
+    if (conf->crlcheck)
+        X509_STORE_set_flags(x509_s, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+    if (conf->vpm)
+        X509_STORE_set1_param(x509_s, conf->vpm);
+    SSL_CTX_set_cert_store(ctx, x509_s);
 
     calist = sk_X509_NAME_new_null();
     if (conf->cacertfile) {
@@ -497,17 +504,6 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     }
     ERR_clear_error(); /* add_dir_cert_subj returns errors on success */
     SSL_CTX_set_client_CA_list(ctx, calist);
-
-    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
-    SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
-
-    if (conf->crlcheck || conf->vpm) {
-	x509_s = SSL_CTX_get_cert_store(ctx);
-	if (conf->crlcheck)
-	    X509_STORE_set_flags(x509_s, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
-	if (conf->vpm)
-	    X509_STORE_set1_param(x509_s, conf->vpm);
-    }
 
     debug(DBG_DBG, "tlsaddcacrl: updated TLS context %s", conf->name);
     return 1;
@@ -665,6 +661,8 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 
     SSL_CTX_set_cookie_generate_cb(ctx, cookie_generate_cb);
     SSL_CTX_set_cookie_verify_cb(ctx, cookie_verify_cb);
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
+    SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
 #if OPENSSL_VERSION_NUMBER >= 0x10101000
     SSL_CTX_set_psk_use_session_callback(ctx, psk_use_session_cb);
     SSL_CTX_set_psk_find_session_callback(ctx, psk_find_session_cb);
