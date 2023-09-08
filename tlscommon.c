@@ -705,39 +705,41 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
     struct timeval now;
 
     if (!t)
-	return NULL;
+        return NULL;
     gettimeofday(&now, NULL);
 
     switch (type) {
 #ifdef RADPROT_TLS
     case RAD_TLS:
-	if (t->tlsexpiry && t->tlsctx) {
-	    if (t->tlsexpiry < now.tv_sec) {
-		t->tlsexpiry = now.tv_sec + t->cacheexpiry;
-		tlsaddcacrl(t->tlsctx, t);
-	    }
-	}
-	if (!t->tlsctx) {
-	    t->tlsctx = tlscreatectx(RAD_TLS, t);
-	    if (t->cacheexpiry)
-		t->tlsexpiry = now.tv_sec + t->cacheexpiry;
-	}
-	return t->tlsctx;
+        if (t->tlsexpiry && t->tlsctx) {
+            if (t->tlsexpiry <= now.tv_sec) {
+                t->tlsexpiry = now.tv_sec + t->cacheexpiry;
+                if (!tlsaddcacrl(t->tlsctx, t))
+                    debug(DBG_WARN, "tlsgetctx: cache reload for TLS context %s failed, continue with old state!",t->name);
+            }
+        }
+        if (!t->tlsctx) {
+            t->tlsctx = tlscreatectx(RAD_TLS, t);
+            if (t->cacheexpiry >= 0)
+                t->tlsexpiry = now.tv_sec + t->cacheexpiry;
+        }
+        return t->tlsctx;
 #endif
 #ifdef RADPROT_DTLS
     case RAD_DTLS:
-	if (t->dtlsexpiry && t->dtlsctx) {
-	    if (t->dtlsexpiry < now.tv_sec) {
-		t->dtlsexpiry = now.tv_sec + t->cacheexpiry;
-		tlsaddcacrl(t->dtlsctx, t);
-	    }
-	}
-	if (!t->dtlsctx) {
-	    t->dtlsctx = tlscreatectx(RAD_DTLS, t);
-	    if (t->cacheexpiry)
-		t->dtlsexpiry = now.tv_sec + t->cacheexpiry;
-	}
-	return t->dtlsctx;
+        if (t->dtlsexpiry && t->dtlsctx) {
+            if (t->dtlsexpiry <= now.tv_sec) {
+                t->dtlsexpiry = now.tv_sec + t->cacheexpiry;
+                if (!tlsaddcacrl(t->dtlsctx, t))
+                    debug(DBG_WARN, "tlsgetctx: cache reload for DTLS context %s failed, continue with old state!",t->name);
+            }
+        }
+        if (!t->dtlsctx) {
+            t->dtlsctx = tlscreatectx(RAD_DTLS, t);
+            if (t->cacheexpiry >= 0)
+                t->dtlsexpiry = now.tv_sec + t->cacheexpiry;
+        }
+        return t->dtlsctx;
 #endif
     }
     return NULL;
@@ -1070,7 +1072,6 @@ static int conf_tls_version(const char *version, int *min, int *max) {
 
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct tls *conf;
-    long int expiry = LONG_MIN;
     char *tlsversion = NULL;
     char *dtlsversion = NULL;
     char *dhfile = NULL;
@@ -1078,31 +1079,31 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 
     debug(DBG_DBG, "conftls_cb called for %s", block);
 
-    conf = malloc(sizeof(struct tls));
+    conf = calloc(1, sizeof(struct tls));
     if (!conf) {
-	debug(DBG_ERR, "conftls_cb: malloc failed");
-	return 0;
+        debug(DBG_ERR, "conftls_cb: malloc failed");
+        return 0;
     }
-    memset(conf, 0, sizeof(struct tls));
+    conf->cacheexpiry = -1;
 
     if (!getgenericconfig(cf, block,
-			  "CACertificateFile", CONF_STR, &conf->cacertfile,
-			  "CACertificatePath", CONF_STR, &conf->cacertpath,
-			  "CertificateFile", CONF_STR, &conf->certfile,
-			  "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
-			  "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
-			  "CacheExpiry", CONF_LINT, &expiry,
-			  "CRLCheck", CONF_BLN, &conf->crlcheck,
-			  "PolicyOID", CONF_MSTR, &conf->policyoids,
-              "CipherList", CONF_STR, &conf->cipherlist,
-              "CipherSuites", CONF_STR, &conf->ciphersuites,
-              "TlsVersion", CONF_STR, &tlsversion,
-              "DtlsVersion", CONF_STR, &dtlsversion,
-              "DhFile", CONF_STR, &dhfile,
-			  NULL
-	    )) {
-	debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
-	goto errexit;
+        "CACertificateFile", CONF_STR, &conf->cacertfile,
+        "CACertificatePath", CONF_STR, &conf->cacertpath,
+        "CertificateFile", CONF_STR, &conf->certfile,
+        "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
+        "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
+        "CacheExpiry", CONF_LINT, &conf->cacheexpiry,
+        "CRLCheck", CONF_BLN, &conf->crlcheck,
+        "PolicyOID", CONF_MSTR, &conf->policyoids,
+        "CipherList", CONF_STR, &conf->cipherlist,
+        "CipherSuites", CONF_STR, &conf->ciphersuites,
+        "TlsVersion", CONF_STR, &tlsversion,
+        "DtlsVersion", CONF_STR, &dtlsversion,
+        "DhFile", CONF_STR, &dhfile,
+        NULL
+    )) {
+        debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
+        goto errexit;
     }
     if (!conf->certfile) {
         debug(DBG_DBG, "conftls_db: tls %s has no certificate specified, can only be used for PSK", val);
@@ -1116,13 +1117,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
             goto errexit;
         }
     }
-    if (expiry != LONG_MIN) {
-	if (expiry < 0) {
-	    debug(DBG_ERR, "error in block %s, value of option CacheExpiry is %ld, may not be negative", val, expiry);
-	    goto errexit;
-	}
-	conf->cacheexpiry = expiry;
-    }
+
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
     /* use -1 as 'not set' value */
     conf->tlsminversion = conf->tlsmaxversion = conf->dtlsminversion = conf->dtlsmaxversion = -1;
