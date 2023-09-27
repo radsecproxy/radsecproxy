@@ -3379,9 +3379,6 @@ int radsecproxy_main(int argc, char **argv) {
 	    continue;
 	if (!addserver(srvconf, NULL))
 	    debugx(1, DBG_ERR, "failed to add server");
-	if (pthread_create(&srvconf->servers->clientth, &pthread_attr, clientwr,
-			   (void *)(srvconf->servers)))
-	    debugx(1, DBG_ERR, "pthread_create failed");
     }
 
     for (i = 0; i < RAD_PROTOCOUNT; i++) {
