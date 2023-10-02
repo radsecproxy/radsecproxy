@@ -2,6 +2,7 @@ unreleased changes
 	New features:
 	- TLS-PSK (#112)
 	- Long hex-strings in config
+	- Reload complete TLS context on SIGHUP, reload client/server cert and key (#76)
 
 2023-05-26 1.10.0
 	New features:
