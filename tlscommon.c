@@ -1462,7 +1462,7 @@ int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
     }
     *buf = malloc(len);
     if (!*buf) {
-        debug(DBG_ERR, "radtlsget: malloc failed! closing conneciton!");
+        debug(DBG_ERR, "radtlsget: malloc failed! closing connection!");
         pthread_mutex_lock(lock);
         SSL_shutdown(ssl);
         pthread_mutex_unlock(lock);
