@@ -1378,6 +1378,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     char *tlsversion = NULL;
     char *dtlsversion = NULL;
     char *dhfile = NULL;
+    char *clientocspstapling = NULL;
     unsigned long error;
     struct options *options = (struct options *) arg;
 
@@ -1407,6 +1408,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         "OCSPIgnoreMissingURL", CONF_BLN, &conf->ocsp_ignore_empty_url,
         "OCSPTimeout", CONF_LINT, &conf->ocsp_timeout,
         "OCSPCheckDepth", CONF_LINT, &conf->ocsp_check_depth,
+        "ClientOCSPStapling", CONF_STR, &clientocspstapling,
+        "ServerOCSPStapling", CONF_BLN, &serverocspstapling,
         "PolicyOID", CONF_MSTR, &conf->policyoids,
         "CipherList", CONF_STR, &conf->cipherlist,
         "CipherSuites", CONF_STR, &conf->ciphersuites,
@@ -1456,6 +1459,32 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         goto errexit;
     }
 #endif
+
+    if (clientocspstapling) {
+        if (strcasecmp(clientocspstapling, "Off") == 0)
+            conf->ocsp_stapling_client = RSP_OCSP_STAPLING_OFF;
+        else if (strcasecmp(clientocspstapling, "Request") == 0)
+            conf->ocsp_stapling_client = RSP_OCSP_STAPLING_SHOULD;
+        else if (strcasecmp(clientocspstapling, "Require") == 0)
+            conf->ocsp_stapling_client = RSP_OCSP_STAPLING_MUST
+        else
+            debugx(1, DBG_ERR, "config error in block %s: invalid ClientOCSPStapling value; %s", block, clientocspstapling);
+        free(clientocspstapling);
+    }
+
+    if (serverocspstapling) {
+        if (strcasecmp(serverocspstapling, "Off") == 0)
+            conf->ocsp_stapling_server = RSP_OCSP_STAPLING_OFF;
+        else if (strcasecmp(serverocspstapling, "Async") == 0)
+            conf->ocsp_stapling_server = RSP_OCSP_STAPLING_SHOULD;
+        else if (strcasecmp(serverocspstapling, "On") == 0)
+            conf->ocsp_stapling_server = RSP_OCSP_STAPLING_SHOULD;
+        else if (strcasecmp(serverocspstapling, "Blocking") == 0)
+            conf->ocsp_stapling_server = RSP_OCSP_STAPLING_MUST
+        else
+            debugx(1, DBG_ERR, "config error in block %s: invalid ServerOCSPStapling value; %s", block, serverocspstapling);
+        free(serverocspstapling);
+    }
 
     if (dhfile) {
 #if OPENSSL_VERSION_NUMBER >= 0x30000000

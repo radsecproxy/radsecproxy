@@ -32,6 +32,9 @@ struct tls {
     uint32_t ocsp_check_depth;
     uint8_t ocsp_caching;
     uint32_t ocsp_max_cache_time;
+    uint8_t ocsp_stapling_server;
+    uint8_t ocsp_stapling_client;
+    OCSP_RESPONSE *ocsp_cert_staple;
     char **policyoids;
     char *cipherlist;
     char *ciphersuites;
