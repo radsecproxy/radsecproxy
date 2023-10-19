@@ -2939,7 +2939,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         else if (strcasecmp(statusserver, "Auto") == 0)
             conf->statusserver = RSP_STATSRV_AUTO;
         else {
-            debug(DBG_ERR, "config error in blocck %s: invalid StatusServer value: %s", block, statusserver);
+            debug(DBG_ERR, "config error in block %s: invalid StatusServer value: %s", block, statusserver);
             goto errexit;
         }
         free(statusserver);
