@@ -98,8 +98,7 @@ struct list_node *list_removenode(struct list *list, struct list_node *node) {
         return list->first;
     }
 
-    n = list->first;
-    for(; n->next; n = n->next) {
+    for( n = list->first; n->next; n = n->next) {
         if(n->next == node) {
             n->next = node->next;
             free(node);

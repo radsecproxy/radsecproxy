@@ -96,9 +96,10 @@ static int ocsp_parse_cert_url(X509 *cert, char **host_out, char **port_out, cha
     AUTHORITY_INFO_ACCESS *aia;
     ACCESS_DESCRIPTION *ad;
     int is_https;
+    int i;
 
     aia = X509_get_ext_d2i(cert, NID_info_access, NULL, NULL);
-    for(int i=0; i < sk_ACCESS_DESCRIPTION_num(aia); i++) {
+    for(i=0; i < sk_ACCESS_DESCRIPTION_num(aia); i++) {
         ad = sk_ACCESS_DESCRIPTION_value(aia, i);
         if (OBJ_obj2nid(ad->method) != NID_ad_OCSP)
             continue; // Additional autority information was not an OCSP information
@@ -127,7 +128,8 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
     char *host = NULL;
     char *port = NULL;
     char *path = NULL;
-    char hostheader[1024];
+    char *hostheader = NULL;
+    size_t hostheader_len;
     int ret;
     ocsp_status_t ocsp_status = OCSP_STATUS_FAILED;
     struct timeval now, when;
@@ -136,7 +138,6 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
     long maxage = -1; // Don't require a specific freshness
     ASN1_GENERALIZEDTIME *rev = NULL, *thisupd = NULL, *nextupd = NULL;
     ASN1_TIME *max_cache_time = NULL;
-    time_t t;
     struct list_node *cur;
     struct ocsp_cache_entry *entry;
 
@@ -145,8 +146,7 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
     if(tlsconf->ocsp_caching){
         debug(DBG_DBG, "ocsp_check: Checking Cache");
         pthread_mutex_lock(&ocsp_cache_mutex);
-        cur = list_first(ocsp_caches);
-        for( ; cur ; cur = cur->next ){
+        for(cur = list_first(ocsp_caches); cur ; cur = cur->next ){
             entry = (struct ocsp_cache_entry *)cur->data;
             if(OCSP_id_cmp(entry->crtid, certid) == 0){
                 debug(DBG_DBG, "ocsp_check: Using cached OCSP response");
@@ -179,12 +179,16 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
         }
         goto ocsp_end;
     }
-    if((strlen(host) + strlen(port) + 2) > sizeof(hostheader)) {
-        debug(DBG_DBG, "ocsp_check: OCSP URL was too long.");
+
+    hostheader_len = strlen(host) + strlen(port) + 2;
+    hostheader = malloc(hostheader_len);
+    if(hostheader == NULL) {
+        // TODO: Don't know if just skipping the OCSP check is the right choice here.
+        debug(DBG_ERR, "ocsp_check: Could not allocate memory. Skipping OCSP check.");
         ocsp_status = OCSP_STATUS_SKIPPED;
         goto ocsp_end;
     }
-    snprintf(hostheader, sizeof(hostheader), "%s:%s", host, port);
+    snprintf(hostheader, hostheader_len, "%s:%s", host, port);
 
     cbio = BIO_new_connect(host);
     BIO_set_conn_port(cbio, port);
@@ -300,13 +304,15 @@ static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X5
 
         struct ocsp_cache_entry *entry = malloc(sizeof(struct ocsp_cache_entry));
         if(!entry)
-            debugx(1, DBG_ERR, "malloc failed");
+        {
+            debug(DBG_ERR, "Could not allocate memory for caching OCSP response. Skipping cache.");
+            goto ocsp_end;
+        }
 
         entry->crtid = OCSP_CERTID_dup(certid);
         entry->ocsp_result = ocsp_status == OCSP_STATUS_OK;
 
-        t = time(NULL);
-        max_cache_time = ASN1_TIME_adj(NULL, t, 0, tlsconf->ocsp_max_cache_time);
+        max_cache_time = ASN1_TIME_adj(NULL, time(NULL), 0, tlsconf->ocsp_max_cache_time);
         // Caution: If the OCSP Response did not include a nextupd, then we just cache for the given time.
         // It indicates that the OCSP server generates the OCSP responses at the time of the request,
         // so caching them for the given time should be a good way to go.
@@ -328,6 +334,7 @@ ocsp_end:
     free(host);
     free(port);
     free(path);
+    free(hostheader);
     BIO_free_all(cbio);
 
     switch(ocsp_status) {
@@ -425,7 +432,6 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
     struct tls *tlsconf;
     SSL *ssl;
     X509_STORE *store;
-    ocsp_status_t ocsp_return;
 
     err_cert = X509_STORE_CTX_get_current_cert(ctx);
     err = X509_STORE_CTX_get_error(ctx);
@@ -448,15 +454,16 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
             if (issuer_cert == NULL) {
                 // Issuer is unknown. We can't verify OCSP with unknown issuer.
                 if (ok != 0) {
+                    // TODO: Better (and clearer) error message
                     debug(DBG_WARN, "verify error: Unknown issuer, skipping OCSP Check");
                     ok = 0;
                 }
             } else if (issuer_cert == err_cert) {
                 // if the cert is selfsigned we don't need ocsp
+                debug(DBG_DBG, "verify_cb: Not checking OCSP, selfsigned cert");
             } else {
               store = (X509_STORE *)SSL_get_ex_data(ssl, RADSEC_TLS_EX_INDEX_STORE);
-              ocsp_return = ocsp_check(store, ctx, issuer_cert, err_cert, tlsconf);
-              if (ocsp_return == OCSP_STATUS_FAILED) {
+              if (ocsp_check(store, ctx, issuer_cert, err_cert, tlsconf) == OCSP_STATUS_FAILED) {
                 err = X509_V_ERR_OCSP_VERIFY_FAILED;
                 X509_STORE_CTX_set_error(ctx, err);
                 ok = 0;
@@ -1393,7 +1400,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         "CertificateFile", CONF_STR, &conf->certfile,
         "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
         "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
-        "CacheExpiry", CONF_LINT, &expiry,
+        "CacheExpiry", CONF_LINT, &conf->cacheexpiry,
         "CRLCheck", CONF_BLN, &conf->crlcheck,
         "OCSPCheck", CONF_BLN, &conf->ocspcheck,
         "OCSPSoftFail", CONF_BLN, &conf->ocsp_softfail,
