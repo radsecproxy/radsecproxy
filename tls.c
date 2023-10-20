@@ -168,6 +168,8 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
             if (!SSL_set_ex_data(server->ssl, RSP_EX_DATA_CONFIG, server->conf)) {
                 debug(DBG_WARN, "tlsconnect: failed to set ex data");
             }
+            SSL_set_ex_data(server->ssl, RADSEC_TLS_EX_INDEX_TLSCONF, (void *)server->conf->tlsconf);
+            SSL_set_ex_data(server->ssl, RADSEC_TLS_EX_INDEX_STORE, (void *)SSL_CTX_get_cert_store(ctx));
 
             if (server->conf->sni) {
                 struct in6_addr tmp;
@@ -358,6 +360,8 @@ void *tlsservernew(void *arg) {
     if (!SSL_set_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST, find_all_clconf(handle, (struct sockaddr *)&from, cur, &hp))) {
             debug(DBG_WARN, "tlsservernew: failed to set ex data");
     }
+    SSL_set_ex_data(ssl, RADSEC_TLS_EX_INDEX_TLSCONF, (void *)conf->tlsconf);
+    SSL_set_ex_data(ssl, RADSEC_TLS_EX_INDEX_STORE, (void *)SSL_CTX_get_cert_store(ctx));
 
     SSL_set_fd(ssl, s);
     if (sslaccepttimeout(ssl, 30) <= 0) {

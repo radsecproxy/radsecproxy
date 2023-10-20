@@ -14,6 +14,9 @@
 #define ASN1_STRING_length(o) ((o)->length)
 #endif
 
+#define RADSEC_TLS_EX_INDEX_TLSCONF (10)
+#define RADSEC_TLS_EX_INDEX_STORE (11)
+
 struct tls {
     char *name;
     char *cacertfile;
@@ -22,6 +25,16 @@ struct tls {
     char *certkeyfile;
     char *certkeypwd;
     uint8_t crlcheck;
+    uint8_t ocspcheck;
+    uint8_t ocsp_ignore_empty_url;
+    uint8_t ocsp_softfail;
+    uint32_t ocsp_timeout;
+    uint32_t ocsp_check_depth;
+    uint8_t ocsp_caching;
+    uint32_t ocsp_max_cache_time;
+    uint8_t ocsp_stapling_server;
+    uint8_t ocsp_stapling_client;
+    OCSP_RESPONSE *ocsp_cert_staple;
     char **policyoids;
     char *cipherlist;
     char *ciphersuites;

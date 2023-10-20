@@ -35,6 +35,9 @@ int list_push(struct list *list, void *data);
 /* removes first entry from list and returns data */
 void *list_shift(struct list *list);
 
+/* removes one specific node from the given list and returns its following node*/
+struct list_node *list_removenode(struct list *list, struct list_node *node);
+
 /* removes all entries with matching data pointer */
 void list_removedata(struct list *list, void *data);
 

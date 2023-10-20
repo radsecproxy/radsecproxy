@@ -23,11 +23,14 @@
 #include <regex.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <openssl/asn1.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
 #include <openssl/md5.h>
 #include <openssl/x509v3.h>
+#include <openssl/ocsp.h>
+#include <openssl/bio.h>
 #include <assert.h>
 #include "debug.h"
 #include "hash.h"
@@ -81,6 +84,280 @@ void ssl_locking_callback(int mode, int type, const char *file, int line) {
        pthread_mutex_unlock(&ssl_locks[type]);
 }
 #endif
+
+typedef enum {
+    OCSP_STATUS_FAILED  = 0,
+    OCSP_STATUS_OK      = 1,
+    OCSP_STATUS_SKIPPED = 2,
+} ocsp_status_t;
+
+static int ocsp_parse_cert_url(X509 *cert, char **host_out, char **port_out, char **path_out) {
+    int found_uri = -1;
+    AUTHORITY_INFO_ACCESS *aia;
+    ACCESS_DESCRIPTION *ad;
+    int is_https;
+    int i;
+
+    aia = X509_get_ext_d2i(cert, NID_info_access, NULL, NULL);
+    for(i=0; i < sk_ACCESS_DESCRIPTION_num(aia); i++) {
+        ad = sk_ACCESS_DESCRIPTION_value(aia, i);
+        if (OBJ_obj2nid(ad->method) != NID_ad_OCSP)
+            continue; // Additional autority information was not an OCSP information
+        if (ad->location->type != GEN_URI)
+            continue; // Additional information was not a URI
+        found_uri = 0;
+
+        if (OCSP_parse_url((char *) ad->location->d.ia5->data, host_out, port_out, path_out, &is_https))
+        {
+            found_uri = 1;
+            break;
+        }
+    }
+
+    AUTHORITY_INFO_ACCESS_free(aia);
+
+    return found_uri;
+}
+static ocsp_status_t ocsp_check(X509_STORE *store, X509_STORE_CTX *store_ctx, X509 *issuer, X509 *cert, struct tls *tlsconf) {
+    OCSP_CERTID *certid = NULL;
+    OCSP_REQUEST *req = NULL;
+    OCSP_RESPONSE *resp = NULL;
+    OCSP_BASICRESP *bresp = NULL;
+    OCSP_REQ_CTX *ctx = NULL;
+    BIO *cbio = NULL;
+    char *host = NULL;
+    char *port = NULL;
+    char *path = NULL;
+    char *hostheader = NULL;
+    size_t hostheader_len;
+    int ret;
+    ocsp_status_t ocsp_status = OCSP_STATUS_FAILED;
+    struct timeval now, when;
+    int status, reason;
+    long nsec = (5 * 60); // Grace period of 5 min for OCSP validity
+    long maxage = -1; // Don't require a specific freshness
+    ASN1_GENERALIZEDTIME *rev = NULL, *thisupd = NULL, *nextupd = NULL;
+    ASN1_TIME *max_cache_time = NULL;
+    struct list_node *cur;
+    struct ocsp_cache_entry *entry;
+
+    certid = OCSP_cert_to_id(NULL, cert, issuer);
+
+    if(tlsconf->ocsp_caching){
+        debug(DBG_DBG, "ocsp_check: Checking Cache");
+        pthread_mutex_lock(&ocsp_cache_mutex);
+        for(cur = list_first(ocsp_caches); cur ; cur = cur->next ){
+            entry = (struct ocsp_cache_entry *)cur->data;
+            if(OCSP_id_cmp(entry->crtid, certid) == 0){
+                debug(DBG_DBG, "ocsp_check: Using cached OCSP response");
+                if(entry->ocsp_result){
+                    debug(DBG_DBG, "ocsp_check: Cached OCSP result: OK");
+                    ocsp_status = OCSP_STATUS_OK;
+                } else {
+                    debug(DBG_DBG, "ocsp_check: Cached OCSP result: Revoked");
+                    ocsp_status = OCSP_STATUS_FAILED;
+                }
+                pthread_mutex_unlock(&ocsp_cache_mutex);
+                OCSP_CERTID_free(certid);
+                goto ocsp_end;
+            }
+        }
+        pthread_mutex_unlock(&ocsp_cache_mutex);
+        debug(DBG_DBG, "ocsp_check: No cache entry found, checking live.");
+    }
+
+    req = OCSP_REQUEST_new();
+    OCSP_request_add0_id(req, certid);
+
+    ret = ocsp_parse_cert_url(cert, &host, &port, &path);
+    if(ret <= 0) {
+        debug(DBG_DBG, "ocsp_check: Invalid or missing OCSP URL in certificate.");
+        if(tlsconf->ocsp_ignore_empty_url) {
+            ocsp_status = OCSP_STATUS_OK;
+        } else {
+            ocsp_status = OCSP_STATUS_SKIPPED;
+        }
+        goto ocsp_end;
+    }
+
+    hostheader_len = strlen(host) + strlen(port) + 2;
+    hostheader = malloc(hostheader_len);
+    if(hostheader == NULL) {
+        // TODO: Don't know if just skipping the OCSP check is the right choice here.
+        debug(DBG_ERR, "ocsp_check: Could not allocate memory. Skipping OCSP check.");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+    snprintf(hostheader, hostheader_len, "%s:%s", host, port);
+
+    cbio = BIO_new_connect(host);
+    BIO_set_conn_port(cbio, port);
+    ret = BIO_do_connect(cbio);
+    if(ret <= 0) {
+        debug(DBG_DBG, "ocsp_check: Could not connect to OCSP responder");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+
+    if(tlsconf->ocsp_timeout) {
+        // only do async callbacks if we have a timeout configured.
+        BIO_set_nbio(cbio, 1);
+    }
+
+    ctx = OCSP_sendreq_new(cbio, path, NULL, -1);
+    if(!ctx) {
+        debug(DBG_DBG, "ocsp_check: Could not create OCSP request");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+    if(!OCSP_REQ_CTX_add1_header(ctx, "Host", hostheader)) {
+        debug(DBG_DBG, "ocsp_check: Could not set Host header");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+    if(!OCSP_REQ_CTX_set1_req(ctx, req)) {
+        debug(DBG_DBG, "ocsp_cehck: Could not add data to OCSP request");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+
+    gettimeofday(&when, NULL);
+    // TODO: handle no timeout case
+    when.tv_sec += tlsconf->ocsp_timeout;
+    do {
+        ret = OCSP_sendreq_nbio(&resp, ctx);
+        if(tlsconf->ocsp_timeout) {
+            gettimeofday(&now, NULL);
+            if(!timercmp(&now, &when, <))
+                break;
+        }
+    } while ((ret == -1) && BIO_should_retry(cbio));
+
+    if((ret == -1) && tlsconf->ocsp_timeout && BIO_should_retry(cbio)) {
+        debug(DBG_DBG, "ocsp_check: Response timed out.");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+
+    if(ret == 0) {
+        debug(DBG_DBG, "ocsp_check: Could not get OCSP response");
+        ocsp_status = OCSP_STATUS_SKIPPED;
+        goto ocsp_end;
+    }
+
+    status = OCSP_response_status(resp);
+    if(status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
+        debug(DBG_DBG, "ocsp_check: Response status %s", OCSP_response_status_str(status));
+        goto ocsp_end;
+    }
+
+    bresp = OCSP_response_get1_basic(resp);
+    if(!bresp) {
+        debug(DBG_DBG, "ocsp_check: Error in decoding OCSP response");
+        goto ocsp_end;
+    }
+
+    if(OCSP_basic_verify(bresp, X509_STORE_CTX_get0_untrusted(store_ctx), store, 0) != 1){
+        debug(DBG_DBG, "ocsp_check: Could not verify the basic OCSP response");
+        goto ocsp_end;
+    }
+
+    if(!OCSP_resp_find_status(bresp, certid, &status, &reason, &rev, &thisupd, &nextupd)) {
+        debug(DBG_DBG, "ocsp_check: Could not find response for the corresponding request in status");
+        goto ocsp_end;
+    }
+    if(!OCSP_check_validity(thisupd, nextupd, nsec, maxage)){
+        debug(DBG_DBG, "ocsp_check: Status times are invalid.");
+        goto ocsp_end;
+    }
+    switch (status) {
+    case V_OCSP_CERTSTATUS_GOOD:
+        debug(DBG_DBG, "ocsp_check: Cert status: good");
+        ocsp_status = OCSP_STATUS_OK;
+        // todo: add to cache
+        break;
+    case V_OCSP_CERTSTATUS_REVOKED:
+        debug(DBG_DBG, "ocsp_check: Cert status: revoked");
+        if(reason == OCSP_REVOKED_STATUS_CERTIFICATEHOLD) {
+            debug(DBG_DBG, "ocsp_check: revoke reason: CERTIFICATE_HOLD. not caching.");
+            goto ocsp_end;
+        }
+        break;
+    default:
+        debug(DBG_DBG, "ocsp_check: Cert status: %s", OCSP_cert_status_str(status));
+        if(reason != -1) {
+            debug(DBG_DBG, "ocsp_check: Reason: %s", OCSP_crl_reason_str(reason));
+        }
+        goto ocsp_end;
+    }
+
+    if(tlsconf->ocsp_caching){
+        debug(DBG_DBG, "ocsp_check: Saving OCSP response in cache.");
+        // TODO: With this implementation, maybe some OCSP responses will be added multiple times.
+        //   This is currently a tradeoff between searching through the whole list and comparing every certid
+        //   and having potentially redundant data.
+        //
+        //   The cleanup process will take care of all OCSP cache entries, so this does not pose a security risk,
+        //   older OCSP cache entries will be deleted and if a newer one was inserted in between, it is still
+        //   valid to cache it.
+        //   This maybe could be circumvented by using a hash map instead of a list.
+
+        struct ocsp_cache_entry *entry = malloc(sizeof(struct ocsp_cache_entry));
+        if(!entry)
+        {
+            debug(DBG_ERR, "Could not allocate memory for caching OCSP response. Skipping cache.");
+            goto ocsp_end;
+        }
+
+        entry->crtid = OCSP_CERTID_dup(certid);
+        entry->ocsp_result = ocsp_status == OCSP_STATUS_OK;
+
+        max_cache_time = ASN1_TIME_adj(NULL, time(NULL), 0, tlsconf->ocsp_max_cache_time);
+        // Caution: If the OCSP Response did not include a nextupd, then we just cache for the given time.
+        // It indicates that the OCSP server generates the OCSP responses at the time of the request,
+        // so caching them for the given time should be a good way to go.
+        if(nextupd == NULL || ASN1_TIME_compare(nextupd, max_cache_time) != -1)
+            entry->cache_until = ASN1_STRING_dup(max_cache_time);
+        else
+            entry->cache_until = ASN1_STRING_dup(nextupd);
+        ASN1_TIME_free(max_cache_time);
+
+        debug(DBG_DBG, "ocsp_check: Pushing OCSP response in list.");
+        list_push(ocsp_caches, entry);
+    }
+
+ocsp_end:
+    OCSP_REQUEST_free(req);
+    OCSP_RESPONSE_free(resp);
+    OCSP_BASICRESP_free(bresp);
+    OCSP_REQ_CTX_free(ctx);
+    free(host);
+    free(port);
+    free(path);
+    free(hostheader);
+    BIO_free_all(cbio);
+
+    switch(ocsp_status) {
+    case OCSP_STATUS_OK:
+        debug(DBG_INFO, "ocsp_check: OCSP Response OK");
+        break;
+    case OCSP_STATUS_SKIPPED:
+        if (tlsconf->ocsp_softfail) {
+            debug(DBG_NOTICE, "ocsp_check: internal OCSP failure. Softfail active, assumig it is valid");
+            // Clearing OpenSSL Errors
+            while (ERR_get_error());
+        } else {
+            debug(DBG_NOTICE, "ocsp_check: internal OCSP failure. Softfail not active, treating as revoked.");
+            ocsp_status = OCSP_STATUS_FAILED;
+        }
+    default:
+        debug(DBG_NOTICE, "ocsp_check: OCSP-Response: Certificate has been revoked or is invalid");
+    }
+
+    return ocsp_status;
+}
+
+
 
 void sslinit(void) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000
@@ -150,8 +427,11 @@ static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
 
 static int verify_cb(int ok, X509_STORE_CTX *ctx) {
     char *buf = NULL;
-    X509 *err_cert;
+    X509 *err_cert, *issuer_cert;
     int err, depth;
+    struct tls *tlsconf;
+    SSL *ssl;
+    X509_STORE *store;
 
     err_cert = X509_STORE_CTX_get_current_cert(ctx);
     err = X509_STORE_CTX_get_error(ctx);
@@ -162,6 +442,36 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
         err = X509_V_ERR_CERT_CHAIN_TOO_LONG;
         X509_STORE_CTX_set_error(ctx, err);
     }
+
+    ssl = X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx());
+    tlsconf = (struct tls *)SSL_get_ex_data(ssl, RADSEC_TLS_EX_INDEX_TLSCONF);
+    if(tlsconf != NULL && tlsconf->ocspcheck) {
+        if(tlsconf->ocsp_check_depth && (tlsconf->ocsp_check_depth >= depth)) {
+            debug(DBG_DBG, "verify_cb: skipping OCSP Chck for certificate %i, ocsp check depth reached");
+        }
+        else {
+            issuer_cert = X509_STORE_CTX_get0_current_issuer(ctx);
+            if (issuer_cert == NULL) {
+                // Issuer is unknown. We can't verify OCSP with unknown issuer.
+                if (ok != 0) {
+                    // TODO: Better (and clearer) error message
+                    debug(DBG_WARN, "verify error: Unknown issuer, skipping OCSP Check");
+                    ok = 0;
+                }
+            } else if (issuer_cert == err_cert) {
+                // if the cert is selfsigned we don't need ocsp
+                debug(DBG_DBG, "verify_cb: Not checking OCSP, selfsigned cert");
+            } else {
+              store = (X509_STORE *)SSL_get_ex_data(ssl, RADSEC_TLS_EX_INDEX_STORE);
+              if (ocsp_check(store, ctx, issuer_cert, err_cert, tlsconf) == OCSP_STATUS_FAILED) {
+                err = X509_V_ERR_OCSP_VERIFY_FAILED;
+                X509_STORE_CTX_set_error(ctx, err);
+                ok = 0;
+              }
+            }
+        }
+    }
+
 
     if (!ok) {
         if (err_cert)
@@ -194,6 +504,8 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
         case X509_V_ERR_NO_EXPLICIT_POLICY:
             debug(DBG_WARN, "No Explicit Certificate Policy");
             break;
+        case X509_V_ERR_OCSP_VERIFY_FAILED:
+            debug(DBG_WARN, "OCSP verification failed");
         }
     }
 #ifdef DEBUG
@@ -1066,7 +1378,9 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     char *tlsversion = NULL;
     char *dtlsversion = NULL;
     char *dhfile = NULL;
+    char *clientocspstapling = NULL;
     unsigned long error;
+    struct options *options = (struct options *) arg;
 
     debug(DBG_DBG, "conftls_cb called for %s", block);
 
@@ -1077,6 +1391,10 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     }
     conf->cacheexpiry = -1;
 
+    conf->ocsp_timeout = 10;
+    conf->ocsp_caching = options->ocsp_caching;
+    conf->ocsp_max_cache_time = options->ocsp_max_cache_time;
+
     if (!getgenericconfig(cf, block,
         "CACertificateFile", CONF_STR, &conf->cacertfile,
         "CACertificatePath", CONF_STR, &conf->cacertpath,
@@ -1085,6 +1403,13 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
         "CacheExpiry", CONF_LINT, &conf->cacheexpiry,
         "CRLCheck", CONF_BLN, &conf->crlcheck,
+        "OCSPCheck", CONF_BLN, &conf->ocspcheck,
+        "OCSPSoftFail", CONF_BLN, &conf->ocsp_softfail,
+        "OCSPIgnoreMissingURL", CONF_BLN, &conf->ocsp_ignore_empty_url,
+        "OCSPTimeout", CONF_LINT, &conf->ocsp_timeout,
+        "OCSPCheckDepth", CONF_LINT, &conf->ocsp_check_depth,
+        "ClientOCSPStapling", CONF_STR, &clientocspstapling,
+        "ServerOCSPStapling", CONF_BLN, &serverocspstapling,
         "PolicyOID", CONF_MSTR, &conf->policyoids,
         "CipherList", CONF_STR, &conf->cipherlist,
         "CipherSuites", CONF_STR, &conf->ciphersuites,
@@ -1135,6 +1460,32 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     }
 #endif
 
+    if (clientocspstapling) {
+        if (strcasecmp(clientocspstapling, "Off") == 0)
+            conf->ocsp_stapling_client = RSP_OCSP_STAPLING_OFF;
+        else if (strcasecmp(clientocspstapling, "Request") == 0)
+            conf->ocsp_stapling_client = RSP_OCSP_STAPLING_SHOULD;
+        else if (strcasecmp(clientocspstapling, "Require") == 0)
+            conf->ocsp_stapling_client = RSP_OCSP_STAPLING_MUST
+        else
+            debugx(1, DBG_ERR, "config error in block %s: invalid ClientOCSPStapling value; %s", block, clientocspstapling);
+        free(clientocspstapling);
+    }
+
+    if (serverocspstapling) {
+        if (strcasecmp(serverocspstapling, "Off") == 0)
+            conf->ocsp_stapling_server = RSP_OCSP_STAPLING_OFF;
+        else if (strcasecmp(serverocspstapling, "Async") == 0)
+            conf->ocsp_stapling_server = RSP_OCSP_STAPLING_SHOULD;
+        else if (strcasecmp(serverocspstapling, "On") == 0)
+            conf->ocsp_stapling_server = RSP_OCSP_STAPLING_SHOULD;
+        else if (strcasecmp(serverocspstapling, "Blocking") == 0)
+            conf->ocsp_stapling_server = RSP_OCSP_STAPLING_MUST
+        else
+            debugx(1, DBG_ERR, "config error in block %s: invalid ServerOCSPStapling value; %s", block, serverocspstapling);
+        free(serverocspstapling);
+    }
+
     if (dhfile) {
 #if OPENSSL_VERSION_NUMBER >= 0x30000000
         BIO *bio = BIO_new_file(dhfile, "r");
@@ -1168,6 +1519,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         dhfile = NULL;
 #endif
     }
+
+    // TODO set default value for OCSP timeout
 
     conf->name = stringcopy(val, 0);
     if (!conf->name) {
