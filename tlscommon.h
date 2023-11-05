@@ -25,7 +25,7 @@ struct tls {
     char **policyoids;
     char *cipherlist;
     char *ciphersuites;
-    uint32_t cacheexpiry;
+    int cacheexpiry;
     int tlsminversion;
     int tlsmaxversion;
     int dtlsminversion;
@@ -35,8 +35,8 @@ struct tls {
 #else
     DH *dhparam;
 #endif
-    uint32_t tlsexpiry;
-    uint32_t dtlsexpiry;
+    time_t tlsexpiry;
+    time_t dtlsexpiry;
     X509_VERIFY_PARAM *vpm;
     SSL_CTX *tlsctx;
     SSL_CTX *dtlsctx;
