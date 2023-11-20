@@ -14,6 +14,8 @@
 #define ASN1_STRING_length(o) ((o)->length)
 #endif
 
+#define RSP_KEYLOG_ENV "SSLKEYLOGFILE"
+
 struct tls {
     char *name;
     char *cacertfile;

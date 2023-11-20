@@ -17,6 +17,7 @@
 #include <poll.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <ctype.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
@@ -436,6 +437,34 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
 
     return 1;
 }
+
+void keylog_cb (const SSL *ssl, const char *line) {
+    static FILE *keylog = NULL;
+    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+    static int keyloginitialized = 0;
+
+    pthread_mutex_lock(&mutex);
+    if (!keyloginitialized) {
+        mode_t oldumask = umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+        if ( !(keylog = fopen(getenv(RSP_KEYLOG_ENV), "a")) )
+            debugerrno(errno, DBG_ERR, "keylog_cb: error opening file %s", getenv(RSP_KEYLOG_ENV));
+        else
+            setlinebuf(keylog);
+        umask(oldumask);
+        keyloginitialized = 1;
+    }
+
+    if (keylog)
+        if (fputs(line, keylog) == EOF ||
+            fputc('\n', keylog) == EOF) {
+
+            debugerrno(errno, DBG_ERR, "kehlog_cb: error writing to file %s", getenv(RSP_KEYLOG_ENV));
+            fclose(keylog);
+            keylog = NULL;
+            keyloginitialized = 0;
+        }
+    pthread_mutex_unlock(&mutex);
+}
 #endif
 
 static X509_VERIFY_PARAM *createverifyparams(char **poids) {
@@ -658,6 +687,9 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     SSL_CTX_set_psk_use_session_callback(ctx, psk_use_session_cb);
     SSL_CTX_set_psk_find_session_callback(ctx, psk_find_session_cb);
     SSL_CTX_set_options(ctx, SSL_CTX_get_options(ctx) & ~SSL_OP_ALLOW_NO_DHE_KEX);
+
+    if (getenv(RSP_KEYLOG_ENV))
+        SSL_CTX_set_keylog_callback(ctx, keylog_cb);
 #endif
 
     debug(DBG_DBG, "tlscreatectx: created TLS context %s", conf->name);
