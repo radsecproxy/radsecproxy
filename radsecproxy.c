@@ -3263,6 +3263,38 @@ int daemon(int a, int b) {
 }
 #endif
 
+void revalidateconnections(void) {
+    struct list_node *entry, *client_entry, *subrealm_entry, *conf_entry;
+    struct clsrvconf *conf;
+
+    debug(DBG_DBG, "revalidateconnections: revalidating clients");
+    for (entry = list_first(clconfs); entry; entry = list_next(entry)) {
+        for (client_entry = list_first(((struct clsrvconf*)entry->data)->clients); client_entry; client_entry = list_next(client_entry)){
+            terminateinvalidclient((struct client*)client_entry->data);
+        }
+    }
+    debug(DBG_DBG, "revalidateconnections: revalidating servers");
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
+        terminateinvalidserver(((struct server*)((struct clsrvconf*)entry->data)->servers));
+    }
+    debug(DBG_DBG, "revalidateconnections: revalidating dynamic servers");
+    for (entry = list_first(realms); entry; entry = list_next(entry)) {
+        struct realm* realm = (struct realm*)entry->data;
+        for (subrealm_entry = list_first(realm->subrealms); subrealm_entry; subrealm_entry = list_next(subrealm_entry)){
+            for (conf_entry = list_first(((struct realm*)subrealm_entry->data)->srvconfs); conf_entry; conf_entry = list_next(conf_entry)){
+                conf = (struct clsrvconf*)conf_entry->data;
+                if (conf->servers && conf->servers->dynamiclookuparg)
+                    terminateinvalidserver(conf->servers);
+            }
+            for (conf_entry = list_first(((struct realm*)subrealm_entry->data)->accsrvconfs); conf_entry; conf_entry = list_next(conf_entry)){
+                conf = (struct clsrvconf*)conf_entry->data;
+                if (conf->servers && conf->servers->dynamiclookuparg)
+                    terminateinvalidserver(conf->servers);
+            }
+        }
+    }
+}
+
 void *sighandler(void *arg) {
     sigset_t sigset;
     int sig;
@@ -3278,9 +3310,10 @@ void *sighandler(void *arg) {
             break;
         case SIGHUP:
             debug(DBG_INFO, "sighandler: got SIGHUP");
-	    debug_reopen_log();
+            debug_reopen_log();
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
-	    tlsreload();
+            tlsreload();
+            revalidateconnections();
 #endif
             break;
         case SIGPIPE:

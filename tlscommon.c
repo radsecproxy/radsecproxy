@@ -1797,6 +1797,116 @@ void tlsserverrd(struct client *client) {
     debug(DBG_DBG, "tlsserverrd: reader for %s exiting", addr2string(client->addr, tmp, sizeof(tmp)));
 }
 
+/**
+ * @brief re-do certificate verification against (new) SSL_CTX
+ * Caller must ensure thread-safety!
+ *
+ * @param ssl SSL connection object to verify
+ * @param ssl_ctx SSL_CTX to verify against
+ * @return int 1 if valid, 0 if invalid, -1 otherwise (not connected, no cert etc.)
+ */
+int reverifycert(SSL *ssl, SSL_CTX *ssl_ctx) {
+    int result = -1;
+    X509* cert = NULL;
+    STACK_OF(X509) *chain = NULL;
+    X509_STORE *store = NULL;
+    X509_STORE_CTX *ctx = NULL;
+    char *buf = NULL;
+
+    if (!ssl || !ssl_ctx)
+        return result;
+    
+    if ( !(store = SSL_CTX_get_cert_store(ssl_ctx)) )
+        return result;
+
+    if (!SSL_is_init_finished(ssl) || SSL_get_shutdown(ssl) != 0) {
+        debug(DBG_DBG, "reverifycert: SSL object not (yet) connected");
+    } else if (! (cert = SSL_get0_peer_certificate(ssl)) ) {
+        debug(DBG_DBG, "reverifycert: unable to get certificate from SSL object");
+    } else if (!SSL_get0_chain_certs(ssl, &chain)) {
+        debug(DBG_DBG, "reverifycert: unable to get cert chain form SSL object");
+    } else if (! (ctx = X509_STORE_CTX_new()) ) {
+        debug(DBG_ERR, "reverifycert: failed to create X509_STORE_CTX");
+    } else if (!X509_STORE_CTX_init(ctx, store, cert, chain)) {
+        debug(DBG_ERR, "reverifycert: failed to init X509 store context");
+    } else {
+        result = X509_verify_cert(ctx);
+        buf = print_x509_name(X509_get_subject_name(X509_STORE_CTX_get_current_cert(ctx)));
+        debug(result == 0 ? DBG_NOTICE : DBG_DBG, "reverify result: num=%d:%s:depth=%d:%s", X509_STORE_CTX_get_error(ctx),
+            X509_verify_cert_error_string(X509_STORE_CTX_get_error(ctx)),
+            X509_STORE_CTX_get_error_depth(ctx), buf ? buf : "");
+    }
+
+    X509_STORE_CTX_free(ctx);
+    return result;
+}
+
+/**
+ * @brief re-validate server certificate and terminate connection if invalid
+ *
+ * @param srv server to validate
+ */
+void terminateinvalidserver(struct server *srv) {
+    if (!srv) return;
+
+    pthread_mutex_lock(&srv->lock);
+    if (!srv->ssl || !srv->conf->tlsconf) {
+        pthread_mutex_unlock(&srv->lock);
+        return;
+    }
+    pthread_mutex_lock(&srv->conf->tlsconf->lock);
+
+    switch (reverifycert(srv->ssl, tlsgetctx(srv->conf->type, srv->conf->tlsconf))) {
+        case 0:
+            debug(DBG_NOTICE, "terminateinvalidserver: certificate has become invalid, terminating connection to %s",
+                srv->conf->name);
+            SSL_shutdown(srv->ssl);
+            break;
+        case 1:
+            debug(DBG_DBG, "terminateinvalidserver: certificate still valid for %s, continue",
+                srv->conf->name);
+            break;
+        default:
+            debug(DBG_DBG, "terminateinvalidserver: unable to determin certificate for %s, ignoring",
+                srv->conf->name);
+    }
+    pthread_mutex_unlock(&srv->conf->tlsconf->lock);
+    pthread_mutex_unlock(&srv->lock);
+}
+
+/**
+ * @brief revalidate client certificate and terminate connection if invalid
+ * 
+ * @param cli client to validate
+ */
+void terminateinvalidclient(struct client *cli) {
+    char tmp[INET6_ADDRSTRLEN];
+
+    pthread_mutex_lock(&cli->lock);
+    if (!cli->ssl || !cli->conf->tlsconf) {
+        pthread_mutex_unlock(&cli->lock);
+        return;
+    }
+    pthread_mutex_lock(&cli->conf->tlsconf->lock);
+
+    switch (reverifycert(cli->ssl, tlsgetctx(cli->conf->type, cli->conf->tlsconf))) {
+        case 0:
+            debug(DBG_NOTICE, "terminateinvalidclient: certificate has become invalid, terminating connection from %s (%s)", 
+                cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
+            SSL_shutdown(cli->ssl);
+            break;
+        case 1:
+            debug(DBG_DBG, "terminateinvalidclint: certificate still valid for %s (%s), continue",
+                cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
+            break;
+        default:
+            debug(DBG_DBG, "terminateinvalidclint: unable to determin certificate for %s (%s), ignoring",
+                cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
+    }
+    pthread_mutex_unlock(&cli->conf->tlsconf->lock);
+    pthread_mutex_unlock(&cli->lock);
+}
+
 #else
 /* Just to makes file non-empty, should rather avoid compiling this file when not needed */
 typedef int make_compilers_happy;
