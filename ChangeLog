@@ -5,6 +5,9 @@ unreleased changes
 	- Reload complete TLS context on SIGHUP, reload client/server cert and key (#76)
 	- Implement SSLKEYLOGFILE mechanism
 
+	Misc:
+	- Re-verify certificates on SIGHUP and terminate invalid connections (#5)
+
 2023-05-26 1.10.0
 	New features:
 	- Native dynamic discovery for NAPTR and SRV records (#2, #83)

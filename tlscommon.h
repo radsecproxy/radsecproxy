@@ -69,6 +69,9 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
 int sslwrite(SSL *ssl, void *buf, int num, uint8_t blocking);
 int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf);
 void tlsserverrd(struct client *client);
+void terminateinvalidserver(struct server *srv);
+void terminateinvalidclient(struct client *cli);
+
 
 #endif
 
