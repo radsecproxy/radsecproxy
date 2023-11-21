@@ -12,7 +12,7 @@ AC_PROG_RANLIB
 AC_CHECK_FUNCS([mallopt])
 AC_REQUIRE_AUX_FILE([tap-driver.sh])
 
-RELEASEDATE=m4_esyscmd([date +%Y-%m-%d])
+AX_BUILD_DATE_EPOCH(RELEASEDATE, %Y-%m-%d)
 AC_SUBST(RELEASEDATE)
 
 m4_version_prereq(2.70, [], [AC_PROG_CC_C99])
