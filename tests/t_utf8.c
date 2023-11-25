@@ -107,7 +107,6 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - 3-byte char invalid 1\n", ++testcount);
     }
-    //TODO test invalid encodings E080-E09F
 
     {
         uint8_t str[] = {0xED, 0xA0, 0xBF, 0x00};
@@ -115,7 +114,6 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - 3-byte char invalid 2\n", ++testcount);
     }
-    //TODO test invalid encodings EDA0-EDBF
 
     {
         uint8_t str[] = {0xF0, 0x90, 0x80, 0x80, 0x00};
@@ -137,7 +135,6 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - 4-byte char invalid 1\n", ++testcount);
     }
-    //TODO test invalid encodings F080-F08F
 
     {
         uint8_t str[] = {0xF4, 0x90, 0x80, 0x80, 0x00};
@@ -145,7 +142,6 @@ main (int argc, char *argv[])
             printf("not ");
         printf("ok %d - 4-byte char invalid 2\n", ++testcount);
     }
-    //TODO test invalid encodings F490-FFFF
 
    {
         uint8_t str[] = {0xF7, 0xBF, 0xBF, 0xBF, 0x00};

@@ -46,8 +46,8 @@ int verifyutf8(const uint8_t *str, size_t str_len) {
 
     for(byte = str; byte < str + str_len; byte++) {
         if (*byte == 0x00) return 0;
-        if (*byte > 0xF4) return 0;
         if ((*byte & 0x80) == 0x00) continue;
+        if (*byte > 0xF4) return 0;
         if ((*byte & 0xE0) == 0xC0) {
             if ((*byte & 0xFE) == 0xC0) return 0;
             charlen = 2;
@@ -58,7 +58,7 @@ int verifyutf8(const uint8_t *str, size_t str_len) {
 
         if (byte+charlen-1 >= str+str_len) return 0;
         if (charlen == 3) {
-            if ((*byte == 0xE0) && ((*(byte+1) & 0xE0) == 0x80)) return 0;
+            if (*byte == 0xE0 && (*(byte+1) & 0xE0) == 0x80) return 0;
             if (*byte == 0xED && (*(byte+1) & 0xE0) == 0xA0) return 0;
         }
         if (charlen == 4) {
@@ -68,7 +68,6 @@ int verifyutf8(const uint8_t *str, size_t str_len) {
 
         while (--charlen)
             if ((*(++byte) & 0xC0) != 0x80) return 0;
-
     }
     return 1;
 }
