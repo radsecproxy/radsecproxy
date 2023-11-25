@@ -33,6 +33,46 @@ char *stringcopy(const char *s, int len) {
     return r;
 }
 
+/**
+ * @brief verify if str is properly utf-8 encoded
+ * 
+ * @param str string to verify
+ * @param str_len length of the string without terminating null.
+ * @return int 1 if valid utf-8, 0 otherwise
+ */
+int verifyutf8(const uint8_t *str, size_t str_len) {
+    const uint8_t *byte;
+    size_t charlen;
+
+    for(byte = str; byte < str + str_len; byte++) {
+        if (*byte == 0x00) return 0;
+        if (*byte > 0xF4) return 0;
+        if ((*byte & 0x80) == 0x00) continue;
+        if ((*byte & 0xE0) == 0xC0) {
+            if ((*byte & 0xFE) == 0xC0) return 0;
+            charlen = 2;
+        }
+        else if ((*byte & 0xF0) == 0xE0) charlen = 3;
+        else if ((*byte & 0xF8) == 0xF0) charlen = 4;
+        else return 0;
+
+        if (byte+charlen-1 >= str+str_len) return 0;
+        if (charlen == 3) {
+            if ((*byte == 0xE0) && ((*(byte+1) & 0xE0) == 0x80)) return 0;
+            if (*byte == 0xED && (*(byte+1) & 0xE0) == 0xA0) return 0;
+        }
+        if (charlen == 4) {
+            if (*byte == 0xF0 && (*(byte+1) & 0xF0) == 0x80) return 0;
+            if (*byte == 0xF4 && (*(byte+1) & 0xF0) != 0x80) return 0;
+        }
+
+        while (--charlen)
+            if ((*(++byte) & 0xC0) != 0x80) return 0;
+
+    }
+    return 1;
+}
+
 void printfchars(char *prefixfmt, char *prefix, char *charfmt, uint8_t *chars, int len) {
     int i;
     unsigned char *s = (unsigned char *)chars;

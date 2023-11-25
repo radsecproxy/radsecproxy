@@ -35,5 +35,6 @@ tests/t_resizeattr
 tests/t_verify_cert
 tests/t_radmsg
 tests/t_unhex
+tests/t_utf8
 tests/*.log
 tests/*.trs
