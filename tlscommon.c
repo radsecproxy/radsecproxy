@@ -382,6 +382,16 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
     struct list_node *node = NULL;
     const SSL_CIPHER *cipher;
 
+    if (!verifyutf8(id, idlen)) {
+        debug(DBG_DBG, "psk_find_session_cb: id is not a valid utf-8 string, mabye its a resumption attempt?");
+        *sess = NULL;
+        return 1;
+    } else if (idlen > PSK_ID_MAX_LENGTH) {
+        debug(DBG_ERR, "psk_find_session_cb: id is longer than %d bytes", PSK_ID_MAX_LENGTH);
+        *sess = NULL;
+        return 0;
+    }
+
     candidates = (struct list *) SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST);
     if (!candidates) {
         debug(DBG_DBG, "psk_find_session_cb: no candidate list found in ssl object");
