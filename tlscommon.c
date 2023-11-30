@@ -393,11 +393,8 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
     }
 
     candidates = (struct list *) SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST);
-    if (!candidates) {
+    if (!candidates)
         debug(DBG_DBG, "psk_find_session_cb: no candidate list found in ssl object");
-        *sess = NULL;
-        return 1;
-    }
     for(node = list_first(candidates); node; node = list_next(node)) {
         struct clsrvconf *candidate = (struct clsrvconf *)node->data;
         if (candidate->pskid && strcmp((const char *)id, candidate->pskid) == 0) {
@@ -406,9 +403,9 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
         }
     }
     if (!conf) {
-        debug(DBG_DBG, "psk_find_session_cb: no client with PSK id %s found", id);
+        debug(DBG_ERR, "psk_find_session_cb: no client with PSK id %s found, rejecting connection", id);
         *sess = NULL;
-        return 1;
+        return 0;
     }
 
     debug(DBG_DBG, "psk_find_session_cb: PSK id %s matches client %s, key length %d", conf->pskid, conf->name, conf->pskkeylen);
@@ -439,7 +436,7 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
     }
     debug(DBG_DBG, "psk_find_session_cb: setting session cipher %s", SSL_CIPHER_get_name(cipher));
     if (!SSL_SESSION_set_cipher(*sess, cipher)) {
-        debug(DBG_ERR, "psk_find_session_cb: failed t set session cipher");
+        debug(DBG_ERR, "psk_find_session_cb: failed to set session cipher");
         return 0;
     }
 
