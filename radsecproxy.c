@@ -2716,7 +2716,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             conf->pskid = stringcopy(conf->name,0);
             debug(DBG_DBG, "confclientcb: using client name %s as PSKidentity", conf->name);
         }
-        if (!verifyutf8((uint8_t *)conf->pskid, strlen(conf->pskid)))
+        if (!verifyutf8((unsigned char*)conf->pskid, strlen(conf->pskid)))
             debugx(1, DBG_ERR, "error in block %s, PSKidentity must be a utf-8 string", block);
         if (strlen(conf->pskid) > PSK_ID_MAX_LENGTH)
             debugx(1, DBG_ERR, "error in block %s, PSKidentity must not be more than %d bytes", block, PSK_ID_MAX_LENGTH);
@@ -2943,7 +2943,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             debug (DBG_ERR, "error in block %s, PSKidentity must be set to use PSK", block);
             goto errexit;
         }
-        if (!verifyutf8((uint8_t *)conf->pskid, strlen(conf->pskid))) {
+        if (!verifyutf8((unsigned char*)conf->pskid, strlen(conf->pskid))) {
             debug(DBG_ERR, "error in block %s, PSKidentity must be a utf-8 string", block);
             goto errexit;
         }

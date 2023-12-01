@@ -40,13 +40,16 @@ char *stringcopy(const char *s, int len) {
  * @param str_len length of the string without terminating null.
  * @return int 1 if valid utf-8, 0 otherwise
  */
-int verifyutf8(const uint8_t *str, size_t str_len) {
-    const uint8_t *byte;
+int verifyutf8(const unsigned char *str, size_t str_len) {
+    const unsigned char *byte;
     size_t charlen;
 
     for(byte = str; byte < str + str_len; byte++) {
         if (*byte == 0x00) return 0;
-        if ((*byte & 0x80) == 0x00) continue;
+        if ((*byte & 0x80) == 0x00) {
+            if (*byte < 0x20 || *byte == 0x7F) return 0;
+            continue;
+        }
         if (*byte > 0xF4) return 0;
         if ((*byte & 0xE0) == 0xC0) {
             if ((*byte & 0xFE) == 0xC0) return 0;
@@ -57,6 +60,7 @@ int verifyutf8(const uint8_t *str, size_t str_len) {
         else return 0;
 
         if (byte+charlen-1 >= str+str_len) return 0;
+        if (charlen == 2 && *byte==0xC2 && *(byte+1) < 0xA0) return 0;
         if (charlen == 3) {
             if (*byte == 0xE0 && (*(byte+1) & 0xE0) == 0x80) return 0;
             if (*byte == 0xED && (*(byte+1) & 0xE0) == 0xA0) return 0;

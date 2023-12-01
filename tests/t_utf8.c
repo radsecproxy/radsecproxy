@@ -32,6 +32,27 @@ main (int argc, char *argv[])
     }
 
     {
+        uint8_t str[] = {0x01, 0x00};
+        if (verifyutf8(str, 1) != 0)
+            printf("not ");
+        printf("ok %d - control characters first\n", ++testcount);
+    }
+
+    {
+        uint8_t str[] = {0x1F, 0x00};
+        if (verifyutf8(str, 1) != 0)
+            printf("not ");
+        printf("ok %d - control characters last\n", ++testcount);
+    }
+
+    {
+        uint8_t str[] = {0x7F, 0x00};
+        if (verifyutf8(str, 1) != 0)
+            printf("not ");
+        printf("ok %d - delete\n", ++testcount);
+    }
+
+    {
         uint8_t str[] = {'t', 0x00, 's', 't', 0x00};
         if (verifyutf8(str, 4) != 0)
             printf("not ");
@@ -67,7 +88,7 @@ main (int argc, char *argv[])
     }
 
     {
-        uint8_t str[] = {0xC2, 0x80, 0x00};
+        uint8_t str[] = {0xC2, 0xA0, 0x00};
         if (verifyutf8(str, 2) != 1)
             printf("not ");
         printf("ok %d - 2-byte char first codepoint\n", ++testcount);
@@ -85,6 +106,20 @@ main (int argc, char *argv[])
         if (verifyutf8(str, 2) != 0)
             printf("not ");
         printf("ok %d - overlong 1-byte\n", ++testcount);
+    }
+
+    {
+        uint8_t str[] = {0xC2, 0x80, 0x00};
+        if (verifyutf8(str, 2) != 0)
+            printf("not ");
+        printf("ok %d - 2-byte control first\n", ++testcount);
+    }
+
+    {
+        uint8_t str[] = {0xC2, 0x9F, 0x00};
+        if (verifyutf8(str, 2) != 0)
+            printf("not ");
+        printf("ok %d - 2-byte control last\n", ++testcount);
     }
 
     {
