@@ -4,6 +4,7 @@ unreleased 1.10.1
 	- Fix tls/dtls logging (#127, #132)
 	- Fix dynamic connection not re-established after timeout if both auth- and accounting server
 	  are dynamically resolved (#131).
+	- Fix error in dyndisc script result might cause radsecproxy to exit.
 
 2023-05-26 1.10.0
 	New features:

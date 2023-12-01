@@ -2745,8 +2745,6 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 }
 
 int compileserverconfig(struct clsrvconf *conf, const char *block) {
-
-
     /* in case conf is a (partially) shallow copy, clear some old pointer so we don't accidentially free them in case of errors */
     conf->hostports = NULL;
     conf->matchcertattrs = NULL;
@@ -2764,7 +2762,8 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
             int i;
             for (i=0; conf->confmatchcertattrs[i]; i++){
                 if (!addmatchcertattr(conf, conf->confmatchcertattrs[i])) {
-                    debugx(1, DBG_ERR, "error in block %s, invalid MatchCertificateAttributeValue", block);
+                    debug(DBG_ERR, "error in block %s, invalid MatchCertificateAttribute value", block);
+                    return 0;
                 }
             }
         }
@@ -2892,10 +2891,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 
     conf->hostaf = AF_UNSPEC;
-    if (config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf))
-        debugx(1, DBG_ERR, "config error: ^");
-    if (config_hostaf(block, ipv4only, ipv6only, &conf->hostaf))
+    if (config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf) ||
+        config_hostaf(block, ipv4only, ipv6only, &conf->hostaf)) {
+        debug(DBG_ERR, "config error: ^");
         goto errexit;
+    }
 
     if (!conf->confrewritein)
 	conf->confrewritein = rewriteinalias;
@@ -2938,8 +2938,10 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             conf->statusserver = RSP_STATSRV_MINIMAL;
         else if (strcasecmp(statusserver, "Auto") == 0)
             conf->statusserver = RSP_STATSRV_AUTO;
-        else
-            debugx(1, DBG_ERR, "config error in blocck %s: invalid StatusServer value: %s", block, statusserver);
+        else {
+            debug(DBG_ERR, "config error in blocck %s: invalid StatusServer value: %s", block, statusserver);
+            goto errexit;
+        }
         free(statusserver);
     }
 
@@ -2986,6 +2988,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 errexit:
     free(conftype);
     free(rewriteinalias);
+    free(statusserver);
     /* if conf was merged into resconf, don't free it */
     if (!confmerged)
         freeclsrvconf(conf);
