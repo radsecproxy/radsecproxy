@@ -8,6 +8,9 @@ unreleased changes
 	Misc:
 	- Re-verify certificates on SIGHUP and terminate invalid connections (#5)
 
+	Bug Fixes:
+	- Fix correct secret for DTLS (radius/dtls)
+
 2023-05-26 1.10.0
 	New features:
 	- Native dynamic discovery for NAPTR and SRV records (#2, #83)

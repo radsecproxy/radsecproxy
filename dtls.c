@@ -45,7 +45,7 @@ void initextradtls(void);
 
 static const struct protodefs protodefs = {
     "dtls",
-    "radsec", /* secretdefault */
+    "radius/dtls", /* secretdefault */
     SOCK_DGRAM, /* socktype */
     "2083", /* portdefault */
     REQUEST_RETRY_COUNT, /* retrycountdefault */
