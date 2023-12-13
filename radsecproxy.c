@@ -233,13 +233,9 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
     return new;
 }
 
-void removeclientrqs_sendrq_freeserver_lock(uint8_t wantlock) {
+pthread_mutex_t *removeclientrqs_sendrq_freeserver_lock(void) {
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-
-    if (wantlock)
-	pthread_mutex_lock(&lock);
-    else
-	pthread_mutex_unlock(&lock);
+    return &lock;
 }
 
 void removeclientrq(struct client *client, int i) {
@@ -250,7 +246,7 @@ void removeclientrq(struct client *client, int i) {
 	if (!rq)
         return;
 
-    removeclientrqs_sendrq_freeserver_lock(1);
+    pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
     if (rq->to) {
         rqout = rq->to->requests + rq->newid;
         pthread_mutex_lock(rqout->lock);
@@ -260,7 +256,7 @@ void removeclientrq(struct client *client, int i) {
     }
     client->rqs[i] = NULL;
     freerq(rq);
-    removeclientrqs_sendrq_freeserver_lock(0);
+    pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
 }
 
 void removeclientrqs(struct client *client) {
@@ -302,7 +298,7 @@ void freeserver(struct server *server, uint8_t destroymutex) {
     if (!server)
         return;
 
-    removeclientrqs_sendrq_freeserver_lock(1);
+    pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
     if (server->requests) {
         rqout = server->requests;
         for (end = rqout + MAX_REQUESTS; rqout < end; rqout++) {
@@ -321,7 +317,7 @@ void freeserver(struct server *server, uint8_t destroymutex) {
         pthread_cond_destroy(&server->newrq_cond);
         pthread_mutex_destroy(&server->newrq_mutex);
     }
-    removeclientrqs_sendrq_freeserver_lock(0);
+    pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
     free(server);
 }
 
@@ -487,7 +483,7 @@ void sendrq(struct request *rq) {
     int i, start;
     struct server *to;
 
-    removeclientrqs_sendrq_freeserver_lock(1);
+    pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
     to = rq->to;
     if (!to)
         goto errexit;
@@ -529,7 +525,7 @@ void sendrq(struct request *rq) {
     }
 
     pthread_mutex_unlock(&to->newrq_mutex);
-    removeclientrqs_sendrq_freeserver_lock(0);
+    pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
     return;
 
 errexit:
@@ -538,7 +534,7 @@ errexit:
     freerq(rq);
     if (to)
         pthread_mutex_unlock(&to->newrq_mutex);
-    removeclientrqs_sendrq_freeserver_lock(0);
+    pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
 }
 
 void sendreply(struct request *rq) {
