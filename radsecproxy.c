@@ -2943,6 +2943,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             goto errexit;
         }
         free(statusserver);
+        statusserver = NULL;
     }
 
     if (!conf->secret) {
