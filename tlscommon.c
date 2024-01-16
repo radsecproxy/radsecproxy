@@ -392,17 +392,23 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
         /* TLS_method() was introduced in OpenSSL 1.1.0. */
         ctx = SSL_CTX_new(TLS_method());
-        if (conf->tlsminversion >= 0)
-            SSL_CTX_set_min_proto_version(ctx, conf->tlsminversion);
-        if (conf->tlsmaxversion >= 0)
-            SSL_CTX_set_max_proto_version(ctx, conf->tlsmaxversion);
+        if (ctx != NULL) {
+            if (conf->tlsminversion >= 0)
+                SSL_CTX_set_min_proto_version(ctx, conf->tlsminversion);
+            if (conf->tlsmaxversion >= 0)
+                SSL_CTX_set_max_proto_version(ctx, conf->tlsmaxversion);
+        }
 #else
         /* No TLS_method(), use SSLv23_method() and disable SSLv2 and SSLv3. */
         ctx = SSL_CTX_new(SSLv23_method());
-        SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+        if (ctx != NULL) {
+            SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+        }
 #endif
 #ifdef DEBUG
-        SSL_CTX_set_info_callback(ctx, ssl_info_callback);
+        if (ctx != NULL) {
+            SSL_CTX_set_info_callback(ctx, ssl_info_callback);
+        }
 #endif
         break;
 #endif
@@ -412,18 +418,24 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
         /* DTLS_method() seems to have been introduced in OpenSSL 1.0.2. */
         ctx = SSL_CTX_new(DTLS_method());
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
-        if (conf->dtlsminversion >= 0)
-            SSL_CTX_set_min_proto_version(ctx, conf->dtlsminversion);
-        if (conf->dtlsmaxversion >= 0)
-            SSL_CTX_set_max_proto_version(ctx, conf->dtlsmaxversion);
+        if (ctx != NULL) {
+            if (conf->dtlsminversion >= 0)
+                SSL_CTX_set_min_proto_version(ctx, conf->dtlsminversion);
+            if (conf->dtlsmaxversion >= 0)
+                SSL_CTX_set_max_proto_version(ctx, conf->dtlsmaxversion);
+        }
 #endif
 #else
         ctx = SSL_CTX_new(DTLSv1_method());
 #endif
 #ifdef DEBUG
-        SSL_CTX_set_info_callback(ctx, ssl_info_callback);
+        if (ctx != NULL) {
+            SSL_CTX_set_info_callback(ctx, ssl_info_callback);
+        }
 #endif
-        SSL_CTX_set_read_ahead(ctx, 1);
+        if (ctx != NULL) {
+            SSL_CTX_set_read_ahead(ctx, 1);
+        }
         break;
 #endif
     }
