@@ -1824,7 +1824,7 @@ int reverifycert(SSL *ssl, SSL_CTX *ssl_ctx) {
     } else if (! (cert = SSL_get0_peer_certificate(ssl)) ) {
         debug(DBG_DBG, "reverifycert: unable to get certificate from SSL object");
     } else if (!SSL_get0_chain_certs(ssl, &chain)) {
-        debug(DBG_DBG, "reverifycert: unable to get cert chain form SSL object");
+        debug(DBG_DBG, "reverifycert: unable to get cert chain from SSL object");
     } else if (! (ctx = X509_STORE_CTX_new()) ) {
         debug(DBG_ERR, "reverifycert: failed to create X509_STORE_CTX");
     } else if (!X509_STORE_CTX_init(ctx, store, cert, chain)) {
@@ -1867,7 +1867,7 @@ void terminateinvalidserver(struct server *srv) {
                 srv->conf->name);
             break;
         default:
-            debug(DBG_DBG, "terminateinvalidserver: unable to determin certificate for %s, ignoring",
+            debug(DBG_DBG, "terminateinvalidserver: unable to determine certificate for %s, ignoring",
                 srv->conf->name);
     }
     pthread_mutex_unlock(&srv->conf->tlsconf->lock);
@@ -1900,7 +1900,7 @@ void terminateinvalidclient(struct client *cli) {
                 cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
             break;
         default:
-            debug(DBG_DBG, "terminateinvalidclint: unable to determin certificate for %s (%s), ignoring",
+            debug(DBG_DBG, "terminateinvalidclint: unable to determine certificate for %s (%s), ignoring",
                 cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
     }
     pthread_mutex_unlock(&cli->conf->tlsconf->lock);
