@@ -2258,15 +2258,42 @@ int dynamicconfigsrv(struct server *server, const char *srvstring) {
     struct srv_record **srv;
     char **hostports;
     char *servername;
-    int i,j, srvcount = 0, result = 0;
+    int i,j, ignore, srvcount = 0, result = 0;
 
     debug(DBG_DBG, "dynamicconfigsrv: starting SRV lookup (%s) for %s", conf->dynamiclookupcommand, srvstring);
     srv = querysrv(srvstring, 2);
-    
+
     if (!srv || !srv[0]) {
         debug(DBG_NOTICE, "dynamicconfigsrv: no SRV record for %s (%s)", server->dynamiclookuparg, srvstring);
         goto exitsrv;
     }
+
+    /* Check for ignored hosts */
+    if(conf->ignore_srv_host){
+        for (i = 0; srv[i]; i++){
+            ignore = 0;
+            for (j=0; conf->ignore_srv_host[j]; j++) {
+                if(strcmp(srv[i]->host, conf->ignore_srv_host[j]) == 0){
+                    ignore=1;
+                    break;
+                }
+            }
+
+            if(ignore){
+                free(srv[i]);
+                for(j=i; srv[j+1]; j++)
+                    srv[j] = srv[j+1];
+                srv[j] = NULL;
+                i--;
+                continue;
+            }
+        }
+        if(i == 0) {
+            debug(DBG_NOTICE, "dynamicconfigsrv: All SRV records for %s (%s) where in the ingore list", server->dynamiclookuparg, srvstring);
+            goto exitsrv;
+        }
+    }
+
 
     /* sort srv records by priority, ascending; counting the entries as a sideeffect */
     for (i = 1; srv[i]; i++) {
@@ -2410,6 +2437,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
         free(conf->rewriteusername);
     }
     free(conf->dynamiclookupcommand);
+    freegconfmstr(conf->ignore_srv_host);
     conf->rewritein=NULL;
     conf->rewriteout=NULL;
     if (conf->hostports)
@@ -2505,6 +2533,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         !mergeconfstring(&dst->confrewriteout, src ? &src->confrewriteout : NULL) ||
         !mergeconfstring(&dst->confrewriteusername, src ? &src->confrewriteusername : NULL) ||
         !mergeconfstring(&dst->dynamiclookupcommand, src ? &src->dynamiclookupcommand : NULL) ||
+        !mergeconfmstring(&dst->ignore_srv_host, src ? &src->ignore_srv_host : NULL) ||
         !mergeconfstring(&dst->fticks_viscountry, src ? &src->fticks_viscountry : NULL) ||
         !mergeconfstring(&dst->fticks_visinst, src ? &src->fticks_visinst : NULL) ||
         !mergeconfstring(&dst->sniservername, src ? &src->sniservername : NULL) ||
@@ -2824,6 +2853,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "RetryInterval", CONF_LINT, &retryinterval,
             "RetryCount", CONF_LINT, &retrycount,
             "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
+            "IgnoreSRVHost", CONF_MSTR, &conf->ignore_srv_host,
             "LoopPrevention", CONF_BLN, &conf->loopprevention,
             "BlockingStartup", CONF_BLN, &conf->blockingstartup,
             "SNI", CONF_BLN, &conf->sni,
