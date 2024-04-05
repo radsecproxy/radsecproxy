@@ -91,9 +91,9 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
 
     debug(DBG_DBG, "tcpconnect: %s to %s", reconnect ? "reconnecting" : "initial connection", server->conf->name);
     pthread_mutex_lock(&server->lock);
-
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
+    pthread_mutex_unlock(&server->lock);
 
     if(server->conf->source) {
         source = resolvepassiveaddrinfo(server->conf->source, AF_UNSPEC, NULL, protodefs.socktype);
@@ -108,7 +108,6 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
             close(server->sock);
         server->sock = -1;
 
-        pthread_mutex_unlock(&server->lock);
         wait = connect_wait(start, server->connecttime, firsttry);
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) + wait > timeout) {
@@ -119,8 +118,6 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
         if (wait) debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
         sleep(wait);
         firsttry = 0;
-
-        pthread_mutex_lock(&server->lock);
 
         for (entry = list_first(server->conf->hostports); entry; entry = list_next(entry)) {
             hp = (struct hostportres *)entry->data;
@@ -139,6 +136,7 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
             enable_keepalive(server->sock);
         break;
     }
+    pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->connecttime, NULL);
     server->lostrqs = 0;
@@ -217,17 +215,22 @@ int clientradputtcp(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
     struct clsrvconf *conf = server->conf;
 
-    if (server->state != RSP_SERVER_STATE_CONNECTED)
-        return 0;
     if (radlen <= 0) {
         debug(DBG_ERR, "clientradputtcp: invalid buffer (length)");
         return 0;
     }
+    pthread_mutex_lock(&server->lock);
+    if (server->state != RSP_SERVER_STATE_CONNECTED) {
+        pthread_mutex_unlock(&server->lock);
+        return 0;
+    }
     if ((cnt = write(server->sock, rad, radlen)) <= 0) {
         debug(DBG_ERR, "clientradputtcp: write error");
+        pthread_mutex_unlock(&server->lock);
         return 0;
     }
     debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %zu to TCP peer %s", cnt, radlen, conf->name);
+    pthread_mutex_unlock(&server->lock);
     return 1;
 }
 

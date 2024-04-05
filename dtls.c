@@ -364,10 +364,8 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
     debug(DBG_DBG, "dtlsconnect: %s to %s", reconnect ? "reconnecting" : "initial connection", server->conf->name);
     pthread_mutex_lock(&server->lock);
-
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
-
     pthread_mutex_unlock(&server->lock);
 
     if(server->conf->source) {
@@ -546,15 +544,16 @@ void *dtlsclientrd(void *arg) {
 
     debug(DBG_INFO, "dtlsclientrd: exiting for %s", server->conf->name);
     pthread_mutex_lock(&server->lock);
+    server->state = RSP_SERVER_STATE_FAILING;
     SSL_shutdown(server->ssl);
     close(server->sock);
 
     /* Wake up clientwr(). */
     server->clientrdgone = 1;
+    pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
-    pthread_mutex_unlock(&server->lock);
     return NULL;
 }
 

@@ -740,12 +740,19 @@ struct realm *id2realm(struct list *realmlist, char *id) {
 
 int hasdynamicserver(struct list *srvconfs) {
     struct list_node *entry;
+    struct server *server;
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry))
-        if (((struct clsrvconf *)entry->data)->servers &&
-            ((struct clsrvconf *)entry->data)->servers->dynamiclookuparg &&
-            ((struct clsrvconf *)entry->data)->servers->state != RSP_SERVER_STATE_FAILING)
-            return 1;
+        if (((struct clsrvconf *)entry->data)->servers) {
+            server = ((struct clsrvconf *)entry->data)->servers;
+            pthread_mutex_lock(&server->lock);
+            if (server->dynamiclookuparg &&
+                server->state != RSP_SERVER_STATE_FAILING) {
+                    pthread_mutex_unlock(&server->lock);
+                    return 1;
+                }
+            pthread_mutex_unlock(&server->lock);
+        }
     return 0;
 }
 
@@ -1184,30 +1191,48 @@ void respond(struct request *rq, uint8_t code, char *message,
 struct clsrvconf *choosesrvconf(struct list *srvconfs) {
     struct list_node *entry;
     struct clsrvconf *server, *best = NULL, *first = NULL;
+    uint8_t bestlostrqs = MAX_LOSTRQS;
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
         server = (struct clsrvconf *)entry->data;
         if (!server->servers)
             return server;
-        if (server->servers->state == RSP_SERVER_STATE_FAILING)
-            continue;
-        if (!first)
-            first = server;
-        if (server->servers->state == RSP_SERVER_STATE_STARTUP || server->servers->state == RSP_SERVER_STATE_RECONNECTING)
-            continue;
-        if (!server->servers->lostrqs)
-            return server;
-        if (!best) {
-            best = server;
+
+        pthread_mutex_lock(&server->servers->lock);
+        if (server->servers->state == RSP_SERVER_STATE_FAILING) {
+            pthread_mutex_unlock(&server->servers->lock);
             continue;
         }
-        if (server->servers->lostrqs < best->servers->lostrqs)
+        if (!first)
+            first = server;
+        if (server->servers->state == RSP_SERVER_STATE_STARTUP || server->servers->state == RSP_SERVER_STATE_RECONNECTING) {
+            pthread_mutex_unlock(&server->servers->lock);
+            continue;
+        }
+        if (!server->servers->lostrqs) {
+            pthread_mutex_unlock(&server->servers->lock);
+            return server;
+        }
+        if (!best) {
             best = server;
+            bestlostrqs = server->servers->lostrqs;
+            pthread_mutex_unlock(&server->servers->lock);
+            continue;
+        }
+        if (server->servers->lostrqs < bestlostrqs)
+            best = server;
+        pthread_mutex_unlock(&server->servers->lock);
     }
-    if (best && best->servers->lostrqs == MAX_LOSTRQS)
-        for (entry = list_first(srvconfs); entry; entry = list_next(entry))
-            if (((struct clsrvconf *)entry->data)->servers->lostrqs == MAX_LOSTRQS)
-                ((struct clsrvconf *)entry->data)->servers->lostrqs--;
+    /* if the best server has max lost requests, any other selectable server has too. To give
+     * everyone another chance for selection by reducing lost requests. */
+    if (best && bestlostrqs >= MAX_LOSTRQS)
+        for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
+            pthread_mutex_lock(&((struct clsrvconf *)entry->data)->servers->lock);
+            if (((struct clsrvconf *)entry->data)->servers->lostrqs >= MAX_LOSTRQS)
+                ((struct clsrvconf *)entry->data)->servers->lostrqs = MAX_LOSTRQS-1;
+            pthread_mutex_unlock(&((struct clsrvconf *)entry->data)->servers->lock);
+        }
+
     return best ? best : first;
 }
 
@@ -1535,7 +1560,9 @@ void replyh(struct server *server, uint8_t *buf, int len) {
     struct list_node *node;
     char tmp[INET6_ADDRSTRLEN];
 
+    pthread_mutex_lock(&server->lock);
     server->lostrqs = 0;
+    pthread_mutex_unlock(&server->lock);
 
     rqout = server->requests + buf[1];
     pthread_mutex_lock(rqout->lock);
@@ -1690,6 +1717,13 @@ exit:
     return NULL;
 }
 
+static void incementlostrqs(struct server *server){
+    pthread_mutex_lock(&server->lock);
+    if (server->lostrqs < MAX_LOSTRQS)
+        server->lostrqs++;
+    pthread_mutex_unlock(&server->lock);
+}
+
 /* code for removing state not finished */
 void *clientwr(void *arg) {
     struct server *server = (struct server *)arg;
@@ -1830,8 +1864,7 @@ void *clientwr(void *arg) {
             if (conf->statusserver == RSP_STATSRV_ON || conf->statusserver == RSP_STATSRV_MINIMAL) {
                 if (*rqout->rq->buf == RAD_Status_Server) {
                     debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->name);
-                    if (server->lostrqs < MAX_LOSTRQS)
-                        server->lostrqs++;
+                    incementlostrqs(server);
                 }
             } else {
                 if (conf->statusserver == RSP_STATSRV_AUTO && *rqout->rq->buf == RAD_Status_Server) {
@@ -1841,8 +1874,7 @@ void *clientwr(void *arg) {
                     }
                 } else {
                     debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->name);
-                    if (server->lostrqs < MAX_LOSTRQS)
-                        server->lostrqs++;
+                    incementlostrqs(server);
                 }
             }
             freerqoutdata(rqout);
@@ -1856,8 +1888,7 @@ void *clientwr(void *arg) {
 	    rqout->tries++;
 	    if (!conf->pdef->clientradput(server, rqout->rq->buf, rqout->rq->buflen)) {
             debug(DBG_WARN, "clientwr: could not send request to server %s", conf->name);
-            if (server->lostrqs < MAX_LOSTRQS)
-                server->lostrqs++;
+            incementlostrqs(server);
         }
 	    pthread_mutex_unlock(rqout->lock);
 	}
