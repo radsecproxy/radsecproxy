@@ -236,6 +236,11 @@ int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
     struct clsrvconf *conf = server->conf;
 
+    if (radlen <= 0) {
+        debug(DBG_ERR, "clientradputtls: invalid buffer (length)");
+        return 0;
+    }
+
     pthread_mutex_lock(&server->lock);
     if (server->state != RSP_SERVER_STATE_CONNECTED) {
         pthread_mutex_unlock(&server->lock);
