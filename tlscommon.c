@@ -997,8 +997,10 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 	debug(DBG_ERR, "conftls_cb: malloc failed");
 	goto errexit;
     }
-    if (!tlsgetctx(RAD_TLS, conf))
-	debug(DBG_ERR, "conftls_cb: error creating ctx for TLS block %s", val);
+    if (!tlsgetctx(RAD_TLS, conf)) {
+        debug(DBG_ERR, "conftls_cb: error creating ctx for TLS block %s", val);
+        goto errexit;
+    }
     debug(DBG_DBG, "conftls_cb: added TLS block %s", val);
     return 1;
 
