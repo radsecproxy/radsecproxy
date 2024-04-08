@@ -1549,6 +1549,50 @@ exit:
     return 1;
 }
 
+/** Called from client readers if waiting for packets times out
+ * return 0 if client should continue waiting
+ *        1 if client should close the connection and exit
+*/
+int timeouth(struct server *server) {
+    uint8_t unresponsive = 0;
+    struct timeval now;
+
+    pthread_mutex_lock(&server->lock);
+    unresponsive = server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF;
+    pthread_mutex_unlock(&server->lock);
+
+    if (unresponsive) {
+        debug (DBG_WARN, "timeouth: server %s did not respond to status server, closing connection.", server->conf->name);
+        
+        if (server->dynamiclookuparg)
+            return 1;
+        if (server->conf->pdef->connecter)
+            server->conf->pdef->connecter(server,0,1);
+        return 0;
+    } else if (server->dynamiclookuparg) {
+        gettimeofday(&now, NULL);
+        if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
+            debug(DBG_INFO, "timeouth: idle timeout for server %s (%s)", server->conf->name, server->dynamiclookuparg);
+            return 1;
+        }
+    }
+    debug (DBG_DBG, "timeouth: continue waiting");
+    return 0;
+}
+
+/** Called from client readers if connection is lost 
+ * return 0 if client should retry receiving packets
+ *        1 if client should clean up and exit
+*/
+int closeh(struct server *server) {
+    debug (DBG_WARN, "closeh: connection to server %s lost", server->conf->name);
+    if (!server->dynamiclookuparg && server->conf->pdef->connecter) {
+        server->conf->pdef->connecter(server,0,1);
+        return 0;
+    }
+    return 1;
+}
+
 /* Called from client readers, handling replies from servers. */
 void replyh(struct server *server, uint8_t *buf, int len) {
     struct client *from;

@@ -262,6 +262,8 @@ struct gqueue *newqueue(void);
 struct request *newrequest(void);
 void freerq(struct request *rq);
 int radsrv(struct request *rq);
+int timeouth(struct server *server);
+int closeh(struct server *server);
 void replyh(struct server *server, uint8_t *buf, int buflen);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);
 uint8_t *radattr2ascii(struct tlv *attr); /* TODO: mv this to radmsg? */

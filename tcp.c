@@ -237,33 +237,20 @@ int clientradputtcp(struct server *server, unsigned char *rad, int radlen) {
 void *tcpclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
-    struct timeval now;
     int len = 0;
 
     for (;;) {
         len = radtcpget(server->sock, server->conf->retryinterval * (server->conf->retrycount+1), &buf);
-        if (!buf || len <= 0) {
-            if (len < 0 || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF) ) {
-                if (len < 0)
-                    debug (DBG_WARN, "tlsclientrd: connection to server %s lost", server->conf->name);
-                else if (server->lostrqs)
-                    debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
-                if (server->dynamiclookuparg)
+        if (buf && len > 0) {
+            replyh(server, buf, len);
+            buf = NULL;
+        } else if (len == 0) {
+            if (timeouth(server))
                     break;
-                tcpconnect(server, 0, 1);
-            }
-            if (server->dynamiclookuparg) {
-                gettimeofday(&now, NULL);
-                if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
-                    debug(DBG_INFO, "tcpclientrd: idle timeout for %s", server->conf->name);
+        } else {
+            if (closeh(server))
                     break;
-                }
-            }
-            continue;
         }
-
-        replyh(server, buf, len);
-        buf = NULL;
     }
     shutdown(server->sock, SHUT_RDWR);
     close(server->sock);

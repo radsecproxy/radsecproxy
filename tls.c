@@ -260,33 +260,20 @@ int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
 void *tlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf = NULL;
-    struct timeval now;
     int len = 0;
 
     for (;;) {
         len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
-        if (!buf || !len) {
-            if (SSL_get_shutdown(server->ssl) || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF)) {
-                if (SSL_get_shutdown(server->ssl))
-                    debug (DBG_WARN, "tlsclientrd: connection to server %s lost", server->conf->name);
-                else if (server->lostrqs)
-                    debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
-                if (server->dynamiclookuparg)
-                    break;
-                tlsconnect(server, 0, 1);
-            }
-            if (server->dynamiclookuparg) {
-                gettimeofday(&now, NULL);
-                if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
-                    debug(DBG_INFO, "tlsclientrd: idle timeout for %s", server->conf->name);
-                    break;
-                }
-            }
-            continue;
+        if (buf && len > 0) {
+            replyh(server, buf, len);
+            buf = NULL;
+        } else if (SSL_get_shutdown(server->ssl)) {
+            if (closeh(server))
+                break;
+        } else {
+            if (timeouth(server))
+                break;
         }
-
-        replyh(server, buf, len);
-        buf = NULL;
     }
     debug(DBG_INFO, "tlsclientrd: exiting for %s", server->conf->name);
     pthread_mutex_lock(&server->lock);
