@@ -450,12 +450,18 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
         SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
         SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
     }
-    if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
-        !SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+    if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile)) {
+        while ((error = ERR_get_error()))
+            debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+        debug(DBG_ERR, "tlscreatectx: Error reading certificate in TLS context %s", conf->name);
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+    if (!SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
         !SSL_CTX_check_private_key(ctx)) {
         while ((error = ERR_get_error()))
             debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-        debug(DBG_ERR, "tlscreatectx: Error initialising SSL/TLS in TLS context %s", conf->name);
+        debug(DBG_ERR, "tlscreatectx: Error reading privatekey in TLS context %s", conf->name);
         SSL_CTX_free(ctx);
         return NULL;
     }
