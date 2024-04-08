@@ -838,31 +838,24 @@ char *getcertsubject(X509 *cert) {
 }
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
-static int parse_tls_version(const char* version) {
-    if (!strcasecmp("SSL3", version)) {
-        return SSL3_VERSION;
-    } else if (!strcasecmp("TLS1", version)) {
-        return TLS1_VERSION;
-    } else if (!strcasecmp("TLS1_1", version)) {
-        return TLS1_1_VERSION;
-    } else if (!strcasecmp("TLS1_2", version)) {
-        return TLS1_2_VERSION;
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
-    } else if (!strcasecmp("TLS1_3", version)) {
-        return TLS1_3_VERSION;
-#endif
-    } else if (!strcasecmp("DTLS1", version)) {
-        return DTLS1_VERSION;
-    } else if (!strcasecmp("DTLS1_2", version)) {
-        return DTLS1_2_VERSION;
-    } else if (!strcasecmp("", version)) {
-        return 0;
+static int parse_tls_version(uint8_t dtls, const char* version) {
+    if (!strcasecmp("", version)) return 0;
+    if (dtls) {
+        if (!strcasecmp("DTLS1", version)) return DTLS1_VERSION;
+        if (!strcasecmp("DTLS1_2", version)) return DTLS1_2_VERSION;
     } else {
-        return -1;
+        if (!strcasecmp("SSL3", version)) return SSL3_VERSION;
+        if (!strcasecmp("TLS1", version)) return TLS1_VERSION;
+        if (!strcasecmp("TLS1_1", version)) return TLS1_1_VERSION;
+        if (!strcasecmp("TLS1_2", version)) return TLS1_2_VERSION;
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
+        if (!strcasecmp("TLS1_3", version)) return TLS1_3_VERSION;
+#endif
     }
+    return -1;
 }
 
-static int conf_tls_version(const char *version, int *min, int *max) {
+static int conf_tls_version(uint8_t dtls, const char *version, int *min, int *max) {
     char *ver, *s, *smin, *smax;
     ver = stringcopy(version, strlen(version));
     s = strchr(ver, ':');
@@ -873,8 +866,8 @@ static int conf_tls_version(const char *version, int *min, int *max) {
         smin = ver;
         smax = s+1;
     }
-    *min = parse_tls_version(smin);
-    *max = parse_tls_version(smax);
+    *min = parse_tls_version(dtls, smin);
+    *max = parse_tls_version(dtls, smax);
     free(ver);
     return *min >=0 && *max >=0 && (*max == 0 || *min <= *max);
 }
@@ -935,7 +928,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     /* use -1 as 'not set' value */
     conf->tlsminversion = conf->tlsmaxversion = conf->dtlsminversion = conf->dtlsmaxversion = -1;
     if (tlsversion) {
-        if(!conf_tls_version(tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
+        if(!conf_tls_version(0, tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
             debug(DBG_ERR, "error in block %s, invalid TlsVersion %s", val, tlsversion);
             goto errexit;
         }
@@ -943,7 +936,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         tlsversion = NULL;
     }
     if (dtlsversion) {
-        if(!conf_tls_version(dtlsversion, &conf->dtlsminversion, &conf->dtlsmaxversion)) {
+        if(!conf_tls_version(1, dtlsversion, &conf->dtlsminversion, &conf->dtlsmaxversion)) {
             debug(DBG_ERR, "error in block %s, invalid DtlsVersion %s", val, dtlsversion);
             goto errexit;
         }
