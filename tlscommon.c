@@ -1472,7 +1472,9 @@ int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
 
     cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
     if (cnt < 1) {
+        debug(DBG_DBG, cnt ? "radtlsget: connection lost" : "radtlsget: timeout");
         free(*buf);
+        *buf = NULL;
         return 0;
     }
 

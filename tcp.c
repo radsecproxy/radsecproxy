@@ -205,6 +205,7 @@ int radtcpget(int s, int timeout, uint8_t **buf) {
     if (cnt < 1) {
         debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
         free(*buf);
+        *buf = NULL;
         return cnt;
     }
     debug(DBG_DBG, "radtcpget: got %d bytes", len);
@@ -246,10 +247,10 @@ void *tcpclientrd(void *arg) {
             buf = NULL;
         } else if (len == 0) {
             if (timeouth(server))
-                    break;
+                break;
         } else {
             if (closeh(server))
-                    break;
+                break;
         }
     }
     shutdown(server->sock, SHUT_RDWR);
