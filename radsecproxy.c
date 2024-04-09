@@ -1338,8 +1338,8 @@ int radsrv(struct request *rq) {
 	goto exit;
 
     if (msg->code == RAD_Status_Server) {
-	respond(rq, RAD_Access_Accept, NULL, 1, 0);
-	goto exit;
+      respond(rq, RAD_Access_Accept, NULL, 1, 1);
+      goto exit;
     }
 
     /* below: code == RAD_Access_Request || code == RAD_Accounting_Request */
