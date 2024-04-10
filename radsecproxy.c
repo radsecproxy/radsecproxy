@@ -1525,7 +1525,11 @@ int radsrv(struct request *rq) {
     }
 
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
-	goto rmclrqexit;
+        goto rmclrqexit;
+
+    if (msg->code == RAD_Access_Request &&
+        !dorewritesupattr(msg, maketlv(RAD_Attr_Message_Authenticator, 16, NULL)))
+        goto rmclrqexit;
 
     if (ttlres == -1 && (options.addttl || to->conf->addttl))
 	addttlattr(msg, options.ttlattrtype, to->conf->addttl ? to->conf->addttl : options.addttl);
