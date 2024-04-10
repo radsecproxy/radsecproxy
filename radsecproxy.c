@@ -879,7 +879,7 @@ void addttlattr(struct radmsg *msg, uint32_t *attrtype, uint8_t addttl) {
 
     if (attrtype[1] == 256) { /* not vendor */
 	attr = maketlv(attrtype[0], 4, ttl);
-	if (attr && !radmsg_add(msg, attr))
+	if (attr && !radmsg_add(msg, attr,0))
 	    freetlv(attr);
     } else {
 	attr = maketlv(attrtype[1], 4, ttl);
@@ -1093,7 +1093,7 @@ void respond(struct request *rq, uint8_t code, char *message,
 
     if (add_msg_auth) {
         attr = maketlv(RAD_Attr_Message_Authenticator, 16, NULL);
-        if (!attr || !radmsg_add(msg, attr)) {
+        if (!attr || !radmsg_add(msg, attr, 1)) {
             freetlv(attr);
             radmsg_free(msg);
             debug(DBG_ERR, "respond: malloc failed");
@@ -1102,7 +1102,7 @@ void respond(struct request *rq, uint8_t code, char *message,
     }
     if (message && *message) {
         attr = maketlv(RAD_Attr_Reply_Message, strlen(message), message);
-        if (!attr || !radmsg_add(msg, attr)) {
+        if (!attr || !radmsg_add(msg, attr, 0)) {
             freetlv(attr);
             radmsg_free(msg);
             debug(DBG_ERR, "respond: malloc failed");
@@ -1410,7 +1410,7 @@ int radsrv(struct request *rq) {
         if (attr == NULL) {
             debug(DBG_DBG, "%s: no CHAP-Challenge found, creating one", __func__);
             attr = maketlv(RAD_Attr_CHAP_Challenge, 16, msg->auth);
-            if (attr == NULL || radmsg_add(msg, attr) != 1) {
+            if (attr == NULL || radmsg_add(msg, attr, 0) != 1) {
                 debug(DBG_ERR, "%s: adding CHAP-Challenge failed, "
                       "CHAP-Password request dropped", __func__);
                 freetlv(attr);
@@ -1591,6 +1591,15 @@ void replyh(struct server *server, uint8_t *buf, int len) {
 	goto errunlock;
     }
 
+    if (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject) {
+        uint8_t msgauth[] = {RAD_Attr_Message_Authenticator, 0};
+        dorewriterm(msg, msgauth, NULL, 0);
+        if (!radmsg_add(msg, maketlv(RAD_Attr_Message_Authenticator, 16, NULL), 1)) {
+            debug(DBG_WARN, "replyh: failed to add message-authenticator");
+            goto errunlock;
+        }
+    }
+
     if (ttlres == -1 && (options.addttl || from->conf->addttl))
 	addttlattr(msg, options.ttlattrtype, from->conf->addttl ? from->conf->addttl : options.addttl);
 
@@ -1615,16 +1624,16 @@ struct request *createstatsrvrq(void) {
 
     rq = newrequest();
     if (!rq)
-	return NULL;
+      return NULL;
     rq->msg = radmsg_init(RAD_Status_Server, 0, NULL);
     if (!rq->msg)
-	goto exit;
+      goto exit;
     attr = maketlv(RAD_Attr_Message_Authenticator, 16, NULL);
     if (!attr)
-	goto exit;
-    if (!radmsg_add(rq->msg, attr)) {
-	freetlv(attr);
-	goto exit;
+      goto exit;
+    if (!radmsg_add(rq->msg, attr, 1)) {
+      freetlv(attr);
+      goto exit;
     }
     return rq;
 
