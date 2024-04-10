@@ -66,6 +66,23 @@ int list_push(struct list *list, void *data) {
     return 1;
 }
 
+/* insert entry at front of the list; returns 1 if ok, 0 if malloc fails */
+int list_push_front(struct list *list, void *data) {
+    struct list_node *node;
+
+    node = malloc(sizeof(struct list_node));
+    if (!node)
+        return 0;
+
+    node->data = data;
+    node->next = list->first;
+    if (!list->first)
+        list->last = node;
+    list->first = node;
+    list->count++;
+    return 1;
+}
+
 /* removes first entry from list and returns data */
 void *list_shift(struct list *list) {
     struct list_node *node;
