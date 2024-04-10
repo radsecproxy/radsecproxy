@@ -528,7 +528,7 @@ int dorewriteadd(struct radmsg *msg, struct list *addattrs) {
         a = copytlv((struct tlv *)n->data);
         if (!a)
             return 0;
-        if (!radmsg_add(msg, a)) {
+        if (!radmsg_add(msg, a, 0)) {
             freetlv(a);
             return 0;
         }
@@ -566,7 +566,7 @@ int dorewritesupattr(struct radmsg *msg, struct tlv *supattr) {
         supattr = copytlv(supattr);
         if (!supattr)
             return 0;
-        if (!radmsg_add(msg, supattr)) {
+        if (!radmsg_add(msg, supattr, 0)) {
             freetlv(supattr);
             return 0;
         }
@@ -612,7 +612,7 @@ int addvendorattr(struct radmsg *msg, uint32_t vendor, struct tlv *attr) {
         freetlv(attr);
         return 0;
     }
-    if (!radmsg_add(msg, vattr)) {
+    if (!radmsg_add(msg, vattr, 0)) {
         freetlv(vattr);
         return 0;
     }

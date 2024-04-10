@@ -68,12 +68,12 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
     return msg;
 }
 
-int radmsg_add(struct radmsg *msg, struct tlv *attr) {
+int radmsg_add(struct radmsg *msg, struct tlv *attr, uint8_t front) {
     if (!msg || !msg->attrs)
         return 1;
     if (!attr || attr->l > RAD_Max_Attr_Value_Length)
         return 0;
-    return list_push(msg->attrs, attr);
+    return front? list_push_front(msg->attrs, attr) : list_push(msg->attrs, attr);
 }
 
 /** Return a new list with all tlv's in \a msg of type \a type. The
@@ -130,7 +130,7 @@ int radmsg_copy_attrs(struct radmsg *dst,
     int n = 0;
 
     for (node = list_first(list); node; node = list_next(node)) {
-        if (radmsg_add(dst, copytlv((struct tlv *) node->data)) != 1) {
+        if (radmsg_add(dst, copytlv((struct tlv *) node->data),0) != 1) {
             n = -1;
             break;
         }
@@ -347,7 +347,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
 	}
 
         attr = maketlv(t, l, v);
-        if (!attr || !radmsg_add(msg, attr)) {
+        if (!attr || !radmsg_add(msg, attr, 0)) {
             freetlv(attr);
 	    radmsg_free(msg);
 	    return NULL;

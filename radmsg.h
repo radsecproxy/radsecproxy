@@ -73,7 +73,7 @@ struct radmsg {
 int get_checked_rad_length(uint8_t *buf);
 void radmsg_free(struct radmsg *);
 struct radmsg *radmsg_init(uint8_t, uint8_t, uint8_t *);
-int radmsg_add(struct radmsg *, struct tlv *);
+int radmsg_add(struct radmsg *, struct tlv *, uint8_t front);
 struct tlv *radmsg_gettype(struct radmsg *, uint8_t);
 struct list *radmsg_getalltype(const struct radmsg *msg, uint8_t type);
 int radmsg_copy_attrs(struct radmsg *dst,
