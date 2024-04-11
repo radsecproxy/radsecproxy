@@ -1344,6 +1344,15 @@ int radsrv(struct request *rq) {
 
     /* below: code == RAD_Access_Request || code == RAD_Accounting_Request */
 
+    if ((from->conf->reqmsgauth || from->conf->reqmsgauthproxy) && (from->conf->type == RAD_UDP || from->conf->type == RAD_TCP) &&
+        msg->code == RAD_Access_Request) {
+        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL &&
+            (from->conf->reqmsgauth || (from->conf->reqmsgauthproxy && radmsg_gettype(msg, RAD_Attr_Proxy_State) != NULL))) {
+            debug(DBG_INFO, "radsrv: ignoring request from client %s (%s), missing required message-authenticator", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+            goto exit;
+        }
+    }
+
     if (from->conf->rewritein && !dorewrite(msg, from->conf->rewritein))
 	goto rmclrqexit;
 
@@ -1500,9 +1509,16 @@ void replyh(struct server *server, uint8_t *buf, int len) {
 	goto errunlock;
     }
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge
-	&& msg->code != RAD_Accounting_Response) {
-	debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
-	goto errunlock;
+        && msg->code != RAD_Accounting_Response) {
+        debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
+        goto errunlock;
+    }
+    if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
+        (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
+        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {
+            debug(DBG_DBG, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
+            goto errunlock;
+        }
     }
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
 
@@ -2636,6 +2652,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "rewriteattribute", CONF_STR, &conf->confrewriteusername,
 	    "fticksVISCOUNTRY", CONF_STR, &conf->fticks_viscountry,
 	    "fticksVISINST", CONF_STR, &conf->fticks_visinst,
+        "requireMessageAuthenticator", CONF_BLN, &conf->reqmsgauth,
+        "requireMessageAuthenticatorProxy", CONF_BLN, &conf->reqmsgauthproxy,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
@@ -2842,6 +2860,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "SNI", CONF_BLN, &conf->sni,
             "SNIservername", CONF_STR, &conf->sniservername,
             "DTLSForceMTU", CONF_LINT, &conf->dtlsmtu,
+            "requireMessageAuthenticator", CONF_BLN, &conf->reqmsgauth,
             NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");
