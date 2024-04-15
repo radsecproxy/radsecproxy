@@ -1833,7 +1833,11 @@ int reverifycert(SSL *ssl, SSL_CTX *ssl_ctx) {
 
     if (!SSL_is_init_finished(ssl) || SSL_get_shutdown(ssl) != 0) {
         debug(DBG_DBG, "reverifycert: SSL object not (yet) connected");
-    } else if (! (cert = SSL_get0_peer_certificate(ssl)) ) {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000
+    } else if (! (cert = SSL_get1_peer_certificate(ssl)) ) {
+#else
+    } else if (! (cert = SSL_get_peer_certificate(ssl)) ) {
+#endif
         debug(DBG_DBG, "reverifycert: unable to get certificate from SSL object");
     } else if (!SSL_get0_chain_certs(ssl, &chain)) {
         debug(DBG_DBG, "reverifycert: unable to get cert chain from SSL object");
@@ -1850,6 +1854,7 @@ int reverifycert(SSL *ssl, SSL_CTX *ssl_ctx) {
     }
 
     X509_STORE_CTX_free(ctx);
+    X509_free(cert);
     return result;
 }
 
