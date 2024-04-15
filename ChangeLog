@@ -4,9 +4,11 @@ unreleased changes
 	- Long hex-strings in config
 	- Reload complete TLS context on SIGHUP, reload client/server cert and key (#76)
 	- Implement SSLKEYLOGFILE mechanism
+	- Options to require Message-Authenticator
 
 	Misc:
 	- Re-verify certificates on SIGHUP and terminate invalid connections (#5)
+	- Add Message-Authenticator to requests if missing
 
 	Bug Fixes:
 	- Fix correct secret for DTLS (radius/dtls)
