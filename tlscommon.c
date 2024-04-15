@@ -1913,11 +1913,11 @@ void terminateinvalidclient(struct client *cli) {
             SSL_shutdown(cli->ssl);
             break;
         case 1:
-            debug(DBG_DBG, "terminateinvalidclint: certificate still valid for %s (%s), continue",
+            debug(DBG_DBG, "terminateinvalidclient: certificate still valid for %s (%s), continue",
                 cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
             break;
         default:
-            debug(DBG_DBG, "terminateinvalidclint: unable to determine certificate for %s (%s), ignoring",
+            debug(DBG_DBG, "terminateinvalidclient: unable to determine certificate for %s (%s), ignoring",
                 cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
     }
     pthread_mutex_unlock(&cli->conf->tlsconf->lock);
@@ -1925,7 +1925,7 @@ void terminateinvalidclient(struct client *cli) {
 }
 
 #else
-/* Just to makes file non-empty, should rather avoid compiling this file when not needed */
+/* Just to make the file non-empty, should rather avoid compiling this file when not needed */
 typedef int make_compilers_happy;
 #endif
 
