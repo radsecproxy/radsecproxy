@@ -533,7 +533,27 @@ used as the identity.
 When using TLS-PSK, all clients are identified by thier PSK identity, however it
 is highly recommended to limit the allowed source address(es) using the
 \fBHost \fIaddress\fR option.
+.RE
 
+.BR "RequireMessageAuthenticator (" on | off )
+.RS
+Require all Access-Requests be signed with a Message-Authenticator.
+.br
+This should be enabled if the client is a proxy, or a NAS known to use Message-Authenticator
+(e.g. all EAP based NAS like Wifi).
+.br
+This setting is ignored when using TLS/DTLS transport.
+.RE
+
+.BR "RequireMessageAuthenticatorProxy (" on | off)
+.RS
+Require all Access-Requests containing a Proxy-State attribute to be signed with a Message-Authenticaor.
+.br
+This should always be enabled if the client is a NAS.
+.br
+This setting is ignored when using TLS/DLTS transport or when \fB RequireMessageAuthenticator\fR is
+enabled.
+.RE
 
 .SH "SERVER BLOCK"
 .nf
@@ -714,6 +734,14 @@ The meaning of these options are very similar as for the client block, with mino
 of the referenced \fBtls\fR block is used.
 .RE
 
+.BR "RequireMessageAuthenticator (" on | off )
+.RS
+Require all responses to Access-Requests be signed with a Message-Authenticator.
+.br
+This should always be be enabled unless the server is known to only support legacy RADIUS/UDP behavior.
+.br
+This setting is ignored when using TLS/DTLS transport.
+.RE
 
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
