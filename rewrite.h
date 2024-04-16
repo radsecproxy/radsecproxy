@@ -32,9 +32,8 @@ struct modattr *extractmodattr(char *nameval);
 struct rewrite *getrewrite(char *alt1, char *alt2);
 
 int dorewritemodattr(struct tlv *attr, struct modattr *modattr);
-int dorewritesupattr(struct radmsg *msg, struct tlv *attr);
-int addvendorattr(struct radmsg *msg, uint32_t vendor, struct tlv *attr);
 void dorewriterm(struct radmsg *msg, uint8_t *rmattrs, uint32_t *rmvattrs, int inverted);
+int addvendorattr(struct radmsg *msg, uint32_t vendor, struct tlv *attr);
 
 #endif /*_REWRITE_H*/
 

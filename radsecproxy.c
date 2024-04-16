@@ -1300,6 +1300,23 @@ static void log_accounting_resp(struct client *from, struct radmsg *msg, char *u
     free(calling_station_id);
 }
 
+/**
+ * @brief ensure msg contains a message-authenticator as the first attrbute
+ * 
+ * @param msg 
+ * @return 1 if ok, 0 if failed (i.e. memory allocation error)
+ */
+static int ensuremsgauthfront(struct radmsg *msg) {
+    static uint8_t msgauth[] = {RAD_Attr_Message_Authenticator, 0};
+
+    dorewriterm(msg, msgauth, NULL, 0);
+    if (!radmsg_add(msg, maketlv(RAD_Attr_Message_Authenticator, 16, NULL), 1)) {
+        debug(DBG_WARN, "ensuremsgauthfront: failed to add message-authenticator");
+        return 0;
+    }
+    return 1;
+}
+
 /* Called from server readers, handling incoming requests from
  * clients. */
 /* returns 0 if validation/authentication fails, else 1 */
@@ -1451,7 +1468,7 @@ int radsrv(struct request *rq) {
         goto rmclrqexit;
 
     if (msg->code == RAD_Access_Request &&
-        !dorewritesupattr(msg, maketlv(RAD_Attr_Message_Authenticator, 16, NULL)))
+        !ensuremsgauthfront(msg))
         goto rmclrqexit;
 
     if (ttlres == -1 && (options.addttl || to->conf->addttl))
@@ -1607,14 +1624,9 @@ void replyh(struct server *server, uint8_t *buf, int len) {
 	goto errunlock;
     }
 
-    if (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject) {
-        uint8_t msgauth[] = {RAD_Attr_Message_Authenticator, 0};
-        dorewriterm(msg, msgauth, NULL, 0);
-        if (!radmsg_add(msg, maketlv(RAD_Attr_Message_Authenticator, 16, NULL), 1)) {
-            debug(DBG_WARN, "replyh: failed to add message-authenticator");
-            goto errunlock;
-        }
-    }
+    if ((msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject) &&
+        !ensuremsgauthfront(msg))
+        goto errunlock;
 
     if (ttlres == -1 && (options.addttl || from->conf->addttl))
 	addttlattr(msg, options.ttlattrtype, from->conf->addttl ? from->conf->addttl : options.addttl);
