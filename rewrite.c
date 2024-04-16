@@ -528,7 +528,7 @@ int dorewriteadd(struct radmsg *msg, struct list *addattrs) {
         a = copytlv((struct tlv *)n->data);
         if (!a)
             return 0;
-        if (!radmsg_add(msg, a)) {
+        if (!radmsg_add(msg, a, 0)) {
             freetlv(a);
             return 0;
         }
@@ -536,44 +536,49 @@ int dorewriteadd(struct radmsg *msg, struct list *addattrs) {
     return 1;
 }
 
-int dorewritesup(struct radmsg *msg, struct list *supattrs) {
-    struct list_node *n, *p;
-    struct tlv *attr, *supattr;
-    uint8_t exist, *vendortype, *v;;
+int dorewritesupattr(struct radmsg *msg, struct tlv *supattr) {
+    struct list_node *p;
+    struct tlv *attr;
+    uint8_t exist = 0, *vendortype, *v;
 
+    for(p = list_first(msg->attrs); p; p = list_next(p)) {
+        attr = (struct tlv *)p->data;
+        if (attr->t == supattr->t && attr->t != RAD_Attr_Vendor_Specific) {
+            exist = 1;
+            break;
+        } else if (supattr->t == RAD_Attr_Vendor_Specific && attr->t == RAD_Attr_Vendor_Specific &&
+                    memcmp (supattr->v, attr->v, 4)==0) {
+            if (!attrvalidate(attr->v+4, attr->l-4)) {
+                debug(DBG_INFO, "dorewritesup: vendor attribute validation failed, no rewrite");
+                return 0;
+            }
+            vendortype = (uint8_t *)supattr->v+4;
+            for (v=attr->v+4; v < attr->v + attr->l; v += *(v+1)){
+                if (*v == *vendortype) {
+                    exist = 1;
+                    break;
+                }
+            }
+            if (exist) break;
+        }
+    }
+    if (!exist) {
+        supattr = copytlv(supattr);
+        if (!supattr)
+            return 0;
+        if (!radmsg_add(msg, supattr, 0)) {
+            freetlv(supattr);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int dorewritesup(struct radmsg *msg, struct list *supattrs) {
+    struct list_node *n;
     for (n = list_first(supattrs); n; n = list_next(n)) {
-        supattr = (struct tlv *)n->data;
-        exist = 0;
-        for(p = list_first(msg->attrs); p; p = list_next(p)) {
-            attr = (struct tlv *)p->data;
-            if (attr->t == supattr->t && attr->t != RAD_Attr_Vendor_Specific) {
-                exist = 1;
-                break;
-            } else if (supattr->t == RAD_Attr_Vendor_Specific && attr->t == RAD_Attr_Vendor_Specific &&
-                        memcmp (supattr->v, attr->v, 4)==0) {
-                if (!attrvalidate(attr->v+4, attr->l-4)) {
-                    debug(DBG_INFO, "dorewritesup: vendor attribute validation failed, no rewrite");
-                    return 0;
-                }
-                vendortype = (uint8_t *)supattr->v+4;
-                for (v=attr->v+4; v < attr->v + attr->l; v += *(v+1)){
-                    if (*v == *vendortype) {
-                        exist = 1;
-                        break;
-                    }
-                }
-                if (exist) break;
-            }
-        }
-        if (!exist) {
-            supattr = copytlv(supattr);
-            if (!supattr)
-                return 0;
-            if (!radmsg_add(msg, supattr)) {
-                freetlv(supattr);
-                return 0;
-            }
-        }
+        if (!dorewritesupattr(msg, (struct tlv *)n->data))
+            return 0;
     }
     return 1;
 }
@@ -607,7 +612,7 @@ int addvendorattr(struct radmsg *msg, uint32_t vendor, struct tlv *attr) {
         freetlv(attr);
         return 0;
     }
-    if (!radmsg_add(msg, vattr)) {
+    if (!radmsg_add(msg, vattr, 0)) {
         freetlv(vattr);
         return 0;
     }

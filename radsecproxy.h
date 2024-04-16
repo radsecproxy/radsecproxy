@@ -181,6 +181,8 @@ struct clsrvconf {
     uint8_t sni;
     char *sniservername;
     long dtlsmtu;
+    uint8_t reqmsgauth;
+    uint8_t reqmsgauthproxy;
 };
 
 #include "tlscommon.h"

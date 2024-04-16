@@ -32,6 +32,9 @@ void list_free(struct list *list);
 /* appends entry to list; returns 1 if ok, 0 if malloc fails */
 int list_push(struct list *list, void *data);
 
+/* insert entry at front of the list; returns 1 if ok, 0 if malloc fails */
+int list_push_front(struct list *list, void *data);
+
 /* removes first entry from list and returns data */
 void *list_shift(struct list *list);
 

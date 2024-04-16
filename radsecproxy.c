@@ -879,7 +879,7 @@ void addttlattr(struct radmsg *msg, uint32_t *attrtype, uint8_t addttl) {
 
     if (attrtype[1] == 256) { /* not vendor */
 	attr = maketlv(attrtype[0], 4, ttl);
-	if (attr && !radmsg_add(msg, attr))
+	if (attr && !radmsg_add(msg, attr,0))
 	    freetlv(attr);
     } else {
 	attr = maketlv(attrtype[1], 4, ttl);
@@ -1093,7 +1093,7 @@ void respond(struct request *rq, uint8_t code, char *message,
 
     if (add_msg_auth) {
         attr = maketlv(RAD_Attr_Message_Authenticator, 16, NULL);
-        if (!attr || !radmsg_add(msg, attr)) {
+        if (!attr || !radmsg_add(msg, attr, 1)) {
             freetlv(attr);
             radmsg_free(msg);
             debug(DBG_ERR, "respond: malloc failed");
@@ -1102,7 +1102,7 @@ void respond(struct request *rq, uint8_t code, char *message,
     }
     if (message && *message) {
         attr = maketlv(RAD_Attr_Reply_Message, strlen(message), message);
-        if (!attr || !radmsg_add(msg, attr)) {
+        if (!attr || !radmsg_add(msg, attr, 0)) {
             freetlv(attr);
             radmsg_free(msg);
             debug(DBG_ERR, "respond: malloc failed");
@@ -1300,6 +1300,23 @@ static void log_accounting_resp(struct client *from, struct radmsg *msg, char *u
     free(calling_station_id);
 }
 
+/**
+ * @brief ensure msg contains a message-authenticator as the first attrbute
+ * 
+ * @param msg 
+ * @return 1 if ok, 0 if failed (i.e. memory allocation error)
+ */
+static int ensuremsgauthfront(struct radmsg *msg) {
+    static uint8_t msgauth[] = {RAD_Attr_Message_Authenticator, 0};
+
+    dorewriterm(msg, msgauth, NULL, 0);
+    if (!radmsg_add(msg, maketlv(RAD_Attr_Message_Authenticator, 16, NULL), 1)) {
+        debug(DBG_WARN, "ensuremsgauthfront: failed to add message-authenticator");
+        return 0;
+    }
+    return 1;
+}
+
 /* Called from server readers, handling incoming requests from
  * clients. */
 /* returns 0 if validation/authentication fails, else 1 */
@@ -1338,11 +1355,20 @@ int radsrv(struct request *rq) {
 	goto exit;
 
     if (msg->code == RAD_Status_Server) {
-	respond(rq, RAD_Access_Accept, NULL, 1, 0);
-	goto exit;
+      respond(rq, RAD_Access_Accept, NULL, 1, 1);
+      goto exit;
     }
 
     /* below: code == RAD_Access_Request || code == RAD_Accounting_Request */
+
+    if ((from->conf->reqmsgauth || from->conf->reqmsgauthproxy) && (from->conf->type == RAD_UDP || from->conf->type == RAD_TCP) &&
+        msg->code == RAD_Access_Request) {
+        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL &&
+            (from->conf->reqmsgauth || (from->conf->reqmsgauthproxy && radmsg_gettype(msg, RAD_Attr_Proxy_State) != NULL))) {
+            debug(DBG_INFO, "radsrv: ignoring request from client %s (%s), missing required message-authenticator", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+            goto exit;
+        }
+    }
 
     if (from->conf->rewritein && !dorewrite(msg, from->conf->rewritein))
 	goto rmclrqexit;
@@ -1410,7 +1436,7 @@ int radsrv(struct request *rq) {
         if (attr == NULL) {
             debug(DBG_DBG, "%s: no CHAP-Challenge found, creating one", __func__);
             attr = maketlv(RAD_Attr_CHAP_Challenge, 16, msg->auth);
-            if (attr == NULL || radmsg_add(msg, attr) != 1) {
+            if (attr == NULL || radmsg_add(msg, attr, 0) != 1) {
                 debug(DBG_ERR, "%s: adding CHAP-Challenge failed, "
                       "CHAP-Password request dropped", __func__);
                 freetlv(attr);
@@ -1439,7 +1465,11 @@ int radsrv(struct request *rq) {
     }
 
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
-	goto rmclrqexit;
+        goto rmclrqexit;
+
+    if (msg->code == RAD_Access_Request &&
+        !ensuremsgauthfront(msg))
+        goto rmclrqexit;
 
     if (ttlres == -1 && (options.addttl || to->conf->addttl))
 	addttlattr(msg, options.ttlattrtype, to->conf->addttl ? to->conf->addttl : options.addttl);
@@ -1496,9 +1526,16 @@ void replyh(struct server *server, uint8_t *buf, int len) {
 	goto errunlock;
     }
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge
-	&& msg->code != RAD_Accounting_Response) {
-	debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
-	goto errunlock;
+        && msg->code != RAD_Accounting_Response) {
+        debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
+        goto errunlock;
+    }
+    if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
+        (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
+        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {
+            debug(DBG_DBG, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
+            goto errunlock;
+        }
     }
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
 
@@ -1587,6 +1624,10 @@ void replyh(struct server *server, uint8_t *buf, int len) {
 	goto errunlock;
     }
 
+    if ((msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject) &&
+        !ensuremsgauthfront(msg))
+        goto errunlock;
+
     if (ttlres == -1 && (options.addttl || from->conf->addttl))
 	addttlattr(msg, options.ttlattrtype, from->conf->addttl ? from->conf->addttl : options.addttl);
 
@@ -1611,16 +1652,16 @@ struct request *createstatsrvrq(void) {
 
     rq = newrequest();
     if (!rq)
-	return NULL;
+      return NULL;
     rq->msg = radmsg_init(RAD_Status_Server, 0, NULL);
     if (!rq->msg)
-	goto exit;
+      goto exit;
     attr = maketlv(RAD_Attr_Message_Authenticator, 16, NULL);
     if (!attr)
-	goto exit;
-    if (!radmsg_add(rq->msg, attr)) {
-	freetlv(attr);
-	goto exit;
+      goto exit;
+    if (!radmsg_add(rq->msg, attr, 1)) {
+      freetlv(attr);
+      goto exit;
     }
     return rq;
 
@@ -2623,6 +2664,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 	    "rewriteattribute", CONF_STR, &conf->confrewriteusername,
 	    "fticksVISCOUNTRY", CONF_STR, &conf->fticks_viscountry,
 	    "fticksVISINST", CONF_STR, &conf->fticks_visinst,
+        "requireMessageAuthenticator", CONF_BLN, &conf->reqmsgauth,
+        "requireMessageAuthenticatorProxy", CONF_BLN, &conf->reqmsgauthproxy,
 	    NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
@@ -2829,6 +2872,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "SNI", CONF_BLN, &conf->sni,
             "SNIservername", CONF_STR, &conf->sniservername,
             "DTLSForceMTU", CONF_LINT, &conf->dtlsmtu,
+            "requireMessageAuthenticator", CONF_BLN, &conf->reqmsgauth,
             NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");
