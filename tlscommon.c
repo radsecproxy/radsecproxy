@@ -505,7 +505,9 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
             return NULL;
         }
     }
+    SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
 #if OPENSSL_VERSION_NUMBER >= 0x10101000
+/* TLS 1.3 stuff */
     if (conf->ciphersuites) {
         if (!SSL_CTX_set_ciphersuites(ctx, conf->ciphersuites)) {
             debug(DBG_ERR, "tlscreatectx: Failed to set ciphersuites in TLS context %s", conf->name);
@@ -513,6 +515,8 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
             return NULL;
         }
     }
+    if (!SSL_CTX_set_num_tickets(ctx, 0))
+        debug(DBG_ERR, "tlscreatectx: Failed to set num tickets in TLS context %s", conf->name);
 #endif
 
     if (conf->dhparam) {
