@@ -610,8 +610,11 @@ status-server. If so, status-server messages are enabled in \fBminimal\fR mode.
 
 .BI "RetryCount " count
 .RS
-Set how many times the proxy should retry sending a request to the server. Default is 2 retries.
-Please note that Radius retries are normally done by the NAS.
+Set how many times the proxy should retry sending a request to the server. Default is 2 retries for
+UDP and DTLS. For TCP and TLS it is always 0.
+.br
+Retries from radius clients are ignored and radsecproxy performs its own retry handling 
+since the requiremets differ when switching transport protocols.
 .RE
 
 .BI "RetryInterfval " interval
