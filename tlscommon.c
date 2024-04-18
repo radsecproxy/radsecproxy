@@ -382,12 +382,19 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
     struct list_node *node = NULL;
     const SSL_CIPHER *cipher;
 
-    candidates = (struct list *) SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST);
-    if (!candidates) {
-        debug(DBG_DBG, "psk_find_session_cb: no candidate list found in ssl object");
+    if (!verifyutf8(id, idlen)) {
+        debug(DBG_DBG, "psk_find_session_cb: id is not a valid utf-8 string, assuming session resumption");
         *sess = NULL;
         return 1;
+    } else if (idlen > PSK_ID_MAX_LENGTH) {
+        debug(DBG_ERR, "psk_find_session_cb: id is longer than %d bytes", PSK_ID_MAX_LENGTH);
+        *sess = NULL;
+        return 0;
     }
+
+    candidates = (struct list *) SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST);
+    if (!candidates)
+        debug(DBG_DBG, "psk_find_session_cb: no candidate list found in ssl object");
     for(node = list_first(candidates); node; node = list_next(node)) {
         struct clsrvconf *candidate = (struct clsrvconf *)node->data;
         if (candidate->pskid && strcmp((const char *)id, candidate->pskid) == 0) {
@@ -396,9 +403,9 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
         }
     }
     if (!conf) {
-        debug(DBG_DBG, "psk_find_session_cb: no client with PSK id %s found", id);
+        debug(DBG_ERR, "psk_find_session_cb: no client with PSK id %s found, rejecting connection", id);
         *sess = NULL;
-        return 1;
+        return 0;
     }
 
     debug(DBG_DBG, "psk_find_session_cb: PSK id %s matches client %s, key length %d", conf->pskid, conf->name, conf->pskkeylen);
@@ -429,7 +436,7 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
     }
     debug(DBG_DBG, "psk_find_session_cb: setting session cipher %s", SSL_CIPHER_get_name(cipher));
     if (!SSL_SESSION_set_cipher(*sess, cipher)) {
-        debug(DBG_ERR, "psk_find_session_cb: failed t set session cipher");
+        debug(DBG_ERR, "psk_find_session_cb: failed to set session cipher");
         return 0;
     }
 

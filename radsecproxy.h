@@ -30,6 +30,8 @@
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
 #define PSK_MIN_LENGTH 16
+/* Older OpenSSL API had a 256 byte limit; keep this limit to maximize compatibility*/
+#define PSK_ID_MAX_LENGTH 256
 
 /* Target value for stack size.
  * Some platforms might define higher minimums in PTHREAD_STACK_MIN. */
