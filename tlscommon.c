@@ -383,7 +383,7 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
     const SSL_CIPHER *cipher;
 
     if (!verifyutf8(id, idlen)) {
-        debug(DBG_DBG, "psk_find_session_cb: id is not a valid utf-8 string, mabye its a resumption attempt?");
+        debug(DBG_DBG, "psk_find_session_cb: id is not a valid utf-8 string, assuming session resumption");
         *sess = NULL;
         return 1;
     } else if (idlen > PSK_ID_MAX_LENGTH) {
