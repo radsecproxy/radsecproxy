@@ -2790,14 +2790,23 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 
     if (!conf->confrewritein)
-	conf->confrewritein = rewriteinalias;
+        conf->confrewritein = rewriteinalias;
     else
-	free(rewriteinalias);
-    conf->rewritein = conf->confrewritein
-        ? getrewrite(conf->confrewritein, NULL)
-        : getrewrite("defaultClient", "default");
-    if (conf->confrewriteout)
-	conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
+        free(rewriteinalias);
+    
+    if (conf->confrewritein) {
+        conf->rewritein = getrewrite(conf->confrewritein, NULL);
+        if (!conf->rewritein)
+            debugx(1, DBG_ERR, "error in block %s, rewrite block %s not defined", block, conf->confrewritein);
+    }
+    if (!conf->rewritein)
+        conf->rewritein = getrewrite("defaultClient", "default");
+    
+    if (conf->confrewriteout) {
+        conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
+        if (!conf->rewriteout)
+            debugx(1, DBG_ERR, "error in block %s, rewrite block %s not defined", block, conf->confrewriteout);
+    }
 
     if (conf->confrewriteusername) {
 	conf->rewriteusername = extractmodattr(conf->confrewriteusername);
@@ -2879,10 +2888,23 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     if (conf->retrycount == 255)
         conf->retrycount = conf->pdef->retrycountdefault;
 
-    conf->rewritein = conf->confrewritein ? getrewrite(conf->confrewritein, NULL)
-                                          : getrewrite("defaultServer", "default");
-    if (conf->confrewriteout)
+    if (conf->confrewritein) {
+        conf->rewritein = getrewrite(conf->confrewritein, NULL);
+        if (!conf->rewritein) {
+            debug(DBG_ERR, "error in block %s, rewrite block %s not defined", block, conf->rewritein);
+            return 0;
+        }
+    }
+    if (!conf->rewritein)
+        conf->rewritein = getrewrite("defaultServer", "default");
+
+    if (conf->confrewriteout) {
         conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
+        if (!conf->rewriteout) {
+            debug(DBG_ERR, "error in block %s, rewrite block %s not defined", block, conf->rewriteout);
+            return 0;
+        }
+    }
 
     if (!addhostport(&conf->hostports, conf->hostsrc, conf->portsrc, 0)) {
         debug(DBG_ERR, "error in block %s, failed to parse %s", block, *conf->hostsrc);
