@@ -188,7 +188,7 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
         }
     }
 #ifdef DEBUG
-    printf("certificate verify returns %d\n", ok);
+    printf("certificate verify returns %d", ok);
 #endif
     return ok;
 }
@@ -296,16 +296,16 @@ static void ssl_info_callback(const SSL *ssl, int where, int ret) {
 	s = "undefined";
 
     if (where & SSL_CB_LOOP)
-	debug(DBG_DBG, "%s:%s\n", s, SSL_state_string_long(ssl));
+        debug(DBG_DBG, "%s:%s", s, SSL_state_string_long(ssl));
     else if (where & SSL_CB_ALERT) {
-	s = (where & SSL_CB_READ) ? "read" : "write";
-	debug(DBG_DBG, "SSL3 alert %s:%s:%s\n", s, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
+        s = (where & SSL_CB_READ) ? "read" : "write";
+        debug(DBG_DBG, "SSL3 alert %s:%s:%s", s, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
     }
     else if (where & SSL_CB_EXIT) {
-	if (ret == 0)
-	    debug(DBG_DBG, "%s:failed in %s\n", s, SSL_state_string_long(ssl));
-	else if (ret < 0)
-	    debug(DBG_DBG, "%s:error in %s\n", s, SSL_state_string_long(ssl));
+        if (ret == 0)
+            debug(DBG_DBG, "%s:failed in %s", s, SSL_state_string_long(ssl));
+        else if (ret < 0)
+            debug(DBG_DBG, "%s:error in %s", s, SSL_state_string_long(ssl));
     }
 }
 #endif
