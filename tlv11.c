@@ -41,8 +41,11 @@ struct tlv *copytlv(struct tlv *in) {
 
 void freetlv(struct tlv *tlv) {
     if (tlv) {
-	free(tlv->v);
-	free(tlv);
+        if (tlv->v){
+            memset(tlv->v, 0, tlv->l);
+            free(tlv->v);
+        }
+        free(tlv);
     }
 }
 

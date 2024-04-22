@@ -431,10 +431,14 @@ void freerq(struct request *rq) {
     pthread_mutex_unlock(&rq->refmutex);
     if (rq->origusername)
 	free(rq->origusername);
-    if (rq->buf)
-	free(rq->buf);
-    if (rq->replybuf)
-	free(rq->replybuf);
+    if (rq->buf) {
+        memset(rq->buf, 0, rq->buflen);
+        free(rq->buf);
+    }
+    if (rq->replybuf) {
+        memset(rq->replybuf, 0, rq->replybuflen);
+        free(rq->replybuf);
+    }
     if (rq->msg)
 	radmsg_free(rq->msg);
     pthread_mutex_destroy(&rq->refmutex);
@@ -1331,6 +1335,7 @@ int radsrv(struct request *rq) {
     char tmp[INET6_ADDRSTRLEN];
 
     msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
+    memset(rq->buf, 0,rq->buflen);
     free(rq->buf);
     rq->buf = NULL;
 
@@ -1509,16 +1514,18 @@ void replyh(struct server *server, uint8_t *buf, int len) {
     rqout = server->requests + buf[1];
     pthread_mutex_lock(rqout->lock);
     if (!rqout->tries) {
-	free(buf);
-	buf = NULL;
-	debug(DBG_INFO, "replyh: no outstanding request with this id, ignoring reply");
-	goto errunlock;
+        memset(buf, 0, len);
+        free(buf);
+        buf = NULL;
+        debug(DBG_INFO, "replyh: no outstanding request with this id, ignoring reply");
+        goto errunlock;
     }
 
     msg = buf2radmsg(buf, len, server->conf->secret, server->conf->secret_len, rqout->rq->msg->auth);
 #ifdef DEBUG
     printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
 #endif
+    memset(buf, 0, len);
     free(buf);
     buf = NULL;
     if (!msg) {
