@@ -30,6 +30,7 @@
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
 #define PSK_MIN_LENGTH 16
+#define RSP_SECRET_LEN_WARN 10
 /* Older OpenSSL API had a 256 byte limit; keep this limit to maximize compatibility*/
 #define PSK_ID_MAX_LENGTH 256
 
@@ -46,6 +47,7 @@
 /* 27262 is vendor DANTE Ltd. */
 #define DEFAULT_TTL_ATTR "27262:1"
 #define DEFAULT_FTICKS_PREFIX "F-TICKS/eduroam/1.0"
+
 
 #define RAD_UDP 0
 #define RAD_TLS 1

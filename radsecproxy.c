@@ -2738,6 +2738,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             debugx(1, DBG_ERR, "malloc failed");
     }
     conf->secret_len = unhex((char *)conf->secret, 1);
+    if ((conf->type == RAD_UDP || conf->type == RAD_TCP) && conf->secret_len <= RSP_SECRET_LEN_WARN)
+        debug(DBG_WARN, "warning! shared secret should be at least %d characters long! (block %s)", RSP_SECRET_LEN_WARN, block);
 
     if (conf->tlsconf) {
         for (entry = list_first(clconfs); entry; entry = list_next(entry)) {
@@ -2978,6 +2980,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
     if (conf->secret)
         conf->secret_len = unhex((char *)conf->secret,1);
+    if ((conf->type == RAD_UDP || conf->type == RAD_TCP) && conf->secret_len <= RSP_SECRET_LEN_WARN)
+        debug(DBG_WARN, "warning! shared secret should be at least %d characters long! (block %s)", RSP_SECRET_LEN_WARN, block);
 
     if (conf->pskkey){
         conf->pskkeylen = unhex((char *)conf->pskkey, 1);
