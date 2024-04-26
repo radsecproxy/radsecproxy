@@ -457,6 +457,32 @@ of CN and SubjectAltName types URI, DNS, IP, rID, and otherName is supported. If
 multiple times, all terms must match for the certificate to be considered valid.
 .RE
 
+.BI "PSKkey " key
+.RS
+For TLS, use TLS-PSK (pre shared key) instead of certificate based authentication.
+If specified, \fBPSKidentity\fR must also be provided.
+The \fIkey\fR must be at least 16 bytes long. To provide the \fIkey\fR in hex, use 
+the %% escaping (see CONFIGURATION SYNTAX).
+
+In addition to the psk, peers must also agree on the key derivation hash function.
+For this, the server simply uses the hash funciton of the negotiated cipher as this
+negotiation must yield a compatible cipher anyway.
+To ensure unambiguous cipher and hash selection, only use ciphers with the same
+hash function in the \fBCipherSuites\fR of the \fBtls\fR block. If no \fBtls\fR 
+block is specified, a default config with SHA256 is used.
+
+Note: only TLS1.3 PSK is supported and only for TLS, not DTLS (pending OpenSSL DTLS1.3 support).
+.RE
+
+.BI "PSKidentity " identity
+.RS
+The TLS-PSK \fIidentity\fR to identify the client. When omitted, the \fBclient \fIname\fR is
+used as the identity.
+When using TLS-PSK, all clients are identified by thier PSK identity, however it
+is highly recommended to limit the allowed source address(es) using the
+\fBHost \fIaddress\fR option.
+.RE
+
 .BI "DuplicateInterval " seconds
 .RS
 Specify for how many \fIseconds\fR duplicate checking should be done. If a proxy
@@ -516,32 +542,6 @@ the proxy. The User-Name attribute is written back to the original value if a
 matching response is later sent back to the client. Example usage:
 
 RewriteAttribute User-Name:/^(.*)@local$/\e1@example.com/
-.RE
-
-.BI "PSKkey " key
-.RS
-For TLS, use TLS-PSK (pre shared key) instead of certificate based authentication.
-If specified, \fBPSKidentity\fR must also be provided.
-The \fIkey\fR must be at least 16 bytes long. To provide the \fIkey\fR in hex, use 
-the %% escaping (see CONFIGURATION SYNTAX).
-
-In addition to the psk, peers must also agree on the key derivation hash function.
-For this, the server simply uses the hash funciton of the negotiated cipher as this
-negotiation must yield a compatible cipher anyway.
-To ensure unambiguous cipher and hash selection, only use ciphers with the same
-hash function in the \fBCipherSuites\fR of the \fBtls\fR block. If no \fBtls\fR 
-block is specified, a default config with SHA256 is used.
-
-Note: only TLS1.3 PSK is supported and only for TLS, not DTLS (pending openssl DTLS1.3 support).
-.RE
-
-.BI "PSKidentity " identity
-.RS
-The TLS-PSK \fIidentity\fR to identify the client. When omitted, the \fBclient \fIname\fR is
-used as the identity.
-When using TLS-PSK, all clients are identified by thier PSK identity, however it
-is highly recommended to limit the allowed source address(es) using the
-\fBHost \fIaddress\fR option.
 .RE
 
 .BR "RequireMessageAuthenticator (" on | off )
@@ -618,13 +618,6 @@ Specify the source address and/or port to use for this server. See \fBSource...\
 options above.
 .RE
 
-.BI "ServerName " servername
-.RS
-Use \fIservername\fR for the certificate name check instead of \fBhost\fR or the
-server block name (e.g. if \fBhost\fR uses static IP address). Additionally, this 
-name is used for SNI (if enabled), unless \fBSNIservername\fR is set.
-.RE
-
 .BI "DynamicLookupCommand " command
 .RS
 Execute the \fIcommand\fR to dynamically configure a server for a realm given by 
@@ -650,6 +643,37 @@ An example of a shell script resolving the DNS NAPTR records
 for the realm and then the SRV records for each NAPTR matching
 \&'x-eduroam:radius.tls' is provided in \fItools/naptr\-eduroam.sh\fR.
 This is equivalent to configuring 'naptr:x-eduroam:radius.tls' directly.
+.RE
+
+.BI "ServerName " servername
+.RS
+Use \fIservername\fR for the certificate name check instead of \fBhost\fR or the
+server block name (e.g. if \fBhost\fR uses static IP address). Additionally, this 
+name is used for SNI (if enabled), unless \fBSNIservername\fR is set.
+.RE
+
+.BR "SNI (" on | off )
+.RS
+Override gobal SNI setting (see above). This is implicitly enabled if \fBSNIservername\fR
+is set.
+.RE
+
+.BI "SNIservername " sni
+.RS
+Explicitly set the \fIsni\fR to request from the server, in case the server is specified
+by IP address or to override the hostname. Implicitly enables \fBSNI\fR for this server.
+.RE
+
+.BI "PSKkey " key
+.br
+.BI "PSKidentity " identity 
+.RS
+The meaning of these options are very similar as for the client block, with minor differences.
+.br
+- The \fIidentity\fR must always be provided and cannot be derived from the \fBserver \fIname\fR.
+.br
+- For the key derivation hash funciton, the hash function of the first cipher in the \fBCipherSuites\fR
+of the referenced \fBtls\fR block is used.
 .RE
 
 .BR "StatusServer (" on | off | minimal | auto )
@@ -711,36 +735,11 @@ Warning: when the dynamic lookup and connection process is slow, this wil block 
 respective realm for that time.
 .RE
 
-.BR "SNI (" on | off )
-
-.RS
-Override gobal SNI setting (see above). This is implicitly enabled if \fBSNIservername\fR
-is set.
-.RE
-
-.BI "SNIservername " sni
-.RS
-Explicitly set the \fIsni\fR to request from the server, in case the server is specified
-by IP address or to override the hostname. Implicitly enables \fBSNI\fR for this server.
-.RE
-
 .BI "DTLSForceMTU " mtu
 .RS
 Some non-Linux platforms are unable to query the MTU of a connection, causing DTLS to limit
 itself to 256 bytes and thus failing to connect. Manually set \fImtu\fR to a large enough value
 so the initial DTLS cleint-hello fits without fragmentation. 
-.RE
-
-.BI "PSKkey " key
-.br
-.BI "PSKidentity " identity 
-.RS
-The meaning of these options are very similar as for the client block, with minor differences.
-.br
-- The \fIidentity\fR must always be provided and cannot be derived from the \fBserver \fIname\fR.
-.br
-- For the key derivation hash funciton, the hash function of the first cipher in the \fBCipherSuites\fR
-of the referenced \fBtls\fR block is used.
 .RE
 
 .BR "RequireMessageAuthenticator (" on | off )
