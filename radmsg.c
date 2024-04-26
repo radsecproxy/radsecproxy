@@ -41,6 +41,7 @@ int get_checked_rad_length(uint8_t *buf) {
 void radmsg_free(struct radmsg *msg) {
     if (msg) {
         freetlvlist(msg->attrs);
+        memset(msg, 0, sizeof(struct radmsg));
         free(msg);
     }
 }

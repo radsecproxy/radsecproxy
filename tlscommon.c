@@ -1713,9 +1713,11 @@ void *tlsserverwr(void *arg) {
     struct gqueue *replyq;
     struct request *reply;
     char tmp[INET6_ADDRSTRLEN];
+    struct timeval now;
 
     debug(DBG_DBG, "tlsserverwr: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
     replyq = client->replyq;
+    gettimeofday(&client->tlsnewkey, NULL);
     for (;;) {
         pthread_mutex_lock(&replyq->mutex);
         while (!list_first(replyq->entries)) {
@@ -1737,6 +1739,15 @@ void *tlsserverwr(void *arg) {
             pthread_mutex_unlock(&client->lock);
             debug(DBG_DBG, "tlsserverwr: ssl connection shutdown; exiting as requested");
             pthread_exit(NULL);
+        }
+
+        gettimeofday(&now, NULL);
+        if (now.tv_sec - client->tlsnewkey.tv_sec > RSP_TLS_REKEY_INTERVAL && SSL_version(client->ssl) >= TLS1_3_VERSION) {
+            debug(DBG_DBG, "tlsserverwr: perform key update for long-running connection");
+            if (SSL_get_key_update_type(client->ssl) == SSL_KEY_UPDATE_NONE &&
+                !SSL_key_update(client->ssl, SSL_KEY_UPDATE_REQUESTED))
+                    debug(DBG_WARN, "tlsserverwr: request for key update failed for %s", addr2string(client->addr, tmp, sizeof(tmp)));
+            client->tlsnewkey = now;
         }
 
         if ((cnt = sslwrite(client->ssl, reply->replybuf, reply->replybuflen, 1)) > 0) {

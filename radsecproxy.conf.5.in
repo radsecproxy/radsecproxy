@@ -397,6 +397,15 @@ Specify the \fItype\fR (protocol) of the client. Available options are
 .BR TLS
 and
 .BR DTLS .
+.br
+While TLS and DTLS are secure, enctrypted transports, UDP and TCP are not.
+Radius uses the shared secret only to encrypt certain critical attributes,
+but most of the Radius data is sent in clear. Protection against manipulation is
+only provided if the client uses the Message-Authenticator attribute.
+.br
+Therefore UDP and TCP should only be used in secured networks or when an underying
+secure transport such as IPSEC or MACSEC is used. UDP and TCP SHOULD NOT be used
+across the internet.
 .RE
 
 .BI "Secret " secret
