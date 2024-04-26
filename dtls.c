@@ -519,6 +519,7 @@ concleanup:
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->connecttime, NULL);
+    server->tlsnewkey=server->connecttime;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
     server->conreset = reconnect;
@@ -531,6 +532,7 @@ concleanup:
 int clientradputdtls(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
     struct clsrvconf *conf = server->conf;
+    struct timeval now;
 
     if (radlen <= 0) {
         debug(DBG_ERR, "clientradputdtls: invalid buffer (length)");
@@ -541,6 +543,15 @@ int clientradputdtls(struct server *server, unsigned char *rad, int radlen) {
     if (server->state != RSP_SERVER_STATE_CONNECTED) {
         pthread_mutex_unlock(&server->lock);
         return 0;
+    }
+
+    gettimeofday(&now, NULL);
+    if (now.tv_sec - server->tlsnewkey.tv_sec > RSP_TLS_REKEY_INTERVAL && SSL_version(server->ssl) >= TLS1_3_VERSION) {
+        debug(DBG_DBG, "clientradputdtls: perform key update for long-running connection");
+        if (SSL_get_key_update_type(server->ssl) == SSL_KEY_UPDATE_NONE &&
+            !SSL_key_update(server->ssl, SSL_KEY_UPDATE_REQUESTED))
+                debug(DBG_WARN, "clientradputdtls: request for key update failed for %s", conf->name);
+        server->tlsnewkey = now;
     }
 
     if ((cnt = sslwrite(server->ssl, rad, radlen, 0)) <= 0 ) {

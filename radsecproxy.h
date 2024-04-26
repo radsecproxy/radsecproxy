@@ -33,6 +33,7 @@
 #define RSP_SECRET_LEN_WARN 10
 /* Older OpenSSL API had a 256 byte limit; keep this limit to maximize compatibility*/
 #define PSK_ID_MAX_LENGTH 256
+#define RSP_TLS_REKEY_INTERVAL 3600
 
 /* Target value for stack size.
  * Some platforms might define higher minimums in PTHREAD_STACK_MIN. */
@@ -200,6 +201,7 @@ struct client {
     struct gqueue *replyq;
     struct sockaddr *addr;
     time_t expiry; /* for udp */
+    struct timeval tlsnewkey;
 };
 
 struct server {
@@ -211,6 +213,7 @@ struct server {
     uint8_t clientrdgone;
     struct timeval connecttime;
     struct timeval lastreply;
+    struct timeval tlsnewkey;
     enum rsp_server_state state;
     uint8_t lostrqs;
     char *dynamiclookuparg;
