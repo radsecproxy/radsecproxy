@@ -2625,7 +2625,7 @@ static int confapplytls(struct clsrvconf *conf, const char *block) {
     }
     return 1;
 #else
-    debug(DBG_ERR,"cannot apply tls config, radsecproxy was not compiled with TLS/DTLS support")
+    debug(DBG_ERR,"cannot apply tls config, radsecproxy was not compiled with TLS/DTLS support");
     return 0;
 #endif
 
