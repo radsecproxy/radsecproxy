@@ -91,9 +91,9 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
 
     debug(DBG_DBG, "tcpconnect: %s to %s", reconnect ? "reconnecting" : "initial connection", server->conf->name);
     pthread_mutex_lock(&server->lock);
-
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
+    pthread_mutex_unlock(&server->lock);
 
     if(server->conf->source) {
         source = resolvepassiveaddrinfo(server->conf->source, AF_UNSPEC, NULL, protodefs.socktype);
@@ -108,7 +108,6 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
             close(server->sock);
         server->sock = -1;
 
-        pthread_mutex_unlock(&server->lock);
         wait = connect_wait(start, server->connecttime, firsttry);
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) + wait > timeout) {
@@ -119,8 +118,6 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
         if (wait) debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
         sleep(wait);
         firsttry = 0;
-
-        pthread_mutex_lock(&server->lock);
 
         for (entry = list_first(server->conf->hostports); entry; entry = list_next(entry)) {
             hp = (struct hostportres *)entry->data;
@@ -139,6 +136,7 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
             enable_keepalive(server->sock);
         break;
     }
+    pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->connecttime, NULL);
     server->lostrqs = 0;
@@ -207,6 +205,7 @@ int radtcpget(int s, int timeout, uint8_t **buf) {
     if (cnt < 1) {
         debug(DBG_DBG, cnt ? "radtcpget: connection lost" : "radtcpget: timeout");
         free(*buf);
+        *buf = NULL;
         return cnt;
     }
     debug(DBG_DBG, "radtcpget: got %d bytes", len);
@@ -217,51 +216,46 @@ int clientradputtcp(struct server *server, unsigned char *rad, int radlen) {
     int cnt;
     struct clsrvconf *conf = server->conf;
 
-    if (server->state != RSP_SERVER_STATE_CONNECTED)
-        return 0;
     if (radlen <= 0) {
         debug(DBG_ERR, "clientradputtcp: invalid buffer (length)");
         return 0;
     }
+    pthread_mutex_lock(&server->lock);
+    if (server->state != RSP_SERVER_STATE_CONNECTED) {
+        pthread_mutex_unlock(&server->lock);
+        return 0;
+    }
     if ((cnt = write(server->sock, rad, radlen)) <= 0) {
         debug(DBG_ERR, "clientradputtcp: write error");
+        pthread_mutex_unlock(&server->lock);
         return 0;
     }
     debug(DBG_DBG, "clientradputtcp: Sent %d bytes, Radius packet of length %zu to TCP peer %s", cnt, radlen, conf->name);
+    pthread_mutex_unlock(&server->lock);
     return 1;
 }
 
 void *tcpclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf;
-    struct timeval now;
     int len = 0;
 
     for (;;) {
         len = radtcpget(server->sock, server->conf->retryinterval * (server->conf->retrycount+1), &buf);
-        if (!buf || len <= 0) {
-            if (len < 0 || (server->lostrqs && server->conf->statusserver!=RSP_STATSRV_OFF) ) {
-                if (len < 0)
-                    debug (DBG_WARN, "tlsclientrd: connection to server %s lost", server->conf->name);
-                else if (server->lostrqs)
-                    debug (DBG_WARN, "tlsclientrd: server %s did not respond, closing connection.", server->conf->name);
-                if (server->dynamiclookuparg)
-                    break;
-                tcpconnect(server, 0, 1);
-            }
-            if (server->dynamiclookuparg) {
-                gettimeofday(&now, NULL);
-                if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
-                    debug(DBG_INFO, "tcpclientrd: idle timeout for %s", server->conf->name);
-                    break;
-                }
-            }
-            continue;
+        if (buf && len > 0) {
+            replyh(server, buf, len);
+            buf = NULL;
+        } else if (len == 0) {
+            if (timeouth(server))
+                break;
+        } else {
+            if (closeh(server))
+                break;
         }
-
-        replyh(server, buf, len);
-        buf = NULL;
     }
+    shutdown(server->sock, SHUT_RDWR);
+    close(server->sock);
+
     server->clientrdgone = 1;
     pthread_mutex_lock(&server->newrq_mutex);
     pthread_cond_signal(&server->newrq_cond);

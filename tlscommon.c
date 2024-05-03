@@ -198,7 +198,7 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
         }
     }
 #ifdef DEBUG
-    printf("certificate verify returns %d\n", ok);
+    printf("certificate verify returns %d", ok);
 #endif
     return ok;
 }
@@ -306,16 +306,16 @@ static void ssl_info_callback(const SSL *ssl, int where, int ret) {
 	s = "undefined";
 
     if (where & SSL_CB_LOOP)
-	debug(DBG_DBG, "%s:%s\n", s, SSL_state_string_long(ssl));
+        debug(DBG_DBG, "%s:%s", s, SSL_state_string_long(ssl));
     else if (where & SSL_CB_ALERT) {
-	s = (where & SSL_CB_READ) ? "read" : "write";
-	debug(DBG_DBG, "SSL3 alert %s:%s:%s\n", s, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
+        s = (where & SSL_CB_READ) ? "read" : "write";
+        debug(DBG_DBG, "SSL3 alert %s:%s:%s", s, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
     }
     else if (where & SSL_CB_EXIT) {
-	if (ret == 0)
-	    debug(DBG_DBG, "%s:failed in %s\n", s, SSL_state_string_long(ssl));
-	else if (ret < 0)
-	    debug(DBG_DBG, "%s:error in %s\n", s, SSL_state_string_long(ssl));
+        if (ret == 0)
+            debug(DBG_DBG, "%s:failed in %s", s, SSL_state_string_long(ssl));
+        else if (ret < 0)
+            debug(DBG_DBG, "%s:error in %s", s, SSL_state_string_long(ssl));
     }
 }
 #endif
@@ -625,13 +625,21 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
         SSL_CTX_set_default_passwd_cb_userdata(ctx, conf->certkeypwd);
         SSL_CTX_set_default_passwd_cb(ctx, pem_passwd_cb);
     }
+
     if (conf->certfile) {
-        if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile) ||
-            !SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
+        if (!SSL_CTX_use_certificate_chain_file(ctx, conf->certfile)) {
+            while ((error = ERR_get_error()))
+                debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlscreatectx: Error reading certificate in TLS context %s", conf->name);
+            ERR_clear_error();
+            SSL_CTX_free(ctx);
+            return NULL;
+        }
+        if (!SSL_CTX_use_PrivateKey_file(ctx, conf->certkeyfile, SSL_FILETYPE_PEM) ||
             !SSL_CTX_check_private_key(ctx)) {
             while ((error = ERR_get_error()))
                 debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
-            debug(DBG_ERR, "tlsloadclientcert: Error loading certificate and/or key in TLS context %s", conf->name);
+            debug(DBG_ERR, "tlscreatectx: Error reading privatekey in TLS context %s", conf->name);
             ERR_clear_error();
             SSL_CTX_free(ctx);
             return NULL;
@@ -667,7 +675,9 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
             return NULL;
         }
     }
+    SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
 #if OPENSSL_VERSION_NUMBER >= 0x10101000
+/* TLS 1.3 stuff */
     if (conf->ciphersuites) {
         if (!SSL_CTX_set_ciphersuites(ctx, conf->ciphersuites)) {
             debug(DBG_ERR, "tlscreatectx: Failed to set ciphersuites in TLS context %s", conf->name);
@@ -675,6 +685,8 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
             return NULL;
         }
     }
+    if (!SSL_CTX_set_num_tickets(ctx, 0))
+        debug(DBG_ERR, "tlscreatectx: Failed to set num tickets in TLS context %s", conf->name);
 #endif
 
     if (conf->dhparam) {
@@ -1070,31 +1082,24 @@ char *getcertsubject(X509 *cert) {
 }
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
-static int parse_tls_version(const char* version) {
-    if (!strcasecmp("SSL3", version)) {
-        return SSL3_VERSION;
-    } else if (!strcasecmp("TLS1", version)) {
-        return TLS1_VERSION;
-    } else if (!strcasecmp("TLS1_1", version)) {
-        return TLS1_1_VERSION;
-    } else if (!strcasecmp("TLS1_2", version)) {
-        return TLS1_2_VERSION;
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
-    } else if (!strcasecmp("TLS1_3", version)) {
-        return TLS1_3_VERSION;
-#endif
-    } else if (!strcasecmp("DTLS1", version)) {
-        return DTLS1_VERSION;
-    } else if (!strcasecmp("DTLS1_2", version)) {
-        return DTLS1_2_VERSION;
-    } else if (!strcasecmp("", version)) {
-        return 0;
+static int parse_tls_version(uint8_t dtls, const char* version) {
+    if (!strcasecmp("", version)) return 0;
+    if (dtls) {
+        if (!strcasecmp("DTLS1", version)) return DTLS1_VERSION;
+        if (!strcasecmp("DTLS1_2", version)) return DTLS1_2_VERSION;
     } else {
-        return -1;
+        if (!strcasecmp("SSL3", version)) return SSL3_VERSION;
+        if (!strcasecmp("TLS1", version)) return TLS1_VERSION;
+        if (!strcasecmp("TLS1_1", version)) return TLS1_1_VERSION;
+        if (!strcasecmp("TLS1_2", version)) return TLS1_2_VERSION;
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
+        if (!strcasecmp("TLS1_3", version)) return TLS1_3_VERSION;
+#endif
     }
+    return -1;
 }
 
-static int conf_tls_version(const char *version, int *min, int *max) {
+static int conf_tls_version(uint8_t dtls, const char *version, int *min, int *max) {
     char *ver, *s, *smin, *smax;
     ver = stringcopy(version, strlen(version));
     s = strchr(ver, ':');
@@ -1105,8 +1110,8 @@ static int conf_tls_version(const char *version, int *min, int *max) {
         smin = ver;
         smax = s+1;
     }
-    *min = parse_tls_version(smin);
-    *max = parse_tls_version(smax);
+    *min = parse_tls_version(dtls, smin);
+    *max = parse_tls_version(dtls, smax);
     free(ver);
     return *min >=0 && *max >=0 && (*max == 0 || *min <= *max);
 }
@@ -1164,7 +1169,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     /* use -1 as 'not set' value */
     conf->tlsminversion = conf->tlsmaxversion = conf->dtlsminversion = conf->dtlsmaxversion = -1;
     if (tlsversion) {
-        if(!conf_tls_version(tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
+        if(!conf_tls_version(0, tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
             debug(DBG_ERR, "error in block %s, invalid TlsVersion %s", val, tlsversion);
             goto errexit;
         }
@@ -1172,7 +1177,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         tlsversion = NULL;
     }
     if (dtlsversion) {
-        if(!conf_tls_version(dtlsversion, &conf->dtlsminversion, &conf->dtlsmaxversion)) {
+        if(!conf_tls_version(1, dtlsversion, &conf->dtlsminversion, &conf->dtlsmaxversion)) {
             debug(DBG_ERR, "error in block %s, invalid DtlsVersion %s", val, dtlsversion);
             goto errexit;
         }
@@ -1231,6 +1236,10 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         tlsconfs = hash_create();
     if (!hash_insert(tlsconfs, val, strlen(val), conf)) {
         debug(DBG_ERR, "conftls_cb: malloc failed");
+        goto errexit;
+    }
+    if (!tlsgetctx(RAD_TLS, conf)) {
+        debug(DBG_ERR, "conftls_cb: error creating ctx for TLS block %s", val);
         goto errexit;
     }
     debug(DBG_DBG, "conftls_cb: added TLS block %s", val);
@@ -1699,7 +1708,9 @@ int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
 
     cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
     if (cnt < 1) {
+        debug(DBG_DBG, cnt ? "radtlsget: connection lost" : "radtlsget: timeout");
         free(*buf);
+        *buf = NULL;
         return 0;
     }
 

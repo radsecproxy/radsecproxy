@@ -389,10 +389,8 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
     debug(DBG_DBG, "dtlsconnect: %s to %s", reconnect ? "reconnecting" : "initial connection", server->conf->name);
     pthread_mutex_lock(&server->lock);
-
     if (server->state == RSP_SERVER_STATE_CONNECTED)
         server->state = RSP_SERVER_STATE_RECONNECTING;
-
     pthread_mutex_unlock(&server->lock);
 
     if(server->conf->source) {
@@ -567,46 +565,34 @@ int clientradputdtls(struct server *server, unsigned char *rad, int radlen) {
 void *dtlsclientrd(void *arg) {
     struct server *server = (struct server *)arg;
     unsigned char *buf = NULL;
-    struct timeval now;
     int len = 0;
 
     for (;;) {
         len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
-        if (!buf || !len) {
-            if(SSL_get_shutdown(server->ssl) || server->lostrqs) {
-                if (SSL_get_shutdown(server->ssl))
-                    debug (DBG_WARN, "dtlscleintrd: connection to server %s lost", server->conf->name);
-                else if (server->lostrqs)
-                    debug (DBG_WARN, "dtlsclientrd: server %s did not respond, closing connection.", server->conf->name);
-                if (server->dynamiclookuparg)
-                    break;
-                dtlsconnect(server, 0, 1);
-                server->lostrqs = 0;
-            }
-            if (server->dynamiclookuparg) {
-                gettimeofday(&now, NULL);
-                if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
-                    debug(DBG_INFO, "dtlsclientrd: idle timeout for %s", server->conf->name);
-                    break;
-                }
-            }
-            continue;
+        if (buf && len > 0) {
+            replyh(server, buf, len);
+            buf = NULL;
+        } else if (SSL_get_shutdown(server->ssl)) {
+            if (closeh(server))
+                break;
+        } else {
+            if (timeouth(server))
+                break;
         }
-        replyh(server, buf, len);
-        buf = NULL;
     }
 
     debug(DBG_INFO, "dtlsclientrd: exiting for %s", server->conf->name);
     pthread_mutex_lock(&server->lock);
+    server->state = RSP_SERVER_STATE_FAILING;
     SSL_shutdown(server->ssl);
     close(server->sock);
 
     /* Wake up clientwr(). */
     server->clientrdgone = 1;
+    pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
-    pthread_mutex_unlock(&server->lock);
     return NULL;
 }
 

@@ -25,7 +25,7 @@ static uint16_t dnsreadcharstring(char *dest, const u_char *rdata, uint16_t offs
 
     len = *(rdata + offset++);
     if (offset+len > rdlen) {
-        debug(DBG_ERR,"dnsreadcharstring: error parsing char string, length is beyond radata!\n");
+        debug(DBG_ERR,"dnsreadcharstring: error parsing char string, length is beyond radata!");
         return -1;
     }
     memcpy(dest, rdata+offset, len);
@@ -119,7 +119,7 @@ static void *parsenaptrrr(ns_msg msg, ns_rr *rr){
 
     /* sanity check, should be exactly at the end of the rdata */
     if (offset + len != rdlen) {
-        debug(DBG_ERR,"parsenaptrrr: sanity check failed! unexpected error while parsing naptr rr\n");
+        debug(DBG_ERR,"parsenaptrrr: sanity check failed! unexpected error while parsing naptr rr");
         goto errexit;
     }
 
@@ -180,7 +180,7 @@ static struct query_state *doquery(int type, const char *name, int timeout) {
 #if __RES >= 19991006
     /* new thread-safe res_n* functions introduced in this version */
     if(res_ninit(&state->rs)){
-        debug(DBG_ERR, "doquery: resolver init failed\n");
+        debug(DBG_ERR, "doquery: resolver init failed");
         free(state);
         return NULL;
     }
@@ -216,20 +216,20 @@ static struct query_state *doquery(int type, const char *name, int timeout) {
             default:
                 errstring = "internal error";
         }
-        debug(DBG_NOTICE, "doquery: dns query failed: %s\n", errstring);
+        debug(DBG_NOTICE, "doquery: dns query failed: %s", errstring);
         querycleanup(state);
         return NULL;
     }
 
     if (ns_initparse(state->buf, len, &state->msg) == -1) {
-        debug(DBG_ERR, "doquery: dns response parser init failed\n");
+        debug(DBG_ERR, "doquery: dns response parser init failed");
         querycleanup(state);
         return NULL;
     }
 
     /* we should have a valid resopnse at this point, but check the response code anyway, to be sure */
     if (ns_msg_getflag(state->msg, ns_f_rcode) != ns_r_noerror) {
-        debug(DBG_ERR, "doquery: dns query returned error code %d\n", ns_msg_getflag(state->msg, ns_f_rcode) );
+        debug(DBG_ERR, "doquery: dns query returned error code %d", ns_msg_getflag(state->msg, ns_f_rcode) );
         querycleanup(state);
         return NULL;
     }
