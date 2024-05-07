@@ -1,0 +1,34 @@
+#!/bin/bash
+
+#Apply clang-format to all modified source files and stage them (git add).
+#If you want to apply the formatting without adding changes to git, run it with `--no-git-add`
+#To use the script as a git pre-commit hook, symlink the script to the git hook directory:
+#
+# ln -s ../../tools/clang-format.hook .git/hooks/pre-commit
+#
+
+if ! [ -x "$(command -v clang-format)" ]; then
+    echo 'Error: clang-format not found!'
+    exit 1
+fi
+
+GIT_ADD=true
+
+case "${1}" in
+    --about )
+        echo "Runs clang-format on all source files that are changed"
+        exit 0
+        ;;
+    --no-git-add )
+        GIT_ADD=false
+esac
+
+for file in `git diff-index --cached --name-only HEAD | grep -iE '\.(cpp|cc|c|h|hpp)$'` ; do
+    if [ -f ${file} ]; then
+        clang-format -i ${file}
+
+        if $GIT_ADD; then
+            git add ${file}
+        fi
+    fi
+done
