@@ -5,33 +5,32 @@
 
 #define _GNU_SOURCE
 
-#include <signal.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <string.h>
-#include <unistd.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <poll.h>
-#include <ctype.h>
-#include <sys/wait.h>
-#include <arpa/inet.h>
-#include <regex.h>
-#include <pthread.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <assert.h>
-#include <fcntl.h>
 #include "hash.h"
 #include "radsecproxy.h"
+#include <arpa/inet.h>
+#include <assert.h>
+#include <ctype.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <poll.h>
+#include <pthread.h>
+#include <regex.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #ifdef RADPROT_DTLS
 #include "debug.h"
-#include "util.h"
 #include "hostport.h"
+#include "util.h"
 
 static void setprotoopts(struct commonprotoopts *opts);
 static char **getlistenerargs(void);
@@ -45,24 +44,24 @@ void initextradtls(void);
 
 static const struct protodefs protodefs = {
     "dtls",
-    "radius/dtls", /* secretdefault */
-    SOCK_DGRAM, /* socktype */
-    "2083", /* portdefault */
-    REQUEST_RETRY_COUNT, /* retrycountdefault */
-    10, /* retrycountmax */
+    "radius/dtls",          /* secretdefault */
+    SOCK_DGRAM,             /* socktype */
+    "2083",                 /* portdefault */
+    REQUEST_RETRY_COUNT,    /* retrycountdefault */
+    10,                     /* retrycountmax */
     REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
-    60, /* retryintervalmax */
-    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
-    setprotoopts, /* setprotoopts */
-    getlistenerargs, /* getlistenerargs */
-    dtlslistener, /* listener */
-    dtlsconnect, /* connecter */
-    dtlsclientrd, /* clientconnreader */
-    clientradputdtls, /* clientradput */
-    NULL, /* addclient */
-    NULL, /* addserverextra */
-    dtlssetsrcres, /* setsrcres */
-    NULL /* initextra */
+    60,                     /* retryintervalmax */
+    DUPLICATE_INTERVAL,     /* duplicateintervaldefault */
+    setprotoopts,           /* setprotoopts */
+    getlistenerargs,        /* getlistenerargs */
+    dtlslistener,           /* listener */
+    dtlsconnect,            /* connecter */
+    dtlsclientrd,           /* clientconnreader */
+    clientradputdtls,       /* clientradput */
+    NULL,                   /* addclient */
+    NULL,                   /* addserverextra */
+    dtlssetsrcres,          /* setsrcres */
+    NULL                    /* initextra */
 };
 
 static struct addrinfo *srcres = NULL;
@@ -90,7 +89,7 @@ struct dtlsservernewparams {
 
 void dtlssetsrcres(void) {
     if (!srcres)
-	srcres =
+        srcres =
             resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
@@ -128,10 +127,10 @@ void *dtlsservernew(void *arg) {
         goto exit;
 
     BIO_set_fd(SSL_get_rbio(params->ssl), s, BIO_NOCLOSE);
-    BIO_ctrl(SSL_get_rbio(params->ssl), BIO_CTRL_DGRAM_SET_CONNECTED, 0,(struct sockaddr *)&params->addr);
+    BIO_ctrl(SSL_get_rbio(params->ssl), BIO_CTRL_DGRAM_SET_CONNECTED, 0, (struct sockaddr *)&params->addr);
 
     if (!SSL_set_ex_data(params->ssl, RSP_EX_DATA_CONFIG_LIST, find_all_clconf(handle, (struct sockaddr *)&params->addr, cur, &hp))) {
-            debug(DBG_WARN, "dtlsservernew: failed to set ex data");
+        debug(DBG_WARN, "dtlsservernew: failed to set ex data");
     }
 
     if (sslaccepttimeout(params->ssl, 30) <= 0) {
@@ -162,16 +161,16 @@ void *dtlsservernew(void *arg) {
 
     if (SSL_session_reused(params->ssl)) {
         debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, PSK identity %s wtih cipher %s up",
-                addr2string((struct sockaddr *)&params->addr,tmp, sizeof(tmp)), conf->name, conf->pskid,
-                SSL_CIPHER_get_name(SSL_get_current_cipher(params->ssl)));
+              addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)), conf->name, conf->pskid,
+              SSL_CIPHER_get_name(SSL_get_current_cipher(params->ssl)));
     } else {
         while (conf) {
             if (!conf->pskid && accepted_tls == conf->tlsconf && (verifyconfcert(cert, conf, NULL))) {
                 subj = getcertsubject(cert);
-                if(subj) {
+                if (subj) {
                     debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, subject %s, %s with cipher %s up",
-                        addr2string((struct sockaddr *)&params->addr,tmp, sizeof(tmp)), conf->name, subj,
-                        SSL_get_version(params->ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(params->ssl)));
+                          addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)), conf->name, subj,
+                          SSL_get_version(params->ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(params->ssl)));
                     free(subj);
                 }
                 X509_free(cert);
@@ -182,8 +181,8 @@ void *dtlsservernew(void *arg) {
     }
 
     if (!conf) {
-        debug(DBG_WARN, "dtlsservernew: ignoring request, no matching DTLS client for %s", 
-            addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
+        debug(DBG_WARN, "dtlsservernew: ignoring request, no matching DTLS client for %s",
+              addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
         goto exit;
     }
 
@@ -204,7 +203,7 @@ exit:
         SSL_shutdown(params->ssl);
         SSL_free(params->ssl);
     }
-    if(s >= 0)
+    if (s >= 0)
         close(s);
     free(params);
     debug(DBG_DBG, "dtlsservernew: exiting");
@@ -224,7 +223,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
     msghdr.msg_name = from;
     msghdr.msg_namelen = fromlen;
     msghdr.msg_iov = iov;
-    msghdr.msg_iovlen = (sizeof(iov)/sizeof(*(iov)));
+    msghdr.msg_iovlen = (sizeof(iov) / sizeof(*(iov)));
     msghdr.msg_control = controlbuf;
     msghdr.msg_controllen = sizeof(controlbuf);
     msghdr.msg_flags = 0;
@@ -243,7 +242,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
 
     for (ctrlhdr = CMSG_FIRSTHDR(&msghdr); ctrlhdr; ctrlhdr = CMSG_NXTHDR(&msghdr, ctrlhdr)) {
 #if defined(IP_PKTINFO)
-        if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_PKTINFO) {
+        if (ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_PKTINFO) {
             struct in_pktinfo *pktinfo = (struct in_pktinfo *)CMSG_DATA(ctrlhdr);
             debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, &(pktinfo->ipi_addr), tmp, sizeof(tmp)));
 
@@ -251,7 +250,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
             return ret;
         }
 #elif defined(IP_RECVDSTADDR)
-        if(ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_RECVDSTADDR) {
+        if (ctrlhdr->cmsg_level == IPPROTO_IP && ctrlhdr->cmsg_type == IP_RECVDSTADDR) {
             struct in_addr *addr = (struct in_addr *)CMSG_DATA(ctrlhdr);
             debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET, addr, tmp, sizeof(tmp)));
 
@@ -259,7 +258,7 @@ int getConnectionInfo(int socket, struct sockaddr *from, socklen_t fromlen, stru
             return ret;
         }
 #endif
-        if(ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_PKTINFO) {
+        if (ctrlhdr->cmsg_level == IPPROTO_IPV6 && ctrlhdr->cmsg_type == IPV6_PKTINFO) {
             info6 = (struct in6_pktinfo *)CMSG_DATA(ctrlhdr);
             debug(DBG_DBG, "udp packet to: %s", inet_ntop(AF_INET6, &info6->ipi6_addr, tmp, sizeof(tmp)));
 
@@ -287,7 +286,7 @@ void *dtlslistener(void *arg) {
 
     debug(DBG_DBG, "dtlslistener: starting");
 
-    if ((flags = fcntl(s,F_GETFL)) == -1)
+    if ((flags = fcntl(s, F_GETFL)) == -1)
         debugx(1, DBG_ERR, "dtlslistener: failed to get socket flags");
     if (fcntl(s, F_SETFL, flags | O_NONBLOCK) == -1)
         debugx(1, DBG_ERR, "dtlslistener: failed to set non-blocking");
@@ -295,7 +294,7 @@ void *dtlslistener(void *arg) {
     for (;;) {
         fds[0].fd = s;
         fds[0].events = POLLIN;
-    	ndesc = poll(fds, 1, -1);
+        ndesc = poll(fds, 1, -1);
         if (ndesc < 0)
             continue;
 
@@ -336,16 +335,16 @@ void *dtlslistener(void *arg) {
         }
 
 #if (OPENSSL_VERSION_NUMBER < 0x10100000) || defined(LIBRESSL_VERSION_NUMBER)
-        if(DTLSv1_listen(conf->tlsconf->dtlssslprep, &from) > 0) {
+        if (DTLSv1_listen(conf->tlsconf->dtlssslprep, &from) > 0) {
 #else
-        if(DTLSv1_listen(conf->tlsconf->dtlssslprep, (BIO_ADDR *)&from) > 0) {
+        if (DTLSv1_listen(conf->tlsconf->dtlssslprep, (BIO_ADDR *)&from) > 0) {
 #endif
             params = malloc(sizeof(struct dtlsservernewparams));
             memcpy(&params->addr, &from, sizeof(from));
             memcpy(&params->bind, &to, sizeof(to));
-            params->ssl = conf->tlsconf->dtlssslprep;;
+            params->ssl = conf->tlsconf->dtlssslprep;
             if (!pthread_create(&dtlsserverth, &pthread_attr, dtlsservernew, (void *)params)) {
-    		    pthread_detach(dtlsserverth);
+                pthread_detach(dtlsserverth);
                 conf->tlsconf->dtlssslprep = NULL;
                 pthread_mutex_unlock(&conf->tlsconf->lock);
                 continue;
@@ -393,9 +392,9 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
         server->state = RSP_SERVER_STATE_RECONNECTING;
     pthread_mutex_unlock(&server->lock);
 
-    if(server->conf->source) {
+    if (server->conf->source) {
         source = resolvepassiveaddrinfo(server->conf->source, AF_UNSPEC, NULL, protodefs.socktype);
-        if(!source)
+        if (!source)
             debug(DBG_WARN, "dtlsconnect: could not resolve source address to bind for server %s, using default", server->conf->name);
     }
 
@@ -409,10 +408,12 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) + wait > timeout) {
             debug(DBG_DBG, "dtlsconnect: timeout");
-            if (source) freeaddrinfo(source);
+            if (source)
+                freeaddrinfo(source);
             return 0;
         }
-        if (wait) debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        if (wait)
+            debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
         sleep(wait);
         firsttry = 0;
 
@@ -429,7 +430,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
             }
 
             pthread_mutex_lock(&server->conf->tlsconf->lock);
-            if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))){
+            if (!(ctx = tlsgetctx(handle, server->conf->tlsconf))) {
                 pthread_mutex_unlock(&server->conf->tlsconf->lock);
                 debug(DBG_ERR, "dtlsconnect: failed to get TLS context for server %s", server->conf->name);
                 goto concleanup;
@@ -448,9 +449,10 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
             if (server->conf->sni) {
                 struct in6_addr tmp;
-                char *servername = server->conf->sniservername ? server->conf->sniservername : 
-                    server->conf->servername ? server->conf->servername :
-                    (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL : hp->host;
+                char *servername = server->conf->sniservername                                                   ? server->conf->sniservername
+                                   : server->conf->servername                                                    ? server->conf->servername
+                                   : (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL
+                                                                                                                 : hp->host;
                 if (servername && !tlssetsni(server->ssl, servername)) {
                     debug(DBG_ERR, "dtlsconnect: set SNI %s failed", servername);
                     goto concleanup;
@@ -479,11 +481,11 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
             if (server->conf->pskid && server->conf->pskkey) {
                 if (SSL_session_reused(server->ssl)) {
                     debug(DBG_WARN, "dtlsconnect: DTLS connection to %s (%s port %s), PSK identity %s with cipher %s up",
-                        server->conf->name, hp->host, hp->port, server->conf->pskid, SSL_CIPHER_get_name(SSL_get_current_cipher(server->ssl)));
+                          server->conf->name, hp->host, hp->port, server->conf->pskid, SSL_CIPHER_get_name(SSL_get_current_cipher(server->ssl)));
                     break;
                 } else {
-                    debug(DBG_ERR, "dtlsconnect: DTLS PSK set for %s (%s port %s) but not used in session, rejecting connection", 
-                        server->conf->name, hp->host, hp->port);
+                    debug(DBG_ERR, "dtlsconnect: DTLS PSK set for %s (%s port %s) but not used in session, rejecting connection",
+                          server->conf->name, hp->host, hp->port);
                     goto concleanup;
                 }
             }
@@ -496,7 +498,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
             if (verifyconfcert(cert, server->conf, hp)) {
                 subj = getcertsubject(cert);
-                if(subj) {
+                if (subj) {
                     debug(DBG_WARN, "dtlsconnect: DTLS connection to %s (%s port %s), subject %s up", server->conf->name, hp->host, hp->port, subj);
                     free(subj);
                 }
@@ -507,23 +509,25 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
             }
             X509_free(cert);
 
-concleanup:
+        concleanup:
             /* ensure previous connection is properly closed */
             cleanup_connection(server);
         }
-        if (server->ssl) break;
+        if (server->ssl)
+            break;
     }
 
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->connecttime, NULL);
-    server->tlsnewkey=server->connecttime;
+    server->tlsnewkey = server->connecttime;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
     server->conreset = reconnect;
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
-    if (source) freeaddrinfo(source);
+    if (source)
+        freeaddrinfo(source);
     return 1;
 }
 
@@ -548,11 +552,11 @@ int clientradputdtls(struct server *server, unsigned char *rad, int radlen) {
         debug(DBG_DBG, "clientradputdtls: perform key update for long-running connection");
         if (SSL_get_key_update_type(server->ssl) == SSL_KEY_UPDATE_NONE &&
             !SSL_key_update(server->ssl, SSL_KEY_UPDATE_REQUESTED))
-                debug(DBG_WARN, "clientradputdtls: request for key update failed for %s", conf->name);
+            debug(DBG_WARN, "clientradputdtls: request for key update failed for %s", conf->name);
         server->tlsnewkey = now;
     }
 
-    if ((cnt = sslwrite(server->ssl, rad, radlen, 0)) <= 0 ) {
+    if ((cnt = sslwrite(server->ssl, rad, radlen, 0)) <= 0) {
         pthread_mutex_unlock(&server->lock);
         return 0;
     }
@@ -568,7 +572,7 @@ void *dtlsclientrd(void *arg) {
     int len = 0;
 
     for (;;) {
-        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
+        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf);
         if (buf && len > 0) {
             replyh(server, buf, len);
             buf = NULL;

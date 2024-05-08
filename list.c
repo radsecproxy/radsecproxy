@@ -1,22 +1,22 @@
 /* Copyright (c) 2007-2009, UNINETT AS */
 /* See LICENSE for licensing information. */
 
+#include "list.h"
 #include <stdlib.h>
 #include <string.h>
-#include "list.h"
 
 /* Private helper functions. */
 static void list_free_helper_(struct list *list, int free_data_flag) {
     struct list_node *node, *next;
 
     if (!list)
-	return;
+        return;
 
     for (node = list->first; node; node = next) {
         if (free_data_flag)
             free(node->data);
-	next = node->next;
-	free(node);
+        next = node->next;
+        free(node);
     }
     free(list);
 }
@@ -27,7 +27,7 @@ static void list_free_helper_(struct list *list, int free_data_flag) {
 struct list *list_create(void) {
     struct list *list = malloc(sizeof(struct list));
     if (list)
-	memset(list, 0, sizeof(struct list));
+        memset(list, 0, sizeof(struct list));
     return list;
 }
 
@@ -51,15 +51,15 @@ int list_push(struct list *list, void *data) {
 
     node = malloc(sizeof(struct list_node));
     if (!node)
-	return 0;
+        return 0;
 
     node->next = NULL;
     node->data = data;
 
     if (list->first)
-	list->last->next = node;
+        list->last->next = node;
     else
-	list->first = node;
+        list->first = node;
     list->last = node;
 
     list->count++;
@@ -89,12 +89,12 @@ void *list_shift(struct list *list) {
     void *data;
 
     if (!list || !list->first)
-	return NULL;
+        return NULL;
 
     node = list->first;
     list->first = node->next;
     if (!list->first)
-	list->last = NULL;
+        list->last = NULL;
     data = node->data;
     free(node);
     list->count--;
@@ -106,30 +106,30 @@ void list_removedata(struct list *list, void *data) {
     struct list_node *node, *t;
 
     if (!list || !list->first)
-	return;
+        return;
 
     node = list->first;
     while (node->data == data) {
-	list->first = node->next;
-	free(node);
-	list->count--;
-	node = list->first;
-	if (!node) {
-	    list->last = NULL;
-	    return;
-	}
+        list->first = node->next;
+        free(node);
+        list->count--;
+        node = list->first;
+        if (!node) {
+            list->last = NULL;
+            return;
+        }
     }
     for (; node->next; node = node->next)
-	if (node->next->data == data) {
-	    t = node->next;
-	    node->next = t->next;
-	    free(t);
-	    list->count--;
-	    if (!node->next) { /* we removed the last one */
-		list->last = node;
-		return;
-	    }
-	}
+        if (node->next->data == data) {
+            t = node->next;
+            node->next = t->next;
+            free(t);
+            list->count--;
+            if (!node->next) { /* we removed the last one */
+                list->last = node;
+                return;
+            }
+        }
 }
 
 /* returns first node */

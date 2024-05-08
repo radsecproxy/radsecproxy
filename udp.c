@@ -2,27 +2,27 @@
  * Copyright (c) 2012-2013, 2017, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
-#include <signal.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <string.h>
-#include <unistd.h>
 #include <limits.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #ifdef SYS_SOLARIS9
 #include <fcntl.h>
 #endif
+#include "hostport.h"
+#include "radsecproxy.h"
+#include <arpa/inet.h>
+#include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <pthread.h>
+#include <regex.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <ctype.h>
 #include <sys/wait.h>
-#include <arpa/inet.h>
-#include <regex.h>
-#include <pthread.h>
-#include <assert.h>
-#include <errno.h>
-#include "radsecproxy.h"
-#include "hostport.h"
 
 #ifdef RADPROT_UDP
 #include "debug.h"
@@ -39,24 +39,24 @@ void initextraudp(void);
 
 static const struct protodefs protodefs = {
     "udp",
-    NULL, /* secretdefault */
-    SOCK_DGRAM, /* socktype */
-    "1812", /* portdefault */
-    REQUEST_RETRY_COUNT, /* retrycountdefault */
-    10, /* retrycountmax */
+    NULL,                   /* secretdefault */
+    SOCK_DGRAM,             /* socktype */
+    "1812",                 /* portdefault */
+    REQUEST_RETRY_COUNT,    /* retrycountdefault */
+    10,                     /* retrycountmax */
     REQUEST_RETRY_INTERVAL, /* retryintervaldefault */
-    60, /* retryintervalmax */
-    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
-    setprotoopts, /* setprotoopts */
-    getlistenerargs, /* getlistenerargs */
-    udpserverrd, /* listener */
-    NULL, /* connecter */
-    NULL, /* clientconnreader */
-    clientradputudp, /* clientradput */
-    addclientudp, /* addclient */
-    addserverextraudp, /* addserverextra */
-    udpsetsrcres, /* setsrcres */
-    initextraudp /* initextra */
+    60,                     /* retryintervalmax */
+    DUPLICATE_INTERVAL,     /* duplicateintervaldefault */
+    setprotoopts,           /* setprotoopts */
+    getlistenerargs,        /* getlistenerargs */
+    udpserverrd,            /* listener */
+    NULL,                   /* connecter */
+    NULL,                   /* clientconnreader */
+    clientradputudp,        /* clientradput */
+    addclientudp,           /* addclient */
+    addserverextraudp,      /* addserverextra */
+    udpsetsrcres,           /* setsrcres */
+    initextraudp            /* initextra */
 };
 
 struct client_sock {
@@ -86,7 +86,7 @@ static char **getlistenerargs(void) {
 
 void udpsetsrcres(void) {
     if (!srcres)
-	srcres =
+        srcres =
             resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
@@ -98,9 +98,9 @@ void removeudpclientfromreplyq(struct client *c) {
     /* lock the common queue and remove replies for this client */
     pthread_mutex_lock(&c->replyq->mutex);
     for (n = list_first(c->replyq->entries); n; n = list_next(n)) {
-	r = (struct request *)n->data;
-	if (r->from == c)
-	    r->from = NULL;
+        r = (struct request *)n->data;
+        if (r->from == c)
+            r->from = NULL;
     }
     pthread_mutex_unlock(&c->replyq->mutex);
 }
@@ -108,26 +108,26 @@ void removeudpclientfromreplyq(struct client *c) {
 static int addr_equal(struct sockaddr *a, struct sockaddr *b) {
     switch (a->sa_family) {
     case AF_INET:
-	return !memcmp(&((struct sockaddr_in*)a)->sin_addr,
-		       &((struct sockaddr_in*)b)->sin_addr,
-		       sizeof(struct in_addr)) &&
-               (((struct sockaddr_in*)a)->sin_port == ((struct sockaddr_in*)b)->sin_port);
+        return !memcmp(&((struct sockaddr_in *)a)->sin_addr,
+                       &((struct sockaddr_in *)b)->sin_addr,
+                       sizeof(struct in_addr)) &&
+               (((struct sockaddr_in *)a)->sin_port == ((struct sockaddr_in *)b)->sin_port);
     case AF_INET6:
-	return IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6*)a)->sin6_addr,
-				  &((struct sockaddr_in6*)b)->sin6_addr) &&
-                  (((struct sockaddr_in6*)a)->sin6_port == ((struct sockaddr_in6*)b)->sin6_port);
+        return IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6 *)a)->sin6_addr,
+                                  &((struct sockaddr_in6 *)b)->sin6_addr) &&
+               (((struct sockaddr_in6 *)a)->sin6_port == ((struct sockaddr_in6 *)b)->sin6_port);
     default:
-	/* Must not reach */
-	return 0;
+        /* Must not reach */
+        return 0;
     }
 }
 
 uint16_t port_get(struct sockaddr *sa) {
     switch (sa->sa_family) {
     case AF_INET:
-	return ntohs(((struct sockaddr_in *)sa)->sin_port);
+        return ntohs(((struct sockaddr_in *)sa)->sin_port);
     case AF_INET6:
-	return ntohs(((struct sockaddr_in6 *)sa)->sin6_port);
+        return ntohs(((struct sockaddr_in6 *)sa)->sin6_port);
     }
     return 0;
 }
@@ -160,8 +160,8 @@ int radudpget(int s, struct client **client, struct server **server, unsigned ch
         }
 
         p = client
-            ? find_clconf(handle, (struct sockaddr *)&from, NULL, NULL)
-            : find_srvconf(handle, (struct sockaddr *)&from, NULL);
+                ? find_clconf(handle, (struct sockaddr *)&from, NULL, NULL)
+                : find_srvconf(handle, (struct sockaddr *)&from, NULL);
         if (!p) {
             debug(DBG_WARN, "radudpget: got packet from wrong or unknown UDP peer %s, ignoring", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
             sock_dgram_skip(s);
@@ -257,8 +257,8 @@ int clientradputudp(struct server *server, unsigned char *rad, int radlen) {
 
     ai = ((struct hostportres *)list_first(conf->hostports)->data)->addrinfo;
     if (sendto(server->sock, rad, radlen, 0, ai->ai_addr, ai->ai_addrlen) >= 0) {
-	debug(DBG_DBG, "clienradputudp: sent UDP of length %zu to %s port %d", radlen, addr2string(ai->ai_addr, tmp, sizeof(tmp)), port_get(ai->ai_addr));
-	return 1;
+        debug(DBG_DBG, "clienradputudp: sent UDP of length %zu to %s port %d", radlen, addr2string(ai->ai_addr, tmp, sizeof(tmp)), port_get(ai->ai_addr));
+        return 1;
     }
 
     debug(DBG_WARN, "clientradputudp: send failed");
@@ -304,22 +304,22 @@ void *udpserverwr(void *arg) {
     struct sockaddr_storage to;
 
     for (;;) {
-	pthread_mutex_lock(&replyq->mutex);
-	while (!(reply = (struct request *)list_shift(replyq->entries))) {
-	    debug(DBG_DBG, "udp server writer, waiting for signal");
-	    pthread_cond_wait(&replyq->cond, &replyq->mutex);
-	    debug(DBG_DBG, "udp server writer, got signal");
-	}
-	/* do this with lock, udpserverrd may set from = NULL if from expires */
-	if (reply->from)
-	    memcpy(&to, reply->from->addr, SOCKADDRP_SIZE(reply->from->addr));
-	pthread_mutex_unlock(&replyq->mutex);
-	if (reply->from) {
-	    if (sendto(reply->udpsock, reply->replybuf, reply->replybuflen, 0, (struct sockaddr *)&to, SOCKADDR_SIZE(to)) < 0)
-		debug(DBG_WARN, "udpserverwr: send failed");
-	}
-	debug(DBG_DBG, "udpserverwr: refcount %d", reply->refcount);
-	freerq(reply);
+        pthread_mutex_lock(&replyq->mutex);
+        while (!(reply = (struct request *)list_shift(replyq->entries))) {
+            debug(DBG_DBG, "udp server writer, waiting for signal");
+            pthread_cond_wait(&replyq->cond, &replyq->mutex);
+            debug(DBG_DBG, "udp server writer, got signal");
+        }
+        /* do this with lock, udpserverrd may set from = NULL if from expires */
+        if (reply->from)
+            memcpy(&to, reply->from->addr, SOCKADDRP_SIZE(reply->from->addr));
+        pthread_mutex_unlock(&replyq->mutex);
+        if (reply->from) {
+            if (sendto(reply->udpsock, reply->replybuf, reply->replybuflen, 0, (struct sockaddr *)&to, SOCKADDR_SIZE(to)) < 0)
+                debug(DBG_WARN, "udpserverwr: send failed");
+        }
+        debug(DBG_DBG, "udpserverwr: refcount %d", reply->refcount);
+        freerq(reply);
     }
 }
 
@@ -334,9 +334,9 @@ void addserverextraudp(struct clsrvconf *conf) {
 
     assert(list_first(conf->hostports) != NULL);
 
-    if(conf->source) {
+    if (conf->source) {
         source = resolvepassiveaddrinfo(conf->source, AF_UNSPEC, NULL, protodefs.socktype);
-        if(!source)
+        if (!source)
             debug(DBG_WARN, "addserver: could not resolve source address to bind for server %s, using default", conf->name);
     }
 
@@ -345,25 +345,25 @@ void addserverextraudp(struct clsrvconf *conf) {
     }
     for (tmpaddrinfo = source ? source : srcres; tmpaddrinfo; tmpaddrinfo = tmpaddrinfo->ai_next) {
         if (tmpaddrinfo->ai_family == AF_UNSPEC || tmpaddrinfo->ai_family == ((struct hostportres *)list_first(conf->hostports)->data)->addrinfo->ai_family) {
-            for(entry = list_first(client_sock); entry; entry = list_next(entry)){
-                if (memcmp(tmpaddrinfo->ai_addr, ((struct client_sock*)entry->data)->source, tmpaddrinfo->ai_addrlen) == 0) {
-                    conf->servers->sock = ((struct client_sock*)entry->data)->socket;
+            for (entry = list_first(client_sock); entry; entry = list_next(entry)) {
+                if (memcmp(tmpaddrinfo->ai_addr, ((struct client_sock *)entry->data)->source, tmpaddrinfo->ai_addrlen) == 0) {
+                    conf->servers->sock = ((struct client_sock *)entry->data)->socket;
                     debug(DBG_DBG, "addserverextraudp: reusing existing socket #%d (%s) for server %s", conf->servers->sock, addr2string(tmpaddrinfo->ai_addr, tmp, sizeof(tmp)), conf->name);
                     break;
                 }
             }
             if (conf->servers->sock < 0) {
-                struct client_sock* cls = malloc(sizeof(struct client_sock));
+                struct client_sock *cls = malloc(sizeof(struct client_sock));
                 if (!cls)
-                    debugx(1,DBG_ERR, "addserverextraudp: malloc failed");
-                cls->socket = bindtoaddr(tmpaddrinfo, tmpaddrinfo->ai_family,0);
+                    debugx(1, DBG_ERR, "addserverextraudp: malloc failed");
+                cls->socket = bindtoaddr(tmpaddrinfo, tmpaddrinfo->ai_family, 0);
                 cls->source = malloc(sizeof(struct sockaddr_storage));
                 if (!cls->source)
-                    debugx(1,DBG_ERR, "addserverextraudp: malloc failed");
+                    debugx(1, DBG_ERR, "addserverextraudp: malloc failed");
                 memcpy(cls->source, tmpaddrinfo->ai_addr, tmpaddrinfo->ai_addrlen);
                 debug(DBG_DBG, "addserverextraudp: creating new socket #%d (%s) for server %s", cls->socket, addr2string((struct sockaddr *)cls->source, tmp, sizeof(tmp)), conf->name);
                 if (!list_push(client_sock, cls))
-                    debugx(1,DBG_ERR, "addserverextraudp: malloc failed");
+                    debugx(1, DBG_ERR, "addserverextraudp: malloc failed");
                 conf->servers->sock = cls->socket;
                 break;
             }
@@ -381,20 +381,20 @@ void initextraudp(void) {
     struct list_node *entry;
 
     if (srcres) {
-	freeaddrinfo(srcres);
-	srcres = NULL;
+        freeaddrinfo(srcres);
+        srcres = NULL;
     }
 
     for (entry = list_first(client_sock); entry; entry = list_next(entry)) {
-        debug(DBG_DBG, "initextraudp: spinning up clientrd thread for socket #%d", ((struct client_sock*)entry->data)->socket);
-        if (pthread_create(&clth, &pthread_attr, udpclientrd, (void *)&((struct client_sock*)entry->data)->socket))
+        debug(DBG_DBG, "initextraudp: spinning up clientrd thread for socket #%d", ((struct client_sock *)entry->data)->socket);
+        if (pthread_create(&clth, &pthread_attr, udpclientrd, (void *)&((struct client_sock *)entry->data)->socket))
             debugx(1, DBG_ERR, "pthread_create failed");
     }
 
     if (find_clconf_type(handle, NULL)) {
-	server_replyq = newqueue();
-	if (pthread_create(&srvth, &pthread_attr, udpserverwr, (void *)server_replyq))
-	    debugx(1, DBG_ERR, "pthread_create failed");
+        server_replyq = newqueue();
+        if (pthread_create(&srvth, &pthread_attr, udpserverwr, (void *)server_replyq))
+            debugx(1, DBG_ERR, "pthread_create failed");
     }
 }
 #else

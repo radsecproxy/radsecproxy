@@ -1,12 +1,12 @@
 /* Copyright (C) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
+#include "../gconfig.h"
+#include "../util.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#include "../gconfig.h"
-#include "../util.h"
 
 static void printhex(uint8_t *str, size_t len) {
     int i = 0;
@@ -16,7 +16,7 @@ static void printhex(uint8_t *str, size_t len) {
 }
 
 static int
-_check_unhex(char *input, uint8_t process_null, uint8_t* expected, size_t expected_len){
+_check_unhex(char *input, uint8_t process_null, uint8_t *expected, size_t expected_len) {
     int result = 1;
     int length = 0;
     char *str = stringcopy(input, 0);
@@ -32,7 +32,7 @@ _check_unhex(char *input, uint8_t process_null, uint8_t* expected, size_t expect
         printf("unhex: expected length %zu, was %d\n", expected_len, length);
         result = 0;
     }
-    if (memcmp(str, expected, expected_len) != 0){
+    if (memcmp(str, expected, expected_len) != 0) {
         result = 0;
         printf("unhex: expected string ");
         printhex(expected, expected_len);
@@ -44,9 +44,7 @@ _check_unhex(char *input, uint8_t process_null, uint8_t* expected, size_t expect
     return result;
 }
 
-int
-main (int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     int testcount = 0;
 
     {
@@ -89,7 +87,7 @@ main (int argc, char *argv[])
         printf("ok %d - two hex with flollowing char\n", ++testcount);
     }
 
-        {
+    {
         char *input = "test%01t%02t";
         uint8_t expect[] = {0x74, 0x65, 0x73, 0x74, 0x01, 0x74, 0x02, 0x74};
         if (!_check_unhex(input, 0, expect, sizeof(expect)))

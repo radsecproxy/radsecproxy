@@ -5,6 +5,9 @@
 #ifndef _HOSTPORT_H
 #define _HOSTPORT_H
 
+#include "list.h"
+#include <netinet/in.h>
+
 struct hostportres {
     char *host;
     char *port;
@@ -21,7 +24,7 @@ int resolvehostports(struct list *hostports, int af, int socktype);
 struct addrinfo *resolvepassiveaddrinfo(char **hostport, int af, char *default_port, int socktype);
 int hostportmatches(struct list *hostports, struct list *matchhostports, uint8_t checkport);
 int addressmatches(struct list *hostports, struct sockaddr *addr, uint8_t checkport, struct hostportres **hp);
-int connecttcphostlist(struct list *hostports,  struct addrinfo *src, struct hostportres **hpreturn);
+int connecttcphostlist(struct list *hostports, struct addrinfo *src, struct hostportres **hpreturn);
 
 #endif /* _HOSTPORT_H */
 /* Local Variables: */

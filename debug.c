@@ -2,26 +2,23 @@
  * Copyright (c) 2010-2011, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
-#ifndef SYS_SOLARIS9
-#include <stdint.h>
-#endif
 #ifdef __linux__
 #include <sys/syscall.h>
 #include <unistd.h>
 #endif
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-#include <strings.h>
-#include <time.h>
-#include <sys/time.h>
-#include <syslog.h>
-#include <errno.h>
-#include <assert.h>
-#include <pthread.h>
 #include "debug.h"
 #include "util.h"
+#include <assert.h>
+#include <errno.h>
+#include <pthread.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/time.h>
+#include <syslog.h>
+#include <time.h>
 
 static char *debug_ident = NULL;
 static uint8_t debug_level = DBG_INFO;
@@ -41,20 +38,20 @@ void debug_init(char *ident) {
 void debug_set_level(uint8_t level) {
     switch (level) {
     case 1:
-	debug_level = DBG_ERR;
-	return;
+        debug_level = DBG_ERR;
+        return;
     case 2:
-	debug_level = DBG_WARN;
-	return;
+        debug_level = DBG_WARN;
+        return;
     case 3:
-	debug_level = DBG_NOTICE;
-	return;
+        debug_level = DBG_NOTICE;
+        return;
     case 4:
-	debug_level = DBG_INFO;
-	return;
+        debug_level = DBG_INFO;
+        return;
     case 5:
-	debug_level = DBG_DBG;
-	return;
+        debug_level = DBG_DBG;
+        return;
     }
 }
 
@@ -73,54 +70,54 @@ uint8_t debug_get_level(void) {
 int debug_set_destination(char *dest, int log_type) {
     static const char *facstrings[] = {
         "LOG_DAEMON", "LOG_MAIL", "LOG_USER", "LOG_LOCAL0",
-	"LOG_LOCAL1", "LOG_LOCAL2", "LOG_LOCAL3", "LOG_LOCAL4",
-	"LOG_LOCAL5", "LOG_LOCAL6", "LOG_LOCAL7", NULL };
+        "LOG_LOCAL1", "LOG_LOCAL2", "LOG_LOCAL3", "LOG_LOCAL4",
+        "LOG_LOCAL5", "LOG_LOCAL6", "LOG_LOCAL7", NULL};
     static const int facvals[] = {
         LOG_DAEMON, LOG_MAIL, LOG_USER, LOG_LOCAL0,
-	LOG_LOCAL1, LOG_LOCAL2, LOG_LOCAL3, LOG_LOCAL4,
-	LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7 };
+        LOG_LOCAL1, LOG_LOCAL2, LOG_LOCAL3, LOG_LOCAL4,
+        LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7};
     int i;
 
     if (!strncasecmp(dest, "file:///", 8)) {
-	if (log_type != LOG_TYPE_FTICKS) {
-	    debug_filepath = stringcopy(dest + 7, 0);
-	    debug_file = fopen(debug_filepath, "a");
-	    if (!debug_file) {
-	        debug_file = stderr;
-	        debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
+        if (log_type != LOG_TYPE_FTICKS) {
+            debug_filepath = stringcopy(dest + 7, 0);
+            debug_file = fopen(debug_filepath, "a");
+            if (!debug_file) {
+                debug_file = stderr;
+                debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
                        debug_filepath, strerror(errno));
-	    }
-	    setvbuf(debug_file, NULL, _IONBF, 0);
-	} else {
-	    debug(DBG_WARN, "FTicksSyslogFacility starting with file:/// not "
-                  "permitted, assuming default F-Ticks destination");
-	}
-	return 1;
+            }
+            setvbuf(debug_file, NULL, _IONBF, 0);
+        } else {
+            debug(DBG_WARN, "FTicksSyslogFacility starting with file:/// not "
+                            "permitted, assuming default F-Ticks destination");
+        }
+        return 1;
     }
     if (!strncasecmp(dest, "x-syslog://", 11) || log_type == LOG_TYPE_FTICKS) {
-	if (!strncasecmp(dest, "x-syslog://", 11)) {
+        if (!strncasecmp(dest, "x-syslog://", 11)) {
             dest += 11;
             if (*dest == '/')
                 dest++;
-	}
-	if (*dest) {
-	    for (i = 0; facstrings[i]; i++)
-		if (!strcasecmp(dest, facstrings[i]))
-		    break;
-	    if (!facstrings[i])
-		debugx(1, DBG_ERR, "Unknown syslog facility %s", dest);
-	    if (log_type != LOG_TYPE_FTICKS)
-		debug_syslogfacility = facvals[i];
+        }
+        if (*dest) {
+            for (i = 0; facstrings[i]; i++)
+                if (!strcasecmp(dest, facstrings[i]))
+                    break;
+            if (!facstrings[i])
+                debugx(1, DBG_ERR, "Unknown syslog facility %s", dest);
+            if (log_type != LOG_TYPE_FTICKS)
+                debug_syslogfacility = facvals[i];
             else if (log_type == LOG_TYPE_FTICKS)
-		fticks_syslogfacility = facvals[i];
-	} else {
+                fticks_syslogfacility = facvals[i];
+        } else {
             if (log_type != LOG_TYPE_FTICKS)
                 debug_syslogfacility = LOG_DAEMON;
             else if (log_type == LOG_TYPE_FTICKS)
                 fticks_syslogfacility = 0;
-    	}
-	openlog(debug_ident, LOG_PID, debug_syslogfacility);
-	return 1;
+        }
+        openlog(debug_ident, LOG_PID, debug_syslogfacility);
+        return 1;
     }
     debug(DBG_ERR, "Unknown log destination, exiting %s", dest);
     exit(1);
@@ -129,20 +126,20 @@ int debug_set_destination(char *dest, int log_type) {
 void debug_reopen_log(void) {
     /* not a file, noop, return success */
     if (!debug_filepath) {
-	debug(DBG_ERR, "skipping reopen");
-	return;
+        debug(DBG_ERR, "skipping reopen");
+        return;
     }
 
     if (debug_file != stderr)
-	fclose(debug_file);
+        fclose(debug_file);
 
     debug_file = fopen(debug_filepath, "a");
     if (debug_file)
-	debug(DBG_ERR, "Reopened logfile %s", debug_filepath);
+        debug(DBG_ERR, "Reopened logfile %s", debug_filepath);
     else {
-	debug_file = stderr;
-	debug(DBG_ERR, "Failed to open logfile %s, using stderr\n%s",
-	      debug_filepath, strerror(errno));
+        debug_file = stderr;
+        debug(DBG_ERR, "Failed to open logfile %s, using stderr\n%s",
+              debug_filepath, strerror(errno));
     }
     setvbuf(debug_file, NULL, _IONBF, 0);
 }
@@ -156,16 +153,16 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
     if (debug_tid) {
 #ifdef __linux__
         pid_t tid = syscall(SYS_gettid);
-        tidbuf = malloc(3*sizeof(tid)+1);
+        tidbuf = malloc(3 * sizeof(tid) + 1);
         sprintf(tidbuf, "%u", tid);
 #else
         pthread_t tid = pthread_self();
         uint8_t *ptid = (uint8_t *)&tid;
         int i;
 
-        tidbuf = malloc((2*sizeof(tid)+1));
+        tidbuf = malloc((2 * sizeof(tid) + 1));
         tmp = tidbuf;
-        for (i = sizeof(tid)-1; i >= 0; i--) {
+        for (i = sizeof(tid) - 1; i >= 0; i--) {
             tmp += sprintf(tmp, "%02x", ptid[i]);
         }
 #endif
@@ -176,34 +173,34 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
     }
 
     if (debug_syslogfacility) {
-	switch (level) {
-	case DBG_DBG:
-	    priority = LOG_DEBUG;
-	    break;
-	case DBG_INFO:
-	    priority = LOG_INFO;
-	    break;
-	case DBG_NOTICE:
-	    priority = LOG_NOTICE;
-	    break;
-	case DBG_WARN:
-	    priority = LOG_WARNING;
-	    break;
-	case DBG_ERR:
-	    priority = LOG_ERR;
-	    break;
-	default:
-	    priority = LOG_DEBUG;
-	}
-	vsyslog(priority, format, ap);
+        switch (level) {
+        case DBG_DBG:
+            priority = LOG_DEBUG;
+            break;
+        case DBG_INFO:
+            priority = LOG_INFO;
+            break;
+        case DBG_NOTICE:
+            priority = LOG_NOTICE;
+            break;
+        case DBG_WARN:
+            priority = LOG_WARNING;
+            break;
+        case DBG_ERR:
+            priority = LOG_ERR;
+            break;
+        default:
+            priority = LOG_DEBUG;
+        }
+        vsyslog(priority, format, ap);
     } else {
         if (debug_timestamp && (timebuf = malloc(26 + 1))) {
             gettimeofday(&now, NULL);
             ctime_r(&now.tv_sec, timebuf);
             /*ctime_r writes exactly 24 bytes + "\n\0" */
-            strncpy(timebuf+24,": ", 3);
+            strncpy(timebuf + 24, ": ", 3);
         }
-        malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 2*sizeof(char);
+        malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 2 * sizeof(char);
         tmp2 = malloc(malloc_size);
         if (tmp2) {
             snprintf(tmp2, malloc_size, "%s%s\n", timebuf ? timebuf : "", format);
@@ -219,7 +216,7 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
 void debug(uint8_t level, char *format, ...) {
     va_list ap;
     if (level < debug_level)
-	return;
+        return;
     va_start(ap, format);
     debug_logit(level, format, ap);
     va_end(ap);
@@ -227,10 +224,10 @@ void debug(uint8_t level, char *format, ...) {
 
 void debugx(int status, uint8_t level, char *format, ...) {
     if (level >= debug_level) {
-	va_list ap;
-	va_start(ap, format);
-	debug_logit(level, format, ap);
-	va_end(ap);
+        va_list ap;
+        va_start(ap, format);
+        debug_logit(level, format, ap);
+        va_end(ap);
     }
     exit(status);
 }
@@ -256,10 +253,10 @@ void debugerrno(int err, uint8_t level, char *format, ...) {
 
 void debugerrnox(int err, uint8_t level, char *format, ...) {
     if (level >= debug_level) {
-	va_list ap;
-	va_start(ap, format);
-	debugerrno(err, level, format, ap);
-	va_end(ap);
+        va_list ap;
+        va_start(ap, format);
+        debugerrno(err, level, format, ap);
+        va_end(ap);
     }
     exit(err);
 }
@@ -269,10 +266,10 @@ void fticks_debug(const char *format, ...) {
     va_list ap;
     va_start(ap, format);
     if (!debug_syslogfacility && !fticks_syslogfacility)
-    	debug_logit(0xff, format, ap);
+        debug_logit(0xff, format, ap);
     else {
-    	priority = LOG_DEBUG | fticks_syslogfacility;
-    	vsyslog(priority, format, ap);
+        priority = LOG_DEBUG | fticks_syslogfacility;
+        vsyslog(priority, format, ap);
     }
     va_end(ap);
 }

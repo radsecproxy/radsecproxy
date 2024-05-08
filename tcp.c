@@ -3,27 +3,27 @@
  * Copyright (c) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
-#include <signal.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <string.h>
-#include <unistd.h>
 #include <limits.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #ifdef SYS_SOLARIS9
 #include <fcntl.h>
 #endif
-#include <sys/time.h>
-#include <sys/types.h>
-#include <poll.h>
-#include <ctype.h>
-#include <sys/wait.h>
-#include <arpa/inet.h>
-#include <regex.h>
-#include <pthread.h>
-#include "radsecproxy.h"
 #include "hostport.h"
 #include "list.h"
+#include "radsecproxy.h"
+#include <arpa/inet.h>
+#include <ctype.h>
+#include <poll.h>
+#include <pthread.h>
+#include <regex.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #ifdef RADPROT_TCP
 #include "debug.h"
@@ -38,24 +38,24 @@ void tcpsetsrcres(void);
 
 static const struct protodefs protodefs = {
     "tcp",
-    NULL, /* secretdefault */
-    SOCK_STREAM, /* socktype */
-    "1812", /* portdefault */
-    0, /* retrycountdefault */
-    0, /* retrycountmax */
-    REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
-    60, /* retryintervalmax */
-    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
-    setprotoopts, /* setprotoopts */
-    getlistenerargs, /* getlistenerargs */
-    tcplistener, /* listener */
-    tcpconnect, /* connecter */
-    tcpclientrd, /* clientconnreader */
-    clientradputtcp, /* clientradput */
-    NULL, /* addclient */
-    NULL, /* addserverextra */
-    tcpsetsrcres, /* setsrcres */
-    NULL /* initextra */
+    NULL,                                        /* secretdefault */
+    SOCK_STREAM,                                 /* socktype */
+    "1812",                                      /* portdefault */
+    0,                                           /* retrycountdefault */
+    0,                                           /* retrycountmax */
+    REQUEST_RETRY_INTERVAL *REQUEST_RETRY_COUNT, /* retryintervaldefault */
+    60,                                          /* retryintervalmax */
+    DUPLICATE_INTERVAL,                          /* duplicateintervaldefault */
+    setprotoopts,                                /* setprotoopts */
+    getlistenerargs,                             /* getlistenerargs */
+    tcplistener,                                 /* listener */
+    tcpconnect,                                  /* connecter */
+    tcpclientrd,                                 /* clientconnreader */
+    clientradputtcp,                             /* clientradput */
+    NULL,                                        /* addclient */
+    NULL,                                        /* addserverextra */
+    tcpsetsrcres,                                /* setsrcres */
+    NULL                                         /* initextra */
 };
 
 static struct addrinfo *srcres = NULL;
@@ -76,7 +76,7 @@ static char **getlistenerargs(void) {
 
 void tcpsetsrcres(void) {
     if (!srcres)
-	srcres =
+        srcres =
             resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
@@ -95,9 +95,9 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
         server->state = RSP_SERVER_STATE_RECONNECTING;
     pthread_mutex_unlock(&server->lock);
 
-    if(server->conf->source) {
+    if (server->conf->source) {
         source = resolvepassiveaddrinfo(server->conf->source, AF_UNSPEC, NULL, protodefs.socktype);
-        if(!source)
+        if (!source)
             debug(DBG_WARN, "tcpconnect: could not resolve source address to bind for server %s, using default", server->conf->name);
     }
 
@@ -112,10 +112,12 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) + wait > timeout) {
             debug(DBG_DBG, "tcpconnect: timeout");
-            if (source) freeaddrinfo(source);
+            if (source)
+                freeaddrinfo(source);
             return 0;
         }
-        if (wait) debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        if (wait)
+            debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
         sleep(wait);
         firsttry = 0;
 
@@ -146,7 +148,8 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
 
-    if (source) freeaddrinfo(source);
+    if (source)
+        freeaddrinfo(source);
     return 1;
 }
 
@@ -157,21 +160,21 @@ int tcpreadtimeout(int s, unsigned char *buf, int num, int timeout) {
     struct pollfd fds[1];
 
     if (s < 0)
-	return -1;
+        return -1;
     /* make socket non-blocking? */
     for (len = 0; len < num; len += cnt) {
         fds[0].fd = s;
         fds[0].events = POLLIN;
-	ndesc = poll(fds, 1, timeout? timeout * 1000 : -1);
-	if (ndesc < 1)
-	    return ndesc;
+        ndesc = poll(fds, 1, timeout ? timeout * 1000 : -1);
+        if (ndesc < 1)
+            return ndesc;
 
-    if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL) ) {
-        return -1;
-    }
-	cnt = read(s, buf + len, num - len);
-	if (cnt <= 0)
-	    return -1;
+        if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            return -1;
+        }
+        cnt = read(s, buf + len, num - len);
+        if (cnt <= 0)
+            return -1;
     }
     return num;
 }
@@ -241,7 +244,7 @@ void *tcpclientrd(void *arg) {
     int len = 0;
 
     for (;;) {
-        len = radtcpget(server->sock, server->conf->retryinterval * (server->conf->retrycount+1), &buf);
+        len = radtcpget(server->sock, server->conf->retryinterval * (server->conf->retrycount + 1), &buf);
         if (buf && len > 0) {
             replyh(server, buf, len);
             buf = NULL;
@@ -273,29 +276,29 @@ void *tcpserverwr(void *arg) {
     debug(DBG_DBG, "tcpserverwr: starting for %s", addr2string(client->addr, tmp, sizeof(tmp)));
     replyq = client->replyq;
     for (;;) {
-	pthread_mutex_lock(&replyq->mutex);
-	while (!list_first(replyq->entries)) {
-	    if (client->sock >= 0) {
-		debug(DBG_DBG, "tcpserverwr: waiting for signal");
-		pthread_cond_wait(&replyq->cond, &replyq->mutex);
-		debug(DBG_DBG, "tcpserverwr: got signal");
-	    }
-	    if (client->sock < 0) {
-		/* s might have changed while waiting */
-		pthread_mutex_unlock(&replyq->mutex);
-		debug(DBG_DBG, "tcpserverwr: exiting as requested");
-		pthread_exit(NULL);
-	    }
-	}
-	reply = (struct request *)list_shift(replyq->entries);
-	pthread_mutex_unlock(&replyq->mutex);
-	cnt = write(client->sock, reply->replybuf, reply->replybuflen);
-	if (cnt > 0)
-	    debug(DBG_DBG, "tcpserverwr: sent %d bytes, Radius packet of length %d to %s",
-		  cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
-	else
-	    debug(DBG_ERR, "tcpserverwr: write error for %s", addr2string(client->addr, tmp, sizeof(tmp)));
-	freerq(reply);
+        pthread_mutex_lock(&replyq->mutex);
+        while (!list_first(replyq->entries)) {
+            if (client->sock >= 0) {
+                debug(DBG_DBG, "tcpserverwr: waiting for signal");
+                pthread_cond_wait(&replyq->cond, &replyq->mutex);
+                debug(DBG_DBG, "tcpserverwr: got signal");
+            }
+            if (client->sock < 0) {
+                /* s might have changed while waiting */
+                pthread_mutex_unlock(&replyq->mutex);
+                debug(DBG_DBG, "tcpserverwr: exiting as requested");
+                pthread_exit(NULL);
+            }
+        }
+        reply = (struct request *)list_shift(replyq->entries);
+        pthread_mutex_unlock(&replyq->mutex);
+        cnt = write(client->sock, reply->replybuf, reply->replybuflen);
+        if (cnt > 0)
+            debug(DBG_DBG, "tcpserverwr: sent %d bytes, Radius packet of length %d to %s",
+                  cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
+        else
+            debug(DBG_ERR, "tcpserverwr: write error for %s", addr2string(client->addr, tmp, sizeof(tmp)));
+        freerq(reply);
     }
 }
 
@@ -356,8 +359,8 @@ void *tcpservernew(void *arg) {
     s = *(int *)arg;
     free(arg);
     if (getpeername(s, (struct sockaddr *)&from, &fromlen)) {
-	debug(DBG_DBG, "tcpservernew: getpeername failed, exiting");
-	goto exit;
+        debug(DBG_DBG, "tcpservernew: getpeername failed, exiting");
+        goto exit;
     }
     debug(DBG_WARN, "tcpservernew: incoming TCP connection from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 
@@ -365,7 +368,7 @@ void *tcpservernew(void *arg) {
     if (conf) {
         client = addclient(conf, 1);
         if (client) {
-            if(conf->keepalive)
+            if (conf->keepalive)
                 enable_keepalive(s);
             client->sock = s;
             client->addr = addr_copy((struct sockaddr *)&from);
@@ -391,23 +394,23 @@ void *tcplistener(void *arg) {
     listen(*sp, 128);
 
     for (;;) {
-	s = accept(*sp, (struct sockaddr *)&from, &fromlen);
-	if (s < 0) {
-	    debug(DBG_WARN, "accept failed");
-	    continue;
-	}
+        s = accept(*sp, (struct sockaddr *)&from, &fromlen);
+        if (s < 0) {
+            debug(DBG_WARN, "accept failed");
+            continue;
+        }
         s_arg = malloc(sizeof(s));
         if (!s_arg)
             debugx(1, DBG_ERR, "malloc failed");
         *s_arg = s;
-	if (pthread_create(&tcpserverth, &pthread_attr, tcpservernew, (void *) s_arg)) {
-	    debug(DBG_ERR, "tcplistener: pthread_create failed");
+        if (pthread_create(&tcpserverth, &pthread_attr, tcpservernew, (void *)s_arg)) {
+            debug(DBG_ERR, "tcplistener: pthread_create failed");
             free(s_arg);
-	    shutdown(s, SHUT_RDWR);
-	    close(s);
-	    continue;
-	}
-	pthread_detach(tcpserverth);
+            shutdown(s, SHUT_RDWR);
+            close(s);
+            continue;
+        }
+        pthread_detach(tcpserverth);
     }
     free(sp);
     return NULL;

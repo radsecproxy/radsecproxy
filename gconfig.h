@@ -10,6 +10,7 @@
 #define CONF_MSTR_NOESC 7
 
 #include <stdio.h>
+#include <sys/types.h>
 
 struct gconffile {
     char *path;

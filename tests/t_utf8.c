@@ -1,13 +1,11 @@
 /* Copyright (C) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
+#include "../util.h"
 #include <stdio.h>
 #include <string.h>
-#include "../util.h"
 
-int
-main (int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     int testcount = 0;
 
     {
@@ -178,7 +176,7 @@ main (int argc, char *argv[])
         printf("ok %d - 4-byte char invalid 2\n", ++testcount);
     }
 
-   {
+    {
         uint8_t str[] = {0xF7, 0xBF, 0xBF, 0xBF, 0x00};
         if (verifyutf8(str, 4) != 0)
             printf("not ");

@@ -2,6 +2,12 @@
  * Copyright (c) 2010, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
+#ifdef SYS_SOLARIS9
+#include <sys/inttypes.h>
+#else
+#include <stdint.h>
+#endif
+
 struct tlv {
     uint8_t t;
     uint8_t l;
@@ -18,7 +24,7 @@ void rmtlv(struct list *, uint8_t);
 uint8_t *tlv2str(struct tlv *tlv);
 struct tlv *resizetlv(struct tlv *, uint8_t);
 uint32_t tlv2longint(struct tlv *tlv);
-char* tlv2ipv4addr(struct tlv *tlv);
+char *tlv2ipv4addr(struct tlv *tlv);
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

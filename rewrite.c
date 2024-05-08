@@ -1,18 +1,18 @@
 /* Copyright (c) 2019, SWITCH */
 /* See LICENSE for licensing information. */
 
-#include <ctype.h>
-#include <stdlib.h>
-#include <string.h>
-#include <regex.h>
-#include <arpa/inet.h>
+#include "rewrite.h"
 #include "debug.h"
 #include "gconfig.h"
 #include "hash.h"
 #include "list.h"
 #include "radmsg.h"
-#include "rewrite.h"
 #include "util.h"
+#include <arpa/inet.h>
+#include <ctype.h>
+#include <regex.h>
+#include <stdlib.h>
+#include <string.h>
 
 static struct hash *rewriteconfs;
 
@@ -25,8 +25,8 @@ static struct hash *rewriteconfs;
  * right now */
 struct tlv *extractattr(char *nameval, char vendor_flag) {
     int len, name = 0;
-    int vendor = 0;	    /* Vendor 0 is reserved, see RFC 1700.  */
-    uint32_t ival=0;
+    int vendor = 0; /* Vendor 0 is reserved, see RFC 1700.  */
+    uint32_t ival = 0;
     char *s, *s2;
     struct tlv *a;
 
@@ -54,7 +54,7 @@ struct tlv *extractattr(char *nameval, char vendor_flag) {
         if (*s == '\'')
             s++;
 
-        len = unhex(s,1);
+        len = unhex(s, 1);
         if (len > 253)
             return NULL;
     }
@@ -99,7 +99,7 @@ struct modattr *extractmodattr(char *nameval) {
     if (s[strlen(s) - 1] == '/')
         s[strlen(s) - 1] = '\0';
 
-    for (t = strchr(s, '/'); t; t = strchr(t+1, '/'))
+    for (t = strchr(s, '/'); t; t = strchr(t + 1, '/'))
         if (t == s || t[-1] != '\\')
             break;
     if (!t)
@@ -147,17 +147,16 @@ struct modattr *extractmodvattr(char *nameval) {
 
     s = strchr(nameval, ':');
     vendor = atoi(nameval);
-    if (!s || !vendor || !strchr(s+1,':'))
+    if (!s || !vendor || !strchr(s + 1, ':'))
         return NULL;
-    modvattr = extractmodattr(s+1);
+    modvattr = extractmodattr(s + 1);
     if (modvattr)
-        modvattr ->vendor = vendor;
+        modvattr->vendor = vendor;
     return modvattr;
 }
 
 void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmvattrs, char **addattrs,
-                char **addvattrs, char **modattrs, char **modvattrs, char **supattrs, char** supvattrs)
-{
+                char **addvattrs, char **modattrs, char **modvattrs, char **supattrs, char **supvattrs) {
     struct rewrite *rewrite = NULL;
     int i, n;
     uint8_t *rma = NULL;
@@ -167,7 +166,8 @@ void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmva
     struct modattr *m;
 
     if (rmattrs) {
-        for (n = 0; rmattrs[n]; n++);
+        for (n = 0; rmattrs[n];)
+            n++;
         rma = calloc(n + 1, sizeof(uint8_t));
         if (!rma)
             debugx(1, DBG_ERR, "malloc failed");
@@ -180,7 +180,8 @@ void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmva
     }
 
     if (rmvattrs) {
-        for (n = 0; rmvattrs[n]; n++);
+        for (n = 0; rmvattrs[n];)
+            n++;
         rmva = calloc(2 * n + 1, sizeof(uint32_t));
         if (!rmva)
             debugx(1, DBG_ERR, "malloc failed");
@@ -302,10 +303,10 @@ struct rewrite *getrewrite(char *alt1, char *alt2) {
     struct rewrite *r;
 
     if (alt1)
-        if ((r = hash_read(rewriteconfs,  alt1, strlen(alt1))))
+        if ((r = hash_read(rewriteconfs, alt1, strlen(alt1))))
             return r;
     if (alt2)
-        if ((r = hash_read(rewriteconfs,  alt2, strlen(alt2))))
+        if ((r = hash_read(rewriteconfs, alt2, strlen(alt2))))
             return r;
     return NULL;
 }
@@ -333,8 +334,8 @@ int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs, int inverte
     vendor = ntohl(vendor);
     while (*removevendorattrs && *removevendorattrs != vendor)
         removevendorattrs += 2;
-            if (!*removevendorattrs)
-                return 0;
+    if (!*removevendorattrs)
+        return 0;
 
     if (findvendorsubattr(removevendorattrs, vendor, 256))
         return 1; /* remove entire vendor attribute */
@@ -371,7 +372,7 @@ void dorewriterm(struct radmsg *msg, uint8_t *rmattrs, uint32_t *rmvattrs, int i
     while (n) {
         attr = (struct tlv *)n->data;
         if (((rmattrs && strchr((char *)rmattrs, attr->t)) ||
-            (rmvattrs && attr->t == RAD_Attr_Vendor_Specific && dovendorrewriterm(attr, rmvattrs, inverted))) != !!inverted) {
+             (rmvattrs && attr->t == RAD_Attr_Vendor_Specific && dovendorrewriterm(attr, rmvattrs, inverted))) != !!inverted) {
             list_removedata(msg->attrs, attr);
             freetlv(attr);
             n = p ? list_next(p) : list_first(msg->attrs);
@@ -406,7 +407,7 @@ int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
                 reslen += i - start + pfield->rm_eo - pfield->rm_so;
                 start = i + 2;
             }
-        i++;
+            i++;
         }
     }
     reslen += i - start;
@@ -428,7 +429,7 @@ int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
                 reslen += pfield->rm_eo - pfield->rm_so;
                 start = i + 2;
             }
-        i++;
+            i++;
         }
     }
     free(in);
@@ -442,12 +443,12 @@ int replacesubtlv(struct tlv *vendortlv, uint8_t *p, struct tlv *newtlv) {
     uint8_t rem_size, *next_attr;
 
     size_diff = newtlv->l - ATTRLEN(p);
-    next_attr = p+ATTRLEN(p);
+    next_attr = p + ATTRLEN(p);
     rem_size = (vendortlv->v + vendortlv->l) - next_attr;
 
     if (size_diff < 0)
         memmove(next_attr + size_diff, next_attr, rem_size);
-    if (!resizeattr(vendortlv, vendortlv->l+size_diff))
+    if (!resizeattr(vendortlv, vendortlv->l + size_diff))
         return 0;
     if (size_diff > 0)
         memmove(next_attr + size_diff, next_attr, rem_size);
@@ -460,32 +461,32 @@ int dorewritemodvattr(struct tlv *vendortlv, struct modattr *modvattr) {
     struct tlv *tmpattr;
     int offset;
 
-    if (vendortlv->l <= 4 || !attrvalidate(vendortlv->v+4, vendortlv->l-4))
+    if (vendortlv->l <= 4 || !attrvalidate(vendortlv->v + 4, vendortlv->l - 4))
         return 0;
-    for (offset = 4; offset < vendortlv->l; offset += ATTRLEN(vendortlv->v+offset)) {
-        if (ATTRTYPE(vendortlv->v+offset) == modvattr->t) {
-            tmpattr = maketlv(ATTRTYPE(vendortlv->v+offset), ATTRVALLEN(vendortlv->v+offset), ATTRVAL(vendortlv->v+offset));
+    for (offset = 4; offset < vendortlv->l; offset += ATTRLEN(vendortlv->v + offset)) {
+        if (ATTRTYPE(vendortlv->v + offset) == modvattr->t) {
+            tmpattr = maketlv(ATTRTYPE(vendortlv->v + offset), ATTRVALLEN(vendortlv->v + offset), ATTRVAL(vendortlv->v + offset));
             if (!tmpattr)
                 return 0;
             if (dorewritemodattr(tmpattr, modvattr)) {
-                int size_diff = tmpattr->l - ATTRVALLEN(vendortlv->v+offset);
-                int rem_size = vendortlv->l - offset - ATTRLEN(vendortlv->v+offset);
+                int size_diff = tmpattr->l - ATTRVALLEN(vendortlv->v + offset);
+                int rem_size = vendortlv->l - offset - ATTRLEN(vendortlv->v + offset);
                 uint8_t *next;
 
                 if (size_diff > 0)
-                    if (!resizeattr(vendortlv, vendortlv->l+size_diff)) {
+                    if (!resizeattr(vendortlv, vendortlv->l + size_diff)) {
                         freetlv(tmpattr);
                         return 0;
                     }
-                next = vendortlv->v + offset + ATTRLEN(vendortlv->v+offset);
+                next = vendortlv->v + offset + ATTRLEN(vendortlv->v + offset);
                 memmove(next + size_diff, next, rem_size);
                 if (size_diff < 0)
-                    if (!resizeattr(vendortlv, vendortlv->l+size_diff)) {
+                    if (!resizeattr(vendortlv, vendortlv->l + size_diff)) {
                         freetlv(tmpattr);
                         return 0;
                     }
 
-                tlv2buf(vendortlv->v+offset, tmpattr);
+                tlv2buf(vendortlv->v + offset, tmpattr);
             } else {
                 freetlv(tmpattr);
                 return 0;
@@ -499,7 +500,7 @@ int dorewritemodvattr(struct tlv *vendortlv, struct modattr *modvattr) {
 int dorewritemod(struct radmsg *msg, struct list *modattrs, struct list *modvattrs) {
     struct list_node *n, *m;
     uint32_t vendor;
-    
+
     for (n = list_first(msg->attrs); n; n = list_next(n)) {
         struct tlv *attr = (struct tlv *)n->data;
         if (attr->t == RAD_Attr_Vendor_Specific) {
@@ -507,7 +508,7 @@ int dorewritemod(struct radmsg *msg, struct list *modattrs, struct list *modvatt
             vendor = ntohl(vendor);
             for (m = list_first(modvattrs); m; m = list_next(m)) {
                 if (vendor == ((struct modattr *)m->data)->vendor &&
-                    !dorewritemodvattr(attr, (struct modattr*)m->data))
+                    !dorewritemodvattr(attr, (struct modattr *)m->data))
                     return 0;
             }
         } else {
@@ -541,25 +542,26 @@ int dorewritesupattr(struct radmsg *msg, struct tlv *supattr) {
     struct tlv *attr;
     uint8_t exist = 0, *vendortype, *v;
 
-    for(p = list_first(msg->attrs); p; p = list_next(p)) {
+    for (p = list_first(msg->attrs); p; p = list_next(p)) {
         attr = (struct tlv *)p->data;
         if (attr->t == supattr->t && attr->t != RAD_Attr_Vendor_Specific) {
             exist = 1;
             break;
         } else if (supattr->t == RAD_Attr_Vendor_Specific && attr->t == RAD_Attr_Vendor_Specific &&
-                    memcmp (supattr->v, attr->v, 4)==0) {
-            if (!attrvalidate(attr->v+4, attr->l-4)) {
+                   memcmp(supattr->v, attr->v, 4) == 0) {
+            if (!attrvalidate(attr->v + 4, attr->l - 4)) {
                 debug(DBG_INFO, "dorewritesup: vendor attribute validation failed, no rewrite");
                 return 0;
             }
-            vendortype = (uint8_t *)supattr->v+4;
-            for (v=attr->v+4; v < attr->v + attr->l; v += *(v+1)){
+            vendortype = (uint8_t *)supattr->v + 4;
+            for (v = attr->v + 4; v < attr->v + attr->l; v += *(v + 1)) {
                 if (*v == *vendortype) {
                     exist = 1;
                     break;
                 }
             }
-            if (exist) break;
+            if (exist)
+                break;
         }
     }
     if (!exist) {
@@ -584,7 +586,7 @@ int dorewritesup(struct radmsg *msg, struct list *supattrs) {
 }
 
 int dorewrite(struct radmsg *msg, struct rewrite *rewrite) {
-    int rv = 1;			/* Success.  */
+    int rv = 1; /* Success.  */
 
     if (rewrite) {
         if (rewrite->removeattrs || rewrite->removevendorattrs)

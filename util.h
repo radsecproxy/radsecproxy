@@ -3,17 +3,13 @@
  * Copyright (c) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
+#include <netdb.h>
 #include <sys/socket.h>
 #include <sys/time.h>
-#include <netdb.h>
 
-#define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ?	\
-			     sizeof(struct sockaddr_in) :	\
-			     sizeof(struct sockaddr_in6))
+#define SOCKADDR_SIZE(addr) ((addr).ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6))
 
-#define SOCKADDRP_SIZE(addr) ((addr)->sa_family == AF_INET ?	\
-			      sizeof(struct sockaddr_in) :	\
-			      sizeof(struct sockaddr_in6))
+#define SOCKADDRP_SIZE(addr) ((addr)->sa_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6))
 
 char *stringcopy(const char *s, int len);
 int verifyutf8(const unsigned char *str, size_t str_len);
@@ -28,7 +24,6 @@ void enable_keepalive(int socket);
 int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse);
 int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout);
 uint32_t connect_wait(struct timeval attempt_start, struct timeval last_success, int firsttry);
-
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

@@ -1,10 +1,10 @@
 /* Copyright (C) 2019, SWITCH */
 /* See LICENSE for licensing information. */
 
+#include "../rewrite.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../rewrite.h"
 
 int test_resize(int start_size, int target_size, uint8_t shouldfail) {
 
@@ -13,7 +13,7 @@ int test_resize(int start_size, int target_size, uint8_t shouldfail) {
     int result = 1;
 
     memset(value, 42, start_size);
-    attr = maketlv(1,start_size,value);
+    attr = maketlv(1, start_size, value);
 
     if (!resizeattr(attr, target_size))
         result = shouldfail;
@@ -29,8 +29,7 @@ int test_resize(int start_size, int target_size, uint8_t shouldfail) {
     return result;
 }
 
-int main (int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     int testcount = 4;
 
     printf("1..%d\n", testcount);
@@ -43,17 +42,17 @@ int main (int argc, char *argv[])
 
     /* test resizeattr to 0 */
     if (!test_resize(4, 0, 0))
-        printf ("not ");
+        printf("not ");
     printf("ok %d - resizeattr to zero\n", testcount++);
 
     /* test resizeattr to max size */
     if (!test_resize(128, 253, 0))
-        printf ("not ");
+        printf("not ");
     printf("ok %d - resizeattr to max size\n", testcount++);
 
     /* test resizeattr to oversize */
     if (!test_resize(128, 254, 1))
-        printf ("not ");
+        printf("not ");
     printf("ok %d - resizeattr to oversize\n", testcount++);
 
     return 0;

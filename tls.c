@@ -3,28 +3,28 @@
  * Copyright (c) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
-#include <signal.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <string.h>
-#include <unistd.h>
-#include <limits.h>
+#include "debug.h"
+#include "hostport.h"
+#include "radsecproxy.h"
+#include "util.h"
+#include <arpa/inet.h>
+#include <ctype.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <poll.h>
+#include <pthread.h>
+#include <regex.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <poll.h>
-#include <ctype.h>
 #include <sys/wait.h>
-#include <arpa/inet.h>
-#include <regex.h>
-#include <pthread.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include "radsecproxy.h"
-#include "hostport.h"
-#include "debug.h"
-#include "util.h"
+#include <unistd.h>
 
 #ifdef RADPROT_TLS
 
@@ -38,24 +38,24 @@ void tlssetsrcres(void);
 
 static const struct protodefs protodefs = {
     "tls",
-    "radsec", /* secretdefault */
-    SOCK_STREAM, /* socktype */
-    "2083", /* portdefault */
-    0, /* retrycountdefault */
-    0, /* retrycountmax */
-    REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */
-    60, /* retryintervalmax */
-    DUPLICATE_INTERVAL, /* duplicateintervaldefault */
-    setprotoopts, /* setprotoopts */
-    getlistenerargs, /* getlistenerargs */
-    tlslistener, /* listener */
-    tlsconnect, /* connecter */
-    tlsclientrd, /* clientconnreader */
-    clientradputtls, /* clientradput */
-    NULL, /* addclient */
-    NULL, /* addserverextra */
-    tlssetsrcres, /* setsrcres */
-    NULL /* initextra */
+    "radsec",                                    /* secretdefault */
+    SOCK_STREAM,                                 /* socktype */
+    "2083",                                      /* portdefault */
+    0,                                           /* retrycountdefault */
+    0,                                           /* retrycountmax */
+    REQUEST_RETRY_INTERVAL *REQUEST_RETRY_COUNT, /* retryintervaldefault */
+    60,                                          /* retryintervalmax */
+    DUPLICATE_INTERVAL,                          /* duplicateintervaldefault */
+    setprotoopts,                                /* setprotoopts */
+    getlistenerargs,                             /* getlistenerargs */
+    tlslistener,                                 /* listener */
+    tlsconnect,                                  /* connecter */
+    tlsclientrd,                                 /* clientconnreader */
+    clientradputtls,                             /* clientradput */
+    NULL,                                        /* addclient */
+    NULL,                                        /* addserverextra */
+    tlssetsrcres,                                /* setsrcres */
+    NULL                                         /* initextra */
 };
 
 static struct addrinfo *srcres = NULL;
@@ -77,7 +77,7 @@ static char **getlistenerargs(void) {
 
 void tlssetsrcres(void) {
     if (!srcres)
-	srcres =
+        srcres =
             resolvepassiveaddrinfo(protoopts ? protoopts->sourcearg : NULL,
                                    AF_UNSPEC, NULL, protodefs.socktype);
 }
@@ -112,9 +112,9 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
         server->state = RSP_SERVER_STATE_RECONNECTING;
     pthread_mutex_unlock(&server->lock);
 
-    if(server->conf->source) {
+    if (server->conf->source) {
         source = resolvepassiveaddrinfo(server->conf->source, AF_UNSPEC, NULL, protodefs.socktype);
-        if(!source)
+        if (!source)
             debug(DBG_WARN, "tlsconnect: could not resolve source address to bind for server %s, using default", server->conf->name);
     }
 
@@ -126,24 +126,27 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) + wait > timeout) {
             debug(DBG_DBG, "tlsconnect: timeout");
-            if (source) freeaddrinfo(source);
+            if (source)
+                freeaddrinfo(source);
             return 0;
         }
-        if (wait) debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
+        if (wait)
+            debug(DBG_INFO, "Next connection attempt to %s in %lds", server->conf->name, wait);
         sleep(wait);
         firsttry = 0;
 
         gettimeofday(&now, NULL);
         if (timeout && (now.tv_sec - start.tv_sec) > timeout) {
             debug(DBG_DBG, "tlsconnect: timeout");
-            if (source) freeaddrinfo(source);
+            if (source)
+                freeaddrinfo(source);
             return 0;
         }
 
         for (entry = list_first(server->conf->hostports); entry; entry = list_next(entry)) {
             hp = (struct hostportres *)entry->data;
             debug(DBG_INFO, "tlsconnect: trying to open TLS connection to server %s (%s port %s)", server->conf->name, hp->host, hp->port);
-            if ((server->sock = connecttcp(hp->addrinfo, source ? source : srcres, list_count(server->conf->hostports) > 1 ? 5 : 30)) < 0 ) {
+            if ((server->sock = connecttcp(hp->addrinfo, source ? source : srcres, list_count(server->conf->hostports) > 1 ? 5 : 30)) < 0) {
                 debug(DBG_ERR, "tlsconnect: TLS connection to %s (%s port %s) failed: TCP connect failed", server->conf->name, hp->host, hp->port);
                 goto concleanup;
             }
@@ -171,15 +174,16 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
 
             if (server->conf->sni) {
                 struct in6_addr tmp;
-                char *servername = server->conf->sniservername ? server->conf->sniservername : 
-                    server->conf->servername ? server->conf->servername :
-                    (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL : hp->host;
+                char *servername = server->conf->sniservername                                                   ? server->conf->sniservername
+                                   : server->conf->servername                                                    ? server->conf->servername
+                                   : (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) ? NULL
+                                                                                                                 : hp->host;
                 if (servername && !tlssetsni(server->ssl, servername)) {
                     debug(DBG_ERR, "tlsconnect: set SNI %s failed", servername);
                     goto concleanup;
                 }
             }
-            
+
             SSL_set_fd(server->ssl, server->sock);
             if (sslconnecttimeout(server->ssl, 5) <= 0) {
                 while ((error = ERR_get_error()))
@@ -191,11 +195,11 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
             if (server->conf->pskid && server->conf->pskkey) {
                 if (SSL_session_reused(server->ssl)) {
                     debug(DBG_WARN, "tlsconnect: TLS connection to %s (%s port %s), PSK identity %s with cipher %s up",
-                        server->conf->name, hp->host, hp->port, server->conf->pskid, SSL_CIPHER_get_name(SSL_get_current_cipher(server->ssl)));
+                          server->conf->name, hp->host, hp->port, server->conf->pskid, SSL_CIPHER_get_name(SSL_get_current_cipher(server->ssl)));
                     break;
                 } else {
-                    debug(DBG_ERR, "tlsconnect: TLS PSK set for %s (%s port %s) but not used in session, rejecting connection", 
-                        server->conf->name, hp->host, hp->port);
+                    debug(DBG_ERR, "tlsconnect: TLS PSK set for %s (%s port %s) but not used in session, rejecting connection",
+                          server->conf->name, hp->host, hp->port);
                     goto concleanup;
                 }
             }
@@ -208,10 +212,10 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
 
             if (verifyconfcert(cert, server->conf, hp)) {
                 subj = getcertsubject(cert);
-                if(subj) {
+                if (subj) {
                     debug(DBG_WARN, "tlsconnect: TLS connection to %s (%s port %s), subject %s, %s with cipher %s up",
-                        server->conf->name, hp->host, hp->port, subj,
-                        SSL_get_version(server->ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(server->ssl)));
+                          server->conf->name, hp->host, hp->port, subj,
+                          SSL_get_version(server->ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(server->ssl)));
                     free(subj);
                 }
                 X509_free(cert);
@@ -221,11 +225,12 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
             }
             X509_free(cert);
 
-concleanup:
+        concleanup:
             /* ensure previous connection is properly closed */
             cleanup_connection(server);
         }
-        if (server->ssl) break;
+        if (server->ssl)
+            break;
     }
 
     origflags = fcntl(server->sock, F_GETFL, 0);
@@ -238,14 +243,15 @@ concleanup:
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
     gettimeofday(&server->connecttime, NULL);
-    server->tlsnewkey=server->connecttime;
+    server->tlsnewkey = server->connecttime;
     server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
     server->conreset = reconnect;
     pthread_cond_signal(&server->newrq_cond);
     pthread_mutex_unlock(&server->newrq_mutex);
-    if (source) freeaddrinfo(source);
+    if (source)
+        freeaddrinfo(source);
     return 1;
 }
 
@@ -270,7 +276,7 @@ int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
         debug(DBG_DBG, "clientradputtls: perform key update for long-running connection");
         if (SSL_get_key_update_type(server->ssl) == SSL_KEY_UPDATE_NONE &&
             !SSL_key_update(server->ssl, SSL_KEY_UPDATE_REQUESTED))
-                debug(DBG_WARN, "clientradputtls: request for key update failed for %s", conf->name);
+            debug(DBG_WARN, "clientradputtls: request for key update failed for %s", conf->name);
         server->tlsnewkey = now;
     }
 
@@ -290,7 +296,7 @@ void *tlsclientrd(void *arg) {
     int len = 0;
 
     for (;;) {
-        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount+1), &server->lock, &buf);
+        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf);
         if (buf && len > 0) {
             replyh(server, buf, len);
             buf = NULL;
@@ -336,8 +342,8 @@ void *tlsservernew(void *arg) {
     s = *(int *)arg;
     free(arg);
     if (getpeername(s, (struct sockaddr *)&from, &fromlen)) {
-	debug(DBG_DBG, "tlsservernew: getpeername failed, exiting");
-	goto exit;
+        debug(DBG_DBG, "tlsservernew: getpeername failed, exiting");
+        goto exit;
     }
     debug(DBG_WARN, "tlsservernew: incoming TLS connection from %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
 
@@ -359,7 +365,7 @@ void *tlsservernew(void *arg) {
         goto exit;
 
     if (!SSL_set_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST, find_all_clconf(handle, (struct sockaddr *)&from, cur, &hp))) {
-            debug(DBG_WARN, "tlsservernew: failed to set ex data");
+        debug(DBG_WARN, "tlsservernew: failed to set ex data");
     }
 
     SSL_set_fd(ssl, s);
@@ -367,7 +373,7 @@ void *tlsservernew(void *arg) {
         struct clsrvconf *selected = SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG);
         conf = selected ? selected : conf;
         while ((error = ERR_get_error()))
-            debug(DBG_ERR, "tlsservernew: SSL accept from %s (%s) failed: %s", conf->name, addr2string((struct sockaddr*)&from, tmp, sizeof(tmp)), ERR_error_string(error, NULL));
+            debug(DBG_ERR, "tlsservernew: SSL accept from %s (%s) failed: %s", conf->name, addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)), ERR_error_string(error, NULL));
         debug(DBG_ERR, "tlsservernew: SSL_accept failed");
         list_free(SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST));
         goto exit;
@@ -381,7 +387,7 @@ void *tlsservernew(void *arg) {
         struct clsrvconf *selected = SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG);
         conf = selected ? selected : conf;
     }
-    
+
     accepted_tls = conf->tlsconf;
 
     origflags = fcntl(s, F_GETFL, 0);
@@ -393,16 +399,16 @@ void *tlsservernew(void *arg) {
 
     if (SSL_session_reused(ssl)) {
         debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, PSK identity %s wtih cipher %s up",
-                addr2string((struct sockaddr *)&from,tmp, sizeof(tmp)), conf->name, conf->pskid,
-                SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
+              addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)), conf->name, conf->pskid,
+              SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
     } else {
         while (conf) {
             if (!conf->pskid && accepted_tls == conf->tlsconf && (verifyconfcert(cert, conf, NULL))) {
                 subj = getcertsubject(cert);
-                if(subj) {
+                if (subj) {
                     debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s, %s with cipher %s up",
-                        addr2string((struct sockaddr *)&from,tmp, sizeof(tmp)), conf->name, subj,
-                        SSL_get_version(ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
+                          addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)), conf->name, subj,
+                          SSL_get_version(ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
                     free(subj);
                 }
                 X509_free(cert);
@@ -413,8 +419,8 @@ void *tlsservernew(void *arg) {
     }
 
     if (!conf) {
-        debug(DBG_WARN, "tlsservernew: ignoring request, no matching TLS client for %s", 
-            addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
+        debug(DBG_WARN, "tlsservernew: ignoring request, no matching TLS client for %s",
+              addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
         goto exit;
     }
 
@@ -450,23 +456,23 @@ void *tlslistener(void *arg) {
     listen(*sp, 128);
 
     for (;;) {
-	s = accept(*sp, (struct sockaddr *)&from, &fromlen);
-	if (s < 0) {
-	    debug(DBG_WARN, "accept failed");
-	    continue;
-	}
+        s = accept(*sp, (struct sockaddr *)&from, &fromlen);
+        if (s < 0) {
+            debug(DBG_WARN, "accept failed");
+            continue;
+        }
         s_arg = malloc(sizeof(s));
         if (!s_arg)
             debugx(1, DBG_ERR, "malloc failed");
         *s_arg = s;
-	if (pthread_create(&tlsserverth, &pthread_attr, tlsservernew, (void *) s_arg)) {
-	    debug(DBG_ERR, "tlslistener: pthread_create failed");
+        if (pthread_create(&tlsserverth, &pthread_attr, tlsservernew, (void *)s_arg)) {
+            debug(DBG_ERR, "tlslistener: pthread_create failed");
             free(s_arg);
-	    shutdown(s, SHUT_RDWR);
-	    close(s);
-	    continue;
-	}
-	pthread_detach(tlsserverth);
+            shutdown(s, SHUT_RDWR);
+            close(s);
+            continue;
+        }
+        pthread_detach(tlsserverth);
     }
     free(sp);
     return NULL;

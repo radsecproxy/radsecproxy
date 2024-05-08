@@ -3,29 +3,32 @@
  * Copyright (c) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
-#include <sys/time.h>
-#include <stdint.h>
-#include <pthread.h>
-#include <regex.h>
-#include <netinet/in.h>
+#ifndef _RADSECPROXY_H
+#define _RADSECPROXY_H
+
+#include "gconfig.h"
+#include "hostport.h"
 #include "list.h"
 #include "radmsg.h"
-#include "gconfig.h"
 #include "rewrite.h"
-#include "hostport.h"
+#include <netinet/in.h>
+#include <pthread.h>
+#include <regex.h>
+#include <stdint.h>
+#include <sys/time.h>
 
 #include <openssl/asn1.h>
 
 #define DEBUG_LEVEL 2
 
-#define CONFIG_MAIN SYSCONFDIR"/radsecproxy.conf"
+#define CONFIG_MAIN SYSCONFDIR "/radsecproxy.conf"
 
 /* MAX_REQUESTS must be 256 due to Radius' 8 bit ID field */
 #define MAX_REQUESTS 256
 #define MAX_LOSTRQS 16
 #define REQUEST_RETRY_INTERVAL 5
 #define REQUEST_RETRY_COUNT 2
-#define DUPLICATE_INTERVAL REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT
+#define DUPLICATE_INTERVAL REQUEST_RETRY_INTERVAL *REQUEST_RETRY_COUNT
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
@@ -48,7 +51,6 @@
 /* 27262 is vendor DANTE Ltd. */
 #define DEFAULT_TTL_ATTR "27262:1"
 #define DEFAULT_FTICKS_PREFIX "F-TICKS/eduroam/1.0"
-
 
 #define RAD_UDP 0
 #define RAD_TLS 1
@@ -80,10 +82,10 @@ enum rsp_server_state {
 };
 
 enum rsp_statsrv {
-	RSP_STATSRV_OFF = 0,
-	RSP_STATSRV_ON,
-	RSP_STATSRV_MINIMAL,
-	RSP_STATSRV_AUTO
+    RSP_STATSRV_OFF = 0,
+    RSP_STATSRV_ON,
+    RSP_STATSRV_MINIMAL,
+    RSP_STATSRV_AUTO
 };
 
 struct options {
@@ -95,11 +97,11 @@ struct options {
     uint32_t ttlattrtype[2];
     uint8_t addttl;
     uint8_t loglevel;
-	uint8_t logtid;
-	uint8_t logfullusername;
+    uint8_t logtid;
+    uint8_t logfullusername;
     uint8_t loopprevention;
-	enum rsp_mac_type log_mac;
-	uint8_t *log_key;
+    enum rsp_mac_type log_mac;
+    uint8_t *log_key;
     enum rsp_fticks_reporting_type fticks_reporting;
     enum rsp_mac_type fticks_mac;
     uint8_t *fticks_key;
@@ -116,7 +118,7 @@ struct commonprotoopts {
 struct request {
     struct timeval created;
     uint32_t refcount;
-	pthread_mutex_t refmutex;
+    pthread_mutex_t refmutex;
     uint8_t *buf, *replybuf;
     int buflen, replybuflen;
     struct radmsg *msg;
@@ -198,7 +200,7 @@ struct client {
     struct clsrvconf *conf;
     int sock;
     SSL *ssl;
-	pthread_mutex_t lock;
+    pthread_mutex_t lock;
     struct request *rqs[MAX_REQUESTS];
     struct gqueue *replyq;
     struct sockaddr *addr;
@@ -223,7 +225,7 @@ struct server {
     struct timeval lastrcv;
     struct rqout *requests;
     uint8_t newrq;
-	uint8_t conreset;
+    uint8_t conreset;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
 };
@@ -255,9 +257,9 @@ struct protodefs {
     uint8_t duplicateintervaldefault;
     void (*setprotoopts)(struct commonprotoopts *);
     char **(*getlistenerargs)(void);
-    void *(*listener)(void*);
+    void *(*listener)(void *);
     int (*connecter)(struct server *, int, int);
-    void *(*clientconnreader)(void*);
+    void *(*clientconnreader)(void *);
     int (*clientradput)(struct server *, unsigned char *, int);
     void (*addclient)(struct client *);
     void (*addserverextra)(struct clsrvconf *);
@@ -282,6 +284,8 @@ void replyh(struct server *server, uint8_t *buf, int buflen);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);
 uint8_t *radattr2ascii(struct tlv *attr); /* TODO: mv this to radmsg? */
 extern pthread_attr_t pthread_attr;
+
+#endif /* _RADSECPROXY_H */
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

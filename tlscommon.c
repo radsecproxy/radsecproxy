@@ -5,36 +5,36 @@
 
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
 #define _GNU_SOURCE
-#include <stdio.h>
-#include <signal.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <string.h>
-#include <unistd.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <poll.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <ctype.h>
-#include <sys/wait.h>
-#include <arpa/inet.h>
-#include <regex.h>
-#include <libgen.h>
-#include <pthread.h>
-#include <openssl/ssl.h>
-#include <openssl/rand.h>
-#include <openssl/err.h>
-#include <openssl/md5.h>
-#include <openssl/x509v3.h>
-#include <assert.h>
 #include "debug.h"
 #include "hash.h"
-#include "util.h"
 #include "hostport.h"
 #include "radsecproxy.h"
+#include "util.h"
+#include <arpa/inet.h>
+#include <assert.h>
+#include <ctype.h>
+#include <fcntl.h>
+#include <libgen.h>
+#include <limits.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <openssl/err.h>
+#include <openssl/md5.h>
+#include <openssl/rand.h>
+#include <openssl/ssl.h>
+#include <openssl/x509v3.h>
+#include <poll.h>
+#include <pthread.h>
+#include <regex.h>
+#include <signal.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 static struct hash *tlsconfs = NULL;
 
@@ -52,12 +52,12 @@ int RSP_EX_DATA_CONFIG_LIST;
 struct certattrmatch {
     int (*matchfn)(GENERAL_NAME *, struct certattrmatch *);
     int type;
-    char * exact;
+    char *exact;
     regex_t *regex;
     ASN1_OBJECT *oid;
     struct in6_addr ipaddr;
     int af;
-    char * debugname;
+    char *debugname;
 };
 
 /* callbacks for making OpenSSL < 1.1 thread safe */
@@ -74,12 +74,11 @@ void ssl_thread_id(CRYPTO_THREADID *id) {
 }
 #endif
 
-
 void ssl_locking_callback(int mode, int type, const char *file, int line) {
     if (mode & CRYPTO_LOCK)
-       pthread_mutex_lock(&ssl_locks[type]);
+        pthread_mutex_lock(&ssl_locks[type]);
     else
-       pthread_mutex_unlock(&ssl_locks[type]);
+        pthread_mutex_unlock(&ssl_locks[type]);
 }
 #endif
 
@@ -129,7 +128,7 @@ static char *print_x509_name(X509_NAME *name) {
 
     X509_NAME_print_ex(bio, name, 0, XN_FLAG_RFC2253);
 
-    buf = malloc(BIO_number_written(bio)+1);
+    buf = malloc(BIO_number_written(bio) + 1);
     if (buf) {
         BIO_read(bio, buf, BIO_number_written(bio));
         buf[BIO_number_written(bio)] = '\0';
@@ -144,7 +143,7 @@ static char *print_x509_name(X509_NAME *name) {
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
     int pwdlen = strlen(userdata);
     if (rwflag != 0 || pwdlen > size) /* not for decryption or too large */
-	return 0;
+        return 0;
     memcpy(buf, userdata, pwdlen);
     return pwdlen;
 }
@@ -174,12 +173,12 @@ static int verify_cb(int ok, X509_STORE_CTX *ctx) {
         switch (err) {
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
             if (err_cert) {
-            buf = print_x509_name(X509_get_issuer_name(err_cert));
-            if (buf) {
-                debug(DBG_WARN, "\tIssuer=%s", buf);
-                free(buf);
-                buf = NULL;
-            }
+                buf = print_x509_name(X509_get_issuer_name(err_cert));
+                if (buf) {
+                    debug(DBG_WARN, "\tIssuer=%s", buf);
+                    free(buf);
+                    buf = NULL;
+                }
             }
             break;
         case X509_V_ERR_CERT_NOT_YET_VALID:
@@ -215,9 +214,9 @@ static int cookie_calculate_hash(struct sockaddr *peer, time_t time, uint8_t *re
     }
 
     memcpy(buf, &time, sizeof(time_t));
-    memcpy(buf+sizeof(time_t), peer, SOCKADDRP_SIZE(peer));
+    memcpy(buf + sizeof(time_t), peer, SOCKADDRP_SIZE(peer));
 
-    HMAC(EVP_sha256(), (const void*) cookie_secret, COOKIE_SECRET_LENGTH,
+    HMAC(EVP_sha256(), (const void *)cookie_secret, COOKIE_SECRET_LENGTH,
          buf, length, result, resultlength);
     OPENSSL_free(buf);
     return 1;
@@ -231,7 +230,7 @@ static int cookie_generate_cb(SSL *ssl, unsigned char *cookie, unsigned int *coo
 
     if (!cookie_secret_initialized) {
         if (!RAND_bytes(cookie_secret, COOKIE_SECRET_LENGTH))
-            debugx(1,DBG_ERR, "cookie_generate_cg: error generating random secret");
+            debugx(1, DBG_ERR, "cookie_generate_cg: error generating random secret");
         cookie_secret_initialized = 1;
     }
 
@@ -299,19 +298,18 @@ static void ssl_info_callback(const SSL *ssl, int where, int ret) {
     w = where & ~SSL_ST_MASK;
 
     if (w & SSL_ST_CONNECT)
-	s = "SSL_connect";
+        s = "SSL_connect";
     else if (w & SSL_ST_ACCEPT)
-	s = "SSL_accept";
+        s = "SSL_accept";
     else
-	s = "undefined";
+        s = "undefined";
 
     if (where & SSL_CB_LOOP)
         debug(DBG_DBG, "%s:%s", s, SSL_state_string_long(ssl));
     else if (where & SSL_CB_ALERT) {
         s = (where & SSL_CB_READ) ? "read" : "write";
         debug(DBG_DBG, "SSL3 alert %s:%s:%s", s, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
-    }
-    else if (where & SSL_CB_EXIT) {
+    } else if (where & SSL_CB_EXIT) {
         if (ret == 0)
             debug(DBG_DBG, "%s:failed in %s", s, SSL_state_string_long(ssl));
         else if (ret < 0)
@@ -323,10 +321,10 @@ static void ssl_info_callback(const SSL *ssl, int where, int ret) {
 #if OPENSSL_VERSION_NUMBER >= 0x10101000
 int psk_use_session_cb(SSL *ssl, const EVP_MD *md, const unsigned char **id, size_t *idlen, SSL_SESSION **sess) {
     struct clsrvconf *conf = NULL;
-    STACK_OF(SSL_CIPHER) *ciphers;
+    STACK_OF(SSL_CIPHER) * ciphers;
     const SSL_CIPHER *cipher;
 
-    conf = (struct clsrvconf *) SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG);
+    conf = (struct clsrvconf *)SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG);
     if (!conf || !conf->pskid || !conf->pskkey) {
         debug(DBG_DBG, "psk_use_session_cb: no PSK data configured for tls connection");
         *sess = NULL;
@@ -336,14 +334,14 @@ int psk_use_session_cb(SSL *ssl, const EVP_MD *md, const unsigned char **id, siz
     debug(DBG_DBG, "psk_use_session_cb: using PSK id %s, key length %d", conf->pskid, conf->pskkeylen);
 
     *sess = SSL_SESSION_new();
-    if (! *sess) {
+    if (!*sess) {
         debug(DBG_ERR, "psk_use_session_cb: failed to create new SSL session");
         return 0;
     }
 
-    *id = (unsigned char *) conf->pskid;
+    *id = (unsigned char *)conf->pskid;
     *idlen = strlen(conf->pskid);
-    if (!SSL_SESSION_set1_master_key(*sess, (unsigned char *) conf->pskkey, conf->pskkeylen)) {
+    if (!SSL_SESSION_set1_master_key(*sess, (unsigned char *)conf->pskkey, conf->pskkeylen)) {
         debug(DBG_ERR, "psk_use_session_cb: failed to set PSK key");
         return 0;
     }
@@ -358,7 +356,7 @@ int psk_use_session_cb(SSL *ssl, const EVP_MD *md, const unsigned char **id, siz
         debug(DBG_ERR, "psk_use_session_cb: failed to get supported ciphers");
         return 0;
     }
-    cipher = sk_SSL_CIPHER_value(ciphers,0);
+    cipher = sk_SSL_CIPHER_value(ciphers, 0);
     sk_SSL_CIPHER_free(ciphers);
     if (!cipher) {
         debug(DBG_ERR, "psk_use_session_cb: first supported cipher is null!");
@@ -378,7 +376,7 @@ int psk_use_session_cb(SSL *ssl, const EVP_MD *md, const unsigned char **id, siz
 
 int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SESSION **sess) {
     struct clsrvconf *conf = NULL;
-    struct list* candidates = NULL;
+    struct list *candidates = NULL;
     struct list_node *node = NULL;
     const SSL_CIPHER *cipher;
 
@@ -392,10 +390,10 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
         return 0;
     }
 
-    candidates = (struct list *) SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST);
+    candidates = (struct list *)SSL_get_ex_data(ssl, RSP_EX_DATA_CONFIG_LIST);
     if (!candidates)
         debug(DBG_DBG, "psk_find_session_cb: no candidate list found in ssl object");
-    for(node = list_first(candidates); node; node = list_next(node)) {
+    for (node = list_first(candidates); node; node = list_next(node)) {
         struct clsrvconf *candidate = (struct clsrvconf *)node->data;
         if (candidate->pskid && strcmp((const char *)id, candidate->pskid) == 0) {
             conf = candidate;
@@ -414,12 +412,12 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
         return 0;
     }
 
-     *sess = SSL_SESSION_new();
-    if (! *sess) {
+    *sess = SSL_SESSION_new();
+    if (!*sess) {
         debug(DBG_ERR, "psk_find_session_cb: failed to create new SSL session");
         return 0;
     }
-    if (!SSL_SESSION_set1_master_key(*sess, (unsigned char *) conf->pskkey, conf->pskkeylen)) {
+    if (!SSL_SESSION_set1_master_key(*sess, (unsigned char *)conf->pskkey, conf->pskkeylen)) {
         debug(DBG_ERR, "psk_find_session_cb: failed to set PSK key");
         return 0;
     }
@@ -431,8 +429,8 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
 
     cipher = SSL_get_pending_cipher(ssl);
     if (!cipher) {
-         debug(DBG_ERR, "psk_find_session_cb: failed to get pending cipher");
-         return 0;
+        debug(DBG_ERR, "psk_find_session_cb: failed to get pending cipher");
+        return 0;
     }
     debug(DBG_DBG, "psk_find_session_cb: setting session cipher %s", SSL_CIPHER_get_name(cipher));
     if (!SSL_SESSION_set_cipher(*sess, cipher)) {
@@ -445,7 +443,7 @@ int psk_find_session_cb(SSL *ssl, const unsigned char *id, size_t idlen, SSL_SES
     return 1;
 }
 
-void keylog_cb (const SSL *ssl, const char *line) {
+void keylog_cb(const SSL *ssl, const char *line) {
     static FILE *keylog = NULL;
     static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     static int keyloginitialized = 0;
@@ -453,7 +451,7 @@ void keylog_cb (const SSL *ssl, const char *line) {
     pthread_mutex_lock(&mutex);
     if (!keyloginitialized) {
         mode_t oldumask = umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-        if ( !(keylog = fopen(getenv(RSP_KEYLOG_ENV), "a")) )
+        if (!(keylog = fopen(getenv(RSP_KEYLOG_ENV), "a")))
             debugerrno(errno, DBG_ERR, "keylog_cb: error opening file %s", getenv(RSP_KEYLOG_ENV));
         else
             setlinebuf(keylog);
@@ -481,15 +479,15 @@ static X509_VERIFY_PARAM *createverifyparams(char **poids) {
 
     pm = X509_VERIFY_PARAM_new();
     if (!pm)
-	return NULL;
+        return NULL;
 
     for (i = 0; poids[i]; i++) {
-	pobject = OBJ_txt2obj(poids[i], 0);
-	if (!pobject) {
-	    X509_VERIFY_PARAM_free(pm);
-	    return NULL;
-	}
-	X509_VERIFY_PARAM_add0_policy(pm, pobject);
+        pobject = OBJ_txt2obj(poids[i], 0);
+        if (!pobject) {
+            X509_VERIFY_PARAM_free(pm);
+            return NULL;
+        }
+        X509_VERIFY_PARAM_add0_policy(pm, pobject);
     }
 
     X509_VERIFY_PARAM_set_flags(pm, X509_V_FLAG_POLICY_CHECK | X509_V_FLAG_EXPLICIT_POLICY);
@@ -497,7 +495,7 @@ static X509_VERIFY_PARAM *createverifyparams(char **poids) {
 }
 
 static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
-    STACK_OF(X509_NAME) *calist;
+    STACK_OF(X509_NAME) * calist;
     X509_STORE *x509_s;
     unsigned long error;
 
@@ -609,15 +607,15 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
     {
-    long sslversion = SSLeay();
-    if (sslversion < 0x00908100L ||
-        (sslversion >= 0x10000000L && sslversion < 0x10000020L)) {
-        debug(DBG_WARN, "%s: %s seems to be of a version with a "
-	      "certain security critical bug (fixed in OpenSSL 0.9.8p and "
-	      "1.0.0b).  Disabling OpenSSL session caching for context %p.",
-	      __func__, SSLeay_version(SSLEAY_VERSION), ctx);
-        SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
-    }
+        long sslversion = SSLeay();
+        if (sslversion < 0x00908100L ||
+            (sslversion >= 0x10000000L && sslversion < 0x10000020L)) {
+            debug(DBG_WARN, "%s: %s seems to be of a version with a "
+                            "certain security critical bug (fixed in OpenSSL 0.9.8p and "
+                            "1.0.0b).  Disabling OpenSSL session caching for context %p.",
+                  __func__, SSLeay_version(SSLEAY_VERSION), ctx);
+            SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
+        }
     }
 #endif
 
@@ -677,7 +675,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     }
     SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
 #if OPENSSL_VERSION_NUMBER >= 0x10101000
-/* TLS 1.3 stuff */
+    /* TLS 1.3 stuff */
     if (conf->ciphersuites) {
         if (!SSL_CTX_set_ciphersuites(ctx, conf->ciphersuites)) {
             debug(DBG_ERR, "tlscreatectx: Failed to set ciphersuites in TLS context %s", conf->name);
@@ -732,7 +730,7 @@ struct tls *tlsgettls(char *alt1, char *alt2) {
 
     t = hash_read(tlsconfs, alt1, strlen(alt1));
     if (!t && alt2)
-	t = hash_read(tlsconfs, alt2, strlen(alt2));
+        t = hash_read(tlsconfs, alt2, strlen(alt2));
     return t;
 }
 
@@ -750,7 +748,7 @@ struct tls *tlsgetdefaultpsk(void) {
     }
     return tlsdefaultpsk;
 #else
-    debugx(1,DBG_ERR, "tlsgetdefaultpsk: use of TLS1.3-PSK requires openssl >= 1.1.1");
+    debugx(1, DBG_ERR, "tlsgetdefaultpsk: use of TLS1.3-PSK requires openssl >= 1.1.1");
     return NULL;
 #endif
 }
@@ -769,7 +767,7 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
             if (t->tlsexpiry <= now.tv_sec) {
                 t->tlsexpiry = now.tv_sec + t->cacheexpiry;
                 if (!tlsaddcacrl(t->tlsctx, t))
-                    debug(DBG_WARN, "tlsgetctx: cache reload for TLS context %s failed, continue with old state!",t->name);
+                    debug(DBG_WARN, "tlsgetctx: cache reload for TLS context %s failed, continue with old state!", t->name);
             }
         }
         if (!t->tlsctx) {
@@ -785,7 +783,7 @@ SSL_CTX *tlsgetctx(uint8_t type, struct tls *t) {
             if (t->dtlsexpiry <= now.tv_sec) {
                 t->dtlsexpiry = now.tv_sec + t->cacheexpiry;
                 if (!tlsaddcacrl(t->dtlsctx, t))
-                    debug(DBG_WARN, "tlsgetctx: cache reload for DTLS context %s failed, continue with old state!",t->name);
+                    debug(DBG_WARN, "tlsgetctx: cache reload for DTLS context %s failed, continue with old state!", t->name);
             }
         }
         if (!t->dtlsctx) {
@@ -805,7 +803,7 @@ void tlsreload(void) {
     struct timeval now;
     SSL_CTX *newctx;
 
-    debug (DBG_NOTICE, "reloading certs, CAs, CRLs");
+    debug(DBG_NOTICE, "reloading certs, CAs, CRLs");
 
     gettimeofday(&now, NULL);
 
@@ -849,15 +847,15 @@ X509 *verifytlscert(SSL *ssl) {
     unsigned long error;
 
     if (SSL_get_verify_result(ssl) != X509_V_OK) {
-	debug(DBG_ERR, "verifytlscert: basic validation failed");
-	while ((error = ERR_get_error()))
-	    debug(DBG_ERR, "verifytlscert: TLS: %s", ERR_error_string(error, NULL));
-	return NULL;
+        debug(DBG_ERR, "verifytlscert: basic validation failed");
+        while ((error = ERR_get_error()))
+            debug(DBG_ERR, "verifytlscert: TLS: %s", ERR_error_string(error, NULL));
+        return NULL;
     }
 
     cert = SSL_get_peer_certificate(ssl);
     if (!cert)
-	debug(DBG_ERR, "verifytlscert: failed to obtain certificate");
+        debug(DBG_ERR, "verifytlscert: failed to obtain certificate");
     return cert;
 }
 
@@ -865,15 +863,17 @@ static int certattr_matchrid(GENERAL_NAME *gn, struct certattrmatch *match) {
     return OBJ_cmp(gn->d.registeredID, match->oid) == 0 ? 1 : 0;
 }
 
-static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match){
+static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match) {
     int l = ASN1_STRING_length(gn->d.iPAddress);
-    return (((match->af == AF_INET && l == sizeof(struct in_addr)) || (match->af == AF_INET6 && l == sizeof(struct in6_addr)))
-        && !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), &match->ipaddr, l)) ? 1 : 0 ;
+    return (((match->af == AF_INET && l == sizeof(struct in_addr)) || (match->af == AF_INET6 && l == sizeof(struct in6_addr))) &&
+            !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), &match->ipaddr, l))
+               ? 1
+               : 0;
 }
 
 static int _general_name_regex_match(char *v, int l, struct certattrmatch *match) {
     char *s;
-    if (l <= 0 ) 
+    if (l <= 0)
         return 0;
     if (match->exact) {
         if (l == strlen(match->exact) && memcmp(v, match->exact, l) == 0)
@@ -905,10 +905,9 @@ static int certattr_matchothername(GENERAL_NAME *gn, struct certattrmatch *match
     return _general_name_regex_match((char *)ASN1_STRING_get0_data(gn->d.otherName->value->value.octet_string),
                                      ASN1_STRING_length(gn->d.otherName->value->value.octet_string),
                                      match);
-    
 }
 
-static int certattr_matchcn(X509 *cert, struct certattrmatch *match){
+static int certattr_matchcn(X509 *cert, struct certattrmatch *match) {
     int loc;
     X509_NAME *nm;
     X509_NAME_ENTRY *e;
@@ -923,7 +922,7 @@ static int certattr_matchcn(X509 *cert, struct certattrmatch *match){
 
         e = X509_NAME_get_entry(nm, loc);
         t = X509_NAME_ENTRY_get_data(e);
-        if (_general_name_regex_match((char *) ASN1_STRING_get0_data(t), ASN1_STRING_length(t), match))
+        if (_general_name_regex_match((char *)ASN1_STRING_get0_data(t), ASN1_STRING_length(t), match))
             return 1;
     }
     return 0;
@@ -933,18 +932,18 @@ static int certattr_matchcn(X509 *cert, struct certattrmatch *match){
    1 if expected type is present and matches
    0 if expected type is not present
    -1 if expected type is present but does not match */
-static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
+static int matchsubjaltname(X509 *cert, struct certattrmatch *match) {
     GENERAL_NAME *gn;
-    int loc, n,i,r = 0;
+    int loc, n, i, r = 0;
     char *fail = NULL, *tmp, *s;
-    STACK_OF(GENERAL_NAME) *alt;
+    STACK_OF(GENERAL_NAME) * alt;
 
     /*special case: don't search in SAN, but CN field in subject */
     if (match->type == -1)
         return certattr_matchcn(cert, match);
 
     loc = X509_get_ext_by_NID(cert, NID_subject_alt_name, -1);
-    if (loc < 0) 
+    if (loc < 0)
         return 0;
 
     alt = X509V3_EXT_d2i(X509_get_ext(cert, loc));
@@ -963,7 +962,8 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
         /*legacy print non-matching SAN*/
         if (gn->type == GEN_DNS || gn->type == GEN_URI) {
             s = stringcopy((char *)ASN1_STRING_get0_data(gn->d.ia5), ASN1_STRING_length(gn->d.ia5));
-            if (!s) continue;
+            if (!s)
+                continue;
             tmp = fail;
             if (asprintf(&fail, "%s%s%s", tmp ? tmp : "", tmp ? ", " : "", s) >= 0)
                 free(tmp);
@@ -973,7 +973,7 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch* match) {
         }
     }
 
-    if (r<1)
+    if (r < 1)
         debug(DBG_DBG, "matchsubjaltname: no matching Subject Alt Name found! (%s)", fail);
     free(fail);
 
@@ -1029,7 +1029,8 @@ int certnamecheck(X509 *cert, struct hostportres *hp) {
 int certnamecheckany(X509 *cert, struct list *hostports) {
     struct list_node *entry;
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
-        if (certnamecheck(cert, (struct hostportres *)entry->data)) return 1;
+        if (certnamecheck(cert, (struct hostportres *)entry->data))
+            return 1;
     }
     return 0;
 }
@@ -1045,12 +1046,11 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpcon
         debug(DBG_DBG, "verifyconfcert: verify hostname");
         if (conf->servername) {
             struct hostportres servername = {.host = conf->servername, .port = NULL, .prefixlen = 255, .addrinfo = NULL};
-            if (!certnamecheck(cert, &servername)){
+            if (!certnamecheck(cert, &servername)) {
                 debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, servername.host);
                 ok = 0;
             }
-        }
-        else if (hpconnected) {
+        } else if (hpconnected) {
             if (!certnamecheck(cert, hpconnected)) {
                 debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, hpconnected->host);
                 ok = 0;
@@ -1077,23 +1077,32 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpcon
 }
 
 char *getcertsubject(X509 *cert) {
-    if (!cert) return NULL;
+    if (!cert)
+        return NULL;
     return print_x509_name(X509_get_subject_name(cert));
 }
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
-static int parse_tls_version(uint8_t dtls, const char* version) {
-    if (!strcasecmp("", version)) return 0;
+static int parse_tls_version(uint8_t dtls, const char *version) {
+    if (!strcasecmp("", version))
+        return 0;
     if (dtls) {
-        if (!strcasecmp("DTLS1", version)) return DTLS1_VERSION;
-        if (!strcasecmp("DTLS1_2", version)) return DTLS1_2_VERSION;
+        if (!strcasecmp("DTLS1", version))
+            return DTLS1_VERSION;
+        if (!strcasecmp("DTLS1_2", version))
+            return DTLS1_2_VERSION;
     } else {
-        if (!strcasecmp("SSL3", version)) return SSL3_VERSION;
-        if (!strcasecmp("TLS1", version)) return TLS1_VERSION;
-        if (!strcasecmp("TLS1_1", version)) return TLS1_1_VERSION;
-        if (!strcasecmp("TLS1_2", version)) return TLS1_2_VERSION;
+        if (!strcasecmp("SSL3", version))
+            return SSL3_VERSION;
+        if (!strcasecmp("TLS1", version))
+            return TLS1_VERSION;
+        if (!strcasecmp("TLS1_1", version))
+            return TLS1_1_VERSION;
+        if (!strcasecmp("TLS1_2", version))
+            return TLS1_2_VERSION;
 #if OPENSSL_VERSION_NUMBER >= 0x10101000
-        if (!strcasecmp("TLS1_3", version)) return TLS1_3_VERSION;
+        if (!strcasecmp("TLS1_3", version))
+            return TLS1_3_VERSION;
 #endif
     }
     return -1;
@@ -1106,14 +1115,14 @@ static int conf_tls_version(uint8_t dtls, const char *version, int *min, int *ma
     if (!s) {
         smin = smax = ver;
     } else {
-        *s =  '\0';
+        *s = '\0';
         smin = ver;
-        smax = s+1;
+        smax = s + 1;
     }
     *min = parse_tls_version(dtls, smin);
     *max = parse_tls_version(dtls, smax);
     free(ver);
-    return *min >=0 && *max >=0 && (*max == 0 || *min <= *max);
+    return *min >= 0 && *max >= 0 && (*max == 0 || *min <= *max);
 }
 #endif
 
@@ -1134,21 +1143,20 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     conf->cacheexpiry = -1;
 
     if (!getgenericconfig(cf, block,
-        "CACertificateFile", CONF_STR, &conf->cacertfile,
-        "CACertificatePath", CONF_STR, &conf->cacertpath,
-        "CertificateFile", CONF_STR, &conf->certfile,
-        "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
-        "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
-        "CacheExpiry", CONF_LINT, &conf->cacheexpiry,
-        "CRLCheck", CONF_BLN, &conf->crlcheck,
-        "PolicyOID", CONF_MSTR, &conf->policyoids,
-        "CipherList", CONF_STR, &conf->cipherlist,
-        "CipherSuites", CONF_STR, &conf->ciphersuites,
-        "TlsVersion", CONF_STR, &tlsversion,
-        "DtlsVersion", CONF_STR, &dtlsversion,
-        "DhFile", CONF_STR, &dhfile,
-        NULL
-    )) {
+                          "CACertificateFile", CONF_STR, &conf->cacertfile,
+                          "CACertificatePath", CONF_STR, &conf->cacertpath,
+                          "CertificateFile", CONF_STR, &conf->certfile,
+                          "CertificateKeyFile", CONF_STR, &conf->certkeyfile,
+                          "CertificateKeyPassword", CONF_STR, &conf->certkeypwd,
+                          "CacheExpiry", CONF_LINT, &conf->cacheexpiry,
+                          "CRLCheck", CONF_BLN, &conf->crlcheck,
+                          "PolicyOID", CONF_MSTR, &conf->policyoids,
+                          "CipherList", CONF_STR, &conf->cipherlist,
+                          "CipherSuites", CONF_STR, &conf->ciphersuites,
+                          "TlsVersion", CONF_STR, &tlsversion,
+                          "DtlsVersion", CONF_STR, &dtlsversion,
+                          "DhFile", CONF_STR, &dhfile,
+                          NULL)) {
         debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
         goto errexit;
     }
@@ -1169,19 +1177,19 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     /* use -1 as 'not set' value */
     conf->tlsminversion = conf->tlsmaxversion = conf->dtlsminversion = conf->dtlsmaxversion = -1;
     if (tlsversion) {
-        if(!conf_tls_version(0, tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
+        if (!conf_tls_version(0, tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
             debug(DBG_ERR, "error in block %s, invalid TlsVersion %s", val, tlsversion);
             goto errexit;
         }
-        free (tlsversion);
+        free(tlsversion);
         tlsversion = NULL;
     }
     if (dtlsversion) {
-        if(!conf_tls_version(1, dtlsversion, &conf->dtlsminversion, &conf->dtlsmaxversion)) {
+        if (!conf_tls_version(1, dtlsversion, &conf->dtlsminversion, &conf->dtlsmaxversion)) {
             debug(DBG_ERR, "error in block %s, invalid DtlsVersion %s", val, dtlsversion);
             goto errexit;
         }
-        free (dtlsversion);
+        free(dtlsversion);
         dtlsversion = NULL;
     }
 #else
@@ -1227,8 +1235,8 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
 
     conf->name = stringcopy(val, 0);
     if (!conf->name) {
-	debug(DBG_ERR, "conftls_cb: malloc failed");
-	goto errexit;
+        debug(DBG_ERR, "conftls_cb: malloc failed");
+        goto errexit;
     }
     pthread_mutex_init(&conf->lock, NULL);
 
@@ -1291,32 +1299,35 @@ static regex_t *compileregex(char *regstr) {
 int addmatchcertattr(struct clsrvconf *conf, const char *match) {
     struct certattrmatch *certattrmatch;
     char *pos, *colon, *matchcopy;
-    
+
     if (!conf->matchcertattrs) {
         conf->matchcertattrs = list_create();
     }
 
     certattrmatch = malloc(sizeof(struct certattrmatch));
-    if (!certattrmatch) return 0;
+    if (!certattrmatch)
+        return 0;
     memset(certattrmatch, 0, sizeof(struct certattrmatch));
 
-    matchcopy = stringcopy(match,0);
+    matchcopy = stringcopy(match, 0);
     pos = matchcopy;
     colon = strchr(pos, ':');
-    if (!colon) goto errexit;
+    if (!colon)
+        goto errexit;
 
     if (strncasecmp(pos, "CN", colon - pos) == 0) {
-        if(!(certattrmatch->regex = compileregex(colon+1))) goto errexit;
+        if (!(certattrmatch->regex = compileregex(colon + 1)))
+            goto errexit;
         certattrmatch->type = -1;
         certattrmatch->matchfn = NULL; /*special case: don't search in SAN, but CN field in subject */
-    } 
-    else if (strncasecmp(pos, "SubjectAltName", colon - pos) == 0) {
-        pos = colon+1;
+    } else if (strncasecmp(pos, "SubjectAltName", colon - pos) == 0) {
+        pos = colon + 1;
         colon = strchr(pos, ':');
-        if (!colon) goto errexit;
+        if (!colon)
+            goto errexit;
 
         if (strncasecmp(pos, "IP", colon - pos) == 0) {
-            pos = colon+1;
+            pos = colon + 1;
             if (inet_pton(AF_INET, pos, &certattrmatch->ipaddr))
                 certattrmatch->af = AF_INET;
             else if (inet_pton(AF_INET6, pos, &certattrmatch->ipaddr))
@@ -1325,39 +1336,42 @@ int addmatchcertattr(struct clsrvconf *conf, const char *match) {
                 goto errexit;
             certattrmatch->type = GEN_IPADD;
             certattrmatch->matchfn = &certattr_matchip;
-        }
-        else if(strncasecmp(pos, "URI", colon - pos) == 0) {
-            if(!(certattrmatch->regex = compileregex(colon+1))) goto errexit;
+        } else if (strncasecmp(pos, "URI", colon - pos) == 0) {
+            if (!(certattrmatch->regex = compileregex(colon + 1)))
+                goto errexit;
             certattrmatch->type = GEN_URI;
             certattrmatch->matchfn = &certattr_matchregex;
-        }
-        else if(strncasecmp(pos, "DNS", colon - pos) == 0) {
-            if(!(certattrmatch->regex = compileregex(colon+1))) goto errexit;
+        } else if (strncasecmp(pos, "DNS", colon - pos) == 0) {
+            if (!(certattrmatch->regex = compileregex(colon + 1)))
+                goto errexit;
             certattrmatch->type = GEN_DNS;
             certattrmatch->matchfn = &certattr_matchregex;
-        }
-        else if(strncasecmp(pos, "rID", colon - pos) == 0) {
-            certattrmatch->oid = OBJ_txt2obj(colon+1, 0);
-            if (!certattrmatch->oid) goto errexit;
+        } else if (strncasecmp(pos, "rID", colon - pos) == 0) {
+            certattrmatch->oid = OBJ_txt2obj(colon + 1, 0);
+            if (!certattrmatch->oid)
+                goto errexit;
             certattrmatch->type = GEN_RID;
             certattrmatch->matchfn = &certattr_matchrid;
-        }
-        else if(strncasecmp(pos, "otherNAme", colon - pos) == 0){
-            pos = colon+1;
+        } else if (strncasecmp(pos, "otherNAme", colon - pos) == 0) {
+            pos = colon + 1;
             colon = strchr(pos, ':');
-            if(!colon) goto errexit;
+            if (!colon)
+                goto errexit;
             *colon = '\0';
-            if(!(certattrmatch->oid = OBJ_txt2obj(pos,0))) goto errexit;
-            if(!(certattrmatch->regex = compileregex(colon+1))) goto errexit;
+            if (!(certattrmatch->oid = OBJ_txt2obj(pos, 0)))
+                goto errexit;
+            if (!(certattrmatch->regex = compileregex(colon + 1)))
+                goto errexit;
             certattrmatch->type = GEN_OTHERNAME;
             certattrmatch->matchfn = &certattr_matchothername;
-        }
-        else goto errexit;
-    } 
-    else goto errexit;
+        } else
+            goto errexit;
+    } else
+        goto errexit;
 
     certattrmatch->debugname = stringcopy(match, 0);
-    if(!list_push(conf->matchcertattrs, certattrmatch)) goto errexit;
+    if (!list_push(conf->matchcertattrs, certattrmatch))
+        goto errexit;
     free(matchcopy);
     return 1;
 
@@ -1372,12 +1386,12 @@ void freematchcertattr(struct clsrvconf *conf) {
     struct certattrmatch *match;
 
     if (conf->matchcertattrs) {
-        for (entry = list_first(conf->matchcertattrs); entry; entry=list_next(entry)) {
-            match = ((struct certattrmatch*)entry->data);
+        for (entry = list_first(conf->matchcertattrs); entry; entry = list_next(entry)) {
+            match = ((struct certattrmatch *)entry->data);
             free(match->debugname);
             free(match->exact);
             ASN1_OBJECT_free(match->oid);
-            if(match->regex)
+            if (match->regex)
                 regfree(match->regex);
             free(match->regex);
         }
@@ -1387,10 +1401,10 @@ void freematchcertattr(struct clsrvconf *conf) {
 }
 
 int tlssetsni(SSL *ssl, char *sni) {
-    return SSL_set_tlsext_host_name(ssl, sni); 
+    return SSL_set_tlsext_host_name(ssl, sni);
 }
 
-int sslaccepttimeout (SSL *ssl, int timeout) {
+int sslaccepttimeout(SSL *ssl, int timeout) {
     int socket, origflags, ndesc, r = -1, sockerr = 0;
     socklen_t errlen = sizeof(sockerr);
     struct pollfd fds[1];
@@ -1423,24 +1437,24 @@ int sslaccepttimeout (SSL *ssl, int timeout) {
         }
 
         if (fds[0].revents & POLLERR) {
-            if(!getsockopt(socket, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
+            if (!getsockopt(socket, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
                 debug(DBG_WARN, "SSL Accept failed: %s", strerror(sockerr));
             else
                 debug(DBG_WARN, "SSL Accept failed: unknown error");
         } else if (fds[0].revents & POLLHUP) {
-                debug(DBG_WARN, "SSL Accept error: hang up");
+            debug(DBG_WARN, "SSL Accept error: hang up");
         } else if (fds[0].revents & POLLNVAL) {
-                debug(DBG_WARN, "SSL Accept error: fd not open");
+            debug(DBG_WARN, "SSL Accept error: fd not open");
         } else {
             r = SSL_accept(ssl);
             if (r <= 0) {
                 switch (SSL_get_error(ssl, r)) {
-                    case SSL_ERROR_WANT_WRITE:
-                        want_write = 1;
-                    case SSL_ERROR_WANT_READ:
-                        continue;
-                    case SSL_ERROR_SYSCALL:
-                        debugerrno(errno, DBG_ERR, "sslaccepttimeout: syscall error ");
+                case SSL_ERROR_WANT_WRITE:
+                    want_write = 1;
+                case SSL_ERROR_WANT_READ:
+                    continue;
+                case SSL_ERROR_SYSCALL:
+                    debugerrno(errno, DBG_ERR, "sslaccepttimeout: syscall error ");
                 }
             }
         }
@@ -1485,22 +1499,22 @@ int sslconnecttimeout(SSL *ssl, int timeout) {
         }
 
         if (fds[0].revents & POLLERR) {
-            if(!getsockopt(socket, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
+            if (!getsockopt(socket, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
                 debug(DBG_WARN, "SSL Connection failed: %s", strerror(sockerr));
             else
                 debug(DBG_WARN, "SSL Connection failed: unknown error");
         } else if (fds[0].revents & POLLHUP) {
-                debug(DBG_WARN, "SSL Connect error: hang up");
+            debug(DBG_WARN, "SSL Connect error: hang up");
         } else if (fds[0].revents & POLLNVAL) {
-                debug(DBG_WARN, "SSL Connect error: fd not open");
+            debug(DBG_WARN, "SSL Connect error: fd not open");
         } else {
             r = SSL_connect(ssl);
             if (r <= 0) {
                 switch (SSL_get_error(ssl, r)) {
-                    case SSL_ERROR_WANT_WRITE:
-                        want_write = 1;
-                    case SSL_ERROR_WANT_READ:
-                        continue;
+                case SSL_ERROR_WANT_WRITE:
+                    want_write = 1;
+                case SSL_ERROR_WANT_READ:
+                    continue;
                 }
             }
         }
@@ -1550,7 +1564,7 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
             pthread_mutex_lock(lock);
             if (ndesc < 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
                 if (fds[0].revents & POLLERR) {
-                    if(!getsockopt(SSL_get_fd(ssl), SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
+                    if (!getsockopt(SSL_get_fd(ssl), SOL_SOCKET, SO_ERROR, (void *)&sockerr, &errlen))
                         debug(DBG_INFO, "sslreadtimeout: connection lost: %s", strerror(sockerr));
                     else
                         debug(DBG_INFO, "sslreadtimeout: connection lost: unknown error");
@@ -1569,31 +1583,31 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
         cnt = SSL_read(ssl, buf + len, num - len);
         if (cnt <= 0) {
             switch (SSL_get_error(ssl, cnt)) {
-                case SSL_ERROR_WANT_WRITE:
-                    want_write = 1;
-                    /* fallthrough */
-                case SSL_ERROR_WANT_READ:
-                    cnt = 0;
-                    continue;
-                case SSL_ERROR_ZERO_RETURN:
-                    debug(DBG_DBG, "sslreadtimeout: got ssl shutdown");
-                    SSL_shutdown(ssl);
-                    break;
-                case SSL_ERROR_SYSCALL:
-                    if (errno)
-                        debugerrno(errno, DBG_INFO, "sslreadtimeout: connection lost");
-                    else
-                        debug(DBG_INFO, "sslreadtimeout: connection lost: EOF");
-                    /* fallthrough */
-                case SSL_ERROR_SSL:
-                    while ((error = ERR_get_error()))
-                        debug(DBG_ERR, "sslreadtimeout: SSL: %s", ERR_error_string(error, NULL));
-                    SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
-                    break;
-                default:
-                    debug(DBG_ERR, "sslreadtimeout: uncaught SSL error");
-                    SSL_shutdown(ssl);
-                    SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
+            case SSL_ERROR_WANT_WRITE:
+                want_write = 1;
+                /* fallthrough */
+            case SSL_ERROR_WANT_READ:
+                cnt = 0;
+                continue;
+            case SSL_ERROR_ZERO_RETURN:
+                debug(DBG_DBG, "sslreadtimeout: got ssl shutdown");
+                SSL_shutdown(ssl);
+                break;
+            case SSL_ERROR_SYSCALL:
+                if (errno)
+                    debugerrno(errno, DBG_INFO, "sslreadtimeout: connection lost");
+                else
+                    debug(DBG_INFO, "sslreadtimeout: connection lost: EOF");
+                /* fallthrough */
+            case SSL_ERROR_SSL:
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "sslreadtimeout: SSL: %s", ERR_error_string(error, NULL));
+                SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
+                break;
+            default:
+                debug(DBG_ERR, "sslreadtimeout: uncaught SSL error");
+                SSL_shutdown(ssl);
+                SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
             }
             pthread_mutex_unlock(lock);
             return -1;
@@ -1636,10 +1650,11 @@ int sslwrite(SSL *ssl, void *buf, int num, uint8_t blocking) {
         }
         ret = poll(fds, 1, blocking ? 1000 : 0);
         if (ret == 0) {
-            if (blocking) continue;
+            if (blocking)
+                continue;
             return -1;
         }
-        
+
         if (ret < 0 || fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
             if (fds[0].revents & POLLERR) {
                 debug(DBG_INFO, "sslwrite: socket error");
@@ -1653,13 +1668,13 @@ int sslwrite(SSL *ssl, void *buf, int num, uint8_t blocking) {
 
         if ((ret = SSL_write(ssl, buf, num)) <= 0) {
             switch (SSL_get_error(ssl, ret)) {
-                case SSL_ERROR_WANT_READ:
-                    want_read = 1;
-                case SSL_ERROR_WANT_WRITE:
-                    continue;
-                default:
-                    while ((error = ERR_get_error()))
-                        debug(DBG_ERR, "sslwrite: SSL: %s", ERR_error_string(error, NULL));
+            case SSL_ERROR_WANT_READ:
+                want_read = 1;
+            case SSL_ERROR_WANT_WRITE:
+                continue;
+            default:
+                while ((error = ERR_get_error()))
+                    debug(DBG_ERR, "sslwrite: SSL: %s", ERR_error_string(error, NULL));
             }
         }
         break;
@@ -1684,8 +1699,8 @@ int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
     int cnt, len;
     unsigned char init_buf[4];
 
-	cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
-	if (cnt < 1)
+    cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
+    if (cnt < 1)
         return 0;
 
     len = get_checked_rad_length(init_buf);
@@ -1757,16 +1772,16 @@ void *tlsserverwr(void *arg) {
             debug(DBG_DBG, "tlsserverwr: perform key update for long-running connection");
             if (SSL_get_key_update_type(client->ssl) == SSL_KEY_UPDATE_NONE &&
                 !SSL_key_update(client->ssl, SSL_KEY_UPDATE_REQUESTED))
-                    debug(DBG_WARN, "tlsserverwr: request for key update failed for %s", addr2string(client->addr, tmp, sizeof(tmp)));
+                debug(DBG_WARN, "tlsserverwr: request for key update failed for %s", addr2string(client->addr, tmp, sizeof(tmp)));
             client->tlsnewkey = now;
         }
 
         if ((cnt = sslwrite(client->ssl, reply->replybuf, reply->replybuflen, 1)) > 0) {
             debug(DBG_DBG, "tlsserverwr: sent %d bytes, Radius packet of length %d to %s",
-                cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
+                  cnt, reply->replybuflen, addr2string(client->addr, tmp, sizeof(tmp)));
         }
         pthread_mutex_unlock(&client->lock);
-    	freerq(reply);
+        freerq(reply);
     }
 }
 
@@ -1848,7 +1863,7 @@ void tlsserverrd(struct client *client) {
  */
 int reverifycert(SSL *ssl, SSL_CTX *ssl_ctx) {
     int result = -1;
-    X509* cert = NULL;
+    X509 *cert = NULL;
     STACK_OF(X509) *chain = NULL;
     X509_STORE *store = NULL;
     X509_STORE_CTX *ctx = NULL;
@@ -1856,21 +1871,21 @@ int reverifycert(SSL *ssl, SSL_CTX *ssl_ctx) {
 
     if (!ssl || !ssl_ctx)
         return result;
-    
-    if ( !(store = SSL_CTX_get_cert_store(ssl_ctx)) )
+
+    if (!(store = SSL_CTX_get_cert_store(ssl_ctx)))
         return result;
 
     if (!SSL_is_init_finished(ssl) || SSL_get_shutdown(ssl) != 0) {
         debug(DBG_DBG, "reverifycert: SSL object not (yet) connected");
 #if OPENSSL_VERSION_NUMBER >= 0x30000000
-    } else if (! (cert = SSL_get1_peer_certificate(ssl)) ) {
+    } else if (!(cert = SSL_get1_peer_certificate(ssl))) {
 #else
-    } else if (! (cert = SSL_get_peer_certificate(ssl)) ) {
+    } else if (!(cert = SSL_get_peer_certificate(ssl))) {
 #endif
         debug(DBG_DBG, "reverifycert: unable to get certificate from SSL object");
     } else if (!SSL_get0_chain_certs(ssl, &chain)) {
         debug(DBG_DBG, "reverifycert: unable to get cert chain from SSL object");
-    } else if (! (ctx = X509_STORE_CTX_new()) ) {
+    } else if (!(ctx = X509_STORE_CTX_new())) {
         debug(DBG_ERR, "reverifycert: failed to create X509_STORE_CTX");
     } else if (!X509_STORE_CTX_init(ctx, store, cert, chain)) {
         debug(DBG_ERR, "reverifycert: failed to init X509 store context");
@@ -1878,8 +1893,8 @@ int reverifycert(SSL *ssl, SSL_CTX *ssl_ctx) {
         result = X509_verify_cert(ctx);
         buf = print_x509_name(X509_get_subject_name(X509_STORE_CTX_get_current_cert(ctx)));
         debug(result == 0 ? DBG_NOTICE : DBG_DBG, "reverify result: num=%d:%s:depth=%d:%s", X509_STORE_CTX_get_error(ctx),
-            X509_verify_cert_error_string(X509_STORE_CTX_get_error(ctx)),
-            X509_STORE_CTX_get_error_depth(ctx), buf ? buf : "");
+              X509_verify_cert_error_string(X509_STORE_CTX_get_error(ctx)),
+              X509_STORE_CTX_get_error_depth(ctx), buf ? buf : "");
     }
 
     X509_STORE_CTX_free(ctx);
@@ -1893,7 +1908,8 @@ int reverifycert(SSL *ssl, SSL_CTX *ssl_ctx) {
  * @param srv server to validate
  */
 void terminateinvalidserver(struct server *srv) {
-    if (!srv) return;
+    if (!srv)
+        return;
 
     pthread_mutex_lock(&srv->lock);
     if (!srv->ssl || !srv->conf->tlsconf) {
@@ -1903,18 +1919,18 @@ void terminateinvalidserver(struct server *srv) {
     pthread_mutex_lock(&srv->conf->tlsconf->lock);
 
     switch (reverifycert(srv->ssl, tlsgetctx(srv->conf->type, srv->conf->tlsconf))) {
-        case 0:
-            debug(DBG_NOTICE, "terminateinvalidserver: certificate has become invalid, terminating connection to %s",
-                srv->conf->name);
-            SSL_shutdown(srv->ssl);
-            break;
-        case 1:
-            debug(DBG_DBG, "terminateinvalidserver: certificate still valid for %s, continue",
-                srv->conf->name);
-            break;
-        default:
-            debug(DBG_DBG, "terminateinvalidserver: unable to determine certificate for %s, ignoring",
-                srv->conf->name);
+    case 0:
+        debug(DBG_NOTICE, "terminateinvalidserver: certificate has become invalid, terminating connection to %s",
+              srv->conf->name);
+        SSL_shutdown(srv->ssl);
+        break;
+    case 1:
+        debug(DBG_DBG, "terminateinvalidserver: certificate still valid for %s, continue",
+              srv->conf->name);
+        break;
+    default:
+        debug(DBG_DBG, "terminateinvalidserver: unable to determine certificate for %s, ignoring",
+              srv->conf->name);
     }
     pthread_mutex_unlock(&srv->conf->tlsconf->lock);
     pthread_mutex_unlock(&srv->lock);
@@ -1936,18 +1952,18 @@ void terminateinvalidclient(struct client *cli) {
     pthread_mutex_lock(&cli->conf->tlsconf->lock);
 
     switch (reverifycert(cli->ssl, tlsgetctx(cli->conf->type, cli->conf->tlsconf))) {
-        case 0:
-            debug(DBG_NOTICE, "terminateinvalidclient: certificate has become invalid, terminating connection from %s (%s)", 
-                cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
-            SSL_shutdown(cli->ssl);
-            break;
-        case 1:
-            debug(DBG_DBG, "terminateinvalidclient: certificate still valid for %s (%s), continue",
-                cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
-            break;
-        default:
-            debug(DBG_DBG, "terminateinvalidclient: unable to determine certificate for %s (%s), ignoring",
-                cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
+    case 0:
+        debug(DBG_NOTICE, "terminateinvalidclient: certificate has become invalid, terminating connection from %s (%s)",
+              cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
+        SSL_shutdown(cli->ssl);
+        break;
+    case 1:
+        debug(DBG_DBG, "terminateinvalidclient: certificate still valid for %s (%s), continue",
+              cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
+        break;
+    default:
+        debug(DBG_DBG, "terminateinvalidclient: unable to determine certificate for %s (%s), ignoring",
+              cli->conf->name, addr2string(cli->addr, tmp, sizeof(tmp)));
     }
     pthread_mutex_unlock(&cli->conf->tlsconf->lock);
     pthread_mutex_unlock(&cli->lock);

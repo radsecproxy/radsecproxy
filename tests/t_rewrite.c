@@ -1,19 +1,21 @@
 /* Copyright (C) 2019, SWITCH */
 /* See LICENSE for licensing information. */
 
+#include "../debug.h"
+#include "../radmsg.h"
+#include "../rewrite.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
-#include "../rewrite.h"
-#include "../radmsg.h"
-#include "../debug.h"
 
 static void printescape(uint8_t *v, uint8_t l) {
     int i;
-    for(i=0; i<l; i++) {
-        if(isprint(v[i])) printf("%c", v[i]);
-        else printf("\\x%02x", v[i]);
+    for (i = 0; i < l; i++) {
+        if (isprint(v[i]))
+            printf("%c", v[i]);
+        else
+            printf("\\x%02x", v[i]);
     }
 }
 
@@ -22,12 +24,12 @@ static void printescape(uint8_t *v, uint8_t l) {
 static int
 _check_rewrite(struct list *origattrs, struct rewrite *rewrite, struct list *expectedattrs, int shouldfail) {
     struct radmsg msg;
-    struct list_node *n,*m;
+    struct list_node *n, *m;
     int i = 1;
 
     msg.attrs = origattrs;
 
-    if(dorewrite(&msg, rewrite) == shouldfail) {
+    if (dorewrite(&msg, rewrite) == shouldfail) {
         if (shouldfail)
             printf("dorewrite expected to fail, but it didn't\n");
         else
@@ -35,12 +37,12 @@ _check_rewrite(struct list *origattrs, struct rewrite *rewrite, struct list *exp
         return 1;
     }
 
-    if(list_count(expectedattrs) != list_count(msg.attrs)) {
+    if (list_count(expectedattrs) != list_count(msg.attrs)) {
         printf("bad attribute list length! expected %d, was %d\n", list_count(expectedattrs), list_count(msg.attrs));
         return 1;
     }
-    m=list_first(origattrs);
-    for(n=list_first(expectedattrs); n; n=list_next(n)) {
+    m = list_first(origattrs);
+    for (n = list_first(expectedattrs); n; n = list_next(n)) {
         struct tlv *tlv_exp = (struct tlv *)n->data, *tlv_act = (struct tlv *)m->data;
         if (!eqtlv(tlv_exp, tlv_act)) {
             printf("attribute list at %d not as expected!\n", i);
@@ -53,7 +55,7 @@ _check_rewrite(struct list *origattrs, struct rewrite *rewrite, struct list *exp
             printf("\n");
             return 1;
         }
-        m=list_next(m);
+        m = list_next(m);
         i++;
     }
     return 0;
@@ -61,13 +63,13 @@ _check_rewrite(struct list *origattrs, struct rewrite *rewrite, struct list *exp
 
 void _list_clear(struct list *list) {
     void *data;
-    while ( (data = list_shift(list)) )
+    while ((data = list_shift(list)))
         free(data);
 }
 
 void _tlv_list_clear(struct list *list) {
     struct tlv *tlv;
-    while ( (tlv = (struct tlv *)list_shift(list)) )
+    while ((tlv = (struct tlv *)list_shift(list)))
         freetlv(tlv);
 }
 
@@ -81,9 +83,7 @@ void _reset_rewrite(struct rewrite *rewrite) {
     _tlv_list_clear(rewrite->supattrs);
 }
 
-int
-main (int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     int testcount = 26;
     struct list *origattrs, *expectedattrs;
     struct rewrite rewrite;
@@ -91,10 +91,10 @@ main (int argc, char *argv[])
 
     debug_init("t_rewrite");
 
-    origattrs=list_create();
-    expectedattrs=list_create();
+    origattrs = list_create();
+    expectedattrs = list_create();
 
-    rewrite.whitelist_mode=0;
+    rewrite.whitelist_mode = 0;
     rewrite.removeattrs = NULL;
     rewrite.removevendorattrs = NULL;
     rewrite.addattrs = list_create();
@@ -119,7 +119,7 @@ main (int argc, char *argv[])
 
     /* test removeattr */
     {
-        uint8_t removeattrs[] = {1,2,0};
+        uint8_t removeattrs[] = {1, 2, 0};
 
         rewrite.removeattrs = removeattrs;
         list_push(origattrs, maketlv(1, strlen(username), username));
@@ -137,7 +137,7 @@ main (int argc, char *argv[])
 
     /* test removevendorattrs full: remove a vendor attribute completely*/
     {
-        uint32_t removevendorattrs[] = {42,256,0};
+        uint32_t removevendorattrs[] = {42, 256, 0};
         uint8_t value = 42;
 
         rewrite.removevendorattrs = removevendorattrs;
@@ -158,7 +158,7 @@ main (int argc, char *argv[])
 
     /* test removevendorattrs last element: remove vendor attribute if last subattribute removed*/
     {
-        uint32_t removevendorattrs[] = {42,2,0}; /*,45,12};  remove vendor 42, type 2; vendor 43 all, vendor 45 type 12} */
+        uint32_t removevendorattrs[] = {42, 2, 0}; /*,45,12};  remove vendor 42, type 2; vendor 43 all, vendor 45 type 12} */
         uint8_t value = 42;
 
         rewrite.removevendorattrs = removevendorattrs;
@@ -179,7 +179,7 @@ main (int argc, char *argv[])
 
     /* test removevendorattrs non-rfc: dont remove if format doesn't follow rfc recommendation*/
     {
-        uint32_t removevendorattrs[] = {42,1,0};
+        uint32_t removevendorattrs[] = {42, 1, 0};
         uint8_t vendor_nonrfc[] = {0, 0, 0, 45, 1, 0x12, 0x23};
 
         rewrite.removevendorattrs = removevendorattrs;
@@ -197,13 +197,13 @@ main (int argc, char *argv[])
 
     /* test removevendorattrs partial attribute */
     {
-        uint32_t removevendorattrs[] = {42,2,0};
-        uint8_t vendor_long1_in[] = {0,0,0,42,2,3,0,1,3,0};
-        uint8_t vendor_long1_out[] = {0,0,0,42,1,3,0};
-        uint8_t vendor_long2_in[] = {0,0,0,42,1,3,0,2,3,0};
-        uint8_t vendor_long2_out[] = {0,0,0,42,1,3,0};
-        uint8_t vendor_long3_in[] = {0,0,0,42,1,3,0,2,3,0,3,3,0};
-        uint8_t vendor_long3_out[] = {0,0,0,42,1,3,0,3,3,0};
+        uint32_t removevendorattrs[] = {42, 2, 0};
+        uint8_t vendor_long1_in[] = {0, 0, 0, 42, 2, 3, 0, 1, 3, 0};
+        uint8_t vendor_long1_out[] = {0, 0, 0, 42, 1, 3, 0};
+        uint8_t vendor_long2_in[] = {0, 0, 0, 42, 1, 3, 0, 2, 3, 0};
+        uint8_t vendor_long2_out[] = {0, 0, 0, 42, 1, 3, 0};
+        uint8_t vendor_long3_in[] = {0, 0, 0, 42, 1, 3, 0, 2, 3, 0, 3, 3, 0};
+        uint8_t vendor_long3_out[] = {0, 0, 0, 42, 1, 3, 0, 3, 3, 0};
 
         rewrite.removevendorattrs = removevendorattrs;
         list_push(origattrs, maketlv(26, sizeof(vendor_long1_in), vendor_long1_in));
@@ -227,7 +227,7 @@ main (int argc, char *argv[])
         char *value = "hello world";
 
         list_push(rewrite.addattrs, maketlv(1, strlen(value), value));
-        list_push(expectedattrs, maketlv(1,strlen(value), value));
+        list_push(expectedattrs, maketlv(1, strlen(value), value));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -247,9 +247,9 @@ main (int argc, char *argv[])
         list_push(origattrs, maketlv(2, strlen(value), value));
         list_push(origattrs, maketlv(1, 1, &value2));
 
-        list_push(expectedattrs, maketlv(2,strlen(value), value));
-        list_push(expectedattrs, maketlv(1,1, &value2));
-        list_push(expectedattrs, maketlv(1,strlen(value), value));
+        list_push(expectedattrs, maketlv(2, strlen(value), value));
+        list_push(expectedattrs, maketlv(1, 1, &value2));
+        list_push(expectedattrs, maketlv(1, strlen(value), value));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -263,7 +263,7 @@ main (int argc, char *argv[])
     /* test add null*/
     {
         list_push(rewrite.addattrs, maketlv(1, 0, NULL));
-        list_push(expectedattrs, maketlv(1,0, NULL));
+        list_push(expectedattrs, maketlv(1, 0, NULL));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -296,7 +296,7 @@ main (int argc, char *argv[])
         char *value = "hello world";
 
         list_push(rewrite.supattrs, maketlv(1, strlen(value), value));
-        list_push(expectedattrs, maketlv(1,strlen(value), value));
+        list_push(expectedattrs, maketlv(1, strlen(value), value));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -313,8 +313,8 @@ main (int argc, char *argv[])
         char *value2 = "hello radsec";
 
         list_push(rewrite.supattrs, maketlv(1, strlen(value2), value2));
-        list_push(origattrs, maketlv(1,strlen(value), value));
-        list_push(expectedattrs, maketlv(1,strlen(value), value));
+        list_push(origattrs, maketlv(1, strlen(value), value));
+        list_push(expectedattrs, maketlv(1, strlen(value), value));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -328,7 +328,7 @@ main (int argc, char *argv[])
     /* test supplement vendor*/
     {
         uint8_t value = 42;
-        uint8_t vendor_long1_in[] = {0,0,0,42,2,3,0,1,3,0};
+        uint8_t vendor_long1_in[] = {0, 0, 0, 42, 2, 3, 0, 1, 3, 0};
 
         list_push(rewrite.supattrs, makevendortlv(42, maketlv(1, 1, &value)));
         list_push(rewrite.supattrs, makevendortlv(42, maketlv(3, 1, &value)));
@@ -358,8 +358,8 @@ main (int argc, char *argv[])
         regcomp(mod->regex, "hello bar", REG_ICASE | REG_EXTENDED);
 
         list_push(rewrite.modattrs, mod);
-        list_push(origattrs, maketlv(1,strlen(value), value));
-        list_push(expectedattrs, maketlv(1,strlen(value), value));
+        list_push(origattrs, maketlv(1, strlen(value), value));
+        list_push(expectedattrs, maketlv(1, strlen(value), value));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -384,8 +384,8 @@ main (int argc, char *argv[])
         regcomp(mod->regex, "hello world", REG_ICASE | REG_EXTENDED);
 
         list_push(rewrite.modattrs, mod);
-        list_push(origattrs, maketlv(1,strlen(value), value));
-        list_push(expectedattrs, maketlv(1,strlen(value2), value2));
+        list_push(origattrs, maketlv(1, strlen(value), value));
+        list_push(expectedattrs, maketlv(1, strlen(value2), value2));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -410,8 +410,8 @@ main (int argc, char *argv[])
         regcomp(mod->regex, "(hello) world", REG_ICASE | REG_EXTENDED);
 
         list_push(rewrite.modattrs, mod);
-        list_push(origattrs, maketlv(1,strlen(value), value));
-        list_push(expectedattrs, maketlv(1,strlen(value2), value2));
+        list_push(origattrs, maketlv(1, strlen(value), value));
+        list_push(expectedattrs, maketlv(1, strlen(value2), value2));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -431,10 +431,10 @@ main (int argc, char *argv[])
         struct modattr *mod = malloc(sizeof(struct modattr));
         regex_t regex;
 
-        for (i=0; i<253-20; i+=20){
-            memcpy(value2+i, value, 20);
+        for (i = 0; i < 253 - 20; i += 20) {
+            memcpy(value2 + i, value, 20);
         }
-        memcpy(value2+i, "and another13\0", 14);
+        memcpy(value2 + i, "and another13\0", 14);
 
         mod->t = 1;
         mod->regex = &regex;
@@ -442,8 +442,8 @@ main (int argc, char *argv[])
         regcomp(mod->regex, "(.*)", REG_ICASE | REG_EXTENDED);
 
         list_push(rewrite.modattrs, mod);
-        list_push(origattrs, maketlv(1,strlen(value), value));
-        list_push(expectedattrs, maketlv(1,strlen(value2), value2));
+        list_push(origattrs, maketlv(1, strlen(value), value));
+        list_push(expectedattrs, maketlv(1, strlen(value2), value2));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -466,8 +466,8 @@ main (int argc, char *argv[])
         regcomp(mod->regex, "(.*)", REG_ICASE | REG_EXTENDED);
 
         list_push(rewrite.modattrs, mod);
-        list_push(origattrs, maketlv(1,strlen(value), value));
-        list_push(expectedattrs, maketlv(1,strlen(value), value));
+        list_push(origattrs, maketlv(1, strlen(value), value));
+        list_push(expectedattrs, maketlv(1, strlen(value), value));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 1))
             printf("not ");
@@ -491,8 +491,8 @@ main (int argc, char *argv[])
         regcomp(mod->regex, "(((((((((hello)))))))))", REG_ICASE | REG_EXTENDED);
 
         list_push(rewrite.modattrs, mod);
-        list_push(origattrs, maketlv(1,strlen(value), value));
-        list_push(expectedattrs, maketlv(1,strlen(value2), value2));
+        list_push(origattrs, maketlv(1, strlen(value), value));
+        list_push(expectedattrs, maketlv(1, strlen(value2), value2));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -508,8 +508,8 @@ main (int argc, char *argv[])
     {
         struct modattr *mod = malloc(sizeof(struct modattr));
         regex_t regex;
-        uint8_t vendorattrin[] =  {0,0,0,42,1,3,'b',1,3,'a',2,3,0,1,3,'a'};
-        uint8_t vendorattrout[] = {0,0,0,42,1,3,'b',1,4,'b','b',2,3,0,1,4,'b','b'};
+        uint8_t vendorattrin[] = {0, 0, 0, 42, 1, 3, 'b', 1, 3, 'a', 2, 3, 0, 1, 3, 'a'};
+        uint8_t vendorattrout[] = {0, 0, 0, 42, 1, 3, 'b', 1, 4, 'b', 'b', 2, 3, 0, 1, 4, 'b', 'b'};
 
         mod->t = 1;
         mod->vendor = 42;
@@ -518,8 +518,8 @@ main (int argc, char *argv[])
         regcomp(mod->regex, "a", REG_ICASE | REG_EXTENDED);
 
         list_push(rewrite.modvattrs, mod);
-        list_push(origattrs, maketlv(RAD_Attr_Vendor_Specific,sizeof(vendorattrin), vendorattrin));
-        list_push(expectedattrs, maketlv(RAD_Attr_Vendor_Specific,sizeof(vendorattrout), vendorattrout));
+        list_push(origattrs, maketlv(RAD_Attr_Vendor_Specific, sizeof(vendorattrin), vendorattrin));
+        list_push(expectedattrs, maketlv(RAD_Attr_Vendor_Specific, sizeof(vendorattrout), vendorattrout));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
@@ -552,7 +552,7 @@ main (int argc, char *argv[])
         regcomp(mod->regex, "a", REG_ICASE | REG_EXTENDED);
 
         list_push(rewrite.modvattrs, mod);
-        list_push(origattrs, maketlv(RAD_Attr_Vendor_Specific,sizeof(vendorattrin), vendorattrin));
+        list_push(origattrs, maketlv(RAD_Attr_Vendor_Specific, sizeof(vendorattrin), vendorattrin));
 
         if (_check_rewrite(origattrs, &rewrite, origattrs, 1))
             printf("not ");
@@ -566,8 +566,8 @@ main (int argc, char *argv[])
 
     /* test whitelist rewrite */
     {
-        uint8_t whitelistattrs[] = {1,0};
-        rewrite.whitelist_mode=1;
+        uint8_t whitelistattrs[] = {1, 0};
+        rewrite.whitelist_mode = 1;
         rewrite.removeattrs = whitelistattrs;
 
         list_push(origattrs, maketlv(1, strlen(username), username));
@@ -582,16 +582,15 @@ main (int argc, char *argv[])
         _tlv_list_clear(origattrs);
         _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
-
     }
 
     /* test whitelist vendor rewrite */
     {
-        uint32_t whitelistvendorattrs[] = {42,256,0};
+        uint32_t whitelistvendorattrs[] = {42, 256, 0};
         uint8_t value = 42;
-        uint8_t vendor_nonrfc_in[] = {0,0,0,42,1,2,3,4};
+        uint8_t vendor_nonrfc_in[] = {0, 0, 0, 42, 1, 2, 3, 4};
 
-        rewrite.whitelist_mode=1;
+        rewrite.whitelist_mode = 1;
         rewrite.removevendorattrs = whitelistvendorattrs;
         list_push(origattrs, maketlv(1, strlen(username), username));
         list_push(origattrs, makevendortlv(42, maketlv(1, 1, &value)));
@@ -611,13 +610,13 @@ main (int argc, char *argv[])
 
     /* test whitelist vendor rewrite subattribute*/
     {
-        uint32_t whitelistvendorattrs[] = {42,1,0};
+        uint32_t whitelistvendorattrs[] = {42, 1, 0};
         uint8_t value = 42;
-        uint8_t vendor_long1_in[] = {0,0,0,42,2,3,0,1,3,0};
-        uint8_t vendor_long1_out[] = {0,0,0,42,1,3,0};
-        uint8_t vendor_nonrfc_in[] = {0,0,0,42,1,2,3,4};
+        uint8_t vendor_long1_in[] = {0, 0, 0, 42, 2, 3, 0, 1, 3, 0};
+        uint8_t vendor_long1_out[] = {0, 0, 0, 42, 1, 3, 0};
+        uint8_t vendor_nonrfc_in[] = {0, 0, 0, 42, 1, 2, 3, 4};
 
-        rewrite.whitelist_mode=1;
+        rewrite.whitelist_mode = 1;
         rewrite.removevendorattrs = whitelistvendorattrs;
         list_push(origattrs, makevendortlv(42, maketlv(1, 1, &value)));
         list_push(origattrs, makevendortlv(43, maketlv(1, 1, &value)));
@@ -638,11 +637,11 @@ main (int argc, char *argv[])
 
     /* test whitelist vendor rewrite combined*/
     {
-        uint32_t whitelistvendorattrs[] = {42,1,0};
-        uint8_t whitelistattrs[] = {1,0};
+        uint32_t whitelistvendorattrs[] = {42, 1, 0};
+        uint8_t whitelistattrs[] = {1, 0};
         uint8_t value = 42;
 
-        rewrite.whitelist_mode=1;
+        rewrite.whitelist_mode = 1;
         rewrite.removeattrs = whitelistattrs;
         rewrite.removevendorattrs = whitelistvendorattrs;
         list_push(origattrs, maketlv(1, strlen(username), username));
@@ -678,8 +677,8 @@ main (int argc, char *argv[])
         regcomp(mod->regex, "^(h323-credit-time).*$", REG_ICASE | REG_EXTENDED);
 
         list_push(rewrite.modvattrs, mod);
-        list_push(origattrs, makevendortlv(9,maketlv(102,strlen(value), value)));
-        list_push(expectedattrs, makevendortlv(9,maketlv(102,strlen(expect), expect)));
+        list_push(origattrs, makevendortlv(9, maketlv(102, strlen(value), value)));
+        list_push(expectedattrs, makevendortlv(9, maketlv(102, strlen(expect), expect)));
 
         if (_check_rewrite(origattrs, &rewrite, expectedattrs, 0))
             printf("not ");
