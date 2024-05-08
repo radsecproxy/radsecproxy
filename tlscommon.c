@@ -1768,6 +1768,7 @@ void *tlsserverwr(void *arg) {
         }
 
         gettimeofday(&now, NULL);
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
         if (now.tv_sec - client->tlsnewkey.tv_sec > RSP_TLS_REKEY_INTERVAL && SSL_version(client->ssl) >= TLS1_3_VERSION) {
             debug(DBG_DBG, "tlsserverwr: perform key update for long-running connection");
             if (SSL_get_key_update_type(client->ssl) == SSL_KEY_UPDATE_NONE &&
@@ -1775,6 +1776,7 @@ void *tlsserverwr(void *arg) {
                 debug(DBG_WARN, "tlsserverwr: request for key update failed for %s", addr2string(client->addr, tmp, sizeof(tmp)));
             client->tlsnewkey = now;
         }
+#endif
 
         if ((cnt = sslwrite(client->ssl, reply->replybuf, reply->replybuflen, 1)) > 0) {
             debug(DBG_DBG, "tlsserverwr: sent %d bytes, Radius packet of length %d to %s",

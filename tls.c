@@ -272,6 +272,7 @@ int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
     }
 
     gettimeofday(&now, NULL);
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
     if (now.tv_sec - server->tlsnewkey.tv_sec > RSP_TLS_REKEY_INTERVAL && SSL_version(server->ssl) >= TLS1_3_VERSION) {
         debug(DBG_DBG, "clientradputtls: perform key update for long-running connection");
         if (SSL_get_key_update_type(server->ssl) == SSL_KEY_UPDATE_NONE &&
@@ -279,6 +280,7 @@ int clientradputtls(struct server *server, unsigned char *rad, int radlen) {
             debug(DBG_WARN, "clientradputtls: request for key update failed for %s", conf->name);
         server->tlsnewkey = now;
     }
+#endif
 
     if ((cnt = sslwrite(server->ssl, rad, radlen, 0)) <= 0) {
         pthread_mutex_unlock(&server->lock);
