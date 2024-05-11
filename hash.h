@@ -1,11 +1,7 @@
 /* Copyright (c) 2008, UNINETT AS */
 /* See LICENSE for licensing information. */
 
-#ifdef SYS_SOLARIS9
-#include <sys/inttypes.h>
-#else
 #include <stdint.h>
-#endif
 #include <pthread.h>
 
 struct hash {

@@ -4,11 +4,7 @@
 #ifndef _LIST_H
 #define _LIST_H
 
-#ifdef SYS_SOLARIS9
-#include <sys/inttypes.h>
-#else
 #include <stdint.h>
-#endif
 
 struct list_node {
     struct list_node *next;

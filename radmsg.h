@@ -7,11 +7,7 @@
 #define _RADMSG_H
 
 #include "tlv11.h"
-#ifdef SYS_SOLARIS9
-#include <sys/inttypes.h>
-#else
 #include <stdint.h>
-#endif
 
 #define RAD_Min_Length 20
 #define RAD_Max_Length 4096

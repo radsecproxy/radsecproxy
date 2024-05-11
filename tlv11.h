@@ -2,11 +2,7 @@
  * Copyright (c) 2010, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
-#ifdef SYS_SOLARIS9
-#include <sys/inttypes.h>
-#else
 #include <stdint.h>
-#endif
 
 struct tlv {
     uint8_t t;

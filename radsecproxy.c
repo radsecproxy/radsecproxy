@@ -44,7 +44,7 @@
 #if defined(HAVE_MALLOPT)
 #include <malloc.h>
 #endif
-#ifdef SYS_SOLARIS9
+#ifdef SYS_SOLARIS
 #include <fcntl.h>
 #endif
 #include "debug.h"
@@ -3456,7 +3456,7 @@ usage:
     debugx(1, DBG_ERR, "Usage:\n%s [ -c configfile ] [ -d debuglevel ] [ -f ] [ -i pidfile ] [ -p ] [ -v ]", argv[0]);
 }
 
-#ifdef SYS_SOLARIS9
+#ifdef SYS_SOLARIS
 int daemon(int a, int b) {
     int i;
 

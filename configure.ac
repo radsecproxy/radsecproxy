@@ -75,7 +75,7 @@ dnl Check if we're on Solaris and set CFLAGS accordingly
 AC_CANONICAL_TARGET
 case "${target_os}" in
   solaris*)
-    TARGET_CFLAGS="-DSYS_SOLARIS9 -D_POSIX_PTHREAD_SEMANTICS"
+    TARGET_CFLAGS="-DSYS_SOLARIS -D_POSIX_PTHREAD_SEMANTICS"
     if test "$GCC" != yes ; then
       TARGET_CFLAGS="$TARGET_CFLAGS -mt"
     else

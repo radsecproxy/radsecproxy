@@ -4,9 +4,7 @@
 #ifndef _DNS_H
 #define _DNS_H
 
-#ifdef SYS_SOLARIS9
 #include <sys/types.h>
-#endif
 #include <arpa/nameser.h>
 #include <stdlib.h>
 

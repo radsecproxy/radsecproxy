@@ -9,7 +9,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#ifdef SYS_SOLARIS9
+#ifdef SYS_SOLARIS
 #include <fcntl.h>
 #endif
 #include "hostport.h"
