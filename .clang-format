@@ -4,3 +4,4 @@ BasedOnStyle:   LLVM
 IndentWidth:    4
 ColumnLimit:    0
 ReflowComments: false
+SortIncludes: false
