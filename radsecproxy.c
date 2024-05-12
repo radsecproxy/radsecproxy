@@ -1817,7 +1817,7 @@ exit:
     return NULL;
 }
 
-static void incementlostrqs(struct server *server) {
+static void incrementlostrqs(struct server *server) {
     pthread_mutex_lock(&server->lock);
     if (server->lostrqs < MAX_LOSTRQS)
         server->lostrqs++;
@@ -1964,7 +1964,7 @@ void *clientwr(void *arg) {
                 if (conf->statusserver == RSP_STATSRV_ON || conf->statusserver == RSP_STATSRV_MINIMAL) {
                     if (*rqout->rq->buf == RAD_Status_Server) {
                         debug(DBG_WARN, "clientwr: no status server response, %s dead?", conf->name);
-                        incementlostrqs(server);
+                        incrementlostrqs(server);
                     }
                 } else {
                     if (conf->statusserver == RSP_STATSRV_AUTO && *rqout->rq->buf == RAD_Status_Server) {
@@ -1974,7 +1974,7 @@ void *clientwr(void *arg) {
                         }
                     } else {
                         debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->name);
-                        incementlostrqs(server);
+                        incrementlostrqs(server);
                     }
                 }
                 freerqoutdata(rqout);
@@ -1988,7 +1988,7 @@ void *clientwr(void *arg) {
             rqout->tries++;
             if (!conf->pdef->clientradput(server, rqout->rq->buf, rqout->rq->buflen)) {
                 debug(DBG_WARN, "clientwr: could not send request to server %s", conf->name);
-                incementlostrqs(server);
+                incrementlostrqs(server);
             }
             pthread_mutex_unlock(rqout->lock);
         }
