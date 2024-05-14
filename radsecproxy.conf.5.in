@@ -742,7 +742,7 @@ respective realm for that time.
 .RS
 Some non-Linux platforms are unable to query the MTU of a connection, causing DTLS to limit
 itself to 256 bytes and thus failing to connect. Manually set \fImtu\fR to a large enough value
-so the initial DTLS cleint-hello fits without fragmentation. 
+so the initial DTLS client-hello fits without fragmentation. 
 .RE
 
 .BR "RequireMessageAuthenticator (" on | off )
