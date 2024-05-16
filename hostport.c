@@ -127,7 +127,8 @@ errexit:
 
 int resolvehostport(struct hostportres *hp, int af, int socktype, uint8_t passive) {
     struct addrinfo hints, *res;
-    char tmp[INET6_ADDRSTRLEN];
+    char tmp[INET6_ADDRSTRLEN], *buf = NULL;
+    size_t numaddr = 0;
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_socktype = socktype;
@@ -166,10 +167,24 @@ int resolvehostport(struct hostportres *hp, int af, int socktype, uint8_t passiv
             }
         }
     }
+    for (res = hp->addrinfo; res; res = res->ai_next) {
+        if (res->ai_addr)
+            numaddr++;
+    }
+    if (numaddr) {
+        buf = calloc(numaddr, INET6_ADDRSTRLEN + 2);
+        for (res = hp->addrinfo; res; res = res->ai_next) {
+            if (!res->ai_addr)
+                continue;
+            strcat(buf,addr2string(res->ai_addr, tmp, sizeof(tmp)));
+            if (res->ai_next)
+                strcat(buf, ", ");
+        }
+    }
     debug(DBG_DBG, "%s: %s -> %s", __func__,
-          (hp->host ? hp->host : "(src info not available)"),
-          ((hp->addrinfo && hp->addrinfo->ai_addr) ? addr2string(hp->addrinfo->ai_addr, tmp, sizeof(tmp))
-                                                   : "(dst info not available)"));
+            (hp->host ? hp->host : "(src info not available)"),
+            (buf ? buf : "(dst info not available)"));
+    free(buf);
     return 1;
 
 errexit:

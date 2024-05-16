@@ -2038,6 +2038,7 @@ void createlistener(uint8_t type, char *arg) {
     struct addrinfo *res;
     int s = -1, on = 1, *sp = NULL;
     struct hostportres *hp = newhostport(arg, protodefs[type]->portdefault, 0);
+    char tmp[INET6_ADDRSTRLEN];
 
     if (!hp || !resolvehostport(hp, AF_UNSPEC, protodefs[type]->socktype, 1))
         debugx(1, DBG_ERR, "createlistener: failed to resolve %s", arg);
@@ -2073,7 +2074,7 @@ void createlistener(uint8_t type, char *arg) {
             }
         }
         if (bind(s, res->ai_addr, res->ai_addrlen)) {
-            debugerrno(errno, DBG_WARN, "createlistener: bind failed");
+            debugerrno(errno, DBG_WARN, "createlistener: bind to address %s failed", addr2string(res->ai_addr, tmp, sizeof(tmp)));
             close(s);
             continue;
         }
