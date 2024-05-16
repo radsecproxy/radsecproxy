@@ -23,6 +23,7 @@ void disable_DF_bit(int socket, struct addrinfo *res);
 void enable_keepalive(int socket);
 int bindtoaddr(struct addrinfo *addrinfo, int family, int reuse);
 int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout);
+void accepttcp(int socket, void handler(int));
 uint32_t connect_wait(struct timeval attempt_start, struct timeval last_success, int firsttry);
 
 /* Local Variables: */

@@ -308,6 +308,47 @@ int connecttcp(struct addrinfo *addrinfo, struct addrinfo *src, uint16_t timeout
     return s;
 }
 
+void accepttcp(int socket, void handler(int)) {
+    int s;
+    struct sockaddr_storage from;
+    socklen_t fromlen = sizeof(from);
+    char tmp[INET6_ADDRSTRLEN];
+
+    if (getsockname(socket, (struct sockaddr *)&from, &fromlen) != 0)
+        debugerrno(errno, DBG_ERR, "accepttcp: getsockname failed");
+    if (listen(socket, 128) != 0) {
+        debugerrno(errno, DBG_ERR, "accepttcp: listen on %s failed", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
+        goto exit;
+    }
+    debug(DBG_DBG, "accepttcp: listening on %s", addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
+
+    for (;;) {
+        s = accept(socket, (struct sockaddr *)&from, &fromlen);
+        if (s < 0) {
+            switch (errno) {
+            case EBADF:
+            case EFAULT:
+            case EINVAL:
+            case ENOTSOCK:
+            case EOPNOTSUPP:
+            case EPERM:
+                /*non-recoverable errors, exit*/
+                debugerrno(errno, DBG_WARN, "accepttcp: accept failed, exiting");
+                goto exit;
+            case ECONNABORTED:
+                break;
+            default:
+                debugerrno(errno, DBG_WARN, "accepttcp: accept failed, trying again later");
+                sleep(1);
+            }
+            continue;
+        }
+        handler(s);
+    }
+exit:
+    close(socket);
+}
+
 uint32_t connect_wait(struct timeval attempt_start, struct timeval last_success, int firsttry) {
     struct timeval now;
 

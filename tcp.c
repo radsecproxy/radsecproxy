@@ -385,34 +385,29 @@ exit:
     pthread_exit(NULL);
 }
 
-void *tcplistener(void *arg) {
+void tcpaccept(int s) {
+    int *s_arg;
     pthread_t tcpserverth;
-    int s, *sp = (int *)arg, *s_arg = NULL;
-    struct sockaddr_storage from;
-    socklen_t fromlen = sizeof(from);
 
-    listen(*sp, 128);
-
-    for (;;) {
-        s = accept(*sp, (struct sockaddr *)&from, &fromlen);
-        if (s < 0) {
-            debug(DBG_WARN, "accept failed");
-            continue;
-        }
-        s_arg = malloc(sizeof(s));
-        if (!s_arg)
-            debugx(1, DBG_ERR, "malloc failed");
-        *s_arg = s;
-        if (pthread_create(&tcpserverth, &pthread_attr, tcpservernew, (void *)s_arg)) {
-            debug(DBG_ERR, "tcplistener: pthread_create failed");
-            free(s_arg);
-            shutdown(s, SHUT_RDWR);
-            close(s);
-            continue;
-        }
-        pthread_detach(tcpserverth);
+    s_arg = malloc(sizeof(s));
+    if (!s_arg) {
+        debug(DBG_ERR, "tcpaccept: malloc failed");
+        return;
     }
-    free(sp);
+    *s_arg = s;
+    if (pthread_create(&tcpserverth, &pthread_attr, tcpservernew, (void *)s_arg)) {
+        debug(DBG_ERR, "tcpaccept: pthread_create failed");
+        free(s_arg);
+        shutdown(s, SHUT_RDWR);
+        close(s);
+        return;
+    }
+    pthread_detach(tcpserverth);
+}
+
+void *tcplistener(void *arg) {
+    accepttcp(*(int *)arg, tcpaccept);
+    free(arg);
     return NULL;
 }
 #else

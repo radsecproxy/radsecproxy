@@ -8,11 +8,11 @@ unreleased changes
 
 	Misc:
 	- Re-verify certificates on SIGHUP and terminate invalid connections (#5)
-	- Add Message-Authenticator to requests if missing
 	- Implement recommendations for deprecating insecure transports (#114)
 
 	Bug Fixes:
 	- Fix correct secret for DTLS (radius/dtls)
+	- Fix infinite loop when listening on tcp socket fails
 
 2024-05-02 1.10.1
 	Bug Fixes:

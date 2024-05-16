@@ -449,36 +449,32 @@ exit:
     pthread_exit(NULL);
 }
 
-void *tlslistener(void *arg) {
-    pthread_t tlsserverth;
-    int s, *sp = (int *)arg, *s_arg = NULL;
-    struct sockaddr_storage from;
-    socklen_t fromlen = sizeof(from);
+void tlsaccept(int s) {
+    int *s_arg;
+    pthread_t tcpserverth;
 
-    listen(*sp, 128);
-
-    for (;;) {
-        s = accept(*sp, (struct sockaddr *)&from, &fromlen);
-        if (s < 0) {
-            debug(DBG_WARN, "accept failed");
-            continue;
-        }
-        s_arg = malloc(sizeof(s));
-        if (!s_arg)
-            debugx(1, DBG_ERR, "malloc failed");
-        *s_arg = s;
-        if (pthread_create(&tlsserverth, &pthread_attr, tlsservernew, (void *)s_arg)) {
-            debug(DBG_ERR, "tlslistener: pthread_create failed");
-            free(s_arg);
-            shutdown(s, SHUT_RDWR);
-            close(s);
-            continue;
-        }
-        pthread_detach(tlsserverth);
+    s_arg = malloc(sizeof(s));
+    if (!s_arg) {
+        debug(DBG_ERR, "tlsaccept: malloc failed");
+        return;
     }
-    free(sp);
+    *s_arg = s;
+    if (pthread_create(&tcpserverth, &pthread_attr, tlsservernew, (void *)s_arg)) {
+        debug(DBG_ERR, "tlsaccept: pthread_create failed");
+        free(s_arg);
+        shutdown(s, SHUT_RDWR);
+        close(s);
+        return;
+    }
+    pthread_detach(tcpserverth);
+}
+
+void *tlslistener(void *arg) {
+    accepttcp(*(int *)arg, tlsaccept);
+    free(arg);
     return NULL;
 }
+
 #else
 const struct protodefs *tlsinit(uint8_t h) {
     return NULL;
