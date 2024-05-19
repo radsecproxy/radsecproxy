@@ -447,7 +447,7 @@ void freerq(struct request *rq) {
         memset(rq->buf, 0, rq->buflen);
         free(rq->buf);
     }
-    if (rq->replybuf) {
+    if (rq->replybuf && rq->replybuflen > 0) {
         memset(rq->replybuf, 0, rq->replybuflen);
         free(rq->replybuf);
     }
@@ -480,7 +480,7 @@ int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
             rq->newid = id;
             rq->msg->id = id;
             rq->buflen = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len, &rq->buf);
-            if (!rq->buf) {
+            if (!rq->buf || rq->buflen <= 0) {
                 pthread_mutex_unlock(to->requests[id].lock);
                 debug(DBG_ERR, "sendrq: radmsg2buf failed");
                 return 0;
@@ -561,7 +561,7 @@ void sendreply(struct request *rq) {
         rq->replybuflen = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len, &rq->replybuf);
     radmsg_free(rq->msg);
     rq->msg = NULL;
-    if (!rq->replybuf) {
+    if (!rq->replybuf || rq->replybuflen <= 0) {
         freerq(rq);
         debug(DBG_ERR, "sendreply: radmsg2buf failed");
         return;

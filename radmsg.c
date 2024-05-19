@@ -263,11 +263,13 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     }
     if (msgauth && !_createmessageauth(*buf, size, msgauth, secret, secret_len)) {
         free(*buf);
+        *buf = NULL;
         return -1;
     }
     if (secret) {
         if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(*buf, size, secret, secret_len)) {
             free(*buf);
+            *buf = NULL;
             return -1;
         }
         if (msg->code == RAD_Accounting_Request)
