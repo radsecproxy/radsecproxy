@@ -138,9 +138,9 @@ int tcpconnect(struct server *server, int timeout, int reconnect) {
             enable_keepalive(server->sock);
         break;
     }
+    gettimeofday(&server->connecttime, NULL);
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
-    gettimeofday(&server->connecttime, NULL);
     server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);

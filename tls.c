@@ -232,6 +232,8 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
         if (server->ssl)
             break;
     }
+    gettimeofday(&server->connecttime, NULL);
+    server->tlsnewkey = server->connecttime;
 
     origflags = fcntl(server->sock, F_GETFL, 0);
     if (origflags == -1) {
@@ -242,8 +244,6 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
 
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
-    gettimeofday(&server->connecttime, NULL);
-    server->tlsnewkey = server->connecttime;
     server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);

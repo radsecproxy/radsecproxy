@@ -810,8 +810,8 @@ void tlsreload(void) {
     for (entry = hash_first(tlsconfs); entry; entry = hash_next(entry)) {
         conf = (struct tls *)entry->data;
 #ifdef RADPROT_TLS
+        pthread_mutex_lock(&conf->lock);
         if (conf->tlsctx) {
-            pthread_mutex_lock(&conf->lock);
             if (conf->tlsexpiry)
                 conf->tlsexpiry = now.tv_sec + conf->cacheexpiry;
             newctx = tlscreatectx(RAD_TLS, conf);
@@ -821,12 +821,12 @@ void tlsreload(void) {
                 SSL_CTX_free(conf->tlsctx);
                 conf->tlsctx = newctx;
             }
-            pthread_mutex_unlock(&conf->lock);
         }
+        pthread_mutex_unlock(&conf->lock);
 #endif
 #ifdef RADPROT_DTLS
+        pthread_mutex_lock(&conf->lock);
         if (conf->dtlsctx) {
-            pthread_mutex_lock(&conf->lock);
             if (conf->dtlsexpiry)
                 conf->dtlsexpiry = now.tv_sec + conf->cacheexpiry;
             newctx = tlscreatectx(RAD_DTLS, conf);
@@ -836,8 +836,8 @@ void tlsreload(void) {
                 SSL_CTX_free(conf->dtlsctx);
                 conf->dtlsctx = newctx;
             }
-            pthread_mutex_unlock(&conf->lock);
         }
+        pthread_mutex_unlock(&conf->lock);
 #endif
     }
 }

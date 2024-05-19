@@ -516,11 +516,11 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
         if (server->ssl)
             break;
     }
+    gettimeofday(&server->connecttime, NULL);
+    server->tlsnewkey = server->connecttime;
 
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
-    gettimeofday(&server->connecttime, NULL);
-    server->tlsnewkey = server->connecttime;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
     server->conreset = reconnect;
