@@ -3483,9 +3483,11 @@ void revalidateconnections(void) {
 
     debug(DBG_DBG, "revalidateconnections: revalidating clients");
     for (entry = list_first(clconfs); entry; entry = list_next(entry)) {
-        for (client_entry = list_first(((struct clsrvconf *)entry->data)->clients); client_entry; client_entry = list_next(client_entry)) {
+        struct clsrvconf *clconf = (struct clsrvconf *)entry->data;
+        pthread_mutex_lock(clconf->lock);
+        for (client_entry = list_first(clconf->clients); client_entry; client_entry = list_next(client_entry))
             terminateinvalidclient((struct client *)client_entry->data);
-        }
+        pthread_mutex_unlock(clconf->lock);
     }
     debug(DBG_DBG, "revalidateconnections: revalidating servers");
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
@@ -3494,18 +3496,23 @@ void revalidateconnections(void) {
     debug(DBG_DBG, "revalidateconnections: revalidating dynamic servers");
     for (entry = list_first(realms); entry; entry = list_next(entry)) {
         struct realm *realm = (struct realm *)entry->data;
+        pthread_mutex_lock(&realm->mutex);
         for (subrealm_entry = list_first(realm->subrealms); subrealm_entry; subrealm_entry = list_next(subrealm_entry)) {
-            for (conf_entry = list_first(((struct realm *)subrealm_entry->data)->srvconfs); conf_entry; conf_entry = list_next(conf_entry)) {
+            struct realm *subrealm = (struct realm *)subrealm_entry->data;
+            pthread_mutex_lock(&subrealm->mutex);
+            for (conf_entry = list_first(subrealm->srvconfs); conf_entry; conf_entry = list_next(conf_entry)) {
                 conf = (struct clsrvconf *)conf_entry->data;
                 if (conf->servers && conf->servers->dynamiclookuparg)
                     terminateinvalidserver(conf->servers);
             }
-            for (conf_entry = list_first(((struct realm *)subrealm_entry->data)->accsrvconfs); conf_entry; conf_entry = list_next(conf_entry)) {
+            for (conf_entry = list_first(subrealm->accsrvconfs); conf_entry; conf_entry = list_next(conf_entry)) {
                 conf = (struct clsrvconf *)conf_entry->data;
                 if (conf->servers && conf->servers->dynamiclookuparg)
                     terminateinvalidserver(conf->servers);
             }
+            pthread_mutex_unlock(&subrealm->mutex);
         }
+        pthread_mutex_unlock(&realm->mutex);
     }
 }
 
