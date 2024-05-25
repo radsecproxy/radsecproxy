@@ -1911,6 +1911,7 @@ void *clientwr(void *arg) {
             debug(DBG_DBG, "clientwr: connection reset; resending all outstanding requests");
             do_resend = 1;
             server->conreset = 0;
+            gettimeofday(&server->lastrcv, NULL);
         }
 #if 0
 	else
@@ -1955,6 +1956,11 @@ void *clientwr(void *arg) {
 
             if (rqout->tries > 0 && now.tv_sec - server->lastrcv.tv_sec > conf->retryinterval && !do_resend)
                 statusserver_requested = 1;
+            if (do_resend && *rqout->rq->buf == RAD_Status_Server) {
+                freerqoutdata(rqout);
+                pthread_mutex_unlock(rqout->lock);
+                continue;
+            }
             if (rqout->tries == (*rqout->rq->buf == RAD_Status_Server ? 1 : conf->retrycount + 1)) {
                 debug(DBG_DBG, "clientwr: removing expired packet from queue");
                 replylog(rqout->rq->msg, server, rqout->rq);
