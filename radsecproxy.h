@@ -280,7 +280,7 @@ void freerq(struct request *rq);
 int radsrv(struct request *rq);
 int timeouth(struct server *server);
 int closeh(struct server *server);
-void replyh(struct server *server, uint8_t *buf, int buflen);
+int replyh(struct server *server, uint8_t *buf, int buflen);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);
 uint8_t *radattr2ascii(struct tlv *attr); /* TODO: mv this to radmsg? */
 extern pthread_attr_t pthread_attr;

@@ -1637,7 +1637,8 @@ int closeh(struct server *server) {
 }
 
 /* Called from client readers, handling replies from servers. */
-void replyh(struct server *server, uint8_t *buf, int len) {
+/* returns 0 if validation/authentication fails, else 1 */
+int replyh(struct server *server, uint8_t *buf, int len) {
     struct client *from;
     struct rqout *rqout;
     int sublen, ttlres;
@@ -1653,25 +1654,21 @@ void replyh(struct server *server, uint8_t *buf, int len) {
 
     rqout = server->requests + buf[1];
     pthread_mutex_lock(rqout->lock);
-    if (!rqout->tries) {
-        memset(buf, 0, len);
-        free(buf);
-        buf = NULL;
-        debug(DBG_INFO, "replyh: no outstanding request with this id, ignoring reply");
-        goto errunlock;
-    }
-
     msg = buf2radmsg(buf, len, server->conf->secret, server->conf->secret_len, rqout->rq->msg->auth);
-#ifdef DEBUG
-    printfchars(NULL, "origauth/buf+4", "%02x ", buf + 4, 16);
-#endif
     memset(buf, 0, len);
     free(buf);
     buf = NULL;
     if (!msg) {
-        debug(DBG_NOTICE, "replyh: ignoring message from server %s, validation failed", server->conf->name);
+        debug(DBG_NOTICE, "replyh: message decode/validation error from server %s", server->conf->name);
+        pthread_mutex_unlock(rqout->lock);
+        return 0;
+    }
+
+    if (!rqout->tries) {
+        debug(DBG_INFO, "replyh: no outstanding request with this id, ignoring reply");
         goto errunlock;
     }
+
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge &&
         msg->code != RAD_Accounting_Response) {
         debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
@@ -1785,12 +1782,12 @@ void replyh(struct server *server, uint8_t *buf, int len) {
     sendreply(newrqref(rqout->rq));
     freerqoutdata(rqout);
     pthread_mutex_unlock(rqout->lock);
-    return;
+    return 1;
 
 errunlock:
     radmsg_free(msg);
     pthread_mutex_unlock(rqout->lock);
-    return;
+    return 1;
 }
 
 struct request *createstatsrvrq(void) {

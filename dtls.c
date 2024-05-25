@@ -576,7 +576,9 @@ void *dtlsclientrd(void *arg) {
     for (;;) {
         len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf);
         if (buf && len > 0) {
-            replyh(server, buf, len);
+            if (!replyh(server, buf, len))
+                if (closeh(server))
+                    break;
             buf = NULL;
         } else if (SSL_get_shutdown(server->ssl)) {
             if (closeh(server))
