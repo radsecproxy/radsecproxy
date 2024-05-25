@@ -348,6 +348,11 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
             return NULL;
         }
     }
+    if (p - buf < len) {
+        debug(DBG_WARN, "buf2radmsg: attributes did not fill packet");
+        radmsg_free(msg);
+        return NULL;
+    }
     return msg;
 }
 
