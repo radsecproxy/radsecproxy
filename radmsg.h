@@ -49,6 +49,7 @@
 #define RAD_Attr_Event_Timestamp 55
 #define RAD_Attr_CHAP_Challenge 60
 #define RAD_Attr_Tunnel_Password 69
+#define RAD_Attr_EAP_Message 79
 #define RAD_Attr_Message_Authenticator 80
 #define RAD_Attr_CUI 89
 #define RAD_Attr_Error_Cause 101
