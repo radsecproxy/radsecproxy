@@ -1156,8 +1156,8 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     free(replymsg);
 }
 
-void respond(struct request *rq, uint8_t code, char *message,
-             int copy_proxystate_flag, int add_msg_auth) {
+void respond(struct request *rq, uint8_t code, struct tlv *addattr,
+             int add_msg_auth) {
     struct radmsg *msg;
     struct tlv *attr;
     char tmp[INET6_ADDRSTRLEN];
@@ -1165,33 +1165,23 @@ void respond(struct request *rq, uint8_t code, char *message,
     msg = radmsg_init(code, rq->msg->id, rq->msg->auth);
     if (!msg) {
         debug(DBG_ERR, "respond: malloc failed");
-        return;
+        goto errexit;
     }
 
     if (add_msg_auth) {
         attr = maketlv(RAD_Attr_Message_Authenticator, 16, NULL);
         if (!attr || !radmsg_add(msg, attr, 1)) {
             freetlv(attr);
-            radmsg_free(msg);
             debug(DBG_ERR, "respond: malloc failed");
-            return;
+            goto errexit;
         }
     }
-    if (message && *message) {
-        attr = maketlv(RAD_Attr_Reply_Message, strlen(message), message);
-        if (!attr || !radmsg_add(msg, attr, 0)) {
-            freetlv(attr);
-            radmsg_free(msg);
-            debug(DBG_ERR, "respond: malloc failed");
-            return;
-        }
+    if (addattr && !radmsg_add(msg, addattr, 0)) {
+        debug(DBG_ERR, "respond: malloc failed");
+        goto errexit;
     }
-    if (copy_proxystate_flag) {
-        if (radmsg_copy_attrs(msg, rq->msg, RAD_Attr_Proxy_State) < 0) {
-            debug(DBG_ERR, "%s: unable to copy all Proxy-State attributes",
-                  __func__);
-        }
-    }
+    if (radmsg_copy_attrs(msg, rq->msg, RAD_Attr_Proxy_State) < 0)
+        debug(DBG_ERR, "respond: unable to copy all Proxy-State attributes");
 
     replylog(msg, NULL, rq);
     debug(DBG_DBG, "respond: sending %s (id %d) to %s (%s)", radmsgtype2string(msg->code), msg->id, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
@@ -1199,6 +1189,11 @@ void respond(struct request *rq, uint8_t code, char *message,
     radmsg_free(rq->msg);
     rq->msg = msg;
     sendreply(newrqref(rq));
+    return;
+
+errexit:
+    radmsg_free(msg);
+    freetlv(addattr);
 }
 
 struct clsrvconf *choosesrvconf(struct list *srvconfs) {
@@ -1444,6 +1439,14 @@ int radsrv(struct request *rq) {
     memcpy(rq->rqauth, msg->auth, 16);
 
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
+    if (msg->code == RAD_Disconnect_Request) {
+        debug(DBG_INFO, "radsrv: disconnect-request not supported");
+        respond(rq, RAD_Disconnect_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
+    }
+    if (msg->code == RAD_CoA_Request) {
+        debug(DBG_INFO, "radsrv: CoA-request not supported");
+        respond(rq, RAD_CoA_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
+    }
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
         debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
         goto exit;
@@ -1454,7 +1457,7 @@ int radsrv(struct request *rq) {
         goto exit;
 
     if (msg->code == RAD_Status_Server) {
-        respond(rq, RAD_Access_Accept, NULL, 1, 1);
+        respond(rq, RAD_Access_Accept, NULL, 1);
         goto exit;
     }
 
@@ -1481,7 +1484,7 @@ int radsrv(struct request *rq) {
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
         if (msg->code == RAD_Accounting_Request) {
-            respond(rq, RAD_Accounting_Response, NULL, 1, 0);
+            respond(rq, RAD_Accounting_Response, NULL, 0);
         } else
             debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
         goto exit;
@@ -1506,11 +1509,11 @@ int radsrv(struct request *rq) {
 
     if (!to) {
         if (realm->message && msg->code == RAD_Access_Request) {
-            respond(rq, RAD_Access_Reject, realm->message, 1, 1);
+            respond(rq, RAD_Access_Reject, maketlv(RAD_Attr_Reply_Message, strlen(realm->message), realm->message), 1);
         } else if (realm->accresp && msg->code == RAD_Accounting_Request) {
             if (realm->acclog)
                 log_accounting_resp(from, msg, (char *)userascii);
-            respond(rq, RAD_Accounting_Response, NULL, 1, 0);
+            respond(rq, RAD_Accounting_Response, NULL, 0);
         }
         goto exit;
     }
