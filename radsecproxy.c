@@ -1472,7 +1472,8 @@ int radsrv(struct request *rq) {
         }
     }
 
-    if (msg->code == RAD_Access_Request && !verifyeapformat(msg)) {
+    if (options.verifyeap &&
+        msg->code == RAD_Access_Request && !verifyeapformat(msg)) {
         debug(DBG_WARN, "radsrv: eap format error, forcing access-reject");
         respond(rq, RAD_Access_Reject, NULL, 1);
         goto exit;
@@ -3306,6 +3307,7 @@ void getmainconfig(const char *configfile) {
     memset(&listenargs, 0, sizeof(listenargs));
     memset(&sourceargs, 0, sizeof(sourceargs));
     options.logfullusername = 1;
+    options.verifyeap = 1;
 
     clconfs = list_create();
     if (!clconfs)
@@ -3362,6 +3364,7 @@ void getmainconfig(const char *configfile) {
             "IPv4Only", CONF_BLN, &options.ipv4only,
             "IPv6Only", CONF_BLN, &options.ipv6only,
             "SNI", CONF_BLN, &options.sni,
+            "VerifyEAP", CONF_BLN, &options.verifyeap,
             NULL))
         debugx(1, DBG_ERR, "configuration error");
 

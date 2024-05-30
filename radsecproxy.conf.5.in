@@ -309,6 +309,16 @@ servers which specify a hostname (not IP address). This can be overridden in
 server blocks, see below.
 .RE
 
+.BR "VerifyEAP (" on | off )
+.RS
+A radius proxy is mostly agnostic to the contents of the attributes within a 
+radius message and forwards them as-is. However wrong EAP attributes can lead to
+bad user experience. Thus radsecproxy checks the content length of the contained
+EAP message and denies the access-request if it doesn't match the attribute
+length. In case malformatted EAP attributes are inentional, this behaviour can
+be disabled (default on).
+.RE
+
 .BI "Include " file
 .RS
 This is not a normal configuration option; it can be specified multiple times.
