@@ -433,6 +433,41 @@ int resizeattr(struct tlv *attr, uint8_t newlen) {
     return 0;
 }
 
+/**
+ * @brief verify eap message attributes for correct format (length)
+ * 
+ * @param msg the messageto verify
+ * @return int 1 if correct (or no eap attributes), 0 if format error
+ */
+int verifyeapformat(struct radmsg *msg) {
+    struct list *eap_attrs = radmsg_getalltype(msg, RAD_Attr_EAP_Message);
+    struct list_node *node;
+    size_t eap_len = 0, attr_len = 0;
+
+    if (!eap_attrs || !(node = list_first(eap_attrs)))
+        return 1;
+
+    if (((struct tlv *)node->data)->l < 4) {
+        debug(DBG_DBG, "verifyeapformat: first eap attribute too short");
+        return 0;
+    }
+
+    eap_len = ntohs(*(uint16_t *)(((struct tlv *)node->data)->v + 2));
+    for (; node; node = list_next(node)) {
+        struct tlv *attr = (struct tlv *)node->data;
+        if (attr->l == 0) {
+            debug(DBG_DBG, "verifyeapformat: empty eap attribute");
+            return 0;
+        }
+        attr_len += attr->l;
+    }
+    if (eap_len != attr_len) {
+        debug(DBG_DBG, "verifyeapformat: eap length (%d) does not match attribute content length (%d)", eap_len, attr_len);
+        return 0;
+    }
+    return 1;
+}
+
 const char *attrval2strdict(struct tlv *attr) {
     uint32_t val;
 

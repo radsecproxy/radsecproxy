@@ -97,6 +97,7 @@ int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type);
 int attrvalidate(unsigned char *attrs, int length);
 struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr);
 int resizeattr(struct tlv *attr, uint8_t newlen);
+int verifyeapformat(struct radmsg *msg);
 
 /**
  * convert the attribute value to its string representation form the dictionary 

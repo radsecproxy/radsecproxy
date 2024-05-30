@@ -36,5 +36,6 @@ tests/t_verify_cert
 tests/t_radmsg
 tests/t_unhex
 tests/t_utf8
+tests/t_verify_eap
 tests/*.log
 tests/*.trs
