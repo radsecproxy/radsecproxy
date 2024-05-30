@@ -3499,6 +3499,8 @@ void revalidateconnections(void) {
     debug(DBG_DBG, "revalidateconnections: revalidating clients");
     for (entry = list_first(clconfs); entry; entry = list_next(entry)) {
         struct clsrvconf *clconf = (struct clsrvconf *)entry->data;
+        if (!(clconf->type == RAD_TLS || clconf->type == RAD_DTLS))
+            continue;
         pthread_mutex_lock(clconf->lock);
         for (client_entry = list_first(clconf->clients); client_entry; client_entry = list_next(client_entry))
             terminateinvalidclient((struct client *)client_entry->data);
@@ -3506,7 +3508,10 @@ void revalidateconnections(void) {
     }
     debug(DBG_DBG, "revalidateconnections: revalidating servers");
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
-        terminateinvalidserver(((struct server *)((struct clsrvconf *)entry->data)->servers));
+        struct clsrvconf *srvconf = (struct clsrvconf *)entry->data;
+        if (!(srvconf->type == RAD_TLS || srvconf->type == RAD_DTLS))
+            continue;
+        terminateinvalidserver(srvconf->servers);
     }
     debug(DBG_DBG, "revalidateconnections: revalidating dynamic servers");
     for (entry = list_first(realms); entry; entry = list_next(entry)) {
@@ -3517,11 +3522,15 @@ void revalidateconnections(void) {
             pthread_mutex_lock(&subrealm->mutex);
             for (conf_entry = list_first(subrealm->srvconfs); conf_entry; conf_entry = list_next(conf_entry)) {
                 conf = (struct clsrvconf *)conf_entry->data;
+                if (!(conf->type == RAD_TLS || conf->type == RAD_DTLS))
+                    continue;
                 if (conf->servers && conf->servers->dynamiclookuparg)
                     terminateinvalidserver(conf->servers);
             }
             for (conf_entry = list_first(subrealm->accsrvconfs); conf_entry; conf_entry = list_next(conf_entry)) {
                 conf = (struct clsrvconf *)conf_entry->data;
+                if (!(conf->type == RAD_TLS || conf->type == RAD_DTLS))
+                    continue;
                 if (conf->servers && conf->servers->dynamiclookuparg)
                     terminateinvalidserver(conf->servers);
             }
