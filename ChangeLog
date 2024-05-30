@@ -9,6 +9,7 @@ unreleased changes
 	Misc:
 	- Re-verify certificates on SIGHUP and terminate invalid connections (#5)
 	- Implement recommendations for deprecating insecure transports (#114)
+	- verify EAP message content length (#128)
 
 	Bug Fixes:
 	- Fix correct secret for DTLS (radius/dtls)
