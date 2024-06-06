@@ -1,4 +1,4 @@
-unreleased changes
+2024-06-06 1.11.0-rc1
 	New features:
 	- TLS-PSK (#112)
 	- Long hex-strings in config
@@ -10,6 +10,7 @@ unreleased changes
 	- Re-verify certificates on SIGHUP and terminate invalid connections (#5)
 	- Implement recommendations for deprecating insecure transports (#114)
 	- verify EAP message content length (#128)
+	- Close connection on radius attribute decode errors
 
 	Bug Fixes:
 	- Fix correct secret for DTLS (radius/dtls)
