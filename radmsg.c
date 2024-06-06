@@ -440,16 +440,23 @@ int resizeattr(struct tlv *attr, uint8_t newlen) {
  * @return int 1 if correct (or no eap attributes), 0 if format error
  */
 int verifyeapformat(struct radmsg *msg) {
-    struct list *eap_attrs = radmsg_getalltype(msg, RAD_Attr_EAP_Message);
+    struct list *eap_attrs;
     struct list_node *node;
     size_t eap_len = 0, attr_len = 0;
+    int ret = 1;
 
-    if (!eap_attrs || !(node = list_first(eap_attrs)))
+    if (!(eap_attrs = radmsg_getalltype(msg, RAD_Attr_EAP_Message)))
         return 1;
+
+    if (!(node = list_first(eap_attrs))) {
+        ret = 1;
+        goto exit;
+    }
 
     if (((struct tlv *)node->data)->l < 4) {
         debug(DBG_DBG, "verifyeapformat: first eap attribute too short");
-        return 0;
+        ret = 0;
+        goto exit;
     }
 
     eap_len = ntohs(*(uint16_t *)(((struct tlv *)node->data)->v + 2));
@@ -457,15 +464,20 @@ int verifyeapformat(struct radmsg *msg) {
         struct tlv *attr = (struct tlv *)node->data;
         if (attr->l == 0) {
             debug(DBG_DBG, "verifyeapformat: empty eap attribute");
-            return 0;
+            ret = 0;
+            goto exit;
         }
         attr_len += attr->l;
     }
     if (eap_len != attr_len) {
         debug(DBG_DBG, "verifyeapformat: eap length (%d) does not match attribute content length (%d)", eap_len, attr_len);
-        return 0;
+        ret = 0;
+        goto exit;
     }
-    return 1;
+
+exit:
+    list_free(eap_attrs);
+    return ret;
 }
 
 const char *attrval2strdict(struct tlv *attr) {
