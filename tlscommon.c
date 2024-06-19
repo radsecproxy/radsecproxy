@@ -362,9 +362,9 @@ int psk_use_session_cb(SSL *ssl, const EVP_MD *md, const unsigned char **id, siz
         debug(DBG_ERR, "psk_use_session_cb: first supported cipher is null!");
         return 0;
     }
-    debug(DBG_DBG, "psk_use_session_db: setting session cipher %s", SSL_CIPHER_get_name(cipher));
+    debug(DBG_DBG, "psk_use_session_cb: setting session cipher %s", SSL_CIPHER_get_name(cipher));
     if (!SSL_SESSION_set_cipher(*sess, cipher)) {
-        debug(DBG_ERR, "psk_use_session_db: failed to set session cipher");
+        debug(DBG_ERR, "psk_use_session_cb: failed to set session cipher");
         return 0;
     }
 
