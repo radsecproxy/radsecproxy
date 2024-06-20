@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 static int _check_eap(uint8_t *eap, size_t eap_len, int expected) {
     struct radmsg *msg = radmsg_init(RAD_Access_Request, 0, NULL);
@@ -23,6 +24,11 @@ static int _check_eap(uint8_t *eap, size_t eap_len, int expected) {
     return result == expected;
 }
 
+static void _set_eap_length(uint8_t *eap, size_t len) {
+    uint16_t eap_len = htons(len);
+    memcpy(eap + 2, &eap_len, sizeof(eap_len));
+}
+
 int main(int argc, char *argv[]) {
     int testcount = 0;
 
@@ -31,7 +37,7 @@ int main(int argc, char *argv[]) {
 
     {
         uint8_t eap[6];
-        *(uint16_t *)&eap[2] = htons(sizeof(eap));
+        _set_eap_length(eap, sizeof(eap));
 
         if (!_check_eap(eap, sizeof(eap), 1))
             printf("not ");
@@ -40,7 +46,7 @@ int main(int argc, char *argv[]) {
 
     {
         uint8_t eap[4];
-        *(uint16_t *)&eap[2] = htons(sizeof(eap));
+        _set_eap_length(eap, sizeof(eap));
 
         if (!_check_eap(eap, sizeof(eap), 1))
             printf("not ");
@@ -57,7 +63,7 @@ int main(int argc, char *argv[]) {
 
     {
         uint8_t eap[253];
-        *(uint16_t *)&eap[2] = htons(sizeof(eap));
+        _set_eap_length(eap, sizeof(eap));
 
         if (!_check_eap(eap, sizeof(eap), 1))
             printf("not ");
@@ -66,7 +72,7 @@ int main(int argc, char *argv[]) {
 
     {
         uint8_t eap[254];
-        *(uint16_t *)&eap[2] = htons(sizeof(eap));
+        _set_eap_length(eap, sizeof(eap));
 
         if (!_check_eap(eap, sizeof(eap), 1))
             printf("not ");
@@ -75,7 +81,7 @@ int main(int argc, char *argv[]) {
 
     {
         uint8_t eap[10];
-        *(uint16_t *)&eap[2] = htons(0);
+        _set_eap_length(eap, 0);
 
         if (!_check_eap(eap, sizeof(eap), 0))
             printf("not ");
@@ -84,7 +90,7 @@ int main(int argc, char *argv[]) {
 
     {
         uint8_t eap[1024];
-        *(uint16_t *)&eap[2] = htons(0);
+        _set_eap_length(eap, 0);
 
         if (!_check_eap(eap, sizeof(eap), 0))
             printf("not ");
@@ -93,7 +99,7 @@ int main(int argc, char *argv[]) {
 
     {
         uint8_t eap[10];
-        *(uint16_t *)&eap[2] = htons(255);
+        _set_eap_length(eap, 255);
 
         if (!_check_eap(eap, sizeof(eap), 0))
             printf("not ");
@@ -102,7 +108,7 @@ int main(int argc, char *argv[]) {
 
     {
         uint8_t eap[1024];
-        *(uint16_t *)&eap[2] = htons(256);
+        _set_eap_length(eap, 256);
 
         if (!_check_eap(eap, sizeof(eap), 0))
             printf("not ");
@@ -111,7 +117,7 @@ int main(int argc, char *argv[]) {
 
     {
         uint8_t eap[253];
-        *(uint16_t *)&eap[2] = htons(sizeof(eap));
+        _set_eap_length(eap, sizeof(eap));
 
         struct radmsg *msg = radmsg_init(RAD_Access_Request, 0, NULL);
         radmsg_add(msg, maketlv(RAD_Attr_EAP_Message, sizeof(eap), eap), 0);
