@@ -490,8 +490,8 @@ int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
             pthread_mutex_unlock(to->requests[id].lock);
             return 1;
         }
+        pthread_mutex_unlock(to->requests[id].lock);
     }
-    pthread_mutex_unlock(to->requests[id].lock);
     return 0;
 }
 
