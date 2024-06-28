@@ -73,6 +73,7 @@ struct radmsg {
     uint8_t id;
     uint8_t auth[20];
     struct list *attrs; /*struct tlv*/
+    uint8_t msgauthinvalid;
 };
 
 #define ATTRTYPE(x) ((x)[0])

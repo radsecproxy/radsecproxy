@@ -1428,8 +1428,9 @@ int radsrv(struct request *rq) {
     free(rq->buf);
     rq->buf = NULL;
 
-    if (!msg) {
+    if (!msg || msg->msgauthinvalid) {
         debug(DBG_NOTICE, "radsrv: ignoring request from %s (%s), validation failed.", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        radmsg_free(msg);
         freerq(rq);
         return 0;
     }
@@ -1664,7 +1665,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     rqout = server->requests + buf[1];
     pthread_mutex_lock(rqout->lock);
-    msg = buf2radmsg(buf, len, server->conf->secret, server->conf->secret_len, rqout->rq->msg->auth);
+    msg = buf2radmsg(buf, len, server->conf->secret, server->conf->secret_len, rqout->rq ? rqout->rq->msg->auth : NULL);
     memset(buf, 0, len);
     free(buf);
     buf = NULL;
@@ -1674,16 +1675,24 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         return 0;
     }
 
-    if (!rqout->tries) {
-        debug(DBG_INFO, "replyh: no outstanding request with this id, ignoring reply");
-        goto errunlock;
-    }
-
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge &&
         msg->code != RAD_Accounting_Response) {
         debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
         goto errunlock;
     }
+
+    if (!rqout->tries || !rqout->rq) {
+        debug(DBG_INFO, "replyh: no outstanding request with this id (%d) from server %s, ignoring reply", msg->id, server->conf->name);
+        goto errunlock;
+    }
+
+    if (msg->msgauthinvalid) {
+        debug(DBG_WARN, "replyh: message-authenticator invalid from server %s", server->conf->name);
+        radmsg_free(msg);
+        pthread_mutex_unlock(rqout->lock);
+        return 0;
+    }
+
     if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
         (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
         if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {

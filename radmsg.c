@@ -330,15 +330,12 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
             if (rqauth)
                 memcpy(buf + 4, rqauth, 16);
             if (l != 16 || !_checkmsgauth(buf, len, v, secret, secret_len)) {
-                debug(DBG_WARN, "buf2radmsg: message authentication failed");
-                if (rqauth)
-                    memcpy(buf + 4, msg->auth, 16);
-                radmsg_free(msg);
-                return NULL;
-            }
+                debug(DBG_DBG, "buf2radmsg: message authentication failed");
+                msg->msgauthinvalid = 1;
+            } else
+                debug(DBG_DBG, "buf2radmsg: message auth ok");
             if (rqauth)
                 memcpy(buf + 4, msg->auth, 16);
-            debug(DBG_DBG, "buf2radmsg: message auth ok");
         }
 
         attr = maketlv(t, l, v);
