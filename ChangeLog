@@ -1,4 +1,4 @@
-2024-06-06 1.11.0-rc1
+2024-07-05 1.11.0
 	New features:
 	- TLS-PSK (#112)
 	- Long hex-strings in config
@@ -15,6 +15,7 @@
 	Bug Fixes:
 	- Fix correct secret for DTLS (radius/dtls)
 	- Fix infinite loop when listening on tcp socket fails
+	- Fix crashes under high load (#75, #109, #129)
 
 2024-05-02 1.10.1
 	Bug Fixes:
