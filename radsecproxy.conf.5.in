@@ -870,7 +870,8 @@ enabled), and that TCP/TLS/DTLS connections are up. Otherwise unanswered
 requests are used to detect unresponsive servers. AccountingServers are treated
 the same, but independently of the other servers.
 
-If there is no \fBServer\fR option, the proxy will if \fBReplyMessage\fR is
+If there is no \fBServer\fR option (or all dynamic lookups have failed),
+the proxy will if \fBReplyMessage\fR is
 specified, reply back to the client with an Access Reject message. The message
 contains a replyMessage attribute with the value as specified by the
 \fBReplyMessage\fR option. Note that this is different from having no match
