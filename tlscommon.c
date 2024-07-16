@@ -881,6 +881,7 @@ static int _general_name_regex_match(char *v, int l, struct certattrmatch *match
         return 0;
     }
 
+    /* regexec requires null-terminated string*/
     s = stringcopy((char *)v, l);
     if (!s) {
         debug(DBG_ERR, "malloc failed");
@@ -1005,6 +1006,7 @@ int certnamecheck(X509 *cert, struct hostportres *hp) {
         match.type = GEN_IPADD;
         r = matchsubjaltname(cert, &match);
     }
+    /* it's technically allowed to put an IP address in a SubjectAltDNS, so check it too */
     if (!r) {
         match.matchfn = &certattr_matchregex;
         match.type = GEN_DNS;

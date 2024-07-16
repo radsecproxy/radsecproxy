@@ -216,6 +216,33 @@ iAMqAwQwCQYHKoZIzj0EAQMjADAgAg521Y8BtyeKAMIY8lcLbwIORNNmcwVIJjGj\n\
 vY/uPjA=\n\
 -----END CERTIFICATE-----");
 
+    /* /CN=test, DNS:*.test.local */
+    X509 *certwildcard = getcert("-----BEGIN CERTIFICATE-----\n\
+MIHkMIGvoAMCAQICCQCaS1+CEbAYJTAKBggqhkjOPQQDAjAPMQ0wCwYDVQQDDAR0\n\
+ZXN0MB4XDTI0MDcxODA1MTU1M1oXDTI0MDgxNzA1MTU1M1owDzENMAsGA1UEAwwE\n\
+dGVzdDAyMBAGByqGSM49AgEGBSuBBAAGAx4ABIK3s/AYIRC8j4vifUmVq+tz4K9v\n\
+aIlHhc0QDZijGzAZMBcGA1UdEQQQMA6CDCoudGVzdC5sb2NhbDAKBggqhkjOPQQD\n\
+AgMkADAhAg5G6uurUq7PVBD1GCfhVQIPANsQ3GyMIzfBGItySpEg\n\
+-----END CERTIFICATE-----");
+
+    /* /CN=test, DNS:*.*.test.local */
+    X509 *certmultiwildcard = getcert("-----BEGIN CERTIFICATE-----\n\
+MIHmMIGxoAMCAQICCQDwsiWIMHqzjjAKBggqhkjOPQQDAjAPMQ0wCwYDVQQDDAR0\n\
+ZXN0MB4XDTI0MDcxODA1MTk1NloXDTI0MDgxNzA1MTk1NlowDzENMAsGA1UEAwwE\n\
+dGVzdDAyMBAGByqGSM49AgEGBSuBBAAGAx4ABMaVo/xgQMK1XjQYlbazR/T2Xn0x\n\
+163TlAEx5uOjHTAbMBkGA1UdEQQSMBCCDiouKi50ZXN0LmxvY2FsMAoGCCqGSM49\n\
+BAMCAyQAMCECDwCYvguGalsnXCH0aOg11QIOIgHy1tsEk0KVTlOb4iU=\n\
+-----END CERTIFICATE-----");
+
+    /* /CN=test DNS:s*.test.local */
+    X509 *certpartialwildcard = getcert("-----BEGIN CERTIFICATE-----\n\
+MIHlMIGwoAMCAQICCQDsCbGkGdFS6DAKBggqhkjOPQQDAjAPMQ0wCwYDVQQDDAR0\n\
+ZXN0MB4XDTI0MDcxODA1MjAzMloXDTI0MDgxNzA1MjAzMlowDzENMAsGA1UEAwwE\n\
+dGVzdDAyMBAGByqGSM49AgEGBSuBBAAGAx4ABMrLs+w6vANs6EF3gdPaOutlYUJv\n\
+SqeLf3m3iQCjHDAaMBgGA1UdEQQRMA+CDXMqLnRlc3QubG9jYWwwCgYIKoZIzj0E\n\
+AwIDJAAwIQIPAKROuZI5oICWGV3wppUpAg4ucMPE3MjTatEQziO4Eg==\n\
+-----END CERTIFICATE-----");
+
     memset(&conf, 0, sizeof(conf));
     conf.hostports = list_create();
 
@@ -333,6 +360,45 @@ vY/uPjA=\n\
         ok(0, verifyconfcert(certsandnsother, &conf, &hp), "negative san dns");
         ok(1, verifyconfcert(certcomplex, &conf, &hp), "san dns in complex cert");
         ok(0, verifyconfcert(certsimple, &conf, &hp), "missing san dns");
+
+        while (list_shift(conf.hostports))
+            ;
+    }
+
+    /* test SAN DNS upper case*/
+    {
+        struct hostportres hp;
+
+        conf.name = "TEST";
+        conf.certnamecheck = 1;
+        hp.host = "TEST.local";
+        hp.prefixlen = 255;
+        list_push(conf.hostports, &hp);
+
+        ok(1, verifyconfcert(certsandns, &conf, &hp), "san dns upper case");
+        hp.host = "TEST";
+        ok(1, verifyconfcert(certsimple, &conf, &hp), "CN upper case");
+
+        while (list_shift(conf.hostports))
+            ;
+    }
+
+    /* test wildcard in san dns */
+    {
+        struct hostportres hp;
+        hp.prefixlen = 255;
+        list_push(conf.hostports, &hp);
+        conf.name = "test";
+        conf.certnamecheck = 1;
+
+        hp.host = "some.test.local";
+        ok(1, verifyconfcert(certwildcard, &conf, &hp), "san dns wildcard");
+        ok(0, verifyconfcert(certpartialwildcard, &conf, &hp), "wrong san dns partial wildcard");
+        hp.host = "some.test.other";
+        ok(0, verifyconfcert(certwildcard, &conf, &hp), "wrong san dns wildcard base");
+        hp.host = "some.sub.test.local";
+        ok(0, verifyconfcert(certwildcard, &conf, &hp), "wrong san dns wildcard subsubdomain");
+        ok(0, verifyconfcert(certmultiwildcard, &conf, &hp), "wrong san dns multiple wildcard");
 
         while (list_shift(conf.hostports))
             ;
@@ -585,6 +651,9 @@ vY/uPjA=\n\
     X509_free(certsanothernameother);
     X509_free(certmulti);
     X509_free(certmultiother);
+    X509_free(certwildcard);
+    X509_free(certmultiwildcard);
+    X509_free(certpartialwildcard);
 
     return 0;
 }
