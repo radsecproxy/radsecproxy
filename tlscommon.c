@@ -52,7 +52,6 @@ int RSP_EX_DATA_CONFIG_LIST;
 struct certattrmatch {
     int (*matchfn)(GENERAL_NAME *, struct certattrmatch *);
     int type;
-    char *exact;
     regex_t *regex;
     ASN1_OBJECT *oid;
     struct in6_addr ipaddr;
@@ -875,9 +874,8 @@ static int _general_name_regex_match(char *v, int l, struct certattrmatch *match
     char *s;
     if (l <= 0)
         return 0;
-    if (match->exact) {
-        if (l == strlen(match->exact) && memcmp(v, match->exact, l) == 0)
-            return 1;
+    if (!match->regex) {
+        debug(DBG_ERR, "matchregex: regex not defined!");
         return 0;
     }
 
@@ -984,47 +982,30 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch *match) {
 
 int certnamecheck(X509 *cert, struct hostportres *hp) {
     int r = 0;
-    struct certattrmatch match;
+    struct in6_addr tmp;
 
-    memset(&match, 0, sizeof(struct certattrmatch));
-
-    r = 0;
     if (hp->prefixlen != 255) {
         /* we disable the check for prefixes */
         return 1;
     }
-    if (inet_pton(AF_INET, hp->host, &match.ipaddr))
-        match.af = AF_INET;
-    else if (inet_pton(AF_INET6, hp->host, &match.ipaddr))
-        match.af = AF_INET6;
-    else
-        match.af = 0;
-    match.exact = hp->host;
+    if (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) {
+        r = X509_check_ip_asc(cert, hp->host, 0);
+        if (r == 1) {
+            debug(DBG_DBG, "certnamecheck: found matching subjectaltname IP %s", hp->host);
+            return 1;
+        }
+        if (r < 1)
+            debug(DBG_ERR, "certnamecheck: internal error in X509_check_ip_asc checking for %s", hp->host);
+    }
 
-    if (match.af) {
-        match.matchfn = &certattr_matchip;
-        match.type = GEN_IPADD;
-        r = matchsubjaltname(cert, &match);
-    }
     /* it's technically allowed to put an IP address in a SubjectAltDNS, so check it too */
-    if (!r) {
-        match.matchfn = &certattr_matchregex;
-        match.type = GEN_DNS;
-        r = matchsubjaltname(cert, &match);
+    r = X509_check_host(cert, hp->host, 0, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS, NULL);
+    if (r == 1) {
+        debug(DBG_DBG, "certnamecheck: found matching subjectaltname DNS %s", hp->host);
+        return 1;
     }
-    if (r) {
-        if (r > 0) {
-            debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
-            return 1;
-        }
-        debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
-    } else { /* as per RFC 6125 6.4.4: CN MUST NOT be matched if SAN is present */
-        if (certattr_matchcn(cert, &match)) {
-            debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
-            return 1;
-        }
-        debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
-    }
+    if (r < 0)
+        debug(DBG_ERR, "certnamecheck: internal error in X509_check_host checking for %s", hp->host);
     return 0;
 }
 
@@ -1391,7 +1372,6 @@ void freematchcertattr(struct clsrvconf *conf) {
         for (entry = list_first(conf->matchcertattrs); entry; entry = list_next(entry)) {
             match = ((struct certattrmatch *)entry->data);
             free(match->debugname);
-            free(match->exact);
             ASN1_OBJECT_free(match->oid);
             if (match->regex)
                 regfree(match->regex);
