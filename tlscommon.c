@@ -522,7 +522,7 @@ static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     calist = sk_X509_NAME_new_null();
     if (conf->cacertfile) {
         debug(DBG_DBG, "tlsaddcacrl: loading subject names from file %s", conf->cacertfile);
-        if (!SSL_add_file_cert_subjects_to_stack(calist, conf->certfile)) {
+        if (!SSL_add_file_cert_subjects_to_stack(calist, conf->cacertfile)) {
             while ((error = ERR_get_error()))
                 debug(DBG_ERR, "SSL: %s", ERR_error_string(error, NULL));
             debug(DBG_ERR, "tlsaddcacrl: failed to load CA subject names from file %s", conf->cacertfile);

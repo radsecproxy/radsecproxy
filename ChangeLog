@@ -1,3 +1,7 @@
+unreleased changes
+	Bug Fixes:
+	- Fix wrong DN in certificate request (#154)
+
 2024-07-05 1.11.0
 	New features:
 	- TLS-PSK (#112)
