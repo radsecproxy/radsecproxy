@@ -475,7 +475,7 @@ The \fIkey\fR must be at least 16 bytes long. To provide the \fIkey\fR in hex, u
 the %% escaping (see CONFIGURATION SYNTAX).
 
 In addition to the psk, peers must also agree on the key derivation hash function.
-For this, the server simply uses the hash funciton of the negotiated cipher as this
+For this, the server simply uses the hash function of the negotiated cipher as this
 negotiation must yield a compatible cipher anyway.
 To ensure unambiguous cipher and hash selection, only use ciphers with the same
 hash function in the \fBCipherSuites\fR of the \fBtls\fR block. If no \fBtls\fR 
@@ -488,7 +488,7 @@ Note: only TLS1.3 PSK is supported and only for TLS, not DTLS (pending OpenSSL D
 .RS
 The TLS-PSK \fIidentity\fR to identify the client. When omitted, the \fBclient \fIname\fR is
 used as the identity.
-When using TLS-PSK, all clients are identified by thier PSK identity, however it
+When using TLS-PSK, all clients are identified by their PSK identity, however it
 is highly recommended to limit the allowed source address(es) using the
 \fBHost \fIaddress\fR option.
 .RE
@@ -682,7 +682,7 @@ The meaning of these options are very similar as for the client block, with mino
 .br
 - The \fIidentity\fR must always be provided and cannot be derived from the \fBserver \fIname\fR.
 .br
-- For the key derivation hash funciton, the hash function of the first cipher in the \fBCipherSuites\fR
+- For the key derivation hash function, the hash function of the first cipher in the \fBCipherSuites\fR
 of the referenced \fBtls\fR block is used.
 .RE
 
