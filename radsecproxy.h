@@ -176,6 +176,7 @@ struct clsrvconf {
     uint8_t retrycount;
     uint8_t dupinterval;
     uint8_t certnamecheck;
+    uint8_t certcncheck;
     uint8_t addttl;
     uint8_t keepalive;
     uint8_t loopprevention;

@@ -176,7 +176,7 @@ NcK0IZozUpupFkD/dWBC37qIQW6jEjAQMA4GA1UdEQQHMAWIAyoDCTAJBgcqhkjO\n\
 PQQBAyQAMCECDwCJMMBtTsOZNwvy43TlLgIOKtssl/hBDN/JcPbBQgI=\n\
 -----END CERTIFICATE-----");
 
-    /* /CN=test, otherNAME 1.3.6.1.5.5.7.8.8;UTF8:test.local */
+    /* /CN=test, otherNAME 1.3.6.1.5.5.7.8.8;UTF8:test.local (NAIRealm)*/
     X509 *certsanothername = getcert("-----BEGIN CERTIFICATE-----\n\
 MIH4MIHFoAMCAQICFHfn1oV2cr4BkkWImdYCJXkSmiKrMAkGByqGSM49BAEwDzEN\n\
 MAsGA1UEAwwEdGVzdDAeFw0yMDEwMDYxNTE4NTNaFw0yMDEwMTYxNTE4NTNaMA8x\n\
@@ -186,7 +186,7 @@ CnRlc3QubG9jYWwwCQYHKoZIzj0EAQMjADAgAg5picQbJfIM1Ljn7H/26QIOCLcA\n\
 UXfI8XA07aHTgzE=\n\
 -----END CERTIFICATE-----");
 
-    /* /CN=other, otherNAME 1.3.6.1.5.5.7.8.8;UTF8:other.local */
+    /* /CN=other, otherNAME 1.3.6.1.5.5.7.8.8;UTF8:other.local (NAIRealm)*/
     X509 *certsanothernameother = getcert("-----BEGIN CERTIFICATE-----\n\
 MIH6MIHGoAMCAQICFEa/hIvgCkqCF6ulCq3Jy3iw6XkwMAkGByqGSM49BAEwDzEN\n\
 MAsGA1UEAwwEdGVzdDAeFw0yMDEwMDYxNTIwMDhaFw0yMDEwMTYxNTIwMDhaMA8x\n\
@@ -291,7 +291,12 @@ AwIDJAAwIQIPAKROuZI5oICWGV3wppUpAg4ucMPE3MjTatEQziO4Eg==\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsimple, &conf, &hp), "simple cert cn");
+        /* RFC 9525 deprecated CN check, only check in legacy mode*/
+        conf.certcncheck = 1;
+        ok(1, verifyconfcert(certsimple, &conf, &hp), "simple cert cn legacy");
+        conf.certcncheck = 0;
+
+        ok(0, verifyconfcert(certsimple, &conf, &hp), "simple cert cn");
         ok(0, verifyconfcert(certsimpleother, &conf, &hp), "negative simple cert cn");
 
         /* as per RFC 6125 6.4.4: CN MUST NOT be matched if SAN is present */
@@ -371,13 +376,19 @@ AwIDJAAwIQIPAKROuZI5oICWGV3wppUpAg4ucMPE3MjTatEQziO4Eg==\n\
 
         conf.name = "TEST";
         conf.certnamecheck = 1;
-        hp.host = "TEST.local";
+        hp.host = "TEST";
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
+        /* RFC 9525 deprecated CN check, only check in legacy mode*/
+        conf.certcncheck = 1;
+        ok(1, verifyconfcert(certsimple, &conf, &hp), "CN upper case legacy");
+        conf.certcncheck = 0;
+
+        ok(0, verifyconfcert(certsimple, &conf, &hp), "CN upper case");
+
+        hp.host = "TEST.local";
         ok(1, verifyconfcert(certsandns, &conf, &hp), "san dns upper case");
-        hp.host = "TEST";
-        ok(1, verifyconfcert(certsimple, &conf, &hp), "CN upper case");
 
         while (list_shift(conf.hostports))
             ;
@@ -417,7 +428,12 @@ AwIDJAAwIQIPAKROuZI5oICWGV3wppUpAg4ucMPE3MjTatEQziO4Eg==\n\
         hp2.prefixlen = 255;
         list_push(conf.hostports, &hp2);
 
-        ok(1, verifyconfcert(certsimple, &conf, NULL), "multi hostport cn");
+        /* RFC 9525 deprecated CN check, only check in legacy mode*/
+        conf.certcncheck = 1;
+        ok(1, verifyconfcert(certsimple, &conf, NULL), "multi hostport cn legacy");
+        conf.certcncheck = 0;
+
+        ok(0, verifyconfcert(certsimple, &conf, NULL), "multi hostport cn");
         ok(0, verifyconfcert(certsimpleother, &conf, NULL), "negative multi hostport cn");
 
         while (list_shift(conf.hostports))
