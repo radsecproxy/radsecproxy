@@ -46,6 +46,8 @@ static struct tls *tlsdefaultpsk = NULL;
 static unsigned char cookie_secret[COOKIE_SECRET_LENGTH];
 static uint8_t cookie_secret_initialized = 0;
 
+#define OTHERNAME_OID_NAIREALM "1.3.6.1.5.5.7.8.8"
+
 int RSP_EX_DATA_CONFIG;
 int RSP_EX_DATA_CONFIG_LIST;
 
@@ -53,6 +55,7 @@ struct certattrmatch {
     int (*matchfn)(GENERAL_NAME *, struct certattrmatch *);
     int type;
     regex_t *regex;
+    const char *name;
     ASN1_OBJECT *oid;
     struct in6_addr ipaddr;
     int af;
@@ -906,6 +909,35 @@ static int certattr_matchothername(GENERAL_NAME *gn, struct certattrmatch *match
                                      match);
 }
 
+static int certattr_matchwildcard(GENERAL_NAME *gn, struct certattrmatch *match) {
+    char *v = NULL;
+    char *wildcardtoken = "*.";
+    char *suffix = NULL;
+    size_t l;
+
+    if (OBJ_cmp(gn->d.otherName->type_id, match->oid) != 0)
+        return 0;
+
+    v = (char *)ASN1_STRING_get0_data(gn->d.otherName->value->value.octet_string);
+    l = ASN1_STRING_length(gn->d.otherName->value->value.octet_string);
+
+    if (l > 2 &&
+        strncmp(wildcardtoken, v, strlen(wildcardtoken)) == 0) {
+
+        if (strstr(v + strlen(wildcardtoken), "*")) {
+            debug(DBG_DBG, "certattr_matchwildcard: illegal wildcard additional * detected");
+            return 0;
+        }
+
+        if ((suffix = strstr(match->name, v + 1))) {
+            return strnstr(match->name, ".", suffix - match->name) ? 0 : 1;
+        }
+        return 0;
+    } else {
+        return strncmp(v, match->name, l) == 0 ? 1 : 0;
+    }
+}
+
 static int certattr_matchcn(X509 *cert, struct certattrmatch *match) {
     int loc;
     X509_NAME *nm;
@@ -1018,7 +1050,24 @@ int certnamecheckany(X509 *cert, struct list *hostports, int cncheck) {
     return 0;
 }
 
-int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpconnected) {
+int certnairealmcheck(X509 *cert, const char *nairealm) {
+    struct certattrmatch match;
+    int result = 0;
+    match.name = nairealm;
+    match.matchfn = &certattr_matchwildcard;
+    match.type = GEN_OTHERNAME;
+    if (!(match.oid = OBJ_txt2obj(OTHERNAME_OID_NAIREALM, 0))) {
+        debug(DBG_ERR, "cetnairealmcheck: failed to initialize OID object");
+        return 0;
+    }
+
+    result = matchsubjaltname(cert, &match) == 1;
+
+    ASN1_OBJECT_free(match.oid);
+    return result;
+}
+
+int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpconnected, const char *nairealm) {
     char *subject;
     int ok = 1;
     struct list_node *entry;
@@ -1027,7 +1076,10 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpcon
     debug(DBG_DBG, "verifyconfcert: verify certificate for host %s, subject %s", conf->name, subject);
     if (conf->certnamecheck) {
         debug(DBG_DBG, "verifyconfcert: verify hostname");
-        if (conf->servername) {
+        //TODO static nai realm config?
+        if (nairealm && certnairealmcheck(cert, nairealm)) {
+            debug(DBG_DBG, "verifyconfcert: NAIrealm match in certificate");
+        } else if (conf->servername) {
             struct hostportres servername = {.host = conf->servername, .port = NULL, .prefixlen = 255, .addrinfo = NULL};
             if (!certnamecheck(cert, &servername, conf->certcncheck)) {
                 debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, servername.host);
