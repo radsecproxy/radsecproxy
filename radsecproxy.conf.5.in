@@ -446,8 +446,15 @@ client block name (e.g. if \fBhost\fR uses static IP address).
 
 .BR "CertificateNameCheck (" on | off )
 .RS
-For a TLS/DTLS client, disable the default behaviour of matching CN or
+For a TLS/DTLS client, disable the default behaviour of matching 
 SubjectAltName against the specified hostname or IP address.
+.RE
+
+.BR "CertificateCNCheck (" on | off )
+.RS
+For a TLS/DTLS client, enable the legacy behavior of mathing the hostname
+against the common name. This setting has no effect if \fB CertificateNameCheck\fR 
+is off. Default off.
 .RE
 
 \fBMatchCertificateAttribute \fRCN:/\fIregexp\fR/

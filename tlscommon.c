@@ -46,14 +46,16 @@ static struct tls *tlsdefaultpsk = NULL;
 static unsigned char cookie_secret[COOKIE_SECRET_LENGTH];
 static uint8_t cookie_secret_initialized = 0;
 
+#define OTHERNAME_OID_NAIREALM "1.3.6.1.5.5.7.8.8"
+
 int RSP_EX_DATA_CONFIG;
 int RSP_EX_DATA_CONFIG_LIST;
 
 struct certattrmatch {
     int (*matchfn)(GENERAL_NAME *, struct certattrmatch *);
     int type;
-    char *exact;
     regex_t *regex;
+    const char *name;
     ASN1_OBJECT *oid;
     struct in6_addr ipaddr;
     int af;
@@ -875,12 +877,12 @@ static int _general_name_regex_match(char *v, int l, struct certattrmatch *match
     char *s;
     if (l <= 0)
         return 0;
-    if (match->exact) {
-        if (l == strlen(match->exact) && memcmp(v, match->exact, l) == 0)
-            return 1;
+    if (!match->regex) {
+        debug(DBG_ERR, "matchregex: regex not defined!");
         return 0;
     }
 
+    /* regexec requires null-terminated string*/
     s = stringcopy((char *)v, l);
     if (!s) {
         debug(DBG_ERR, "malloc failed");
@@ -905,6 +907,34 @@ static int certattr_matchothername(GENERAL_NAME *gn, struct certattrmatch *match
     return _general_name_regex_match((char *)ASN1_STRING_get0_data(gn->d.otherName->value->value.octet_string),
                                      ASN1_STRING_length(gn->d.otherName->value->value.octet_string),
                                      match);
+}
+
+static int certattr_matchwildcard(GENERAL_NAME *gn, struct certattrmatch *match) {
+    char *v = NULL;
+    char *wildcardtoken = "*.";
+    char *suffix = NULL;
+    size_t l;
+    int ret = 0;
+
+    if (OBJ_cmp(gn->d.otherName->type_id, match->oid) != 0)
+        return 0;
+
+    l = ASN1_STRING_length(gn->d.otherName->value->value.octet_string);
+    if (!(v = stringcopy(((char *)ASN1_STRING_get0_data(gn->d.otherName->value->value.octet_string)), l)))
+        return 0;
+
+    if (l > 2 &&
+        strncmp(wildcardtoken, v, strlen(wildcardtoken)) == 0) {
+        if (strstr(v + strlen(wildcardtoken), "*")) {
+            debug(DBG_DBG, "certattr_matchwildcard: illegal wildcard additional * detected");
+        } else if ((suffix = strstr(match->name, v + 1))) {
+            ret = strstr(match->name, ".") < suffix ? 0 : 1;
+        }
+    } else {
+        ret = strncmp(v, match->name, l) == 0 ? 1 : 0;
+    }
+    free(v);
+    return ret;
 }
 
 static int certattr_matchcn(X509 *cert, struct certattrmatch *match) {
@@ -981,61 +1011,62 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch *match) {
     return r;
 }
 
-int certnamecheck(X509 *cert, struct hostportres *hp) {
+int certnamecheck(X509 *cert, struct hostportres *hp, int cncheck) {
     int r = 0;
-    struct certattrmatch match;
+    struct in6_addr tmp;
 
-    memset(&match, 0, sizeof(struct certattrmatch));
-
-    r = 0;
     if (hp->prefixlen != 255) {
         /* we disable the check for prefixes */
         return 1;
     }
-    if (inet_pton(AF_INET, hp->host, &match.ipaddr))
-        match.af = AF_INET;
-    else if (inet_pton(AF_INET6, hp->host, &match.ipaddr))
-        match.af = AF_INET6;
-    else
-        match.af = 0;
-    match.exact = hp->host;
+    if (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) {
+        r = X509_check_ip_asc(cert, hp->host, 0);
+        if (r == 1) {
+            debug(DBG_DBG, "certnamecheck: found matching subjectaltname IP %s", hp->host);
+            return 1;
+        }
+        if (r < 1)
+            debug(DBG_ERR, "certnamecheck: internal error in X509_check_ip_asc checking for %s", hp->host);
+    }
 
-    if (match.af) {
-        match.matchfn = &certattr_matchip;
-        match.type = GEN_IPADD;
-        r = matchsubjaltname(cert, &match);
+    /* it's technically allowed to put an IP address in a SubjectAltDNS, so check it too */
+    r = X509_check_host(cert, hp->host, 0, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS | (cncheck ? 0 : X509_CHECK_FLAG_NEVER_CHECK_SUBJECT), NULL);
+    if (r == 1) {
+        debug(DBG_DBG, "certnamecheck: found matching subjectaltname DNS %s", hp->host);
+        return 1;
     }
-    if (!r) {
-        match.matchfn = &certattr_matchregex;
-        match.type = GEN_DNS;
-        r = matchsubjaltname(cert, &match);
-    }
-    if (r) {
-        if (r > 0) {
-            debug(DBG_DBG, "certnamecheck: Found subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
-            return 1;
-        }
-        debug(DBG_WARN, "certnamecheck: No subjectaltname matching %s %s", match.af ? "address" : "host", hp->host);
-    } else { /* as per RFC 6125 6.4.4: CN MUST NOT be matched if SAN is present */
-        if (certattr_matchcn(cert, &match)) {
-            debug(DBG_DBG, "certnamecheck: Found cn matching host %s", hp->host);
-            return 1;
-        }
-        debug(DBG_WARN, "certnamecheck: cn not matching host %s", hp->host);
-    }
+    if (r < 0)
+        debug(DBG_ERR, "certnamecheck: internal error in X509_check_host checking for %s", hp->host);
     return 0;
 }
 
-int certnamecheckany(X509 *cert, struct list *hostports) {
+int certnamecheckany(X509 *cert, struct list *hostports, int cncheck) {
     struct list_node *entry;
     for (entry = list_first(hostports); entry; entry = list_next(entry)) {
-        if (certnamecheck(cert, (struct hostportres *)entry->data))
+        if (certnamecheck(cert, (struct hostportres *)entry->data, cncheck))
             return 1;
     }
     return 0;
 }
 
-int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpconnected) {
+int certnairealmcheck(X509 *cert, const char *nairealm) {
+    struct certattrmatch match;
+    int result = 0;
+    match.name = nairealm;
+    match.matchfn = &certattr_matchwildcard;
+    match.type = GEN_OTHERNAME;
+    if (!(match.oid = OBJ_txt2obj(OTHERNAME_OID_NAIREALM, 0))) {
+        debug(DBG_ERR, "cetnairealmcheck: failed to initialize OID object");
+        return 0;
+    }
+
+    result = matchsubjaltname(cert, &match) == 1;
+
+    ASN1_OBJECT_free(match.oid);
+    return result;
+}
+
+int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpconnected, const char *nairealm) {
     char *subject;
     int ok = 1;
     struct list_node *entry;
@@ -1044,19 +1075,21 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpcon
     debug(DBG_DBG, "verifyconfcert: verify certificate for host %s, subject %s", conf->name, subject);
     if (conf->certnamecheck) {
         debug(DBG_DBG, "verifyconfcert: verify hostname");
-        if (conf->servername) {
+        if (nairealm && certnairealmcheck(cert, nairealm)) {
+            debug(DBG_DBG, "verifyconfcert: NAIrealm match in certificate");
+        } else if (conf->servername) {
             struct hostportres servername = {.host = conf->servername, .port = NULL, .prefixlen = 255, .addrinfo = NULL};
-            if (!certnamecheck(cert, &servername)) {
+            if (!certnamecheck(cert, &servername, conf->certcncheck)) {
                 debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, servername.host);
                 ok = 0;
             }
         } else if (hpconnected) {
-            if (!certnamecheck(cert, hpconnected)) {
+            if (!certnamecheck(cert, hpconnected, conf->certcncheck)) {
                 debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, hpconnected->host);
                 ok = 0;
             }
         } else {
-            if (!certnamecheckany(cert, conf->hostports)) {
+            if (!certnamecheckany(cert, conf->hostports, conf->certcncheck)) {
                 debug(DBG_DBG, "verifyconfcert: no matching CN or SAN found for host %s", conf->name);
                 ok = 0;
             }
@@ -1389,7 +1422,6 @@ void freematchcertattr(struct clsrvconf *conf) {
         for (entry = list_first(conf->matchcertattrs); entry; entry = list_next(entry)) {
             match = ((struct certattrmatch *)entry->data);
             free(match->debugname);
-            free(match->exact);
             ASN1_OBJECT_free(match->oid);
             if (match->regex)
                 regfree(match->regex);

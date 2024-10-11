@@ -176,7 +176,7 @@ NcK0IZozUpupFkD/dWBC37qIQW6jEjAQMA4GA1UdEQQHMAWIAyoDCTAJBgcqhkjO\n\
 PQQBAyQAMCECDwCJMMBtTsOZNwvy43TlLgIOKtssl/hBDN/JcPbBQgI=\n\
 -----END CERTIFICATE-----");
 
-    /* /CN=test, otherNAME 1.3.6.1.5.5.7.8.8;UTF8:test.local */
+    /* /CN=test, otherNAME 1.3.6.1.5.5.7.8.8;UTF8:test.local (NAIRealm)*/
     X509 *certsanothername = getcert("-----BEGIN CERTIFICATE-----\n\
 MIH4MIHFoAMCAQICFHfn1oV2cr4BkkWImdYCJXkSmiKrMAkGByqGSM49BAEwDzEN\n\
 MAsGA1UEAwwEdGVzdDAeFw0yMDEwMDYxNTE4NTNaFw0yMDEwMTYxNTE4NTNaMA8x\n\
@@ -186,7 +186,7 @@ CnRlc3QubG9jYWwwCQYHKoZIzj0EAQMjADAgAg5picQbJfIM1Ljn7H/26QIOCLcA\n\
 UXfI8XA07aHTgzE=\n\
 -----END CERTIFICATE-----");
 
-    /* /CN=other, otherNAME 1.3.6.1.5.5.7.8.8;UTF8:other.local */
+    /* /CN=other, otherNAME 1.3.6.1.5.5.7.8.8;UTF8:other.local (NAIRealm)*/
     X509 *certsanothernameother = getcert("-----BEGIN CERTIFICATE-----\n\
 MIH6MIHGoAMCAQICFEa/hIvgCkqCF6ulCq3Jy3iw6XkwMAkGByqGSM49BAEwDzEN\n\
 MAsGA1UEAwwEdGVzdDAeFw0yMDEwMDYxNTIwMDhaFw0yMDEwMTYxNTIwMDhaMA8x\n\
@@ -216,6 +216,101 @@ iAMqAwQwCQYHKoZIzj0EAQMjADAgAg521Y8BtyeKAMIY8lcLbwIORNNmcwVIJjGj\n\
 vY/uPjA=\n\
 -----END CERTIFICATE-----");
 
+    /* /CN=test, DNS:*.test.local */
+    X509 *certwildcard = getcert("-----BEGIN CERTIFICATE-----\n\
+MIHkMIGvoAMCAQICCQCaS1+CEbAYJTAKBggqhkjOPQQDAjAPMQ0wCwYDVQQDDAR0\n\
+ZXN0MB4XDTI0MDcxODA1MTU1M1oXDTI0MDgxNzA1MTU1M1owDzENMAsGA1UEAwwE\n\
+dGVzdDAyMBAGByqGSM49AgEGBSuBBAAGAx4ABIK3s/AYIRC8j4vifUmVq+tz4K9v\n\
+aIlHhc0QDZijGzAZMBcGA1UdEQQQMA6CDCoudGVzdC5sb2NhbDAKBggqhkjOPQQD\n\
+AgMkADAhAg5G6uurUq7PVBD1GCfhVQIPANsQ3GyMIzfBGItySpEg\n\
+-----END CERTIFICATE-----");
+
+    /* /CN=test, DNS:*.*.test.local */
+    X509 *certmultiwildcard = getcert("-----BEGIN CERTIFICATE-----\n\
+MIHmMIGxoAMCAQICCQDwsiWIMHqzjjAKBggqhkjOPQQDAjAPMQ0wCwYDVQQDDAR0\n\
+ZXN0MB4XDTI0MDcxODA1MTk1NloXDTI0MDgxNzA1MTk1NlowDzENMAsGA1UEAwwE\n\
+dGVzdDAyMBAGByqGSM49AgEGBSuBBAAGAx4ABMaVo/xgQMK1XjQYlbazR/T2Xn0x\n\
+163TlAEx5uOjHTAbMBkGA1UdEQQSMBCCDiouKi50ZXN0LmxvY2FsMAoGCCqGSM49\n\
+BAMCAyQAMCECDwCYvguGalsnXCH0aOg11QIOIgHy1tsEk0KVTlOb4iU=\n\
+-----END CERTIFICATE-----");
+
+    /* /CN=test DNS:s*.test.local */
+    X509 *certpartialwildcard = getcert("-----BEGIN CERTIFICATE-----\n\
+MIHlMIGwoAMCAQICCQDsCbGkGdFS6DAKBggqhkjOPQQDAjAPMQ0wCwYDVQQDDAR0\n\
+ZXN0MB4XDTI0MDcxODA1MjAzMloXDTI0MDgxNzA1MjAzMlowDzENMAsGA1UEAwwE\n\
+dGVzdDAyMBAGByqGSM49AgEGBSuBBAAGAx4ABMrLs+w6vANs6EF3gdPaOutlYUJv\n\
+SqeLf3m3iQCjHDAaMBgGA1UdEQQRMA+CDXMqLnRlc3QubG9jYWwwCgYIKoZIzj0E\n\
+AwIDJAAwIQIPAKROuZI5oICWGV3wppUpAg4ucMPE3MjTatEQziO4Eg==\n\
+-----END CERTIFICATE-----");
+
+    /* /CN=test otherName 1.3.6.1.5.5.7.8.8;UTF8 *.local (NAIRealm)*/
+    X509 *certnairealmwildcard = getcert("-----BEGIN CERTIFICATE-----\n\
+MIIBSjCCARSgAwIBAgIUGhwpQYy6p7F0bMMWIMHA+bRPtWkwCgYIKoZIzj0EAwIw\n\
+DzENMAsGA1UEAwwEdGVzdDAeFw0yNDEwMDgxNzIzMzVaFw0yNDExMDcxNzIzMzVa\n\
+MA8xDTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAAQEGb/VgKm8\n\
+n8TlwdOpcMdC6ilmxfu6tL2gBIwSo3UwczAdBgNVHQ4EFgQUuR6UE4EX4AON1i+6\n\
+JPkIjjrIWuQwHwYDVR0jBBgwFoAUuR6UE4EX4AON1i+6JPkIjjrIWuQwDwYDVR0T\n\
+AQH/BAUwAwEB/zAgBgNVHREEGTAXoBUGCCsGAQUFBwgIoAkMByoubG9jYWwwCgYI\n\
+KoZIzj0EAwIDJAAwIQIPAJIGyq3vDVYpePXpgTZnAg5nsXFLasjCxCq+fkk5Jg==\n\
+-----END CERTIFICATE-----");
+
+    /* /CN=test otherName 1.3.6.1.5.5.7.8.8;UTF8 *.*.local (NAIRealm)*/
+    X509 *certnairealmillegalwildcard = getcert("-----BEGIN CERTIFICATE-----\n\
+MIIBSzCCARagAwIBAgIUMYR54lRLzLghG8JKM5xz/Se70RMwCgYIKoZIzj0EAwIw\n\
+DzENMAsGA1UEAwwEdGVzdDAeFw0yNDEwMDgxNzI5MjFaFw0yNDExMDcxNzI5MjFa\n\
+MA8xDTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAARlsyBx/ihP\n\
+1iHejnPQjAW6acblGcGGOEIOF+M1o3cwdTAdBgNVHQ4EFgQUCYzkY9FjITEcSMf7\n\
+q7qZVcLnnjwwHwYDVR0jBBgwFoAUCYzkY9FjITEcSMf7q7qZVcLnnjwwDwYDVR0T\n\
+AQH/BAUwAwEB/zAiBgNVHREEGzAZoBcGCCsGAQUFBwgIoAsMCSouKi5sb2NhbDAK\n\
+BggqhkjOPQQDAgMjADAgAg4fYUMjVWHg+IDIxnYdQQIOQ8Tr0+DwhT8c/+tTHvo=\n\
+-----END CERTIFICATE-----");
+
+    /* /CN=test otherName 1.3.6.1.5.5.7.8.8;UTF8 *.a (NAIRealm)*/
+    X509 *certnairealmshort = getcert("-----BEGIN CERTIFICATE-----\n\
+MIIBRjCCARCgAwIBAgIUTmQwOmLHY6MYjQTZMaKKSK9NLd0wCgYIKoZIzj0EAwIw\n\
+DzENMAsGA1UEAwwEdGVzdDAeFw0yNDEwMDgxNzM0MTFaFw0yNDExMDcxNzM0MTFa\n\
+MA8xDTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAAS4UfqHRD0Z\n\
+5SEcFcMQMzQEomJdGSQnyxAOLLCto3EwbzAdBgNVHQ4EFgQU1Kr6xJ204AU+VRUi\n\
+LcmhJ+WHJdEwHwYDVR0jBBgwFoAU1Kr6xJ204AU+VRUiLcmhJ+WHJdEwDwYDVR0T\n\
+AQH/BAUwAwEB/zAcBgNVHREEFTAToBEGCCsGAQUFBwgIoAUMAyouYTAKBggqhkjO\n\
+PQQDAgMkADAhAg5bDZ3kugFqfLXhOEtSqQIPAJ4dkePkSuUBvLJNGuRX\n\
+-----END CERTIFICATE-----");
+
+    /* /CN=test otherName 1.3.6.1.5.5.7.8.8;UTF8 *. (NAIRealm)*/
+    X509 *certnairealmillegalshort = getcert("-----BEGIN CERTIFICATE-----\n\
+MIIBRTCCAQ+gAwIBAgIUfQvgCc2mVD0Ku/lrcbS6xyD4Z10wCgYIKoZIzj0EAwIw\n\
+DzENMAsGA1UEAwwEdGVzdDAeFw0yNDEwMDgxNzMyMzVaFw0yNDExMDcxNzMyMzVa\n\
+MA8xDTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAAR2CrK5OJ9A\n\
+BtZOKXwZerLxgsZtZpFXZNG39cP7o3AwbjAdBgNVHQ4EFgQUw4/2JS93DsmvHef0\n\
+3b8c7unZ+bswHwYDVR0jBBgwFoAUw4/2JS93DsmvHef03b8c7unZ+bswDwYDVR0T\n\
+AQH/BAUwAwEB/zAbBgNVHREEFDASoBAGCCsGAQUFBwgIoAQMAiouMAoGCCqGSM49\n\
+BAMCAyQAMCECDwCjFlLVSKHmDjIx3TmVNAIONhlWmvGXic+uxXH4w50=\n\
+-----END CERTIFICATE-----");
+
+    /* /CN=test otherName 1.3.6.1.5.5.7.8.8;UTF8 test.local,*.test.local (NAIRealm)*/
+    X509 *certnairealmmulti = getcert("-----BEGIN CERTIFICATE-----\n\
+MIIBazCCATWgAwIBAgIUWBGwOKr2cNTjV9SmLCkh7aNjqJ0wCgYIKoZIzj0EAwIw\n\
+DzENMAsGA1UEAwwEdGVzdDAeFw0yNDEwMDgxNzM1NTNaFw0yNDExMDcxNzM1NTNa\n\
+MA8xDTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAAQl2LZC8279\n\
++fRJR6/Bj6L9jplqjxKdGzf4Nr1ro4GVMIGSMB0GA1UdDgQWBBQiEUakbMViqxOo\n\
+q0ilLVC3LnPgezAfBgNVHSMEGDAWgBQiEUakbMViqxOoq0ilLVC3LnPgezAPBgNV\n\
+HRMBAf8EBTADAQH/MD8GA1UdEQQ4MDagGAYIKwYBBQUHCAigDAwKdGVzdC5sb2Nh\n\
+bKAaBggrBgEFBQcICKAODAwqLnRlc3QubG9jYWwwCgYIKoZIzj0EAwIDJAAwIQIO\n\
+cTdHMyy8Il3kKRoYTacCDwDCpnRnB7g3A9M/84PsCQ==\n\
+-----END CERTIFICATE-----");
+
+    /* /CN=test otherName 1.3.6.1.5.5.7.8.8;UTF8 other.local (NAIRealm), DNS test.local*/
+    X509 *certnairealmanddns = getcert("-----BEGIN CERTIFICATE-----\n\
+MIIBWzCCASagAwIBAgIUVsLEa/cJPjQuaro+KRH0GJfOW0QwCgYIKoZIzj0EAwIw\n\
+DzENMAsGA1UEAwwEdGVzdDAeFw0yNDEwMTAxMjI3MzNaFw0yNDExMDkxMjI3MzNa\n\
+MA8xDTALBgNVBAMMBHRlc3QwMjAQBgcqhkjOPQIBBgUrgQQABgMeAASYGDrMtP4F\n\
+m3l60VVPWNtz/kkJ7bbk5LLvmmGLo4GGMIGDMB0GA1UdDgQWBBTt0867K5xuwqi0\n\
+TX863ZHqYpPcWjAfBgNVHSMEGDAWgBTt0867K5xuwqi0TX863ZHqYpPcWjAPBgNV\n\
+HRMBAf8EBTADAQH/MDAGA1UdEQQpMCegGQYIKwYBBQUHCAigDQwLb3RoZXIubG9j\n\
+YWyCCnRlc3QubG9jYWwwCgYIKoZIzj0EAwIDIwAwIAIODwGo3Yvn1o+h8/bVL9QC\n\
+Djxuj56ZZL9t3+OVveS6\n\
+-----END CERTIFICATE-----");
+
     memset(&conf, 0, sizeof(conf));
     conf.hostports = list_create();
 
@@ -232,7 +327,7 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsimple, &conf, &hp), "check disabled");
+        ok(1, verifyconfcert(certsimple, &conf, &hp, NULL), "check disabled");
 
         while (list_shift(conf.hostports))
             ;
@@ -248,7 +343,7 @@ vY/uPjA=\n\
         hp.prefixlen = 0;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsimple, &conf, &hp), "cidr prefix");
+        ok(1, verifyconfcert(certsimple, &conf, &hp, NULL), "cidr prefix");
 
         while (list_shift(conf.hostports))
             ;
@@ -264,11 +359,16 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsimple, &conf, &hp), "simple cert cn");
-        ok(0, verifyconfcert(certsimpleother, &conf, &hp), "negative simple cert cn");
+        /* RFC 9525 deprecated CN check, only check in legacy mode*/
+        conf.certcncheck = 1;
+        ok(1, verifyconfcert(certsimple, &conf, &hp, NULL), "simple cert cn legacy");
+        conf.certcncheck = 0;
+
+        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "simple cert cn");
+        ok(0, verifyconfcert(certsimpleother, &conf, &hp, NULL), "negative simple cert cn");
 
         /* as per RFC 6125 6.4.4: CN MUST NOT be matched if SAN is present */
-        ok(0, verifyconfcert(certsandns, &conf, &hp), "simple cert cn vs san dns, RFC6125");
+        ok(0, verifyconfcert(certsandns, &conf, &hp, NULL), "simple cert cn vs san dns, RFC6125");
 
         while (list_shift(conf.hostports))
             ;
@@ -285,11 +385,11 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsanip, &conf, &hp), "san ip");
-        ok(0, verifyconfcert(certsanipother, &conf, &hp), "wrong san ip");
-        ok(0, verifyconfcert(certsimple, &conf, &hp), "negative san ip");
-        ok(1, verifyconfcert(certsanipindns, &conf, &hp), "san ip in dns");
-        ok(1, verifyconfcert(certcomplex, &conf, &hp), "san ip in complex cert");
+        ok(1, verifyconfcert(certsanip, &conf, &hp, NULL), "san ip");
+        ok(0, verifyconfcert(certsanipother, &conf, &hp, NULL), "wrong san ip");
+        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "negative san ip");
+        ok(1, verifyconfcert(certsanipindns, &conf, &hp, NULL), "san ip in dns");
+        ok(1, verifyconfcert(certcomplex, &conf, &hp, NULL), "san ip in complex cert");
 
         freeaddrinfo(hp.addrinfo);
         while (list_shift(conf.hostports))
@@ -308,11 +408,11 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsanipv6, &conf, &hp), "san ipv6");
-        ok(0, verifyconfcert(certsanipother, &conf, &hp), "wrong san ipv6");
-        ok(0, verifyconfcert(certsimple, &conf, &hp), "negative san ipv6");
-        ok(1, verifyconfcert(certsanipv6indns, &conf, &hp), "san ipv6 in dns");
-        ok(1, verifyconfcert(certcomplex, &conf, &hp), "san ipv6 in complex cert");
+        ok(1, verifyconfcert(certsanipv6, &conf, &hp, NULL), "san ipv6");
+        ok(0, verifyconfcert(certsanipother, &conf, &hp, NULL), "wrong san ipv6");
+        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "negative san ipv6");
+        ok(1, verifyconfcert(certsanipv6indns, &conf, &hp, NULL), "san ipv6 in dns");
+        ok(1, verifyconfcert(certcomplex, &conf, &hp, NULL), "san ipv6 in complex cert");
 
         freeaddrinfo(hp.addrinfo);
         while (list_shift(conf.hostports))
@@ -329,10 +429,55 @@ vY/uPjA=\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsandns, &conf, &hp), "san dns");
-        ok(0, verifyconfcert(certsandnsother, &conf, &hp), "negative san dns");
-        ok(1, verifyconfcert(certcomplex, &conf, &hp), "san dns in complex cert");
-        ok(0, verifyconfcert(certsimple, &conf, &hp), "missing san dns");
+        ok(1, verifyconfcert(certsandns, &conf, &hp, NULL), "san dns");
+        ok(0, verifyconfcert(certsandnsother, &conf, &hp, NULL), "negative san dns");
+        ok(1, verifyconfcert(certcomplex, &conf, &hp, NULL), "san dns in complex cert");
+        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "missing san dns");
+
+        while (list_shift(conf.hostports))
+            ;
+    }
+
+    /* test SAN DNS upper case*/
+    {
+        struct hostportres hp;
+
+        conf.name = "TEST";
+        conf.certnamecheck = 1;
+        hp.host = "TEST";
+        hp.prefixlen = 255;
+        list_push(conf.hostports, &hp);
+
+        /* RFC 9525 deprecated CN check, only check in legacy mode*/
+        conf.certcncheck = 1;
+        ok(1, verifyconfcert(certsimple, &conf, &hp, NULL), "CN upper case legacy");
+        conf.certcncheck = 0;
+
+        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "CN upper case");
+
+        hp.host = "TEST.local";
+        ok(1, verifyconfcert(certsandns, &conf, &hp, NULL), "san dns upper case");
+
+        while (list_shift(conf.hostports))
+            ;
+    }
+
+    /* test wildcard in san dns */
+    {
+        struct hostportres hp;
+        hp.prefixlen = 255;
+        list_push(conf.hostports, &hp);
+        conf.name = "test";
+        conf.certnamecheck = 1;
+
+        hp.host = "some.test.local";
+        ok(1, verifyconfcert(certwildcard, &conf, &hp, NULL), "san dns wildcard");
+        ok(0, verifyconfcert(certpartialwildcard, &conf, &hp, NULL), "wrong san dns partial wildcard");
+        hp.host = "some.test.other";
+        ok(0, verifyconfcert(certwildcard, &conf, &hp, NULL), "wrong san dns wildcard base");
+        hp.host = "some.sub.test.local";
+        ok(0, verifyconfcert(certwildcard, &conf, &hp, NULL), "wrong san dns wildcard subsubdomain");
+        ok(0, verifyconfcert(certmultiwildcard, &conf, &hp, NULL), "wrong san dns multiple wildcard");
 
         while (list_shift(conf.hostports))
             ;
@@ -351,8 +496,13 @@ vY/uPjA=\n\
         hp2.prefixlen = 255;
         list_push(conf.hostports, &hp2);
 
-        ok(1, verifyconfcert(certsimple, &conf, NULL), "multi hostport cn");
-        ok(0, verifyconfcert(certsimpleother, &conf, NULL), "negative multi hostport cn");
+        /* RFC 9525 deprecated CN check, only check in legacy mode*/
+        conf.certcncheck = 1;
+        ok(1, verifyconfcert(certsimple, &conf, NULL, NULL), "multi hostport cn legacy");
+        conf.certcncheck = 0;
+
+        ok(0, verifyconfcert(certsimple, &conf, NULL, NULL), "multi hostport cn");
+        ok(0, verifyconfcert(certsimpleother, &conf, NULL, NULL), "negative multi hostport cn");
 
         while (list_shift(conf.hostports))
             ;
@@ -371,14 +521,14 @@ vY/uPjA=\n\
         hp2.prefixlen = 255;
         list_push(conf.hostports, &hp2);
 
-        ok(1, verifyconfcert(certsandns, &conf, NULL), "multi hostport san dns");
-        ok(0, verifyconfcert(certsandnsother, &conf, NULL), "negative multi hostport san dns");
-        ok(1, verifyconfcert(certcomplex, &conf, NULL), "multi hostport san dns in complex cert");
+        ok(1, verifyconfcert(certsandns, &conf, NULL, NULL), "multi hostport san dns");
+        ok(0, verifyconfcert(certsandnsother, &conf, NULL, NULL), "negative multi hostport san dns");
+        ok(1, verifyconfcert(certcomplex, &conf, NULL, NULL), "multi hostport san dns in complex cert");
 
-        ok(0, verifyconfcert(certsandns, &conf, &hp1), "multi hostport explicit wrong cert");
-        ok(1, verifyconfcert(certsandns, &conf, &hp2), "multi hostport explicit matching cert");
-        ok(0, verifyconfcert(certcomplex, &conf, &hp1), "multi hostport explicit wrong complex cert");
-        ok(1, verifyconfcert(certcomplex, &conf, &hp2), "multi hostport explicit matching complex cert");
+        ok(0, verifyconfcert(certsandns, &conf, &hp1, NULL), "multi hostport explicit wrong cert");
+        ok(1, verifyconfcert(certsandns, &conf, &hp2, NULL), "multi hostport explicit matching cert");
+        ok(0, verifyconfcert(certcomplex, &conf, &hp1, NULL), "multi hostport explicit wrong complex cert");
+        ok(1, verifyconfcert(certcomplex, &conf, &hp2, NULL), "multi hostport explicit matching complex cert");
 
         while (list_shift(conf.hostports))
             ;
@@ -391,9 +541,9 @@ vY/uPjA=\n\
 
         ok(1, addmatchcertattr(&conf, "CN:/t..t/"), "explicit cn regex config");
 
-        ok(1, verifyconfcert(certsimple, &conf, NULL), "explicit cn regex");
-        ok(0, verifyconfcert(certsimpleother, &conf, NULL), "negative explicit cn regex");
-        ok(1, verifyconfcert(certsandns, &conf, NULL), "explicit cn regex with SAN DNS");
+        ok(1, verifyconfcert(certsimple, &conf, NULL, NULL), "explicit cn regex");
+        ok(0, verifyconfcert(certsimpleother, &conf, NULL, NULL), "negative explicit cn regex");
+        ok(1, verifyconfcert(certsandns, &conf, NULL, NULL), "explicit cn regex with SAN DNS");
 
         freematchcertattr(&conf);
     }
@@ -405,10 +555,10 @@ vY/uPjA=\n\
 
         ok(1, addmatchcertattr(&conf, "SubjectAltName:IP:192.0.2.1"), "explicit san ip config");
 
-        ok(1, verifyconfcert(certsanip, &conf, NULL), "explicit san ip");
-        ok(0, verifyconfcert(certsanipother, &conf, NULL), "wrong explicit san ip");
-        ok(0, verifyconfcert(certsimple, &conf, NULL), "missing explicit san ip");
-        ok(1, verifyconfcert(certcomplex, &conf, NULL), "explicit san ip in complex cert");
+        ok(1, verifyconfcert(certsanip, &conf, NULL, NULL), "explicit san ip");
+        ok(0, verifyconfcert(certsanipother, &conf, NULL, NULL), "wrong explicit san ip");
+        ok(0, verifyconfcert(certsimple, &conf, NULL, NULL), "missing explicit san ip");
+        ok(1, verifyconfcert(certcomplex, &conf, NULL, NULL), "explicit san ip in complex cert");
 
         freematchcertattr(&conf);
     }
@@ -420,10 +570,10 @@ vY/uPjA=\n\
 
         ok(1, addmatchcertattr(&conf, "SubjectAltName:IP:2001:db8::1"), "explicit san ipv6 config");
 
-        ok(1, verifyconfcert(certsanipv6, &conf, NULL), "explicit san ipv6");
-        ok(0, verifyconfcert(certsanipother, &conf, NULL), "wrong explicit san ipv6");
-        ok(0, verifyconfcert(certsimple, &conf, NULL), "missing explicitsan ipv6");
-        ok(1, verifyconfcert(certcomplex, &conf, NULL), "explicit san ipv6 in complex cert");
+        ok(1, verifyconfcert(certsanipv6, &conf, NULL, NULL), "explicit san ipv6");
+        ok(0, verifyconfcert(certsanipother, &conf, NULL, NULL), "wrong explicit san ipv6");
+        ok(0, verifyconfcert(certsimple, &conf, NULL, NULL), "missing explicitsan ipv6");
+        ok(1, verifyconfcert(certcomplex, &conf, NULL, NULL), "explicit san ipv6 in complex cert");
 
         freematchcertattr(&conf);
     }
@@ -435,10 +585,10 @@ vY/uPjA=\n\
 
         ok(1, addmatchcertattr(&conf, "SubjectAltName:DNS:/t..t\\.local/"), "explicit san dns regex config");
 
-        ok(1, verifyconfcert(certsandns, &conf, NULL), "explicit san dns");
-        ok(0, verifyconfcert(certsandnsother, &conf, NULL), "negative explicit san dns");
-        ok(0, verifyconfcert(certsimple, &conf, NULL), "missing explicit san dns");
-        ok(1, verifyconfcert(certcomplex, &conf, NULL), "explicit san dns in complex cert");
+        ok(1, verifyconfcert(certsandns, &conf, NULL, NULL), "explicit san dns");
+        ok(0, verifyconfcert(certsandnsother, &conf, NULL, NULL), "negative explicit san dns");
+        ok(0, verifyconfcert(certsimple, &conf, NULL, NULL), "missing explicit san dns");
+        ok(1, verifyconfcert(certcomplex, &conf, NULL, NULL), "explicit san dns in complex cert");
 
         freematchcertattr(&conf);
     }
@@ -450,9 +600,9 @@ vY/uPjA=\n\
 
         ok(1, addmatchcertattr(&conf, "SubjectAltName:URI:/https:\\/\\/test.local\\/profile#me/"), "explicit cn regex config");
 
-        ok(1, verifyconfcert(certsanuri, &conf, NULL), "explicit san uri regex");
-        ok(0, verifyconfcert(certsanuriother, &conf, NULL), "negative explicit san uri");
-        ok(0, verifyconfcert(certsimple, &conf, NULL), "missing explicit san uri");
+        ok(1, verifyconfcert(certsanuri, &conf, NULL, NULL), "explicit san uri regex");
+        ok(0, verifyconfcert(certsanuriother, &conf, NULL, NULL), "negative explicit san uri");
+        ok(0, verifyconfcert(certsimple, &conf, NULL, NULL), "missing explicit san uri");
 
         freematchcertattr(&conf);
     }
@@ -464,9 +614,9 @@ vY/uPjA=\n\
 
         ok(1, addmatchcertattr(&conf, "SubjectAltName:rID:1.2.3.4"), "explicit san rid config");
 
-        ok(1, verifyconfcert(certsanrid, &conf, NULL), "explicit san rid");
-        ok(0, verifyconfcert(certsanridother, &conf, NULL), "negative explicit san rid");
-        ok(0, verifyconfcert(certsimple, &conf, NULL), "missing explicit san rid");
+        ok(1, verifyconfcert(certsanrid, &conf, NULL, NULL), "explicit san rid");
+        ok(0, verifyconfcert(certsanridother, &conf, NULL, NULL), "negative explicit san rid");
+        ok(0, verifyconfcert(certsimple, &conf, NULL, NULL), "missing explicit san rid");
 
         freematchcertattr(&conf);
     }
@@ -478,9 +628,9 @@ vY/uPjA=\n\
 
         ok(1, addmatchcertattr(&conf, "SubjectAltName:otherName:1.3.6.1.5.5.7.8.8:/test.local/"), "explicit san otherName config");
 
-        ok(1, verifyconfcert(certsanothername, &conf, NULL), "explicit san otherName");
-        ok(0, verifyconfcert(certsanothernameother, &conf, NULL), "negative explicit san otherName");
-        ok(0, verifyconfcert(certsimple, &conf, NULL), "missing explicit san otherName");
+        ok(1, verifyconfcert(certsanothername, &conf, NULL, NULL), "explicit san otherName");
+        ok(0, verifyconfcert(certsanothernameother, &conf, NULL, NULL), "negative explicit san otherName");
+        ok(0, verifyconfcert(certsimple, &conf, NULL, NULL), "missing explicit san otherName");
 
         freematchcertattr(&conf);
     }
@@ -491,7 +641,7 @@ vY/uPjA=\n\
         conf.certnamecheck = 0;
 
         ok(1, addmatchcertattr(&conf, "CN:/t..t"), "test regex config syntax");
-        ok(1, verifyconfcert(certsimple, &conf, NULL), "test regex config syntax execution");
+        ok(1, verifyconfcert(certsimple, &conf, NULL, NULL), "test regex config syntax execution");
 
         freematchcertattr(&conf);
     }
@@ -529,10 +679,10 @@ vY/uPjA=\n\
 
         ok(1, addmatchcertattr(&conf, "CN:/t..t"), "combined config");
 
-        ok(1, verifyconfcert(certsandns, &conf, &hp), "combined san dns");
-        ok(0, verifyconfcert(certsandnsother, &conf, &hp), "negative combined san dns");
-        ok(1, verifyconfcert(certcomplex, &conf, &hp), "combined san dns in complex cert");
-        ok(0, verifyconfcert(certsimple, &conf, &hp), "combined missing san dns");
+        ok(1, verifyconfcert(certsandns, &conf, &hp, NULL), "combined san dns");
+        ok(0, verifyconfcert(certsandnsother, &conf, &hp, NULL), "negative combined san dns");
+        ok(1, verifyconfcert(certcomplex, &conf, &hp, NULL), "combined san dns in complex cert");
+        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "combined missing san dns");
 
         while (list_shift(conf.hostports))
             ;
@@ -552,16 +702,68 @@ vY/uPjA=\n\
         ok(1, addmatchcertattr(&conf, "SubjectAltName:DNS:/test\\.local/"), "multiple check 1");
         ok(1, addmatchcertattr(&conf, "SubjectAltName:rID:1.2.3.4"), "multiple check 2");
 
-        ok(0, verifyconfcert(certsandns, &conf, &hp), "multiple missing rID");
-        ok(0, verifyconfcert(certsanrid, &conf, &hp), "multiple missing DNS");
-        ok(1, verifyconfcert(certmulti, &conf, &hp), "multiple SANs");
-        ok(0, verifyconfcert(certmultiother, &conf, &hp), "multiple negative match");
-        ok(0, verifyconfcert(certcomplex, &conf, &hp), "multiple missing rID in complex cert");
-        ok(0, verifyconfcert(certsimple, &conf, &hp), "multiple missing everything");
+        ok(0, verifyconfcert(certsandns, &conf, &hp, NULL), "multiple missing rID");
+        ok(0, verifyconfcert(certsanrid, &conf, &hp, NULL), "multiple missing DNS");
+        ok(1, verifyconfcert(certmulti, &conf, &hp, NULL), "multiple SANs");
+        ok(0, verifyconfcert(certmultiother, &conf, &hp, NULL), "multiple negative match");
+        ok(0, verifyconfcert(certcomplex, &conf, &hp, NULL), "multiple missing rID in complex cert");
+        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "multiple missing everything");
 
         while (list_shift(conf.hostports))
             ;
         freematchcertattr(&conf);
+    }
+
+    /* test NAIrealm match from dynamic discovery*/
+    {
+        struct hostportres hp;
+        char *nairealm = "test.local";
+        char *naisubrealm = "sub.test.local";
+
+        conf.name = "dynamic";
+        conf.certnamecheck = 1;
+        hp.host = "test.dynamic";
+        hp.prefixlen = 255;
+        list_push(conf.hostports, &hp);
+
+        ok(1, verifyconfcert(certsanothername, &conf, &hp, nairealm), "dynamic NAI realm");
+        ok(0, verifyconfcert(certsanothernameother, &conf, &hp, nairealm), "negative dynamic NAI realm");
+        ok(0, verifyconfcert(certsanothername, &conf, &hp, naisubrealm), "negative dynamic NAI sub-realm");
+        ok(1, verifyconfcert(certnairealmwildcard, &conf, &hp, nairealm), "dynamic NAI realm wildcard");
+        ok(0, verifyconfcert(certnairealmwildcard, &conf, &hp, naisubrealm), "dynamic NAI realm wildcard subrealm");
+        ok(0, verifyconfcert(certnairealmillegalwildcard, &conf, &hp, naisubrealm), "dynamic NAI realm illegal");
+        ok(1, verifyconfcert(certnairealmmulti, &conf, &hp, nairealm), "dynamic NAI realm multi");
+        ok(1, verifyconfcert(certnairealmmulti, &conf, &hp, naisubrealm), "dynamic NAI realm multi wildcard");
+
+        /* test coerner cases*/
+        ok(1, verifyconfcert(certnairealmshort, &conf, &hp, "a.a"), "dynamic NAI realm short");
+        ok(0, verifyconfcert(certnairealmshort, &conf, &hp, "..a"), "dynamic NAI realm short illegal subrealm");
+        ok(0, verifyconfcert(certnairealmillegalshort, &conf, &hp, "a."), "dynamic NAI realm short illegal");
+
+        while (list_shift(conf.hostports))
+            ;
+    }
+
+    /* test NAIrealm and DNS combined*/
+    {
+        struct hostportres hp;
+        char *nairealm = "other.local";
+        char *nairealmother = "other.other";
+
+        conf.name = "dynamic";
+        conf.certnamecheck = 1;
+        hp.host = "test.local";
+        hp.prefixlen = 255;
+        list_push(conf.hostports, &hp);
+
+        ok(1, verifyconfcert(certsandns, &conf, &hp, nairealm), "non-NAI realm and DNS");
+        ok(0, verifyconfcert(certsandnsother, &conf, &hp, nairealm), "negative NAI realm match in SANDNS");
+        ok(1, verifyconfcert(certnairealmanddns, &conf, &hp, nairealmother), "match DNS even if NAIrealm fails");
+        hp.host = "test.other";
+        ok(1, verifyconfcert(certnairealmanddns, &conf, &hp, nairealm), "match NAIrealm even if DNS fails");
+
+        while (list_shift(conf.hostports))
+            ;
     }
 
     printf("1..%d\n", numtests);
@@ -585,6 +787,9 @@ vY/uPjA=\n\
     X509_free(certsanothernameother);
     X509_free(certmulti);
     X509_free(certmultiother);
+    X509_free(certwildcard);
+    X509_free(certmultiwildcard);
+    X509_free(certpartialwildcard);
 
     return 0;
 }

@@ -2718,6 +2718,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
             dst->pdef = src->pdef;
         dst->statusserver = src->statusserver;
         dst->certnamecheck = src->certnamecheck;
+        dst->certcncheck = src->certcncheck;
         if (src->retryinterval != 255)
             dst->retryinterval = src->retryinterval;
         if (src->retrycount != 255)
@@ -2813,6 +2814,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "PSKkey", CONF_STR_NOESC, &conf->pskkey,
             "MatchCertificateAttribute", CONF_MSTR, &conf->confmatchcertattrs,
             "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+            "CertificateCNCheck", CONF_BLN, &conf->certcncheck,
             "ServerName", CONF_STR, &conf->servername,
 #endif
             "DuplicateInterval", CONF_LINT, &dupinterval,
@@ -3037,6 +3039,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                           "PSKkey", CONF_STR_NOESC, &conf->pskkey,
                           "MatchCertificateAttribute", CONF_MSTR, &conf->confmatchcertattrs,
                           "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
+                          "CertificateCNCheck", CONF_BLN, &conf->certcncheck,
                           "ServerName", CONF_STR, &conf->servername,
 #endif
                           "addTTL", CONF_LINT, &addttl,
