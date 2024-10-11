@@ -914,28 +914,27 @@ static int certattr_matchwildcard(GENERAL_NAME *gn, struct certattrmatch *match)
     char *wildcardtoken = "*.";
     char *suffix = NULL;
     size_t l;
+    int ret = 0;
 
     if (OBJ_cmp(gn->d.otherName->type_id, match->oid) != 0)
         return 0;
 
-    v = (char *)ASN1_STRING_get0_data(gn->d.otherName->value->value.octet_string);
     l = ASN1_STRING_length(gn->d.otherName->value->value.octet_string);
+    if (!(v = stringcopy(((char *)ASN1_STRING_get0_data(gn->d.otherName->value->value.octet_string)), l)))
+        return 0;
 
     if (l > 2 &&
         strncmp(wildcardtoken, v, strlen(wildcardtoken)) == 0) {
-
         if (strstr(v + strlen(wildcardtoken), "*")) {
             debug(DBG_DBG, "certattr_matchwildcard: illegal wildcard additional * detected");
-            return 0;
+        } else if ((suffix = strstr(match->name, v + 1))) {
+            ret = strstr(match->name, ".") < suffix ? 0 : 1;
         }
-
-        if ((suffix = strstr(match->name, v + 1))) {
-            return strnstr(match->name, ".", suffix - match->name) ? 0 : 1;
-        }
-        return 0;
     } else {
-        return strncmp(v, match->name, l) == 0 ? 1 : 0;
+        ret = strncmp(v, match->name, l) == 0 ? 1 : 0;
     }
+    free(v);
+    return ret;
 }
 
 static int certattr_matchcn(X509 *cert, struct certattrmatch *match) {
