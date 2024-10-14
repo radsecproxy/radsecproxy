@@ -974,7 +974,7 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch *match) {
     }
 
     if (r < 1)
-        debug(DBG_DBG, "matchsubjaltname: no matching Subject Alt Name found! (%s)", fail);
+        debug(DBG_DBG, "matchsubjaltname: no matching Subject Alt Name found! (%s)", fail ? fail : "no dNSName or URI entry");
     free(fail);
 
     GENERAL_NAMES_free(alt);
