@@ -1897,6 +1897,8 @@ int reverifycert(SSL *ssl, SSL_CTX *ssl_ctx) {
         debug(result == 0 ? DBG_NOTICE : DBG_DBG, "reverify result: num=%d:%s:depth=%d:%s", X509_STORE_CTX_get_error(ctx),
               X509_verify_cert_error_string(X509_STORE_CTX_get_error(ctx)),
               X509_STORE_CTX_get_error_depth(ctx), buf ? buf : "");
+        free(buf);
+        buf = NULL;
     }
 
     X509_STORE_CTX_free(ctx);
