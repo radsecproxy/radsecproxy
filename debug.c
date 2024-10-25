@@ -203,10 +203,18 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
             /*ctime_r writes exactly 24 bytes + "\n\0" */
             strncpy(timebuf+24,": ", 3);
         }
+#ifdef __CYGWIN__
+        malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 4*sizeof(char);
+#else
         malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 2*sizeof(char);
+#endif
         tmp2 = malloc(malloc_size);
         if (tmp2) {
+#ifdef __CYGWIN__
+            snprintf(tmp2, malloc_size, "%s%s\r\n", timebuf ? timebuf : "", format);
+#else
             snprintf(tmp2, malloc_size, "%s%s\n", timebuf ? timebuf : "", format);
+#endif
             format = tmp2;
         }
         vfprintf(debug_file, format, ap);
