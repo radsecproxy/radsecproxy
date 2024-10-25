@@ -34,48 +34,48 @@
  */
 
 #define _GNU_SOURCE
-#include <signal.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <string.h>
-#include <unistd.h>
 #include <limits.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #if defined(HAVE_MALLOPT)
 #include <malloc.h>
 #endif
-#ifdef SYS_SOLARIS9
+#ifdef SYS_SOLARIS
 #include <fcntl.h>
 #endif
-#include <sys/time.h>
-#include <sys/types.h>
-#include <ctype.h>
-#include <sys/wait.h>
-#include <arpa/inet.h>
-#include <regex.h>
-#include <libgen.h>
-#include <pthread.h>
-#include <errno.h>
-#include <assert.h>
-#include <poll.h>
-#include <openssl/ssl.h>
-#include <openssl/rand.h>
-#include <openssl/err.h>
-#include <nettle/md5.h>
 #include "debug.h"
-#include "hash.h"
-#include "util.h"
-#include "hostport.h"
-#include "radsecproxy.h"
-#include "udp.h"
-#include "tcp.h"
-#include "tls.h"
-#include "dtls.h"
-#include "fticks.h"
-#include "fticks_hashmac.h"
 #ifndef __CYGWIN__
 #include "dns.h"
 #endif
+#include "dtls.h"
+#include "fticks.h"
+#include "fticks_hashmac.h"
+#include "hash.h"
+#include "hostport.h"
+#include "radsecproxy.h"
+#include "tcp.h"
+#include "tls.h"
+#include "udp.h"
+#include "util.h"
+#include <arpa/inet.h>
+#include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <libgen.h>
+#include <nettle/md5.h>
+#include <openssl/err.h>
+#include <openssl/rand.h>
+#include <openssl/ssl.h>
+#include <poll.h>
+#include <pthread.h>
+#include <regex.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 static struct options options;
 static struct list *clconfs, *srvconfs;
@@ -2355,10 +2355,10 @@ int dynamicconfig(struct server *server) {
 
     debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
 #ifndef __CYGWIN__
-    if (strncasecmp(conf->dynamiclookupcommand, "naptr:", sizeof("naptr:")-1) == 0){
+    if (strncasecmp(conf->dynamiclookupcommand, "naptr:", sizeof("naptr:") - 1) == 0){
         result = dynamicconfignaptr(server);
     }
-    else if (strncasecmp(conf->dynamiclookupcommand, "srv:", sizeof("srv:")-1) == 0) {
+    else if (strncasecmp(conf->dynamiclookupcommand, "srv:", sizeof("srv:") - 1) == 0) {
         srvext = strchr(conf->dynamiclookupcommand, ':');
         if (!srvext) return 0;
         srvquery = malloc((strlen(srvext) + 1 + strlen(server->dynamiclookuparg) + 1) * sizeof(char));
@@ -2367,8 +2367,7 @@ int dynamicconfig(struct server *server) {
         
         result = dynamicconfigsrv(server, srvquery);
         free(srvquery);
-    }
-    else {
+    } else {
 #endif
         result = dynamicconfigexternal(server);
 #ifndef __CYGWIN__
