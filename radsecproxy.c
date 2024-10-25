@@ -2357,8 +2357,7 @@ int dynamicconfig(struct server *server) {
 #ifndef __CYGWIN__
     if (strncasecmp(conf->dynamiclookupcommand, "naptr:", sizeof("naptr:") - 1) == 0){
         result = dynamicconfignaptr(server);
-    }
-    else if (strncasecmp(conf->dynamiclookupcommand, "srv:", sizeof("srv:") - 1) == 0) {
+    } else if (strncasecmp(conf->dynamiclookupcommand, "srv:", sizeof("srv:") - 1) == 0) {
         srvext = strchr(conf->dynamiclookupcommand, ':');
         if (!srvext) return 0;
         srvquery = malloc((strlen(srvext) + 1 + strlen(server->dynamiclookuparg) + 1) * sizeof(char));
