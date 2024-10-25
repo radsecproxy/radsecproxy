@@ -204,9 +204,9 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
             strncpy(timebuf+24,": ", 3);
         }
 #ifdef __CYGWIN__
-        malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 4*sizeof(char);
+        malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 4 * sizeof(char);
 #else
-        malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 2*sizeof(char);
+        malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 2 * sizeof(char);
 #endif
         tmp2 = malloc(malloc_size);
         if (tmp2) {
