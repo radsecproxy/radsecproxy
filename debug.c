@@ -80,7 +80,11 @@ int debug_set_destination(char *dest, int log_type) {
 
     if (!strncasecmp(dest, "file:///", 8)) {
         if (log_type != LOG_TYPE_FTICKS) {
+#ifdef __CYGWIN__
+            debug_filepath = stringcopy(dest + 8, 0);
+#else
             debug_filepath = stringcopy(dest + 7, 0);
+#endif
             debug_file = fopen(debug_filepath, "a");
             if (!debug_file) {
                 debug_file = stderr;
@@ -200,10 +204,18 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
             /*ctime_r writes exactly 24 bytes + "\n\0" */
             strncpy(timebuf + 24, ": ", 3);
         }
+#ifdef __CYGWIN__
+        malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 4 * sizeof(char);
+#else
         malloc_size = strlen(format) + (timebuf ? strlen(timebuf) : 0) + 2 * sizeof(char);
+#endif
         tmp2 = malloc(malloc_size);
         if (tmp2) {
+#ifdef __CYGWIN__
+            snprintf(tmp2, malloc_size, "%s%s\r\n", timebuf ? timebuf : "", format);
+#else
             snprintf(tmp2, malloc_size, "%s%s\n", timebuf ? timebuf : "", format);
+#endif
             format = tmp2;
         }
         vfprintf(debug_file, format, ap);

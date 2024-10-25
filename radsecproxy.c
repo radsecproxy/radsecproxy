@@ -48,7 +48,9 @@
 #include <fcntl.h>
 #endif
 #include "debug.h"
+#ifndef __CYGWIN__
 #include "dns.h"
+#endif
 #include "dtls.h"
 #include "fticks.h"
 #include "fticks_hashmac.h"
@@ -2452,6 +2454,7 @@ int dynamicconfigexternal(struct server *server) {
     return ok;
 }
 
+#ifndef __CYGWIN__
 int dynamicconfigsrv(struct server *server, const char *srvstring) {
     struct clsrvconf *conf = server->conf;
     struct srv_record **srv;
@@ -2540,13 +2543,17 @@ int dynamicconfignaptr(struct server *server) {
     freenaptrresponse(naptr);
     return result;
 }
+#endif
 
 int dynamicconfig(struct server *server) {
+#ifndef __CYGWIN__
     struct clsrvconf *conf = server->conf;
     char *srvquery, *srvext;
+#endif
     int result = 0;
 
     debug(DBG_DBG, "dynamicconfig: need dynamic server config for %s", server->dynamiclookuparg);
+#ifndef __CYGWIN__
     if (strncasecmp(conf->dynamiclookupcommand, "naptr:", sizeof("naptr:") - 1) == 0) {
         result = dynamicconfignaptr(server);
     } else if (strncasecmp(conf->dynamiclookupcommand, "srv:", sizeof("srv:") - 1) == 0) {
@@ -2561,8 +2568,11 @@ int dynamicconfig(struct server *server) {
         result = dynamicconfigsrv(server, srvquery);
         free(srvquery);
     } else {
+#endif
         result = dynamicconfigexternal(server);
+#ifndef __CYGWIN__
     }
+#endif
 
     if (!result)
         debug(DBG_WARN, "dynamicconfig: failed to obtain dynamic server config for %s", server->dynamiclookuparg);

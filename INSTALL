@@ -184,6 +184,12 @@ not `/usr/local'.  It is recommended to use the following options:
 
      ./configure --prefix=/boot/common
 
+   On Windows, use Cygwin for best results.  While this introduces 
+dependencies on several Cygwin DLLs, these are easily summarised by using
+the Dependency Walker utility.  We also recommend building radsecproxy 
+with an installation prefix other than `/usr/local' by giving
+`configure' the option `--prefix=PREFIX'.
+
 Specifying the System Type
 ==========================
 

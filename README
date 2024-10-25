@@ -13,7 +13,7 @@ Fedora: dnf install radsecproxy
 FreeBSD: pkg install radsecproxy
 NetBSD: pkgin install radsecproxy
 
-Or built it from this source on most Unix like systems by simply typing
+Or build it from this source on most Unix like systems by simply typing
 
     ./configure && make
 
@@ -25,6 +25,10 @@ the location with the "-c" command line option (see below).  For further
 instructions, please see the enclosed example file and the manpages
 radsecproxy(8) and radsecproxy.conf(5).
 
-Note for Cygwin users:
-Due to a bug in openssl the tls option CACertificatePath is currently unusable.
-Use a certificate bundle with CACertificateFile instead.
+Notes for Cygwin users:
+- Due to a bug in openssl the tls option CACertificatePath is currently unusable.
+  Use a certificate bundle with CACertificateFile instead.
+- In newer versions of Cygwin, certain function calls to make internal dynamic peer 
+  discovery work are not available in libresolv (the linker complains). The internal 
+  dynamic peer discovery has been disabled and you're limited to static definitions 
+  or an external script.
