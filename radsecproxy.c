@@ -1429,7 +1429,7 @@ int radsrv(struct request *rq) {
     rq->buf = NULL;
 
     if (!msg || msg->msgauthinvalid) {
-        debug(DBG_NOTICE, "radsrv: ignoring request from %s (%s), validation failed.", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        debug(DBG_WARN, "radsrv: ignoring request from %s (%s), message-authenticator invalid.", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         radmsg_free(msg);
         freerq(rq);
         return 0;

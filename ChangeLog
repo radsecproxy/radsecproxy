@@ -3,6 +3,9 @@ unreleased changes
 	- Fix wrong DN in certificate request (#154)
 	- Fix memory leak when using SIGHUP
 
+	Misc:
+	- Improve message-authenticator logging
+
 2024-07-05 1.11.0
 	New features:
 	- TLS-PSK (#112)
