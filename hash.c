@@ -35,7 +35,7 @@ void hash_destroy(struct hash *h) {
 }
 
 /* insert entry in hash; returns 1 if ok, 0 if malloc fails */
-int hash_insert(struct hash *h, void *key, uint32_t keylen, void *data) {
+int hash_insert(struct hash *h, const void *key, uint32_t keylen, void *data) {
     struct hash_entry *e;
 
     if (!h)
@@ -64,7 +64,7 @@ int hash_insert(struct hash *h, void *key, uint32_t keylen, void *data) {
 }
 
 /* reads entry from hash */
-void *hash_read(struct hash *h, void *key, uint32_t keylen) {
+void *hash_read(struct hash *h, const void *key, uint32_t keylen) {
     struct list_node *ln;
     struct hash_entry *e;
 
@@ -83,7 +83,7 @@ void *hash_read(struct hash *h, void *key, uint32_t keylen) {
 }
 
 /* extracts entry from hash */
-void *hash_extract(struct hash *h, void *key, uint32_t keylen) {
+void *hash_extract(struct hash *h, const void *key, uint32_t keylen) {
     struct list_node *ln;
     struct hash_entry *e;
     void *data;

@@ -3,6 +3,9 @@ unreleased changes
 	- Support wildcard certificates (#149)
 	- Support NAIRealm subjectAltName for dynamic discovery
 
+	Misc:
+	- Prevent TLS connections to self
+
 2024-07-05 1.11.0
 	New features:
 	- TLS-PSK (#112)
