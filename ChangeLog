@@ -5,6 +5,7 @@ unreleased changes
 
 	Misc:
 	- Prevent TLS connections to self
+	- Update shared-secret length warning level to RFC
 
 2024-07-05 1.11.0
 	New features:
