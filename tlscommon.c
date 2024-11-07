@@ -47,6 +47,7 @@ static unsigned char cookie_secret[COOKIE_SECRET_LENGTH];
 static uint8_t cookie_secret_initialized = 0;
 
 #define OTHERNAME_OID_NAIREALM "1.3.6.1.5.5.7.8.8"
+static struct hash *selfiecache = NULL;
 
 int RSP_EX_DATA_CONFIG;
 int RSP_EX_DATA_CONFIG_LIST;
@@ -109,6 +110,8 @@ void sslinit(void) {
     RSP_EX_DATA_CONFIG = CRYPTO_get_ex_new_index(CRYPTO_EX_INDEX_SSL, 0, NULL, NULL, NULL, NULL);
     RSP_EX_DATA_CONFIG_LIST = CRYPTO_get_ex_new_index(CRYPTO_EX_INDEX_SSL, 0, NULL, NULL, NULL, NULL);
 #endif
+    if (!selfiecache)
+        selfiecache = hash_create();
 }
 
 /**
@@ -291,6 +294,25 @@ static int cookie_verify_cb(SSL *ssl, const unsigned char *cookie, unsigned int 
     }
     return 1;
 }
+
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
+int client_hello_cb(SSL *ssl, int *al, void *arg) {
+    const unsigned char *random;
+    size_t randomlen;
+
+    randomlen = SSL_client_hello_get0_random(ssl, &random);
+
+    if (random && randomlen > 0) {
+        if (hash_read(selfiecache, random, randomlen)) {
+            debug(DBG_ERR, "client_hello_cb: detected selfie connection!");
+            *al = TLS1_AD_ACCESS_DENIED;
+            return SSL_CLIENT_HELLO_ERROR;
+        }
+    }
+
+    return SSL_CLIENT_HELLO_SUCCESS;
+}
+#endif
 
 #ifdef DEBUG
 static void ssl_info_callback(const SSL *ssl, int where, int ret) {
@@ -717,6 +739,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
 #if OPENSSL_VERSION_NUMBER >= 0x10101000
     SSL_CTX_set_psk_use_session_callback(ctx, psk_use_session_cb);
     SSL_CTX_set_psk_find_session_callback(ctx, psk_find_session_cb);
+    SSL_CTX_set_client_hello_cb(ctx, client_hello_cb, NULL);
     SSL_CTX_set_options(ctx, SSL_CTX_get_options(ctx) & ~SSL_OP_ALLOW_NO_DHE_KEX);
 
     if (getenv(RSP_KEYLOG_ENV))
@@ -1498,6 +1521,35 @@ int sslaccepttimeout(SSL *ssl, int timeout) {
     return r;
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
+void ssl_msg_cb(int write_p, int version,
+                int content_type, const void *buf,
+                size_t len, SSL *ssl, void *arg) {
+    uint8_t random[32];
+    size_t randomlen, i;
+    if (write_p) {
+        randomlen = SSL_get_client_random(ssl, random, sizeof(random));
+        for (i = 0; i < randomlen; i++) {
+            if (random[i])
+                break;
+        }
+        if (i == randomlen)
+            return;
+
+        hash_insert(selfiecache, random, randomlen, (void *)1);
+        SSL_set_msg_callback(ssl, NULL);
+    }
+}
+
+void removeclientselfiecache(SSL *ssl) {
+    uint8_t random[32];
+    size_t randomlen;
+
+    randomlen = SSL_get_client_random(ssl, random, sizeof(random));
+    hash_extract(selfiecache, random, randomlen);
+}
+#endif
+
 int sslconnecttimeout(SSL *ssl, int timeout) {
     int socket, origflags, ndesc, r = -1, sockerr = 0;
     socklen_t errlen = sizeof(sockerr);
@@ -1514,6 +1566,10 @@ int sslconnecttimeout(SSL *ssl, int timeout) {
         debugerrno(errno, DBG_WARN, "Failed to set O_NONBLOCK");
         return -1;
     }
+
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
+    SSL_set_msg_callback(ssl, ssl_msg_cb);
+#endif
 
     while (r < 1) {
         fds[0].fd = socket;
@@ -1555,6 +1611,9 @@ int sslconnecttimeout(SSL *ssl, int timeout) {
 
     if (fcntl(socket, F_SETFL, origflags) == -1)
         debugerrno(errno, DBG_WARN, "Failed to set original flags back");
+#if OPENSSL_VERSION_NUMBER >= 0x10101000
+    removeclientselfiecache(ssl);
+#endif
     return r;
 }
 
