@@ -416,6 +416,7 @@ void *tlsservernew(void *arg) {
                     free(subj);
                 }
                 X509_free(cert);
+                cert = NULL;
                 break;
             }
             conf = find_clconf(handle, (struct sockaddr *)&from, &cur, &hp);
