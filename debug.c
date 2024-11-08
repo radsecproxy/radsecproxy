@@ -222,6 +222,34 @@ void debug(uint8_t level, char *format, ...) {
     va_end(ap);
 }
 
+void debug_limit(uint8_t level, char *format, ...) {
+    va_list ap;
+    struct timeval now, diff;
+    static struct timeval lastlog = {0, 0};
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+    if (level < debug_level)
+        return;
+
+    if (debug_level != DBG_DBG) {
+        gettimeofday(&now, NULL);
+        pthread_mutex_lock(&lock);
+        timersub(&now, &lastlog, &diff);
+        if (diff.tv_sec == 0) {
+            /* rate-limit log */
+            pthread_mutex_unlock(&lock);
+            return;
+        } else {
+            lastlog = now;
+        }
+        pthread_mutex_unlock(&lock);
+    }
+
+    va_start(ap, format);
+    debug_logit(level, format, ap);
+    va_end(ap);
+}
+
 void debugx(int status, uint8_t level, char *format, ...) {
     if (level >= debug_level) {
         va_list ap;

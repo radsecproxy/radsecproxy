@@ -20,6 +20,7 @@ void debug_tid_on(void);
 uint8_t debug_get_level(void);
 void debug(uint8_t level, char *format, ...);
 void debugx(int status, uint8_t level, char *format, ...);
+void debug_limit(uint8_t level, char *format, ...);
 void debugerrno(int err, uint8_t level, char *format, ...);
 void debugerrnox(int err, uint8_t level, char *format, ...);
 int debug_set_destination(char *dest, int log_type);
