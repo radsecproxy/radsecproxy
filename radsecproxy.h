@@ -109,6 +109,7 @@ struct options {
     uint8_t ipv6only;
     uint8_t sni;
     uint8_t verifyeap;
+    uint8_t reqmsgauth;
 };
 
 struct commonprotoopts {

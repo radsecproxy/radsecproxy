@@ -2,6 +2,7 @@ unreleased changes
 	New features:
 	- Support wildcard certificates (#149)
 	- Support NAIRealm subjectAltName for dynamic discovery
+	- Global option to require Message-Authenticator on all clients and servers
 
 	Misc:
 	- Prevent TLS connections to self

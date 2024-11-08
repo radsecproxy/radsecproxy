@@ -2800,6 +2800,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (!conf)
         debugx(1, DBG_ERR, "malloc failed");
     conf->certnamecheck = 1;
+    conf->reqmsgauth = options.reqmsgauth;
 
     if (!getgenericconfig(
             cf, block,
@@ -3020,9 +3021,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->blockingstartup = resconf->blockingstartup;
         conf->type = resconf->type;
         conf->sni = resconf->sni;
+        conf->reqmsgauth = resconf->reqmsgauth;
     } else {
         conf->certnamecheck = 1;
         conf->sni = options.sni;
+        conf->reqmsgauth = options.reqmsgauth;
     }
 
     if (!getgenericconfig(cf, block,
@@ -3377,6 +3380,8 @@ void getmainconfig(const char *configfile) {
             "IPv6Only", CONF_BLN, &options.ipv6only,
             "SNI", CONF_BLN, &options.sni,
             "VerifyEAP", CONF_BLN, &options.verifyeap,
+            "requireMessageAuthenticator", CONF_BLN, &options.reqmsgauth,
+
             NULL))
         debugx(1, DBG_ERR, "configuration error");
 
