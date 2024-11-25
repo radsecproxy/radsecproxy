@@ -5,6 +5,7 @@ unreleased changes
 
 	Misc:
 	- Prevent TLS connections to self
+	- Allow relative paths and Windows paths for file log destination
 
 2024-07-05 1.11.0
 	New features:
