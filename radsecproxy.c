@@ -3159,8 +3159,10 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
 
     if (conf->pskkey) {
         conf->pskkeylen = unhex((char *)conf->pskkey, 1);
-        if (conf->pskkeylen < PSK_MIN_LENGTH)
-            debugx(1, DBG_ERR, "error in block %s, PSKkey must be at least %d bytes", block, PSK_MIN_LENGTH);
+        if (conf->pskkeylen < PSK_MIN_LENGTH) {
+            debug(DBG_ERR, "error in block %s, PSKkey must be at least %d bytes", block, PSK_MIN_LENGTH);
+            goto errexit;
+        }
         if (!conf->pskid) {
             debug(DBG_ERR, "error in block %s, PSKidentity must be set to use PSK", block);
             goto errexit;
