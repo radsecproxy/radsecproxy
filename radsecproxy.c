@@ -2906,8 +2906,6 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             debugx(1, DBG_ERR, "malloc failed");
     }
     conf->secret_len = unhex((char *)conf->secret, 1);
-    if ((conf->type == RAD_UDP || conf->type == RAD_TCP) && conf->secret_len <= RSP_SECRET_LEN_WARN)
-        debug(DBG_WARN, "warning! shared secret should be at least %d characters long! (block %s)", RSP_SECRET_LEN_WARN, block);
 
     if (conf->tlsconf) {
         for (entry = list_first(clconfs); entry; entry = list_next(entry)) {
@@ -3158,8 +3156,6 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
     if (conf->secret)
         conf->secret_len = unhex((char *)conf->secret, 1);
-    if ((conf->type == RAD_UDP || conf->type == RAD_TCP) && conf->secret_len <= RSP_SECRET_LEN_WARN)
-        debug(DBG_WARN, "warning! shared secret should be at least %d characters long! (block %s)", RSP_SECRET_LEN_WARN, block);
 
     if (conf->pskkey) {
         conf->pskkeylen = unhex((char *)conf->pskkey, 1);
@@ -3298,6 +3294,11 @@ void warnpskreuse(struct list_node *entry, struct clsrvconf *conf, char *type, u
     }
 }
 
+void warnsecretlength(struct clsrvconf *conf, char *type) {
+    if ((conf->type == RAD_UDP || conf->type == RAD_TCP) && conf->secret_len <= RSP_SECRET_LEN_WARN)
+        debug(DBG_WARN, "warning! shared secret should be at least %d characters long! (block %s %s)", RSP_SECRET_LEN_WARN, type, conf->name);
+}
+
 void getmainconfig(const char *configfile) {
     long int addttl = LONG_MIN, loglevel = LONG_MIN;
     struct gconffile *cfs;
@@ -3309,7 +3310,6 @@ void getmainconfig(const char *configfile) {
     uint8_t *fticks_mac_str = NULL;
     uint8_t *fticks_key_str = NULL;
     int i;
-    struct list_node *entry;
 
     cfs = openconfigfile(configfile);
     memset(&options, 0, sizeof(options));
@@ -3425,11 +3425,6 @@ void getmainconfig(const char *configfile) {
     for (i = 0; i < RAD_PROTOCOUNT; i++)
         if (listenargs[i] || sourceargs[i])
             setprotoopts(i, listenargs[i], sourceargs[i]);
-
-    for (entry = list_first(clconfs); entry; entry = list_next(entry))
-        warnpskreuse(list_next(entry), (struct clsrvconf *)entry->data, "client", 1);
-    for (entry = list_first(srvconfs); entry; entry = list_next(entry))
-        warnpskreuse(list_next(entry), (struct clsrvconf *)entry->data, "server", 0);
 }
 
 void getargs(int argc, char **argv, uint8_t *foreground, uint8_t *pretend, uint8_t *loglevel, char **configfile, char **pidfile) {
@@ -3651,6 +3646,15 @@ int radsecproxy_main(int argc, char **argv) {
         debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");
     if (!list_first(realms))
         debugx(1, DBG_ERR, "No realms configured, nothing to do, exiting");
+
+    for (entry = list_first(clconfs); entry; entry = list_next(entry)) {
+        warnpskreuse(list_next(entry), (struct clsrvconf *)entry->data, "client", 1);
+        warnsecretlength((struct clsrvconf *)entry->data, "client");
+    }
+    for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
+        warnpskreuse(list_next(entry), (struct clsrvconf *)entry->data, "server", 0);
+        warnsecretlength((struct clsrvconf *)entry->data, "server");
+    }
 
     if (pretend)
         debugx(0, DBG_ERR, "All OK so far; exiting since only pretending");
