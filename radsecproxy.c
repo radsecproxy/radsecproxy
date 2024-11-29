@@ -3646,6 +3646,8 @@ int radsecproxy_main(int argc, char **argv) {
     free(options.logdestination);
     if (options.logtid)
         debug_tid_on();
+    if (!pretend)
+        debug_reopen_log();
 
     if (!list_first(clconfs))
         debugx(1, DBG_ERR, "No clients configured, nothing to do, exiting");
@@ -3668,7 +3670,7 @@ int radsecproxy_main(int argc, char **argv) {
         debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
 
     debug_timestamp_on();
-    debug(DBG_INFO, "radsecproxy %s starting", PACKAGE_VERSION);
+    debug(DBG_ERR, "radsecproxy %s starting", PACKAGE_VERSION);
     if (!pidfile)
         pidfile = options.pidfile;
     if (pidfile && !createpidfile(pidfile))
