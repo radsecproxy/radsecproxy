@@ -3259,7 +3259,10 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
                           NULL))
         debugx(1, DBG_ERR, "configuration error");
 
-    addrealm(realms, val, servers, accservers, msg, accresp, acclog);
+    if (!addrealm(realms, val, servers, accservers, msg, accresp, acclog)) {
+        debug(DBG_ERR, "failed to add %s", block);
+        return 0;
+    }
     return 1;
 }
 
