@@ -2750,12 +2750,17 @@ int config_hostaf(const char *desc, int ipv4only, int ipv6only, int *af) {
     return 0;
 }
 
-static int confapplytls(struct clsrvconf *conf, const char *block) {
+static int confapplytls(struct clsrvconf *conf, const char *block, char *defaulttls) {
 #if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
     if (conf->type == RAD_TLS || conf->type == RAD_DTLS) {
-        conf->tlsconf = conf->tls      ? tlsgettls(conf->tls, NULL)
-                        : conf->pskkey ? tlsgetdefaultpsk()
-                                       : tlsgettls("defaultServer", "default");
+        if (conf->tls)
+            conf->tlsconf = tlsgettls(conf->tls);
+        else {
+            if (conf->pskkey)
+                conf->tlsconf = tlsgetdefaultpsk();
+            else if (!(conf->tlsconf = tlsgettls(defaulttls)))
+                conf->tlsconf = tlsgettls("default");
+        }
         if (!conf->tlsconf) {
             debug(DBG_ERR, "error in block %s, no tls context defined", block);
             return 0;
@@ -2848,7 +2853,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     free(conftype);
     conf->pdef = protodefs[conf->type];
 
-    if (!confapplytls(conf, block))
+    if (!confapplytls(conf, block, "defaultClient"))
         debugx(1, DBG_ERR, "config error: ^");
 
     conf->hostaf = AF_UNSPEC;
@@ -2948,7 +2953,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     conf->hostports = NULL;
     conf->matchcertattrs = NULL;
 
-    if (!confapplytls(conf, block))
+    if (!confapplytls(conf, block, "defaultServer"))
         return 0;
 
     if (!conf->portsrc) {

@@ -725,13 +725,8 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     return ctx;
 }
 
-struct tls *tlsgettls(char *alt1, char *alt2) {
-    struct tls *t;
-
-    t = hash_read(tlsconfs, alt1, strlen(alt1));
-    if (!t && alt2)
-        t = hash_read(tlsconfs, alt2, strlen(alt2));
-    return t;
+struct tls *tlsgettls(char *conf) {
+    return hash_read(tlsconfs, conf, strlen(conf));
 }
 
 struct tls *tlsgetdefaultpsk(void) {
