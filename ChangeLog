@@ -2,6 +2,10 @@ unreleased changes
 	Bug Fixes:
 	- Fix wrong DN in certificate request (#154)
 	- Fix memory leak when using SIGHUP
+	- Fix exit when dyndisc script returns illegal PSKkey
+	- Fix logging during config check
+	- Fix invalid realm configs are ignored
+	- Fix default tls block selection
 
 	Misc:
 	- Improve message-authenticator logging
