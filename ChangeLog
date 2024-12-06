@@ -1,4 +1,4 @@
-unreleased changes
+2024-12-06 1.11.1
 	Bug Fixes:
 	- Fix wrong DN in certificate request (#154)
 	- Fix memory leak when using SIGHUP
