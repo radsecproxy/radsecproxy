@@ -52,7 +52,7 @@ extern int RSP_EX_DATA_CONFIG;
 extern int RSP_EX_DATA_CONFIG_LIST;
 
 void sslinit(void);
-struct tls *tlsgettls(char *alt1, char *alt2);
+struct tls *tlsgettls(char *conf);
 struct tls *tlsgetdefaultpsk(void);
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
 X509 *verifytlscert(SSL *ssl);
