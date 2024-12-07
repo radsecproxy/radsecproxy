@@ -86,12 +86,11 @@ int debug_set_destination(char *dest, int log_type) {
             debug_filepath = stringcopy(dest + 7, 0);
 #endif
             debug_file = fopen(debug_filepath, "a");
-            if (!debug_file) {
-                debug_file = stderr;
+            if (!debug_file)
                 debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
                        debug_filepath, strerror(errno));
-            }
-            setvbuf(debug_file, NULL, _IONBF, 0);
+            fclose(debug_file);
+            debug_file = stderr;
         } else {
             debug(DBG_WARN, "FTicksSyslogFacility starting with file:/// not "
                             "permitted, assuming default F-Ticks destination");
@@ -128,19 +127,14 @@ int debug_set_destination(char *dest, int log_type) {
 }
 
 void debug_reopen_log(void) {
-    /* not a file, noop, return success */
-    if (!debug_filepath) {
-        debug(DBG_ERR, "skipping reopen");
+    if (!debug_filepath)
         return;
-    }
 
     if (debug_file != stderr)
         fclose(debug_file);
 
     debug_file = fopen(debug_filepath, "a");
-    if (debug_file)
-        debug(DBG_ERR, "Reopened logfile %s", debug_filepath);
-    else {
+    if (!debug_file) {
         debug_file = stderr;
         debug(DBG_ERR, "Failed to open logfile %s, using stderr\n%s",
               debug_filepath, strerror(errno));

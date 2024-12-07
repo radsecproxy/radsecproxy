@@ -45,14 +45,7 @@ struct tlv *extractattr(char *nameval, char vendor_flag) {
     }
 
     s++;
-#ifdef __CYGWIN__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic warning "-Wchar-subscripts"
-#endif
-    if (isdigit(*s)) {
-#ifdef __CYGWIN__
-#pragma GCC diagnostic pop
-#endif
+    if (isdigit((int)*s)) {
         ival = atoi(s);
         ival = htonl(ival);
         len = 4;

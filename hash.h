@@ -23,13 +23,13 @@ struct hash *hash_create(void);
 void hash_destroy(struct hash *hash);
 
 /* insert entry in hash; returns 1 if ok, 0 if malloc fails */
-int hash_insert(struct hash *hash, void *key, uint32_t keylen, void *data);
+int hash_insert(struct hash *hash, const void *key, uint32_t keylen, void *data);
 
 /* reads entry from hash */
-void *hash_read(struct hash *hash, void *key, uint32_t keylen);
+void *hash_read(struct hash *hash, const void *key, uint32_t keylen);
 
 /* extracts (read and remove) entry from hash */
-void *hash_extract(struct hash *hash, void *key, uint32_t keylen);
+void *hash_extract(struct hash *hash, const void *key, uint32_t keylen);
 
 /* returns first entry */
 struct hash_entry *hash_first(struct hash *hash);

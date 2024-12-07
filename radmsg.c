@@ -134,32 +134,25 @@ int radmsg_copy_attrs(struct radmsg *dst,
 }
 
 int _checkmsgauth(unsigned char *rad, int radlen, uint8_t *authattr, uint8_t *secret, int secret_len) {
-    int result = 0; /* Fail. */
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     struct hmac_md5_ctx hmacctx;
-    uint8_t auth[16], hash[MD5_DIGEST_SIZE];
+    uint8_t auth[MD5_DIGEST_SIZE], hash[MD5_DIGEST_SIZE];
 
     pthread_mutex_lock(&lock);
 
-    /* FIXME: Why clearing authattr during hashing? */
-    memcpy(auth, authattr, 16);
-    memset(authattr, 0, 16);
+    /* hmac is calculated with message-authenticator being sixteen octets of zero */
+    memcpy(auth, authattr, sizeof(auth));
+    memset(authattr, 0, MD5_DIGEST_SIZE);
 
     hmac_md5_set_key(&hmacctx, secret_len, secret);
     hmac_md5_update(&hmacctx, radlen, rad);
     hmac_md5_digest(&hmacctx, sizeof(hash), hash);
 
-    memcpy(authattr, auth, 16);
+    memcpy(authattr, auth, MD5_DIGEST_SIZE);
 
-    if (memcmp(auth, hash, 16)) {
-        debug(DBG_WARN, "message authenticator, wrong value");
-        goto out;
-    }
-    result = 1; /* Success. */
-
-out:
     pthread_mutex_unlock(&lock);
-    return result;
+
+    return (memcmp(auth, hash, MD5_DIGEST_SIZE) == 0);
 }
 
 int _validauth(unsigned char *rad, int len, unsigned char *reqauth, unsigned char *sec, int sec_len) {
@@ -327,13 +320,20 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         }
 
         if (t == RAD_Attr_Message_Authenticator && secret) {
-            if (rqauth)
-                memcpy(buf + 4, rqauth, 16);
+            if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge) {
+                if (rqauth)
+                    memcpy(buf + 4, rqauth, 16);
+                else {
+                    debug(DBG_DBG, "buf2radmsg: unable to verify message authenticator, missing original access-request");
+                    msg->msgauthinvalid = 1;
+                }
+            } else if (msg->code != RAD_Access_Request)
+                debug(DBG_DBG, "buf2radmsg: unexpeted message-authnticator");
             if (l != 16 || !_checkmsgauth(buf, len, v, secret, secret_len)) {
-                debug(DBG_DBG, "buf2radmsg: message authentication failed");
+                debug(DBG_DBG, "buf2radmsg: message authenticator invalid");
                 msg->msgauthinvalid = 1;
             } else
-                debug(DBG_DBG, "buf2radmsg: message auth ok");
+                debug(DBG_DBG, "buf2radmsg: message authenticator ok");
             if (rqauth)
                 memcpy(buf + 4, msg->auth, 16);
         }
