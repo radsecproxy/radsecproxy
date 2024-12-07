@@ -26,6 +26,8 @@ instructions, please see the enclosed example file and the manpages
 radsecproxy(8) and radsecproxy.conf(5).
 
 Notes for Cygwin users:
+- To build radsecproxy with explicit DOS style line endings in output, use
+  ./configure LDFLAGS=/lib/textmode.o
 - Due to a bug in openssl the tls option CACertificatePath is currently unusable.
   Use a certificate bundle with CACertificateFile instead.
 - In newer versions of Cygwin, certain function calls to make internal dynamic peer 
