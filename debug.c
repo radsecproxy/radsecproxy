@@ -92,8 +92,8 @@ int debug_set_destination(char *dest, int log_type) {
             }
             setvbuf(debug_file, NULL, _IONBF, 0);
         } else {
-            debug(DBG_WARN, "FTicksSyslogFacility starting with file:/// not "
-                            "permitted, assuming default F-Ticks destination");
+            debug(DBG_WARN, "FTicksSyslogFacility starting with " FILE_PREFIX
+                            " not permitted, assuming default F-Ticks destination");
         }
         return 1;
     }

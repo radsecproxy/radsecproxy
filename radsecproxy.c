@@ -3692,7 +3692,7 @@ int radsecproxy_main(int argc, char **argv) {
 
     if (!foreground && (daemon(1, 0) < 0))
         debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
-    debug(DBG_INFO, "radsecproxy startup complete", PACKAGE_VERSION);
+    debug(DBG_INFO, "radsecproxy startup complete");
 
     /* just hang around doing nothing, anything to do here? */
     for (;;)
