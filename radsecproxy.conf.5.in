@@ -120,7 +120,7 @@ syslog with facility \fBLOG_DAEMON\fR. Using this option you can specify another
 syslog facility, or you may specify that logging should be to a particular file,
 not using syslog. The value must be either a file path like \fBfile:/path/to/your/logfile.log\fR 
 or a syslog URL using the syntax:
-.BR "x\-syslog:///FACILITY" " where " FACILITY " must be one of "
+.BR "x\-syslog:FACILITY" " where " FACILITY " must be one of "
 .BR LOG_DAEMON ,
 .BR LOG_MAIL ,
 .BR LOG_USER ,
@@ -215,7 +215,7 @@ no FTicksSyslogFacility option is given, F-Ticks messages are written to what
 the \fBLogDestination\fR option specifies.
 
 F-Ticks messages are always logged using the log level \fBLOG_DEBUG\fR. Note
-that specifying a file in FTicksSyslogFacility (using the file:/// prefix) is
+that specifying a file in FTicksSyslogFacility (using the file: prefix) is
 not supported.
 .RE
 

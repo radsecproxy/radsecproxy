@@ -21,7 +21,7 @@
 #include <time.h>
 
 #define FILE_PREFIX "file:"
-#define SYSLOG_PREFIX "x-syslog://"
+#define SYSLOG_PREFIX "x-syslog:"
 
 static char *debug_ident = NULL;
 static uint8_t debug_level = DBG_INFO;
@@ -99,8 +99,8 @@ int debug_set_destination(char *dest, int log_type) {
     }
     if (!strncasecmp(dest, SYSLOG_PREFIX, strlen(SYSLOG_PREFIX)) || log_type == LOG_TYPE_FTICKS) {
         if (!strncasecmp(dest, SYSLOG_PREFIX, strlen(SYSLOG_PREFIX))) {
-            dest += 11;
-            if (*dest == '/')
+            dest += strlen(SYSLOG_PREFIX);
+            while (*dest == '/')
                 dest++;
         }
         if (*dest) {
