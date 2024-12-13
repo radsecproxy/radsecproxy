@@ -3640,13 +3640,13 @@ int radsecproxy_main(int argc, char **argv) {
                                   ? options.logdestination
                                   : "x-syslog:///",
                               LOG_TYPE_DEBUG);
-        if (options.ftickssyslogfacility) {
-            debug_set_destination(options.ftickssyslogfacility,
-                                  LOG_TYPE_FTICKS);
-            free(options.ftickssyslogfacility);
-        }
     }
     free(options.logdestination);
+    if (options.ftickssyslogfacility) {
+        debug_set_destination(options.ftickssyslogfacility,
+                              LOG_TYPE_FTICKS);
+        free(options.ftickssyslogfacility);
+    }
     if (options.logtid)
         debug_tid_on();
 
