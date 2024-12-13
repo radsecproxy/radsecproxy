@@ -26,6 +26,7 @@ static char *debug_filepath = NULL;
 static FILE *debug_file = NULL;
 static int debug_syslogfacility = 0;
 static int fticks_syslogfacility = 0;
+static int active_syslogfacility = 0;
 static uint8_t debug_timestamp = 0;
 static uint8_t debug_tid = 0;
 
@@ -115,7 +116,6 @@ int debug_set_destination(char *dest, int log_type) {
             else if (log_type == LOG_TYPE_FTICKS)
                 fticks_syslogfacility = 0;
         }
-        openlog(debug_ident, LOG_PID, debug_syslogfacility);
         return 1;
     }
     debug(DBG_ERR, "Unknown log destination, exiting %s", dest);
@@ -123,6 +123,11 @@ int debug_set_destination(char *dest, int log_type) {
 }
 
 void debug_reopen_log(void) {
+    if (debug_syslogfacility) {
+        active_syslogfacility = debug_syslogfacility;
+        openlog(debug_ident, LOG_PID, active_syslogfacility);
+        return;
+    }
     if (!debug_filepath)
         return;
 
@@ -166,7 +171,7 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
         free(tidbuf);
     }
 
-    if (debug_syslogfacility) {
+    if (active_syslogfacility) {
         switch (level) {
         case DBG_DBG:
             priority = LOG_DEBUG;
@@ -259,7 +264,7 @@ void fticks_debug(const char *format, ...) {
     int priority;
     va_list ap;
     va_start(ap, format);
-    if (!debug_syslogfacility && !fticks_syslogfacility)
+    if (!active_syslogfacility && !fticks_syslogfacility)
         debug_logit(0xff, format, ap);
     else {
         priority = LOG_DEBUG | fticks_syslogfacility;
