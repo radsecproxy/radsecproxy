@@ -271,7 +271,7 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     return size;
 }
 
-/* if secret set we also validate message authenticator if present */
+/* if secret set we also validate message-authenticator if present */
 struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len, uint8_t *rqauth) {
     struct radmsg *msg;
     uint8_t t, l, *v = NULL, *p, auth[16];
@@ -285,7 +285,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
     if (secret && buf[0] == RAD_Accounting_Request) {
         memset(auth, 0, 16);
         if (!_validauth(buf, len, auth, secret, secret_len)) {
-            debug(DBG_WARN, "buf2radmsg: Accounting-Request message authentication failed");
+            debug(DBG_WARN, "buf2radmsg: Accounting-Request message-authenticator invalid");
             return NULL;
         }
     }
@@ -324,16 +324,16 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
                 if (rqauth)
                     memcpy(buf + 4, rqauth, 16);
                 else {
-                    debug(DBG_DBG, "buf2radmsg: unable to verify message authenticator, missing original access-request");
+                    debug(DBG_DBG, "buf2radmsg: unable to verify message-authenticator, missing original access-request");
                     msg->msgauthinvalid = 1;
                 }
             } else if (msg->code != RAD_Access_Request)
-                debug(DBG_DBG, "buf2radmsg: unexpeted message-authnticator");
+                debug(DBG_DBG, "buf2radmsg: unexpected message-authenticator");
             if (l != 16 || !_checkmsgauth(buf, len, v, secret, secret_len)) {
-                debug(DBG_DBG, "buf2radmsg: message authenticator invalid");
+                debug(DBG_DBG, "buf2radmsg: message-authenticator invalid");
                 msg->msgauthinvalid = 1;
             } else
-                debug(DBG_DBG, "buf2radmsg: message authenticator ok");
+                debug(DBG_DBG, "buf2radmsg: message-authenticator ok");
             if (rqauth)
                 memcpy(buf + 4, msg->auth, 16);
         }
