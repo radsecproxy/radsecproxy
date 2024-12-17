@@ -274,7 +274,7 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
 /* if secret set we also validate message-authenticator if present */
 struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len, uint8_t *rqauth) {
     struct radmsg *msg;
-    uint8_t t, l, *v = NULL, *p, auth[16];
+    uint8_t t, l, *v = NULL, *p, zeroauth[16] = {0};
     struct tlv *attr;
 
     if (len != RADLEN(buf)) {
@@ -282,14 +282,8 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         return NULL;
     }
 
-    if (secret && buf[0] == RAD_Accounting_Request) {
-        memset(auth, 0, 16);
-        if (!_validauth(buf, len, auth, secret, secret_len)) {
-            debug(DBG_WARN, "buf2radmsg: Accounting-Request message-authenticator invalid");
-            return NULL;
-        }
-    }
-
+    if (buf[0] == RAD_Accounting_Request)
+        rqauth = zeroauth;
     if (rqauth && secret && !_validauth(buf, len, rqauth, secret, secret_len)) {
         debug(DBG_WARN, "buf2radmsg: Invalid auth, ignoring reply");
         return NULL;
