@@ -81,7 +81,11 @@ int debug_set_destination(char *dest, int log_type) {
 
     if (!strncasecmp(dest, "file:///", 8)) {
         if (log_type != LOG_TYPE_FTICKS) {
+#ifdef __CYGWIN__
+            debug_filepath = stringcopy(dest + 8, 0);
+#else
             debug_filepath = stringcopy(dest + 7, 0);
+#endif
             debug_file = fopen(debug_filepath, "a");
             if (!debug_file)
                 debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
