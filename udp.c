@@ -292,7 +292,8 @@ void *udpserverrd(void *arg) {
         rq->buflen = radudpget(*sp, &rq->from, NULL, &rq->buf);
         rq->udpsock = *sp;
         gettimeofday(&rq->created, NULL);
-        radsrv(rq);
+        if (!radsrv(rq))
+            debug(DBG_WARN, "udpserverrd: message decoding failed, ignoring");
     }
     free(sp);
     return NULL;

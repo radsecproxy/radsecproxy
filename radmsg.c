@@ -278,14 +278,15 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
     struct tlv *attr;
 
     if (len != RADLEN(buf)) {
-        debug(DBG_WARN, "buf2radmsg: length field does not match buffer length, ignoring message");
+        debug(DBG_WARN, "buf2radmsg: length field does not match buffer length");
         return NULL;
     }
 
     if (buf[0] == RAD_Accounting_Request)
         rqauth = zeroauth;
     if (rqauth && secret && !_validauth(buf, len, rqauth, secret, secret_len)) {
-        debug(DBG_WARN, "buf2radmsg: Invalid auth, ignoring reply");
+        debug(DBG_WARN, "buf2radmsg: Invalid %s authenticator",
+              (buf[0] == RAD_Access_Request || buf[0] == RAD_Accounting_Request) ? "request" : "response");
         return NULL;
     }
 
