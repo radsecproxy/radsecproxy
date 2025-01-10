@@ -65,9 +65,6 @@ AC_ARG_ENABLE(dtls,
     fi
   ])
 
-AC_CHECK_LIB([nettle], [nettle_sha256_init],,
-    [AC_MSG_ERROR([required library nettle not found])])
-
 # check if we need -lresolv
 AC_CHECK_LIB([resolv], [inet_aton])
 
