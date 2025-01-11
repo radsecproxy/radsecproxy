@@ -30,15 +30,21 @@ static void _hash(const uint8_t *in,
                   size_t out_len,
                   uint8_t *out) {
     uint8_t hash[EVP_MD_size(sha256digest())];
+    if (out_len > 0)
+        out[0] = '\0';
+
     if (key == NULL) {
         EVP_MD_CTX *ctx = mdctxcreate(sha256digest());
+        if (!ctx)
+            return;
 
         EVP_DigestUpdate(ctx, in, strlen((char *)in));
         EVP_DigestFinal(ctx, hash, NULL);
         _format_hash(hash, out_len, out);
         EVP_MD_CTX_free(ctx);
     } else {
-        HMAC(sha256digest(), key, strlen((char *)key), in, strlen((char *)in), hash, NULL);
+        if (!HMAC(sha256digest(), key, strlen((char *)key), in, strlen((char *)in), hash, NULL))
+            return;
         _format_hash(hash, out_len, out);
     }
 }

@@ -142,7 +142,10 @@ int _checkmsgauth(unsigned char *rad, int radlen, uint8_t *authattr, uint8_t *se
     memcpy(auth, authattr, sizeof(auth));
     memset(authattr, 0, md5len);
 
-    HMAC(md5digest(), secret, secret_len, rad, radlen, hash, NULL);
+    if (!HMAC(md5digest(), secret, secret_len, rad, radlen, hash, NULL)) {
+        debug(DBG_ERR, "checkmsgauth: error calcualting HMAC");
+        return 0;
+    }
     memcpy(authattr, auth, md5len);
 
     return (memcmp(auth, hash, md5len) == 0);
@@ -152,6 +155,11 @@ int _validauth(unsigned char *rad, int len, unsigned char *reqauth, unsigned cha
     EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
     unsigned char hash[EVP_MD_size(md5digest())];
     int result = 0; /* Fail. */
+
+    if (!mdctx) {
+        debug(DBG_ERR, "_validauth: creating EVP_MD_CTX failed");
+        return result;
+    }
 
     EVP_DigestUpdate(mdctx, rad, 4);
     EVP_DigestUpdate(mdctx, reqauth, 16);
@@ -177,6 +185,11 @@ int _createmessageauth(unsigned char *rad, int radlen, unsigned char *authattrva
 
 int _radsign(unsigned char *rad, int radlen, unsigned char *sec, int sec_len) {
     EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
+
+    if (!mdctx) {
+        debug(DBG_ERR, "_validauth: creating EVP_MD_CTX failed");
+        return 0;
+    }
 
     EVP_DigestUpdate(mdctx, rad, radlen);
     EVP_DigestUpdate(mdctx, sec, sec_len);
