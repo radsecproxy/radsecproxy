@@ -5,6 +5,7 @@ unreleased changes
 
 	Misc:
 	- Prevent TLS connections to self
+	- Remove dependency on libnettle
 
 2024-12-06 1.11.1
 	Bug Fixes:
