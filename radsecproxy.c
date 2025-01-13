@@ -59,12 +59,12 @@
 #include "tls.h"
 #include "udp.h"
 #include "util.h"
+#include "utilcrypto.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <libgen.h>
-#include <nettle/md5.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
@@ -585,23 +585,24 @@ void sendreply(struct request *rq) {
 }
 
 static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt, uint8_t saltlen) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    struct md5_ctx mdctx;
-    unsigned char hash[MD5_DIGEST_SIZE], *input;
+    EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
+    unsigned char hash[EVP_MD_size(md5digest())], *input;
     uint8_t i, offset = 0, out[128];
 
-    pthread_mutex_lock(&lock);
+    if (!mdctx) {
+        debug(DBG_ERR, "pwdcrypt: creating EVP_MD_CTX failed");
+        return 0;
+    }
 
-    md5_init(&mdctx);
     input = auth;
     for (;;) {
-        md5_update(&mdctx, sharedlen, shared);
-        md5_update(&mdctx, 16, input);
+        EVP_DigestUpdate(mdctx, shared, sharedlen);
+        EVP_DigestUpdate(mdctx, input, 16);
         if (salt) {
-            md5_update(&mdctx, saltlen, salt);
+            EVP_DigestUpdate(mdctx, salt, saltlen);
             salt = NULL;
         }
-        md5_digest(&mdctx, sizeof(hash), hash);
+        EVP_DigestFinal(mdctx, hash, NULL);
         for (i = 0; i < 16; i++)
             out[offset + i] = hash[i] ^ in[offset + i];
         if (encrypt_flag)
@@ -614,18 +615,19 @@ static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared
     }
     memcpy(in, out, len);
 
-    pthread_mutex_unlock(&lock);
+    EVP_MD_CTX_free(mdctx);
     return 1;
 }
 
 static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    struct md5_ctx mdctx;
-    unsigned char hash[MD5_DIGEST_SIZE];
+    EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
+    unsigned char hash[EVP_MD_size(md5digest())];
     uint8_t i, offset;
 
-    pthread_mutex_lock(&lock);
-    md5_init(&mdctx);
+    if (!mdctx) {
+        debug(DBG_ERR, "msmppencrypt: creating EVP_MD_CTX failed");
+        return 0;
+    }
 
 #if 0
     printfchars(NULL, "msppencrypt auth in", "%02x ", auth, 16);
@@ -633,10 +635,10 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     printfchars(NULL, "msppencrypt in", "%02x ", text, len);
 #endif
 
-    md5_update(&mdctx, sharedlen, shared);
-    md5_update(&mdctx, 16, auth);
-    md5_update(&mdctx, 2, salt);
-    md5_digest(&mdctx, sizeof(hash), hash);
+    EVP_DigestUpdate(mdctx, shared, sharedlen);
+    EVP_DigestUpdate(mdctx, auth, 16);
+    EVP_DigestUpdate(mdctx, salt, 2);
+    EVP_DigestFinal(mdctx, hash, NULL);
 
 #if 0
     printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
@@ -650,9 +652,9 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
-        md5_update(&mdctx, sharedlen, shared);
-        md5_update(&mdctx, 16, text + offset - 16);
-        md5_digest(&mdctx, sizeof(hash), hash);
+        EVP_DigestUpdate(mdctx, shared, sharedlen);
+        EVP_DigestUpdate(mdctx, text + offset - 16, 16);
+        EVP_DigestFinal(mdctx, hash, NULL);
 #if 0
 	printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
 #endif
@@ -665,19 +667,20 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     printfchars(NULL, "msppencrypt out", "%02x ", text, len);
 #endif
 
-    pthread_mutex_unlock(&lock);
+    EVP_MD_CTX_free(mdctx);
     return 1;
 }
 
 static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    struct md5_ctx mdctx;
-    unsigned char hash[MD5_DIGEST_SIZE];
+    EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
+    unsigned char hash[EVP_MD_size(md5digest())];
     uint8_t i, offset;
     char plain[255];
 
-    pthread_mutex_lock(&lock);
-    md5_init(&mdctx);
+    if (!mdctx) {
+        debug(DBG_ERR, "msmppdecrypt: creating EVP_MD_CTX failed");
+        return 0;
+    }
 
 #if 0
     printfchars(NULL, "msppdecrypt auth in", "%02x ", auth, 16);
@@ -685,10 +688,10 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     printfchars(NULL, "msppdecrypt in", "%02x ", text, len);
 #endif
 
-    md5_update(&mdctx, sharedlen, shared);
-    md5_update(&mdctx, 16, auth);
-    md5_update(&mdctx, 2, salt);
-    md5_digest(&mdctx, sizeof(hash), hash);
+    EVP_DigestUpdate(mdctx, shared, sharedlen);
+    EVP_DigestUpdate(mdctx, auth, 16);
+    EVP_DigestUpdate(mdctx, salt, 2);
+    EVP_DigestFinal(mdctx, hash, NULL);
 
 #if 0
     printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
@@ -702,9 +705,9 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
-        md5_update(&mdctx, sharedlen, shared);
-        md5_update(&mdctx, 16, text + offset - 16);
-        md5_digest(&mdctx, sizeof(hash), hash);
+        EVP_DigestUpdate(mdctx, shared, sharedlen);
+        EVP_DigestUpdate(mdctx, text + offset - 16, 16);
+        EVP_DigestFinal(mdctx, hash, NULL);
 #if 0
 	printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
 #endif
@@ -718,7 +721,7 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     printfchars(NULL, "msppdecrypt out", "%02x ", text, len);
 #endif
 
-    pthread_mutex_unlock(&lock);
+    EVP_MD_CTX_free(mdctx);
     return 1;
 }
 

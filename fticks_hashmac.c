@@ -2,10 +2,10 @@
 /* See LICENSE for licensing information. */
 
 #include "fticks_hashmac.h"
+#include "utilcrypto.h"
 #include <ctype.h>
 #include <errno.h>
-#include <nettle/hmac.h>
-#include <nettle/sha.h>
+#include <openssl/hmac.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,28 +22,29 @@ static void _format_hash(const uint8_t *hash, size_t out_len, uint8_t *out) {
     }
 
     for (ir = 0, iw = 0; iw <= out_len - 3; ir++, iw += 2)
-        sprintf((char *)out + iw, "%02x", hash[ir % SHA256_DIGEST_SIZE]);
+        sprintf((char *)out + iw, "%02x", hash[ir % EVP_MD_size(sha256digest())]);
 }
 
 static void _hash(const uint8_t *in,
                   const uint8_t *key,
                   size_t out_len,
                   uint8_t *out) {
+    uint8_t hash[EVP_MD_size(sha256digest())];
+    if (out_len > 0)
+        out[0] = '\0';
+
     if (key == NULL) {
-        struct sha256_ctx ctx;
-        uint8_t hash[SHA256_DIGEST_SIZE];
+        EVP_MD_CTX *ctx = mdctxcreate(sha256digest());
+        if (!ctx)
+            return;
 
-        sha256_init(&ctx);
-        sha256_update(&ctx, strlen((char *)in), in);
-        sha256_digest(&ctx, sizeof(hash), hash);
+        EVP_DigestUpdate(ctx, in, strlen((char *)in));
+        EVP_DigestFinal(ctx, hash, NULL);
         _format_hash(hash, out_len, out);
+        EVP_MD_CTX_free(ctx);
     } else {
-        struct hmac_sha256_ctx ctx;
-        uint8_t hash[SHA256_DIGEST_SIZE];
-
-        hmac_sha256_set_key(&ctx, strlen((char *)key), key);
-        hmac_sha256_update(&ctx, strlen((char *)in), in);
-        hmac_sha256_digest(&ctx, sizeof(hash), hash);
+        if (!HMAC(sha256digest(), key, strlen((char *)key), in, strlen((char *)in), hash, NULL))
+            return;
         _format_hash(hash, out_len, out);
     }
 }

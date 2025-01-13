@@ -7,9 +7,10 @@
 #include "raddict.h"
 #include "radmsg.h"
 #include "util.h"
+#include "utilcrypto.h"
 #include <arpa/inet.h>
-#include <nettle/hmac.h>
 #include <openssl/rand.h>
+#include <openssl/hmac.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -134,79 +135,67 @@ int radmsg_copy_attrs(struct radmsg *dst,
 }
 
 int _checkmsgauth(unsigned char *rad, int radlen, uint8_t *authattr, uint8_t *secret, int secret_len) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    struct hmac_md5_ctx hmacctx;
-    uint8_t auth[MD5_DIGEST_SIZE], hash[MD5_DIGEST_SIZE];
-
-    pthread_mutex_lock(&lock);
+    size_t md5len = EVP_MD_size(md5digest());
+    uint8_t auth[md5len], hash[md5len];
 
     /* hmac is calculated with message-authenticator being sixteen octets of zero */
     memcpy(auth, authattr, sizeof(auth));
-    memset(authattr, 0, MD5_DIGEST_SIZE);
+    memset(authattr, 0, md5len);
 
-    hmac_md5_set_key(&hmacctx, secret_len, secret);
-    hmac_md5_update(&hmacctx, radlen, rad);
-    hmac_md5_digest(&hmacctx, sizeof(hash), hash);
+    if (!HMAC(md5digest(), secret, secret_len, rad, radlen, hash, NULL)) {
+        debug(DBG_ERR, "checkmsgauth: error calcualting HMAC");
+        return 0;
+    }
+    memcpy(authattr, auth, md5len);
 
-    memcpy(authattr, auth, MD5_DIGEST_SIZE);
-
-    pthread_mutex_unlock(&lock);
-
-    return (memcmp(auth, hash, MD5_DIGEST_SIZE) == 0);
+    return (memcmp(auth, hash, md5len) == 0);
 }
 
 int _validauth(unsigned char *rad, int len, unsigned char *reqauth, unsigned char *sec, int sec_len) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    struct md5_ctx mdctx;
-    unsigned char hash[MD5_DIGEST_SIZE];
+    EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
+    unsigned char hash[EVP_MD_size(md5digest())];
     int result = 0; /* Fail. */
 
-    pthread_mutex_lock(&lock);
-    md5_init(&mdctx);
+    if (!mdctx) {
+        debug(DBG_ERR, "_validauth: creating EVP_MD_CTX failed");
+        return result;
+    }
 
-    md5_update(&mdctx, 4, rad);
-    md5_update(&mdctx, 16, reqauth);
+    EVP_DigestUpdate(mdctx, rad, 4);
+    EVP_DigestUpdate(mdctx, reqauth, 16);
     if (len > 20)
-        md5_update(&mdctx, len - 20, rad + 20);
-    md5_update(&mdctx, sec_len, sec);
-    md5_digest(&mdctx, sizeof(hash), hash);
+        EVP_DigestUpdate(mdctx, rad + 20, len - 20);
+    EVP_DigestUpdate(mdctx, sec, sec_len);
+    EVP_DigestFinal(mdctx, hash, NULL);
 
     result = !memcmp(hash, rad + 4, 16);
 
-    pthread_mutex_unlock(&lock);
+    EVP_MD_CTX_free(mdctx);
     return result;
 }
 
 int _createmessageauth(unsigned char *rad, int radlen, unsigned char *authattrval, uint8_t *secret, int secret_len) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    struct hmac_md5_ctx hmacctx;
-
     if (!authattrval)
         return 1;
 
-    pthread_mutex_lock(&lock);
-
     memset(authattrval, 0, 16);
-    hmac_md5_set_key(&hmacctx, secret_len, secret);
-    hmac_md5_update(&hmacctx, radlen, rad);
-    hmac_md5_digest(&hmacctx, MD5_DIGEST_SIZE, authattrval);
-
-    pthread_mutex_unlock(&lock);
+    HMAC(md5digest(), secret, secret_len, rad, radlen, authattrval, NULL);
     return 1;
 }
 
 int _radsign(unsigned char *rad, int radlen, unsigned char *sec, int sec_len) {
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    struct md5_ctx mdctx;
+    EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
 
-    pthread_mutex_lock(&lock);
+    if (!mdctx) {
+        debug(DBG_ERR, "_validauth: creating EVP_MD_CTX failed");
+        return 0;
+    }
 
-    md5_init(&mdctx);
-    md5_update(&mdctx, radlen, rad);
-    md5_update(&mdctx, sec_len, sec);
-    md5_digest(&mdctx, MD5_DIGEST_SIZE, rad + 4);
+    EVP_DigestUpdate(mdctx, rad, radlen);
+    EVP_DigestUpdate(mdctx, sec, sec_len);
+    EVP_DigestFinal(mdctx, rad + 4, NULL);
 
-    pthread_mutex_unlock(&lock);
+    EVP_MD_CTX_free(mdctx);
     return 1;
 }
 

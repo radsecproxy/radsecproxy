@@ -29,7 +29,8 @@ librsp_a_SOURCES = \
 	tlscommon.c tlscommon.h \
 	tlv11.c tlv11.h \
 	udp.c udp.h \
-	util.c util.h
+	util.c util.h \
+	utilcrypto.c utilcrypto.h
 
 radsecproxy_conf_SOURCES = \
 	catgconf.c \
@@ -45,7 +46,7 @@ AM_CFLAGS = \
 radsecproxy_LDFLAGS = @OPENSSL_LDFLAGS@ @TARGET_LDFLAGS@
 radsecproxy_LDADD = librsp.a @OPENSSL_LIBS@ @LIBS@
 radsecproxy_conf_LDFLAGS = @TARGET_LDFLAGS@
-radsecproxy_hash_LDADD = fticks_hashmac.o hash.o list.o
+radsecproxy_hash_LDADD = fticks_hashmac.o hash.o list.o utilcrypto.o @OPENSSL_LIBS@
 
 man_MANS = radsecproxy.8 radsecproxy-hash.8 radsecproxy.conf.5
 
