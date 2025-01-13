@@ -17,7 +17,7 @@ void usage(void) {
 #endif
             "   -h\t\t\tdisplay this help and exit\n"
             "   -k key\t\tuse KEY for HMAC\n"
-            "      mac\t\tMAC address to hash. Read from stdin if omittedn.\n");
+            "      mac\t\tMAC address to hash. Read from stdin if omitted.\n");
     exit(1);
 }
 
