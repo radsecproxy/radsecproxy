@@ -6,6 +6,7 @@ unreleased changes
 	Misc:
 	- Prevent TLS connections to self
 	- Remove dependency on libnettle
+	- Allow relative paths and Windows paths for file log destination
 
 2024-12-06 1.11.1
 	Bug Fixes:

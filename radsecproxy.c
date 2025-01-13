@@ -3648,13 +3648,13 @@ int radsecproxy_main(int argc, char **argv) {
                                   ? options.logdestination
                                   : "x-syslog:///",
                               LOG_TYPE_DEBUG);
-        if (options.ftickssyslogfacility) {
-            debug_set_destination(options.ftickssyslogfacility,
-                                  LOG_TYPE_FTICKS);
-            free(options.ftickssyslogfacility);
-        }
     }
     free(options.logdestination);
+    if (options.ftickssyslogfacility) {
+        debug_set_destination(options.ftickssyslogfacility,
+                              LOG_TYPE_FTICKS);
+        free(options.ftickssyslogfacility);
+    }
     if (options.logtid)
         debug_tid_on();
     if (!pretend)
@@ -3676,9 +3676,6 @@ int radsecproxy_main(int argc, char **argv) {
 
     if (pretend)
         debugx(0, DBG_ERR, "All OK so far; exiting since only pretending");
-
-    if (!foreground && (daemon(0, 0) < 0))
-        debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
 
     debug_timestamp_on();
     debug(DBG_ERR, "radsecproxy %s starting", PACKAGE_VERSION);
@@ -3711,6 +3708,10 @@ int radsecproxy_main(int argc, char **argv) {
         if (find_clconf_type(i, NULL))
             createlisteners(i);
     }
+
+    if (!foreground && (daemon(1, 0) < 0))
+        debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
+    debug(DBG_INFO, "radsecproxy startup complete");
 
     /* just hang around doing nothing, anything to do here? */
     for (;;)

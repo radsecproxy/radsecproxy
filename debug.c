@@ -20,6 +20,9 @@
 #include <syslog.h>
 #include <time.h>
 
+#define FILE_PREFIX "file:"
+#define SYSLOG_PREFIX "x-syslog:"
+
 static char *debug_ident = NULL;
 static uint8_t debug_level = DBG_INFO;
 static char *debug_filepath = NULL;
@@ -79,9 +82,9 @@ int debug_set_destination(char *dest, int log_type) {
         LOG_LOCAL5, LOG_LOCAL6, LOG_LOCAL7};
     int i;
 
-    if (!strncasecmp(dest, "file:///", 8)) {
+    if (!strncasecmp(dest, FILE_PREFIX, strlen(FILE_PREFIX))) {
         if (log_type != LOG_TYPE_FTICKS) {
-            debug_filepath = stringcopy(dest + 7, 0);
+            debug_filepath = stringcopy(dest + strlen(FILE_PREFIX), 0);
             debug_file = fopen(debug_filepath, "a");
             if (!debug_file)
                 debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
@@ -89,15 +92,15 @@ int debug_set_destination(char *dest, int log_type) {
             fclose(debug_file);
             debug_file = stderr;
         } else {
-            debug(DBG_WARN, "FTicksSyslogFacility starting with file:/// not "
-                            "permitted, assuming default F-Ticks destination");
+            debug(DBG_WARN, "FTicksSyslogFacility starting with " FILE_PREFIX
+                            " not permitted, assuming default F-Ticks destination");
         }
         return 1;
     }
-    if (!strncasecmp(dest, "x-syslog://", 11) || log_type == LOG_TYPE_FTICKS) {
-        if (!strncasecmp(dest, "x-syslog://", 11)) {
-            dest += 11;
-            if (*dest == '/')
+    if (!strncasecmp(dest, SYSLOG_PREFIX, strlen(SYSLOG_PREFIX)) || log_type == LOG_TYPE_FTICKS) {
+        if (!strncasecmp(dest, SYSLOG_PREFIX, strlen(SYSLOG_PREFIX))) {
+            dest += strlen(SYSLOG_PREFIX);
+            while (*dest == '/')
                 dest++;
         }
         if (*dest) {
