@@ -58,7 +58,7 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
     if (auth)
         memcpy(msg->auth, auth, 16);
     else if (!RAND_bytes(msg->auth, 16)) {
-        free(msg);
+        radmsg_free(msg);
         return NULL;
     }
     return msg;
@@ -233,7 +233,7 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     size = 20;
     for (node = list_first(msg->attrs); node; node = list_next(node))
         size += 2 + ((struct tlv *)node->data)->l;
-    if (size > 65535)
+    if (size > 65535 || size < 0)
         return -1;
     *buf = malloc(size);
     if (!*buf)
@@ -404,11 +404,13 @@ int attrvalidate(unsigned char *attrs, int length) {
  * !NULL.  */
 struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr) {
     struct tlv *newtlv = NULL;
-    uint8_t l, *v;
+    size_t l;
+    uint8_t *v;
 
-    if (!attr || attr->l > (RAD_Max_Attr_Value_Length - 6))
+    if (!attr)
         return NULL;
-    l = attr->l + 2 + 4;
+    if ((l = attr->l + 6) > RAD_Max_Attr_Value_Length)
+        return NULL;
     v = malloc(l);
     if (v) {
         vendor = htonl(vendor & 0x00ffffff); /* MSB=0 according to RFC 2865. */
