@@ -11,20 +11,27 @@
 /**
  * Read a character string from a dns response
  * Character strings are represented by a length byte followd by the characters. 
+ * For a valid string, at least 1 byte is read (the length byte), even if the stirng itself
+ * is zero length.
  * 
  * @param dest where to write the string. The provided buffer must be at least 256 bytes in size
  * @param rdata the rdata pointer from the dns rr
  * @param offset the offset into rdata where the character string starts
  * @param rdlen the rlden of the rr, to avoid reading beyond the record
- * @return the number of bytes read from rdata, or -1 in case of errors
+ * @return the number of bytes read from rdata, or 0 in case of errors
  */
 static uint16_t dnsreadcharstring(char *dest, const u_char *rdata, uint16_t offset, uint16_t rdlen) {
     uint16_t len;
 
+    if (offset >= rdlen) {
+        debug(DBG_ERR, "dnsreadcharstring: invalid input, offset is beyond radata!");
+        return 0;
+    }
+
     len = *(rdata + offset++);
     if (offset + len > rdlen) {
         debug(DBG_ERR, "dnsreadcharstring: error parsing char string, length is beyond radata!");
-        return -1;
+        return 0;
     }
     memcpy(dest, rdata + offset, len);
     *(dest + len) = '\0';
@@ -103,17 +110,17 @@ static void *parsenaptrrr(ns_msg msg, ns_rr *rr) {
 
     offset = 4;
     len = dnsreadcharstring(response->flags, rdata, offset, rdlen);
-    if (len == -1)
+    if (len == 0)
         goto errexit;
     offset += len;
 
     len = dnsreadcharstring(response->services, rdata, offset, rdlen);
-    if (len == -1)
+    if (len == 0)
         goto errexit;
     offset += len;
 
     len = dnsreadcharstring(response->regexp, rdata, offset, rdlen);
-    if (len == -1)
+    if (len == 0)
         goto errexit;
     offset += len;
 
