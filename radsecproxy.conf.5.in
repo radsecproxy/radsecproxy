@@ -319,6 +319,14 @@ length. In case malformatted EAP attributes are inentional, this behaviour can
 be disabled (default on).
 .RE
 
+.BR "RequireMessageAuthenticator (" on | off )
+.RS
+Require that all Access-* packets on UDP and TCP transport be signed with a Message-Authenticator.
+.br
+Enable this option if all clients and servers are known to always use Message-Authenticator to 
+increase security. This setting can be overriden per client and per server (default off). 
+.RE
+
 .BI "Include " file
 .RS
 This is not a normal configuration option; it can be specified multiple times.

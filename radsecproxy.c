@@ -1432,7 +1432,7 @@ int radsrv(struct request *rq) {
     rq->buf = NULL;
 
     if (!msg || msg->msgauthinvalid) {
-        debug(DBG_WARN, "radsrv: ignoring request from %s (%s), message-authenticator invalid.", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        debug_limit(DBG_NOTICE, "radsrv: ignoring request from %s (%s), message-authenticator invalid.", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         radmsg_free(msg);
         freerq(rq);
         return 0;
@@ -1444,15 +1444,15 @@ int radsrv(struct request *rq) {
 
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
     if (msg->code == RAD_Disconnect_Request) {
-        debug(DBG_INFO, "radsrv: disconnect-request not supported");
+        debug_limit(DBG_INFO, "radsrv: disconnect-request not supported");
         respond(rq, RAD_Disconnect_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
     }
     if (msg->code == RAD_CoA_Request) {
-        debug(DBG_INFO, "radsrv: CoA-request not supported");
+        debug_limit(DBG_INFO, "radsrv: CoA-request not supported");
         respond(rq, RAD_CoA_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
     }
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
-        debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
+        debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
         goto exit;
     }
 
@@ -1471,14 +1471,14 @@ int radsrv(struct request *rq) {
         msg->code == RAD_Access_Request) {
         if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL &&
             (from->conf->reqmsgauth || (from->conf->reqmsgauthproxy && radmsg_gettype(msg, RAD_Attr_Proxy_State) != NULL))) {
-            debug(DBG_INFO, "radsrv: ignoring request from client %s (%s), missing required message-authenticator", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+            debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), missing required message-authenticator", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
             goto exit;
         }
     }
 
     if (options.verifyeap &&
         msg->code == RAD_Access_Request && !verifyeapformat(msg)) {
-        debug(DBG_WARN, "radsrv: eap format error, forcing access-reject");
+        debug_limit(DBG_WARN, "radsrv: eap format error, forcing access-reject");
         respond(rq, RAD_Access_Reject, NULL, 1);
         goto exit;
     }
@@ -1488,7 +1488,7 @@ int radsrv(struct request *rq) {
 
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {
-        debug(DBG_INFO, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         goto exit;
     }
 
@@ -1497,7 +1497,7 @@ int radsrv(struct request *rq) {
         if (msg->code == RAD_Accounting_Request) {
             respond(rq, RAD_Accounting_Response, NULL, 0);
         } else
-            debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
+            debug_limit(DBG_INFO, "radsrv: ignoring access request, no username attribute");
         goto exit;
     }
 
@@ -1514,7 +1514,7 @@ int radsrv(struct request *rq) {
     /* will return with lock on the realm */
     to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
     if (!realm) {
-        debug(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
+        debug_limit(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
         goto exit;
     }
 
@@ -1531,8 +1531,8 @@ int radsrv(struct request *rq) {
 
     if ((to->conf->loopprevention == 1 || (to->conf->loopprevention == UCHAR_MAX && options.loopprevention == 1)) &&
         !strcmp(from->conf->name, to->conf->name)) {
-        debug(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s, discarding",
-              from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
+        debug_limit(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s, discarding",
+                    from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
         goto exit;
     }
 
@@ -1680,7 +1680,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge &&
         msg->code != RAD_Accounting_Response) {
-        debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
+        debug_limit(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
         goto errunlock;
     }
 
@@ -1699,7 +1699,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
         (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
         if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {
-            debug(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
+            debug_limit(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
             goto errunlock;
         }
     }
@@ -1724,7 +1724,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {
-        debug(DBG_INFO, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->name);
+        debug_limit(DBG_INFO, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->name);
         goto errunlock;
     }
 
@@ -2808,6 +2808,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     if (!conf)
         debugx(1, DBG_ERR, "malloc failed");
     conf->certnamecheck = 1;
+    conf->reqmsgauth = options.reqmsgauth;
 
     if (!getgenericconfig(
             cf, block,
@@ -3026,9 +3027,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->blockingstartup = resconf->blockingstartup;
         conf->type = resconf->type;
         conf->sni = resconf->sni;
+        conf->reqmsgauth = resconf->reqmsgauth;
     } else {
         conf->certnamecheck = 1;
         conf->sni = options.sni;
+        conf->reqmsgauth = options.reqmsgauth;
     }
 
     if (!getgenericconfig(cf, block,
@@ -3390,6 +3393,8 @@ void getmainconfig(const char *configfile) {
             "IPv6Only", CONF_BLN, &options.ipv6only,
             "SNI", CONF_BLN, &options.sni,
             "VerifyEAP", CONF_BLN, &options.verifyeap,
+            "requireMessageAuthenticator", CONF_BLN, &options.reqmsgauth,
+
             NULL))
         debugx(1, DBG_ERR, "configuration error");
 

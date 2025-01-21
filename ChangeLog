@@ -2,9 +2,12 @@ unreleased changes
 	New features:
 	- Support wildcard certificates (#149)
 	- Support NAIRealm subjectAltName for dynamic discovery
+	- Global option to require Message-Authenticator on all clients and servers
 
 	Misc:
 	- Prevent TLS connections to self
+	- Update shared-secret length warning level to draft RFC (12)
+	- Rate-limit logging for discarded requests
 	- Remove dependency on libnettle
 	- Allow relative paths and Windows paths for file log destination
 

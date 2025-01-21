@@ -33,7 +33,7 @@
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT 300
 #define PSK_MIN_LENGTH 16
-#define RSP_SECRET_LEN_WARN 10
+#define RSP_SECRET_LEN_WARN 12
 /* Older OpenSSL API had a 256 byte limit; keep this limit to maximize compatibility*/
 #define PSK_ID_MAX_LENGTH 256
 #define RSP_TLS_REKEY_INTERVAL 3600
@@ -109,6 +109,7 @@ struct options {
     uint8_t ipv6only;
     uint8_t sni;
     uint8_t verifyeap;
+    uint8_t reqmsgauth;
 };
 
 struct commonprotoopts {
