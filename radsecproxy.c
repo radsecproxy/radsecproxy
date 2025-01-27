@@ -3736,6 +3736,8 @@ int radsecproxy_main(int argc, char **argv) {
         srvconf = (struct clsrvconf *)entry->data;
         if (srvconf->dynamiclookupcommand)
             continue;
+        if (srvconf->idletimeout > 0)
+            continue;
         if (!addserver(srvconf, NULL))
             debugx(1, DBG_ERR, "failed to add server");
     }
