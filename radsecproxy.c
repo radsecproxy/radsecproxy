@@ -1637,11 +1637,14 @@ int timeouth(struct server *server) {
     } else if (server->conf->idletimeout > 0) {
         gettimeofday(&now, NULL);
         if (now.tv_sec - server->lastreply.tv_sec > server->conf->idletimeout) {
-            debug(DBG_INFO, "timeouth: idle timeout for server %s %s", server->conf->name, server->dynamiclookuparg ? server->dynamiclookuparg : "");
+            debug(DBG_INFO, "timeouth: idle timeout for server %s %s after %ds",
+                  server->conf->name, server->dynamiclookuparg ? server->dynamiclookuparg : "",
+                  server->conf->idletimeout);
             return 1;
         }
+        debug(DBG_DBG, "timeouth: continue waiting for %ds", server->conf->idletimeout - now.tv_sec - server->lastreply.tv_sec);
     }
-    debug(DBG_DBG, "timeouth: continue waiting");
+
     return 0;
 }
 
