@@ -320,14 +320,15 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         }
 
         if (t == RAD_Attr_Message_Authenticator && secret) {
-            if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge) {
+            if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge ||
+                msg->code == RAD_Accounting_Response) {
                 if (rqauth)
                     memcpy(buf + 4, rqauth, 16);
                 else {
-                    debug(DBG_DBG, "buf2radmsg: unable to verify message authenticator, missing original access-request");
+                    debug(DBG_DBG, "buf2radmsg: unable to verify message authenticator, missing original request");
                     msg->msgauthinvalid = 1;
                 }
-            } else if (msg->code != RAD_Access_Request)
+            } else if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server)
                 debug(DBG_DBG, "buf2radmsg: unexpeted message-authnticator");
             if (l != 16 || !_checkmsgauth(buf, len, v, secret, secret_len)) {
                 debug(DBG_DBG, "buf2radmsg: message authenticator invalid");
