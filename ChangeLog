@@ -11,6 +11,10 @@ unreleased changes
 	- Remove dependency on libnettle
 	- Allow relative paths and Windows paths for file log destination
 
+2025-03-25 1.11.2
+	Bug Fixes:
+	- Fix Message-Authenticator validation for Accounting-Response
+
 2024-12-06 1.11.1
 	Bug Fixes:
 	- Fix wrong DN in certificate request (#154)
