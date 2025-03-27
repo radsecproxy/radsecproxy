@@ -241,7 +241,7 @@ server dyndisc {
 	#alternatively call a script that poerforms the lookup
 	#dynamicLookupCommand /usr/local/bin/naptr-eduroam.sh
 	# NOTES FOR WINDOWS (Cygwin) USERS:
-	# For dynamic lookups on Windows, see READNE for instructions
+	# For dynamic lookups on Windows, see README for instructions
 	# Use the full path to the batch file below
 	#dynamicLookupCommand "c:/full/path/to/batchfile/naptr-lookup.bat"
 }
