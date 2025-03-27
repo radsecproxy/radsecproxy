@@ -13,7 +13,7 @@ Fedora: dnf install radsecproxy
 FreeBSD: pkg install radsecproxy
 NetBSD: pkgin install radsecproxy
 
-Or built it from this source on most Unix like systems by simply typing
+Or build it from this source on most Unix like systems by simply typing
 
     ./configure && make
 
@@ -25,6 +25,39 @@ the location with the "-c" command line option (see below).  For further
 instructions, please see the enclosed example file and the manpages
 radsecproxy(8) and radsecproxy.conf(5).
 
-Note for Cygwin users:
-Due to a bug in openssl the tls option CACertificatePath is currently unusable.
-Use a certificate bundle with CACertificateFile instead.
+Notes for Cygwin users:
+- To build radsecproxy with explicit DOS style line endings in output, use
+  ./configure LDFLAGS=/lib/textmode.o
+- Due to a bug in openssl the tls option CACertificatePath is currently unusable.
+  Use a certificate bundle with CACertificateFile instead.
+- In newer versions of Cygwin, certain function calls to make internal dynamic peer 
+  discovery work are not available in libresolv (the linker complains). The internal 
+  dynamic peer discovery has been disabled and you're limited to static definitions 
+  or an external script.
+
+Notes for Windows users: 
+- To build radsecproxy, follow the Cygwin section above.
+- To use radsecproxy on Windows *without* dynamic peer discovery and without 
+  installing a complete copy of Cygwin:
+  - Build radsecproxy as per Cygwin above
+  - Add the following Cygwin DLL files alongside radsecproxy.exe and its config: 
+    - cygcrypto-3.dll, cygnettle-6.dll, cygssl-3.dll, cygwin1.dll, cygz.dll
+- To use radsecproxy *with* dynamic peer discovery (via external batch file) on 
+  Windows without a complete copy of Cygwin:
+  - Build radsecproxy as per Cygwin above
+  - Add the following Cygwin DLL files and executables alongside radsecproxy.exe 
+    and its config:
+    - cygcrypto-3.dll, cyggcc_s-seh-1.dll, cygiconv-2.dll, cygintl-8.dll, 
+      cygnettle-6.dll, cygpcre2-8-0.dll, cygssl-3.dll, cygwin1.dll, cygz.dll, 
+      echo.exe, grep.exe, printf.exe, sed.exe, sort.exe, tr.exe
+  - Download ISC BIND9 for Windows v9.16.48 from 
+    https://downloads.isc.org/isc/bind9/9.16.48/BIND9.16.48.x64.zip.
+    - Extract the ZIP file into the "bind" subdirectory of your radsecproxy directory.
+    - Do *NOT* use the installer. 
+  - Copy naptr-lookup.bat from the tools directory. (Un)comment the appropriate 
+    NAPTR_PATTERN line. The default is eduroam's NAPTR record.
+  - Test the batchfile by running it from the command-line with this command-line:
+    - c:\path\to\naptr-lookup.bat realm.ext (where realm.ext has a record you want)
+  - Resolve any path errors (missing executables, mostly)
+  - Make sure you set the complete path to naptr-lookup.bat surrounded by quotes, 
+    e.g. dynamicLookupCommand "c:/radsecproxy/naptr-openroaming.bat"

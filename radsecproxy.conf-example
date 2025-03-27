@@ -21,12 +21,14 @@
 #LogLevel		3
 # Optional LogDestination, else stderr used for logging
 # Logging to file
-#LogDestination		file:///tmp/rp.log
+#LogDestination		file:/tmp/rp.log
+# On Windows, use the following format for a file destination instead:
+#LogDestination		file:C:/this/directory/path/rp.log
 # Or logging with Syslog. LOG_DAEMON used if facility not specified
 # The supported facilities are LOG_DAEMON, LOG_MAIL, LOG_USER and
 # LOG_LOCAL0, ..., LOG_LOCAL7
 #LogDestination         x-syslog:///
-#LogDestination         x-syslog:///log_local2
+#LogDestination         x-syslog:log_local2
 # Optional log thread Id
 #LogThreadId on
 
@@ -64,9 +66,9 @@
 # syslog facility for F-Ticks messages. This allows for easier filtering
 # of F-Ticks messages.
 # F-Ticks messages are always logged using the log level LOG_DEBUG.
-# Note that specifying a file (using the file:/// prefix) is not supported.
+# Note that specifying a file (using the file: prefix) is not supported.
 #FTicksSyslogFacility	log_local1
-#FTicksSyslogFacility	x-syslog:///log_local1
+#FTicksSyslogFacility	x-syslog:log_local1
 # If you are using radsecproxy outside the eduroam context, and you want
 # F-Ticks messages to have your own prefix instead of eduroam, you can set:
 #FTicksPrefix <prefix>
@@ -90,6 +92,11 @@
 tls default {
     # You must specify at least one of CACertificateFile or CACertificatePath
     # for TLS to work. We always verify peer certificate (client and server)
+    # NOTES FOR WINDOWS USERS: 
+    # - CACertificatePath is currently unusable. Use a certificate bundle 
+    #   in CACertificateFile instead. 
+    # - Use a forward slash instead of a backslash as path separator, e.g.
+    #   C:/this/directory/path/file.ext
     # CACertificateFile    /etc/cacerts/CA.pem
     CACertificatePath	/etc/cacerts
 
@@ -233,6 +240,10 @@ server dyndisc {
 	dynamicLookupCommand naptr:x-eduroam:radius.tls
 	#alternatively call a script that poerforms the lookup
 	#dynamicLookupCommand /usr/local/bin/naptr-eduroam.sh
+	# NOTES FOR WINDOWS (Cygwin) USERS:
+	# For dynamic lookups on Windows, see README for instructions
+	# Use the full path to the batch file below
+	#dynamicLookupCommand "c:/full/path/to/batchfile/naptr-lookup.bat"
 }
 
 # Equivalent to example.com

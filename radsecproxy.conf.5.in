@@ -649,6 +649,7 @@ Execute the \fIcommand\fR to dynamically configure a server for a realm given by
 the username field in an Access-Request. 
 The command can take two special forms, naptr:\fIservice\fR or srv:\fIprefix\fR,
 or point to a script or executable.
+NOTE: When built on Cygwin for Windows, only the script or executable is currently available.
 
 The \fBnaptr:\fR and \fBsrv:\fR forms execute the corresponding DNS queries, either searching 
 for \fIservice\fR in NAPTR records (followed by SRV query), or querying for 
