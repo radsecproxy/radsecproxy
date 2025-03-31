@@ -519,7 +519,7 @@ or returned a copy of the previous reply.
 
 .BI "IdleTimeout " seconds
 .RS
-After \fIseconds|R without any traffic, connections from this client are closed.
+After \fIseconds\fR without any traffic, connections from this client are closed. Default 600s.
 .RE
 
 .BR "AddTTL " 1-255
@@ -736,8 +736,10 @@ Set the interval between each retry. Default is 5s.
 
 .BI "IdleTimeout " seconds
 .RS
-After \fIseconds|R without any traffic (except status-server), connections to this server
+After \fIseconds\fR without any traffic (except status-server), connections to this server
 are closed.
+.br
+Default 600s for dynamically discovered servers, never (0) for static servers.
 .RE
 
 .BI "Rewrite " rewrite
