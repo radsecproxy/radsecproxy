@@ -313,7 +313,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
                     msg->msgauthinvalid = 1;
                 }
             } else if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server)
-                debug(DBG_DBG, "buf2radmsg: unexpeted message-authenticator");
+                debug(DBG_DBG, "buf2radmsg: unexpected message-authenticator");
             if (l != 16 || !_checkmsgauth(buf, len, v, secret, secret_len)) {
                 debug(DBG_DBG, "buf2radmsg: message-authenticator invalid");
                 msg->msgauthinvalid = 1;
