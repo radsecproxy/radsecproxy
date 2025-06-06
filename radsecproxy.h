@@ -99,6 +99,7 @@ struct options {
     uint8_t loglevel;
     uint8_t logtid;
     uint8_t logfullusername;
+    uint8_t logcalledstationid;
     uint8_t loopprevention;
     enum rsp_mac_type log_mac;
     uint8_t *log_key;
