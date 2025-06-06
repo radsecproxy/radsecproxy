@@ -1077,38 +1077,45 @@ uint8_t *radattr2ascii(struct tlv *attr) {
 }
 
 void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
-    uint8_t *username, *logusername = NULL, *stationid, *replymsg, *tmpmsg;
+    uint8_t *username, *logusername = NULL, *callingstationid, *replymsg, *tmpmsg;
     uint8_t *operatorname, *cui;
     char *servername;
     uint8_t level = DBG_NOTICE;
-    char tmp[INET6_ADDRSTRLEN], logstationid[128] = {0};
+    char tmp[INET6_ADDRSTRLEN], logcallingstationid[128] = {0};
+    uint8_t *calledstationid;
+    char logcalledstationid[128] = {0};
 
     servername = server ? server->conf->name : "_self_";
     username = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_User_Name));
     if (username) {
         logusername = options.logfullusername ? username : (uint8_t *)strchr((char *)username, '@');
     }
-    stationid = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Calling_Station_Id));
-    if (stationid) {
-        sprintf((char *)logstationid, " stationid ");
+    callingstationid = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Calling_Station_Id));
+    if (callingstationid) {
+        sprintf((char *)logcallingstationid, " stationid ");
         switch (options.log_mac) {
         case RSP_MAC_VENDOR_HASHED:
         case RSP_MAC_VENDOR_KEY_HASHED:
-            memcpy(logstationid + 11, stationid, 9);
-            fticks_hashmac((uint8_t *)stationid, options.log_mac == RSP_MAC_VENDOR_KEY_HASHED ? options.log_key : NULL, 65, (uint8_t *)logstationid + 20);
+            memcpy(logcallingstationid + 11, callingstationid, 9);
+            fticks_hashmac((uint8_t *)callingstationid, options.log_mac == RSP_MAC_VENDOR_KEY_HASHED ? options.log_key : NULL, 65, (uint8_t *)logcallingstationid + 20);
             break;
         case RSP_MAC_FULLY_HASHED:
         case RSP_MAC_FULLY_KEY_HASHED:
-            fticks_hashmac((uint8_t *)stationid, options.log_mac == RSP_MAC_FULLY_KEY_HASHED ? options.log_key : NULL, 65, (uint8_t *)logstationid + 11);
+            fticks_hashmac((uint8_t *)callingstationid, options.log_mac == RSP_MAC_FULLY_KEY_HASHED ? options.log_key : NULL, 65, (uint8_t *)logcallingstationid + 11);
             break;
         case RSP_MAC_STATIC:
-            sprintf(logstationid + 11, "undisclosed");
+            sprintf(logcallingstationid + 11, "undisclosed");
             break;
         case RSP_MAC_ORIGINAL:
         default:
-            strncpy(logstationid + 11, (char *)stationid, 128 - 12);
+            strncpy(logcallingstationid + 11, (char *)callingstationid, 128 - 12);
         }
-        free(stationid);
+        free(callingstationid);
+    }
+    if (options.logcalledstationid) {
+        calledstationid = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Called_Station_Id));
+        sprintf(logcalledstationid, " calledstationid %s", calledstationid);
+        free(calledstationid);
     }
     cui = radattr2ascii(radmsg_gettype(msg, RAD_Attr_CUI));
     if (cui) {
@@ -1136,18 +1143,18 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
         if (msg->code == RAD_Accounting_Response)
             level = DBG_INFO;
         if (logusername) {
-            debug(level, "%s for user %s%s%s from %s%s to %s (%s)%s",
-                  radmsgtype2string(msg->code), logusername, logstationid, cui ? (char *)cui : "",
+            debug(level, "%s for user %s%s%s%s from %s%s to %s (%s)%s",
+                  radmsgtype2string(msg->code), logusername, logcallingstationid, logcalledstationid, cui ? (char *)cui : "",
                   servername, replymsg ? (char *)replymsg : "", rq->from->conf->name,
                   addr2string(rq->from->addr, tmp, sizeof(tmp)), operatorname ? (char *)operatorname : "");
         } else {
-            debug(level, "%s (response to %s) from %s to %s (%s)", radmsgtype2string(msg->code),
-                  radmsgtype2string(rq->msg->code), servername,
+            debug(level, "%s (response to %s)%s from %s to %s (%s)", radmsgtype2string(msg->code),
+                  radmsgtype2string(rq->msg->code), logcalledstationid, servername,
                   rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
         }
     } else if (msg->code == RAD_Access_Request) {
-        debug(level, "missing response to %s for user %s%s from %s (%s) to %s",
-              radmsgtype2string(msg->code), logusername, logstationid,
+        debug(level, "missing response to %s for user %s%s%s from %s (%s) to %s",
+              radmsgtype2string(msg->code), logusername, logcallingstationid, logcalledstationid,
               rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)), servername);
     }
     free(username);
@@ -3326,6 +3333,7 @@ void getmainconfig(const char *configfile) {
     memset(&listenargs, 0, sizeof(listenargs));
     memset(&sourceargs, 0, sizeof(sourceargs));
     options.logfullusername = 1;
+    options.logcalledstationid = 0;
     options.verifyeap = 1;
 
     clconfs = list_create();
@@ -3367,6 +3375,7 @@ void getmainconfig(const char *configfile) {
             "LogMAC", CONF_STR, &log_mac_str,
             "LogKey", CONF_STR, &log_key_str,
             "LogFullUsername", CONF_BLN, &options.logfullusername,
+            "LogCalledStationId", CONF_BLN, &options.logcalledstationid,
             "LoopPrevention", CONF_BLN, &options.loopprevention,
             "Client", CONF_CBK, confclient_cb, NULL,
             "Server", CONF_CBK, confserver_cb, NULL,
