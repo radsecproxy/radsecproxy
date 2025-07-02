@@ -854,7 +854,7 @@ static int parse_tls_version(const char* version) {
     }
 }
 
-static int conf_tls_version(const char *version, int *min, int *max) {
+static int conf_tls_version(uint8_t dtls, const char *version, int *min, int *max) {
     char *ver, *s, *smin, *smax;
     ver = stringcopy(version, strlen(version));
     s = strchr(ver, ':');
@@ -868,7 +868,7 @@ static int conf_tls_version(const char *version, int *min, int *max) {
     *min = parse_tls_version(smin);
     *max = parse_tls_version(smax);
     free(ver);
-    return *min >=0 && *max >=0 && (*max == 0 || *min <= *max);
+    return *min >=0 && *max >=0 && (*max == 0 || (!dtls && *min <= *max) || (dtls && *min >= *max));
 }
 #endif
 
@@ -927,7 +927,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
     /* use -1 as 'not set' value */
     conf->tlsminversion = conf->tlsmaxversion = conf->dtlsminversion = conf->dtlsmaxversion = -1;
     if (tlsversion) {
-        if(!conf_tls_version(tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
+        if(!conf_tls_version(0, tlsversion, &conf->tlsminversion, &conf->tlsmaxversion)) {
             debug(DBG_ERR, "error in block %s, invalid TlsVersion %s", val, tlsversion);
             goto errexit;
         }
@@ -935,7 +935,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
         tlsversion = NULL;
     }
     if (dtlsversion) {
-        if(!conf_tls_version(dtlsversion, &conf->dtlsminversion, &conf->dtlsmaxversion)) {
+        if(!conf_tls_version(1, dtlsversion, &conf->dtlsminversion, &conf->dtlsmaxversion)) {
             debug(DBG_ERR, "error in block %s, invalid DtlsVersion %s", val, dtlsversion);
             goto errexit;
         }
