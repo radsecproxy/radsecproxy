@@ -337,6 +337,7 @@ int addserver(struct clsrvconf *conf, const char *dynamiclookuparg) {
     int i;
     pthread_t clientth;
 
+    pthread_mutex_lock(conf->lock);
     if (conf->servers) {
         debug(DBG_ERR, "addserver: currently works with just one server per conf");
         return 0;
@@ -401,14 +402,17 @@ int addserver(struct clsrvconf *conf, const char *dynamiclookuparg) {
         debugerrno(errno, DBG_ERR, "addserver: pthread_create failed");
         freeserver(conf->servers, 1);
         conf->servers = NULL;
+        pthread_mutex_unlock(conf->lock);
         return 0;
     } else
         pthread_detach(clientth);
+    pthread_mutex_unlock(conf->lock);
     return 1;
 
 errexit:
     freeserver(conf->servers, 0);
     conf->servers = NULL;
+    pthread_mutex_unlock(conf->lock);
     return 0;
 }
 
