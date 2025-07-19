@@ -1673,7 +1673,7 @@ int timeouth(struct server *server) {
                   server->conf->idletimeout);
             return 1;
         }
-        debug(DBG_DBG, "timeouth: server %s, continue waiting for %ds", server->conf->name, server->conf->idletimeout - now.tv_sec - server->lastreply.tv_sec);
+        debug(DBG_DBG, "timeouth: server %s, continue waiting for %ds", server->conf->name, server->conf->idletimeout - (now.tv_sec - server->lastreply.tv_sec));
     }
 
     return 0;
