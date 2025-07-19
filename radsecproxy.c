@@ -1618,6 +1618,28 @@ exit:
     return 1;
 }
 
+/**
+ * @brief check if a server has unanswered requests in the queue
+ * 
+ * @param server 
+ * @return int 0 if no outstanding requests, 1 otherwise
+ */
+int hasoutstandingrquest(struct server *server) {
+    pthread_mutex_lock(&server->newrq_mutex);
+    for (int i = 0; i < MAX_REQUESTS; i++) {
+        pthread_mutex_lock(server->requests[i].lock);
+        if (server->requests[i].rq && server->requests[i].rq->buf[0] != RAD_Status_Server) {
+            debug(DBG_DBG, "hasoutstandingrquest: server %s has outstanding requests, continue waiting", server->conf->name);
+            pthread_mutex_unlock(server->requests[i].lock);
+            pthread_mutex_unlock(&server->newrq_mutex);
+            return 1;
+        }
+        pthread_mutex_unlock(server->requests[i].lock);
+    }
+    pthread_mutex_unlock(&server->newrq_mutex);
+    return 0;
+}
+
 /** Called from client readers when waiting for packets times out
  * return 0 if client should continue waiting
  *        1 if client should close the connection and exit
@@ -1627,26 +1649,31 @@ int timeouth(struct server *server) {
     struct timeval now;
 
     pthread_mutex_lock(&server->lock);
-    unresponsive = server->lostrqs && server->conf->statusserver != RSP_STATSRV_OFF;
+    unresponsive = server->lostrqs;
     pthread_mutex_unlock(&server->lock);
 
     if (unresponsive) {
-        debug(DBG_WARN, "timeouth: server %s did not respond to status server, closing connection.", server->conf->name);
+        debug(DBG_WARN, "timeouth: server %s did not respond, closing connection.", server->conf->name);
 
-        if (server->conf->idletimeout)
+        if (server->conf->idletimeout > 0)
+            if (!hasoutstandingrquest(server))
             return 1;
         if (server->conf->pdef->connecter)
-            server->conf->pdef->connecter(server, 0, 1);
+            server->conf->pdef->connecter(server, server->conf->idletimeout ? 5 : 0, 1);
         return 0;
     } else if (server->conf->idletimeout > 0) {
         gettimeofday(&now, NULL);
+
+        if (hasoutstandingrquest(server))
+            return 0;
+
         if (now.tv_sec - server->lastreply.tv_sec > server->conf->idletimeout) {
             debug(DBG_INFO, "timeouth: idle timeout for server %s %s after %ds",
                   server->conf->name, server->dynamiclookuparg ? server->dynamiclookuparg : "",
                   server->conf->idletimeout);
             return 1;
         }
-        debug(DBG_DBG, "timeouth: continue waiting for %ds", server->conf->idletimeout - now.tv_sec - server->lastreply.tv_sec);
+        debug(DBG_DBG, "timeouth: server %s, continue waiting for %ds", server->conf->name, server->conf->idletimeout - now.tv_sec - server->lastreply.tv_sec);
     }
 
     return 0;
