@@ -1657,7 +1657,7 @@ int timeouth(struct server *server) {
 
         if (server->conf->idletimeout > 0)
             if (!hasoutstandingrquest(server))
-            return 1;
+                return 1;
         if (server->conf->pdef->connecter)
             server->conf->pdef->connecter(server, server->conf->idletimeout ? 5 : 0, 1);
         return 0;
@@ -2040,7 +2040,8 @@ void *clientwr(void *arg) {
                             conf->statusserver = RSP_STATSRV_OFF;
                         }
                     } else {
-                        debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->name);
+                        if (now.tv_sec - server->lastrcv.tv_sec >= conf->retryinterval * conf->retrycount)
+                            debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->name);
                         incrementlostrqs(server);
                     }
                 }
