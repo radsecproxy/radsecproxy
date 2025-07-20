@@ -31,7 +31,7 @@
 #define DUPLICATE_INTERVAL REQUEST_RETRY_INTERVAL *REQUEST_RETRY_COUNT
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
-#define IDLE_TIMEOUT 300
+#define IDLE_TIMEOUT_DEFAULT 600
 #define PSK_MIN_LENGTH 16
 #define RSP_SECRET_LEN_WARN 12
 /* Older OpenSSL API had a 256 byte limit; keep this limit to maximize compatibility*/
@@ -182,9 +182,10 @@ struct clsrvconf {
     uint8_t keepalive;
     uint8_t loopprevention;
     uint8_t blockingstartup;
+    int idletimeout;
     struct rewrite *rewritein;
     struct rewrite *rewriteout;
-    pthread_mutex_t *lock; /* only used for updating clients so far */
+    pthread_mutex_t *lock;
     struct tls *tlsconf;
     struct list *clients;
     struct server *servers;

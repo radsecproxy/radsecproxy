@@ -1896,7 +1896,7 @@ void tlsserverrd(struct client *client) {
     }
 
     for (;;) {
-        len = radtlsget(client->ssl, IDLE_TIMEOUT * 3, &client->lock, &buf);
+        len = radtlsget(client->ssl, client->conf->idletimeout, &client->lock, &buf);
         if (!buf || !len) {
             pthread_mutex_lock(&client->lock);
             if (SSL_get_shutdown(client->ssl))

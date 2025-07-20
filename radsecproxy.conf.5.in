@@ -517,6 +517,11 @@ will then ignore the new request (if it is still processing the previous one),
 or returned a copy of the previous reply.
 .RE
 
+.BI "IdleTimeout " seconds
+.RS
+After \fIseconds\fR without any traffic, connections from this client are closed. Default 600s.
+.RE
+
 .BR "AddTTL " 1-255
 .RS
 The AddTTL option has the same meaning as the option used in the basic config.
@@ -727,6 +732,14 @@ since the requiremets differ when switching transport protocols.
 .BI "RetryInterfval " interval
 .RS
 Set the interval between each retry. Default is 5s.
+.RE
+
+.BI "IdleTimeout " seconds
+.RS
+After \fIseconds\fR without any traffic (except status-server), connections to this server
+are closed.
+.br
+Default 600s for dynamically discovered servers, never (0) for static servers.
 .RE
 
 .BI "Rewrite " rewrite

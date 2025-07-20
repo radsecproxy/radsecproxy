@@ -337,6 +337,7 @@ int addserver(struct clsrvconf *conf, const char *dynamiclookuparg) {
     int i;
     pthread_t clientth;
 
+    pthread_mutex_lock(conf->lock);
     if (conf->servers) {
         debug(DBG_ERR, "addserver: currently works with just one server per conf");
         return 0;
@@ -401,14 +402,17 @@ int addserver(struct clsrvconf *conf, const char *dynamiclookuparg) {
         debugerrno(errno, DBG_ERR, "addserver: pthread_create failed");
         freeserver(conf->servers, 1);
         conf->servers = NULL;
+        pthread_mutex_unlock(conf->lock);
         return 0;
     } else
         pthread_detach(clientth);
+    pthread_mutex_unlock(conf->lock);
     return 1;
 
 errexit:
     freeserver(conf->servers, 0);
     conf->servers = NULL;
+    pthread_mutex_unlock(conf->lock);
     return 0;
 }
 
@@ -1208,33 +1212,41 @@ struct clsrvconf *choosesrvconf(struct list *srvconfs) {
 
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
         server = (struct clsrvconf *)entry->data;
-        if (!server->servers)
+        pthread_mutex_lock(server->lock);
+        if (!server->servers) { // && server->dynamiclookupcommand) {
+            pthread_mutex_unlock(server->lock);
             return server;
+        }
 
         pthread_mutex_lock(&server->servers->lock);
         if (server->servers->state == RSP_SERVER_STATE_FAILING) {
             pthread_mutex_unlock(&server->servers->lock);
+            pthread_mutex_unlock(server->lock);
             continue;
         }
         if (!first)
             first = server;
         if (server->servers->state == RSP_SERVER_STATE_STARTUP || server->servers->state == RSP_SERVER_STATE_RECONNECTING) {
             pthread_mutex_unlock(&server->servers->lock);
+            pthread_mutex_unlock(server->lock);
             continue;
         }
         if (!server->servers->lostrqs) {
             pthread_mutex_unlock(&server->servers->lock);
+            pthread_mutex_unlock(server->lock);
             return server;
         }
         if (!best) {
             best = server;
             bestlostrqs = server->servers->lostrqs;
             pthread_mutex_unlock(&server->servers->lock);
+            pthread_mutex_unlock(server->lock);
             continue;
         }
         if (server->servers->lostrqs < bestlostrqs)
             best = server;
         pthread_mutex_unlock(&server->servers->lock);
+        pthread_mutex_unlock(server->lock);
     }
     /* if the best server has max lost requests, any other selectable server has too. To give
      * everyone another chance for selection by reducing lost requests. */
@@ -1275,7 +1287,7 @@ struct server *findserver(struct realm **realm, struct tlv *username, uint8_t ac
             srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
             debug(DBG_DBG, "found conf for new realm: %s", srvconf->name);
         }
-    } else if (srvconf && !srvconf->servers && srvconf->dynamiclookupcommand) {
+    } else if (srvconf && !srvconf->servers) {
         if (addserver(srvconf, (*realm)->name)) {
             srvconf = choosesrvconf(acc ? (*realm)->accsrvconfs : (*realm)->srvconfs);
             debug(DBG_DBG, "found conf for realm: %s", srvconf->name);
@@ -1609,7 +1621,29 @@ exit:
     return 1;
 }
 
-/** Called from client readers if waiting for packets times out
+/**
+ * @brief check if a server has unanswered requests in the queue
+ * 
+ * @param server 
+ * @return int 0 if no outstanding requests, 1 otherwise
+ */
+int hasoutstandingrquest(struct server *server) {
+    pthread_mutex_lock(&server->newrq_mutex);
+    for (int i = 0; i < MAX_REQUESTS; i++) {
+        pthread_mutex_lock(server->requests[i].lock);
+        if (server->requests[i].rq && server->requests[i].rq->buf[0] != RAD_Status_Server) {
+            debug(DBG_DBG, "hasoutstandingrquest: server %s has outstanding requests, continue waiting", server->conf->name);
+            pthread_mutex_unlock(server->requests[i].lock);
+            pthread_mutex_unlock(&server->newrq_mutex);
+            return 1;
+        }
+        pthread_mutex_unlock(server->requests[i].lock);
+    }
+    pthread_mutex_unlock(&server->newrq_mutex);
+    return 0;
+}
+
+/** Called from client readers when waiting for packets times out
  * return 0 if client should continue waiting
  *        1 if client should close the connection and exit
 */
@@ -1618,25 +1652,33 @@ int timeouth(struct server *server) {
     struct timeval now;
 
     pthread_mutex_lock(&server->lock);
-    unresponsive = server->lostrqs && server->conf->statusserver != RSP_STATSRV_OFF;
+    unresponsive = server->lostrqs;
     pthread_mutex_unlock(&server->lock);
 
     if (unresponsive) {
-        debug(DBG_WARN, "timeouth: server %s did not respond to status server, closing connection.", server->conf->name);
+        debug(DBG_WARN, "timeouth: server %s did not respond, closing connection.", server->conf->name);
 
-        if (server->dynamiclookuparg)
-            return 1;
+        if (server->conf->idletimeout > 0)
+            if (!hasoutstandingrquest(server))
+                return 1;
         if (server->conf->pdef->connecter)
-            server->conf->pdef->connecter(server, 0, 1);
+            server->conf->pdef->connecter(server, server->conf->idletimeout ? 5 : 0, 1);
         return 0;
-    } else if (server->dynamiclookuparg) {
+    } else if (server->conf->idletimeout > 0) {
         gettimeofday(&now, NULL);
-        if (now.tv_sec - server->lastreply.tv_sec > IDLE_TIMEOUT) {
-            debug(DBG_INFO, "timeouth: idle timeout for server %s (%s)", server->conf->name, server->dynamiclookuparg);
+
+        if (hasoutstandingrquest(server))
+            return 0;
+
+        if (now.tv_sec - server->lastreply.tv_sec > server->conf->idletimeout) {
+            debug(DBG_INFO, "timeouth: idle timeout for server %s %s after %ds",
+                  server->conf->name, server->dynamiclookuparg ? server->dynamiclookuparg : "",
+                  server->conf->idletimeout);
             return 1;
         }
+        debug(DBG_DBG, "timeouth: server %s, continue waiting for %ds", server->conf->name, server->conf->idletimeout - (now.tv_sec - server->lastreply.tv_sec));
     }
-    debug(DBG_DBG, "timeouth: continue waiting");
+
     return 0;
 }
 
@@ -2001,7 +2043,8 @@ void *clientwr(void *arg) {
                             conf->statusserver = RSP_STATSRV_OFF;
                         }
                     } else {
-                        debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->name);
+                        if (now.tv_sec - server->lastrcv.tv_sec >= conf->retryinterval * conf->retrycount)
+                            debug(DBG_WARN, "clientwr: no server response, %s dead?", conf->name);
                         incrementlostrqs(server);
                     }
                 }
@@ -2056,6 +2099,10 @@ errexit:
     if (server->dynamiclookuparg) {
         removeserversubrealms(realms, conf);
         freeclsrvconf(conf);
+    } else {
+        pthread_mutex_lock(server->conf->lock);
+        server->conf->servers = NULL;
+        pthread_mutex_unlock(server->conf->lock);
     }
     freeserver(server, 1);
     return NULL;
@@ -2731,6 +2778,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
             dst->retrycount = src->retrycount;
         dst->blockingstartup = src->blockingstartup;
         dst->sni = src->sni;
+        dst->idletimeout = src->idletimeout;
     }
     dst->shallow = 0;
     return 1;
@@ -2812,6 +2860,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         debugx(1, DBG_ERR, "malloc failed");
     conf->certnamecheck = 1;
     conf->reqmsgauth = options.reqmsgauth;
+    conf->idletimeout = IDLE_TIMEOUT_DEFAULT;
 
     if (!getgenericconfig(
             cf, block,
@@ -2830,6 +2879,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "ServerName", CONF_STR, &conf->servername,
 #endif
             "DuplicateInterval", CONF_LINT, &dupinterval,
+            "idleTimeout", CONF_LINT, &conf->idletimeout,
             "addTTL", CONF_LINT, &addttl,
             "tcpKeepalive", CONF_BLN, &conf->keepalive,
             "rewrite", CONF_STR, &rewriteinalias,
@@ -3005,13 +3055,14 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
         debug(DBG_ERR, "%s: resolve failed", __func__);
         return 0;
     }
+
     return 1;
 }
 
 int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *resconf;
     char *conftype = NULL, *rewriteinalias = NULL, *statusserver = NULL;
-    long int retryinterval = LONG_MIN, retrycount = LONG_MIN, addttl = LONG_MIN;
+    long int retryinterval = LONG_MIN, retrycount = LONG_MIN, idletimeout = LONG_MIN, addttl = LONG_MIN;
     uint8_t ipv4only = 0, ipv6only = 0, confmerged = 0;
 
     debug(DBG_DBG, "confserver_cb called for %s", block);
@@ -3031,6 +3082,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->type = resconf->type;
         conf->sni = resconf->sni;
         conf->reqmsgauth = resconf->reqmsgauth;
+        conf->idletimeout = resconf->idletimeout;
     } else {
         conf->certnamecheck = 1;
         conf->sni = options.sni;
@@ -3062,6 +3114,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                           "StatusServer", CONF_STR, &statusserver,
                           "RetryInterval", CONF_LINT, &retryinterval,
                           "RetryCount", CONF_LINT, &retrycount,
+                          "IdleTimeout", CONF_LINT, &idletimeout,
                           "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
                           "LoopPrevention", CONF_BLN, &conf->loopprevention,
                           "BlockingStartup", CONF_BLN, &conf->blockingstartup,
@@ -3133,6 +3186,18 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->retrycount = (uint8_t)retrycount;
     } else
         conf->retrycount = 255;
+
+    if (idletimeout != LONG_MIN) {
+        if (idletimeout < 0) {
+            debug(DBG_ERR, "error in block %s, value of option IdleTimeout may not be negative", block);
+            goto errexit;
+        }
+        conf->idletimeout = idletimeout;
+    } else {
+        if (conf->dynamiclookupcommand && !resconf) {
+            conf->idletimeout = IDLE_TIMEOUT_DEFAULT;
+        }
+    }
 
     if (addttl != LONG_MIN) {
         if (addttl < 1 || addttl > 255) {
@@ -3208,6 +3273,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         if (!compileserverconfig(conf, block))
             goto errexit;
     }
+
+    conf->lock = malloc(sizeof(pthread_mutex_t));
+    if (!conf->lock)
+        debugx(1, DBG_ERR, "malloc failed");
+    pthread_mutex_init(conf->lock, NULL);
 
     if (resconf)
         return 1;
@@ -3703,6 +3773,8 @@ int radsecproxy_main(int argc, char **argv) {
     for (entry = list_first(srvconfs); entry; entry = list_next(entry)) {
         srvconf = (struct clsrvconf *)entry->data;
         if (srvconf->dynamiclookupcommand)
+            continue;
+        if (srvconf->idletimeout > 0)
             continue;
         if (!addserver(srvconf, NULL))
             debugx(1, DBG_ERR, "failed to add server");
