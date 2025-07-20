@@ -3651,7 +3651,7 @@ int radsecproxy_main(int argc, char **argv) {
     if (!foreground) {
         debug_set_destination(options.logdestination
                                   ? options.logdestination
-                                  : "x-syslog:///",
+                                  : "x-syslog:",
                               LOG_TYPE_DEBUG);
     }
     free(options.logdestination);

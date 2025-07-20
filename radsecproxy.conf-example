@@ -25,8 +25,8 @@
 # Or logging with Syslog. LOG_DAEMON used if facility not specified
 # The supported facilities are LOG_DAEMON, LOG_MAIL, LOG_USER and
 # LOG_LOCAL0, ..., LOG_LOCAL7
-#LogDestination         x-syslog:///
-#LogDestination         x-syslog:///log_local2
+#LogDestination         x-syslog:
+#LogDestination         x-syslog:log_local2
 # Optional log thread Id
 #LogThreadId on
 
@@ -66,7 +66,7 @@
 # F-Ticks messages are always logged using the log level LOG_DEBUG.
 # Note that specifying a file (using the file:/// prefix) is not supported.
 #FTicksSyslogFacility	log_local1
-#FTicksSyslogFacility	x-syslog:///log_local1
+#FTicksSyslogFacility	x-syslog:log_local1
 # If you are using radsecproxy outside the eduroam context, and you want
 # F-Ticks messages to have your own prefix instead of eduroam, you can set:
 #FTicksPrefix <prefix>
