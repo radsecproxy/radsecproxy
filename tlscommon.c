@@ -1173,7 +1173,7 @@ static int conf_tls_version(uint8_t dtls, const char *version, int *min, int *ma
     *min = parse_tls_version(dtls, smin);
     *max = parse_tls_version(dtls, smax);
     free(ver);
-    return *min >= 0 && *max >= 0 && (*max == 0 || (!dtls && *min <= *max) || (dtls && *min >= *max));
+    return *min >= 0 && *max >= 0 && (*max == 0 || dtls ? *min >= *max : *min <= *max);
 }
 #endif
 
