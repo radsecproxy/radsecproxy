@@ -298,7 +298,7 @@ void *tlsclientrd(void *arg) {
     int len = 0;
 
     for (;;) {
-        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf);
+        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf, 0);
         if (buf && len > 0) {
             if (!replyh(server, buf, len))
                 if (closeh(server))
@@ -435,7 +435,7 @@ void *tlsservernew(void *arg) {
             enable_keepalive(s);
         client->ssl = ssl;
         client->addr = addr_copy((struct sockaddr *)&from);
-        tlsserverrd(client);
+        tlsserverrd(client, 0);
         removeclient(client);
     } else
         debug(DBG_WARN, "tlsservernew: failed to create new client instance");

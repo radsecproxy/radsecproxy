@@ -1621,9 +1621,10 @@ int sslconnecttimeout(SSL *ssl, int timeout) {
  * @param num number of bytes to read
  * @param timeout maximum time to wait for data, 0 waits indefinetely
  * @param lock the lock to aquire before performing any operation on the ssl connection
- * @return number of bytes received, 0 on timeout, -1 on error (connection lost)
+ * @param recordbounds read exactly on tls records bounds, ignore additional bytes as padding
+ * @return number of bytes received (including ignored padding), 0 on timeout, -1 on error (connection lost)
  */
-int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock) {
+int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_mutex_t *lock, uint8_t recordbounds) {
     int ndesc, cnt = 0, len, sockerr = 0;
     socklen_t errlen = sizeof(sockerr);
     struct pollfd fds[1];
@@ -1698,9 +1699,22 @@ int sslreadtimeout(SSL *ssl, unsigned char *buf, int num, int timeout, pthread_m
             pthread_mutex_unlock(lock);
             return -1;
         }
+        // if read within record bounds, don't repeat SSL_read for the next record
+        if (recordbounds) {
+            len = cnt;
+            break;
+        }
+    }
+    if (recordbounds && (cnt = SSL_pending(ssl))) {
+        void *skipbuf = malloc(cnt);
+        if (skipbuf) {
+            cnt = SSL_read(ssl, skipbuf, cnt);
+            len += cnt;
+            free(skipbuf);
+        }
     }
     pthread_mutex_unlock(lock);
-    return cnt;
+    return len;
 }
 
 /**
@@ -1779,13 +1793,14 @@ int sslwrite(SSL *ssl, void *buf, int num, uint8_t blocking) {
  * @param timeout while reading. 0 means no timeout (blocking)
  * @param lock to aquire
  * @param buf newly allocated buffer containing the read bytes
+ * @param recordbounds don't read across dtls records
  * @return int number of bytes read, 0 on timeout or error
  */
-int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
+int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf, uint8_t recordbounds) {
     int cnt, len;
     unsigned char init_buf[4];
 
-    cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock);
+    cnt = sslreadtimeout(ssl, init_buf, 4, timeout, lock, 0);
     if (cnt < 1)
         return 0;
 
@@ -1807,7 +1822,7 @@ int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
     }
     memcpy(*buf, init_buf, 4);
 
-    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock);
+    cnt = sslreadtimeout(ssl, *buf + 4, len - 4, timeout, lock, recordbounds);
     if (cnt < 1) {
         debug(DBG_DBG, cnt ? "radtlsget: connection lost" : "radtlsget: timeout");
         free(*buf);
@@ -1815,7 +1830,7 @@ int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf) {
         return 0;
     }
 
-    debug(DBG_DBG, "radtlsget: got %d bytes", len);
+    debug(DBG_DBG, "radtlsget: got %d bytes, ignoring %d bytes of padding", len, cnt + 4 - len);
     return len;
 }
 
@@ -1881,7 +1896,7 @@ void *tlsserverwr(void *arg) {
  * 
  * @param client the calling client
  */
-void tlsserverrd(struct client *client) {
+void tlsserverrd(struct client *client, uint8_t recordbound) {
     struct request *rq;
     uint8_t *buf = NULL;
     pthread_t tlsserverwrth;
@@ -1896,7 +1911,7 @@ void tlsserverrd(struct client *client) {
     }
 
     for (;;) {
-        len = radtlsget(client->ssl, client->conf->idletimeout, &client->lock, &buf);
+        len = radtlsget(client->ssl, client->conf->idletimeout, &client->lock, &buf, recordbound);
         if (!buf || !len) {
             pthread_mutex_lock(&client->lock);
             if (SSL_get_shutdown(client->ssl))

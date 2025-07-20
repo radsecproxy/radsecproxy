@@ -192,7 +192,7 @@ void *dtlsservernew(void *arg) {
         client->sock = s;
         client->addr = addr_copy((struct sockaddr *)&params->addr);
         client->ssl = params->ssl;
-        tlsserverrd(client);
+        tlsserverrd(client, 1);
         removeclient(client);
     } else
         debug(DBG_WARN, "dtlsservernew: failed to create new client instance");
@@ -575,7 +575,7 @@ void *dtlsclientrd(void *arg) {
     int len = 0;
 
     for (;;) {
-        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf);
+        len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf, 1);
         if (buf && len > 0) {
             if (!replyh(server, buf, len))
                 if (closeh(server))
