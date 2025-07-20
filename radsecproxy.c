@@ -1434,7 +1434,8 @@ int radsrv(struct request *rq) {
     rq->buf = NULL;
 
     if (!msg || msg->msgauthinvalid) {
-        debug_limit(DBG_NOTICE, "radsrv: ignoring request from %s (%s), message-authenticator invalid.", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        debug_limit(DBG_NOTICE, "radsrv: ignoring request from %s (%s), %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)),
+                    msg ? "message-authenticator invalid" : "error decoding packet");
         radmsg_free(msg);
         freerq(rq);
         return 0;
