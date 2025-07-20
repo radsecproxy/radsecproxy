@@ -1829,6 +1829,15 @@ int radtlsget(SSL *ssl, int timeout, pthread_mutex_t *lock, uint8_t **buf, uint8
         *buf = NULL;
         return 0;
     }
+    if (cnt + 4 < len) {
+        debug(DBG_ERR, "radtlsget: message smaller than length field in radius header! closing conneciton!");
+        free(*buf);
+        *buf = NULL;
+        pthread_mutex_lock(lock);
+        SSL_shutdown(ssl);
+        pthread_mutex_unlock(lock);
+        return 0;
+    }
 
     debug(DBG_DBG, "radtlsget: got %d bytes, ignoring %d bytes of padding", len, cnt + 4 - len);
     return len;
