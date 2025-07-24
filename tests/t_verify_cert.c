@@ -327,13 +327,13 @@ Djxuj56ZZL9t3+OVveS6\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsimple, &conf, &hp, NULL), "check disabled");
+        ok(1, verifyconfcert(certsimple, &conf, hp.host, NULL), "check disabled");
 
         while (list_shift(conf.hostports))
             ;
     }
 
-    /* test no check if prefixlen != 255 (CIDR) */
+    /* if prefixlen != 255 (CIDR) source IP must match */
     {
         struct hostportres hp;
 
@@ -342,8 +342,27 @@ Djxuj56ZZL9t3+OVveS6\n\
         hp.host = "0.0.0.0/0";
         hp.prefixlen = 0;
         list_push(conf.hostports, &hp);
+        char *source = "192.0.2.1";
 
-        ok(1, verifyconfcert(certsimple, &conf, &hp, NULL), "cidr prefix");
+        ok(0, verifyconfcert(certsimple, &conf, source, NULL), "cidr prefix no SAN IP");
+        ok(1, verifyconfcert(certsanip, &conf, source, NULL), "cidr prefix SAN IP match");
+        ok(0, verifyconfcert(certsanipother, &conf, source, NULL), "cidr prefix SAN IP no match");
+
+        while (list_shift(conf.hostports))
+            ;
+    }
+
+    /* test never mtach if no connection address is given */
+    {
+        struct hostportres hp;
+
+        conf.name = "test";
+        conf.certnamecheck = 1;
+        hp.host = "test";
+        hp.prefixlen = 255;
+        list_push(conf.hostports, &hp);
+
+        ok(0, verifyconfcert(certsimple, &conf, NULL, NULL), "no connection address given");
 
         while (list_shift(conf.hostports))
             ;
@@ -361,14 +380,14 @@ Djxuj56ZZL9t3+OVveS6\n\
 
         /* RFC 9525 deprecated CN check, only check in legacy mode*/
         conf.certcncheck = 1;
-        ok(1, verifyconfcert(certsimple, &conf, &hp, NULL), "simple cert cn legacy");
+        ok(1, verifyconfcert(certsimple, &conf, hp.host, NULL), "simple cert cn legacy");
         conf.certcncheck = 0;
 
-        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "simple cert cn");
-        ok(0, verifyconfcert(certsimpleother, &conf, &hp, NULL), "negative simple cert cn");
+        ok(0, verifyconfcert(certsimple, &conf, hp.host, NULL), "simple cert cn");
+        ok(0, verifyconfcert(certsimpleother, &conf, hp.host, NULL), "negative simple cert cn");
 
         /* as per RFC 6125 6.4.4: CN MUST NOT be matched if SAN is present */
-        ok(0, verifyconfcert(certsandns, &conf, &hp, NULL), "simple cert cn vs san dns, RFC6125");
+        ok(0, verifyconfcert(certsandns, &conf, hp.host, NULL), "simple cert cn vs san dns, RFC6125");
 
         while (list_shift(conf.hostports))
             ;
@@ -385,11 +404,11 @@ Djxuj56ZZL9t3+OVveS6\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsanip, &conf, &hp, NULL), "san ip");
-        ok(0, verifyconfcert(certsanipother, &conf, &hp, NULL), "wrong san ip");
-        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "negative san ip");
-        ok(1, verifyconfcert(certsanipindns, &conf, &hp, NULL), "san ip in dns");
-        ok(1, verifyconfcert(certcomplex, &conf, &hp, NULL), "san ip in complex cert");
+        ok(1, verifyconfcert(certsanip, &conf, hp.host, NULL), "san ip");
+        ok(0, verifyconfcert(certsanipother, &conf, hp.host, NULL), "wrong san ip");
+        ok(0, verifyconfcert(certsimple, &conf, hp.host, NULL), "negative san ip");
+        ok(1, verifyconfcert(certsanipindns, &conf, hp.host, NULL), "san ip in dns");
+        ok(1, verifyconfcert(certcomplex, &conf, hp.host, NULL), "san ip in complex cert");
 
         freeaddrinfo(hp.addrinfo);
         while (list_shift(conf.hostports))
@@ -408,11 +427,11 @@ Djxuj56ZZL9t3+OVveS6\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsanipv6, &conf, &hp, NULL), "san ipv6");
-        ok(0, verifyconfcert(certsanipother, &conf, &hp, NULL), "wrong san ipv6");
-        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "negative san ipv6");
-        ok(1, verifyconfcert(certsanipv6indns, &conf, &hp, NULL), "san ipv6 in dns");
-        ok(1, verifyconfcert(certcomplex, &conf, &hp, NULL), "san ipv6 in complex cert");
+        ok(1, verifyconfcert(certsanipv6, &conf, hp.host, NULL), "san ipv6");
+        ok(0, verifyconfcert(certsanipother, &conf, hp.host, NULL), "wrong san ipv6");
+        ok(0, verifyconfcert(certsimple, &conf, hp.host, NULL), "negative san ipv6");
+        ok(1, verifyconfcert(certsanipv6indns, &conf, hp.host, NULL), "san ipv6 in dns");
+        ok(1, verifyconfcert(certcomplex, &conf, hp.host, NULL), "san ipv6 in complex cert");
 
         freeaddrinfo(hp.addrinfo);
         while (list_shift(conf.hostports))
@@ -429,10 +448,10 @@ Djxuj56ZZL9t3+OVveS6\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsandns, &conf, &hp, NULL), "san dns");
-        ok(0, verifyconfcert(certsandnsother, &conf, &hp, NULL), "negative san dns");
-        ok(1, verifyconfcert(certcomplex, &conf, &hp, NULL), "san dns in complex cert");
-        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "missing san dns");
+        ok(1, verifyconfcert(certsandns, &conf, hp.host, NULL), "san dns");
+        ok(0, verifyconfcert(certsandnsother, &conf, hp.host, NULL), "negative san dns");
+        ok(1, verifyconfcert(certcomplex, &conf, hp.host, NULL), "san dns in complex cert");
+        ok(0, verifyconfcert(certsimple, &conf, hp.host, NULL), "missing san dns");
 
         while (list_shift(conf.hostports))
             ;
@@ -450,13 +469,13 @@ Djxuj56ZZL9t3+OVveS6\n\
 
         /* RFC 9525 deprecated CN check, only check in legacy mode*/
         conf.certcncheck = 1;
-        ok(1, verifyconfcert(certsimple, &conf, &hp, NULL), "CN upper case legacy");
+        ok(1, verifyconfcert(certsimple, &conf, hp.host, NULL), "CN upper case legacy");
         conf.certcncheck = 0;
 
-        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "CN upper case");
+        ok(0, verifyconfcert(certsimple, &conf, hp.host, NULL), "CN upper case");
 
         hp.host = "TEST.local";
-        ok(1, verifyconfcert(certsandns, &conf, &hp, NULL), "san dns upper case");
+        ok(1, verifyconfcert(certsandns, &conf, hp.host, NULL), "san dns upper case");
 
         while (list_shift(conf.hostports))
             ;
@@ -471,38 +490,13 @@ Djxuj56ZZL9t3+OVveS6\n\
         conf.certnamecheck = 1;
 
         hp.host = "some.test.local";
-        ok(1, verifyconfcert(certwildcard, &conf, &hp, NULL), "san dns wildcard");
-        ok(0, verifyconfcert(certpartialwildcard, &conf, &hp, NULL), "wrong san dns partial wildcard");
+        ok(1, verifyconfcert(certwildcard, &conf, hp.host, NULL), "san dns wildcard");
+        ok(0, verifyconfcert(certpartialwildcard, &conf, hp.host, NULL), "wrong san dns partial wildcard");
         hp.host = "some.test.other";
-        ok(0, verifyconfcert(certwildcard, &conf, &hp, NULL), "wrong san dns wildcard base");
+        ok(0, verifyconfcert(certwildcard, &conf, hp.host, NULL), "wrong san dns wildcard base");
         hp.host = "some.sub.test.local";
-        ok(0, verifyconfcert(certwildcard, &conf, &hp, NULL), "wrong san dns wildcard subsubdomain");
-        ok(0, verifyconfcert(certmultiwildcard, &conf, &hp, NULL), "wrong san dns multiple wildcard");
-
-        while (list_shift(conf.hostports))
-            ;
-    }
-
-    /* test multiple hostports san dns(match in second) */
-    {
-        struct hostportres hp1, hp2;
-
-        conf.name = "test";
-        conf.certnamecheck = 1;
-        hp1.host = "test.none";
-        hp1.prefixlen = 255;
-        list_push(conf.hostports, &hp1);
-        hp2.host = "test";
-        hp2.prefixlen = 255;
-        list_push(conf.hostports, &hp2);
-
-        /* RFC 9525 deprecated CN check, only check in legacy mode*/
-        conf.certcncheck = 1;
-        ok(1, verifyconfcert(certsimple, &conf, NULL, NULL), "multi hostport cn legacy");
-        conf.certcncheck = 0;
-
-        ok(0, verifyconfcert(certsimple, &conf, NULL, NULL), "multi hostport cn");
-        ok(0, verifyconfcert(certsimpleother, &conf, NULL, NULL), "negative multi hostport cn");
+        ok(0, verifyconfcert(certwildcard, &conf, hp.host, NULL), "wrong san dns wildcard subsubdomain");
+        ok(0, verifyconfcert(certmultiwildcard, &conf, hp.host, NULL), "wrong san dns multiple wildcard");
 
         while (list_shift(conf.hostports))
             ;
@@ -521,14 +515,10 @@ Djxuj56ZZL9t3+OVveS6\n\
         hp2.prefixlen = 255;
         list_push(conf.hostports, &hp2);
 
-        ok(1, verifyconfcert(certsandns, &conf, NULL, NULL), "multi hostport san dns");
-        ok(0, verifyconfcert(certsandnsother, &conf, NULL, NULL), "negative multi hostport san dns");
-        ok(1, verifyconfcert(certcomplex, &conf, NULL, NULL), "multi hostport san dns in complex cert");
-
-        ok(0, verifyconfcert(certsandns, &conf, &hp1, NULL), "multi hostport explicit wrong cert");
-        ok(1, verifyconfcert(certsandns, &conf, &hp2, NULL), "multi hostport explicit matching cert");
-        ok(0, verifyconfcert(certcomplex, &conf, &hp1, NULL), "multi hostport explicit wrong complex cert");
-        ok(1, verifyconfcert(certcomplex, &conf, &hp2, NULL), "multi hostport explicit matching complex cert");
+        ok(0, verifyconfcert(certsandns, &conf, hp1.host, NULL), "multi hostport explicit wrong cert");
+        ok(1, verifyconfcert(certsandns, &conf, hp2.host, NULL), "multi hostport explicit matching cert");
+        ok(0, verifyconfcert(certcomplex, &conf, hp1.host, NULL), "multi hostport explicit wrong complex cert");
+        ok(1, verifyconfcert(certcomplex, &conf, hp2.host, NULL), "multi hostport explicit matching complex cert");
 
         while (list_shift(conf.hostports))
             ;
@@ -679,10 +669,10 @@ Djxuj56ZZL9t3+OVveS6\n\
 
         ok(1, addmatchcertattr(&conf, "CN:/t..t"), "combined config");
 
-        ok(1, verifyconfcert(certsandns, &conf, &hp, NULL), "combined san dns");
-        ok(0, verifyconfcert(certsandnsother, &conf, &hp, NULL), "negative combined san dns");
-        ok(1, verifyconfcert(certcomplex, &conf, &hp, NULL), "combined san dns in complex cert");
-        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "combined missing san dns");
+        ok(1, verifyconfcert(certsandns, &conf, hp.host, NULL), "combined san dns");
+        ok(0, verifyconfcert(certsandnsother, &conf, hp.host, NULL), "negative combined san dns");
+        ok(1, verifyconfcert(certcomplex, &conf, hp.host, NULL), "combined san dns in complex cert");
+        ok(0, verifyconfcert(certsimple, &conf, hp.host, NULL), "combined missing san dns");
 
         while (list_shift(conf.hostports))
             ;
@@ -702,12 +692,12 @@ Djxuj56ZZL9t3+OVveS6\n\
         ok(1, addmatchcertattr(&conf, "SubjectAltName:DNS:/test\\.local/"), "multiple check 1");
         ok(1, addmatchcertattr(&conf, "SubjectAltName:rID:1.2.3.4"), "multiple check 2");
 
-        ok(0, verifyconfcert(certsandns, &conf, &hp, NULL), "multiple missing rID");
-        ok(0, verifyconfcert(certsanrid, &conf, &hp, NULL), "multiple missing DNS");
-        ok(1, verifyconfcert(certmulti, &conf, &hp, NULL), "multiple SANs");
-        ok(0, verifyconfcert(certmultiother, &conf, &hp, NULL), "multiple negative match");
-        ok(0, verifyconfcert(certcomplex, &conf, &hp, NULL), "multiple missing rID in complex cert");
-        ok(0, verifyconfcert(certsimple, &conf, &hp, NULL), "multiple missing everything");
+        ok(0, verifyconfcert(certsandns, &conf, hp.host, NULL), "multiple missing rID");
+        ok(0, verifyconfcert(certsanrid, &conf, hp.host, NULL), "multiple missing DNS");
+        ok(1, verifyconfcert(certmulti, &conf, hp.host, NULL), "multiple SANs");
+        ok(0, verifyconfcert(certmultiother, &conf, hp.host, NULL), "multiple negative match");
+        ok(0, verifyconfcert(certcomplex, &conf, hp.host, NULL), "multiple missing rID in complex cert");
+        ok(0, verifyconfcert(certsimple, &conf, hp.host, NULL), "multiple missing everything");
 
         while (list_shift(conf.hostports))
             ;
@@ -726,19 +716,19 @@ Djxuj56ZZL9t3+OVveS6\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsanothername, &conf, &hp, nairealm), "dynamic NAI realm");
-        ok(0, verifyconfcert(certsanothernameother, &conf, &hp, nairealm), "negative dynamic NAI realm");
-        ok(0, verifyconfcert(certsanothername, &conf, &hp, naisubrealm), "negative dynamic NAI sub-realm");
-        ok(1, verifyconfcert(certnairealmwildcard, &conf, &hp, nairealm), "dynamic NAI realm wildcard");
-        ok(0, verifyconfcert(certnairealmwildcard, &conf, &hp, naisubrealm), "dynamic NAI realm wildcard subrealm");
-        ok(0, verifyconfcert(certnairealmillegalwildcard, &conf, &hp, naisubrealm), "dynamic NAI realm illegal");
-        ok(1, verifyconfcert(certnairealmmulti, &conf, &hp, nairealm), "dynamic NAI realm multi");
-        ok(1, verifyconfcert(certnairealmmulti, &conf, &hp, naisubrealm), "dynamic NAI realm multi wildcard");
+        ok(1, verifyconfcert(certsanothername, &conf, hp.host, nairealm), "dynamic NAI realm");
+        ok(0, verifyconfcert(certsanothernameother, &conf, hp.host, nairealm), "negative dynamic NAI realm");
+        ok(0, verifyconfcert(certsanothername, &conf, hp.host, naisubrealm), "negative dynamic NAI sub-realm");
+        ok(1, verifyconfcert(certnairealmwildcard, &conf, hp.host, nairealm), "dynamic NAI realm wildcard");
+        ok(0, verifyconfcert(certnairealmwildcard, &conf, hp.host, naisubrealm), "dynamic NAI realm wildcard subrealm");
+        ok(0, verifyconfcert(certnairealmillegalwildcard, &conf, hp.host, naisubrealm), "dynamic NAI realm illegal");
+        ok(1, verifyconfcert(certnairealmmulti, &conf, hp.host, nairealm), "dynamic NAI realm multi");
+        ok(1, verifyconfcert(certnairealmmulti, &conf, hp.host, naisubrealm), "dynamic NAI realm multi wildcard");
 
         /* test coerner cases*/
-        ok(1, verifyconfcert(certnairealmshort, &conf, &hp, "a.a"), "dynamic NAI realm short");
-        ok(0, verifyconfcert(certnairealmshort, &conf, &hp, "..a"), "dynamic NAI realm short illegal subrealm");
-        ok(0, verifyconfcert(certnairealmillegalshort, &conf, &hp, "a."), "dynamic NAI realm short illegal");
+        ok(1, verifyconfcert(certnairealmshort, &conf, hp.host, "a.a"), "dynamic NAI realm short");
+        ok(0, verifyconfcert(certnairealmshort, &conf, hp.host, "..a"), "dynamic NAI realm short illegal subrealm");
+        ok(0, verifyconfcert(certnairealmillegalshort, &conf, hp.host, "a."), "dynamic NAI realm short illegal");
 
         while (list_shift(conf.hostports))
             ;
@@ -756,11 +746,11 @@ Djxuj56ZZL9t3+OVveS6\n\
         hp.prefixlen = 255;
         list_push(conf.hostports, &hp);
 
-        ok(1, verifyconfcert(certsandns, &conf, &hp, nairealm), "non-NAI realm and DNS");
-        ok(0, verifyconfcert(certsandnsother, &conf, &hp, nairealm), "negative NAI realm match in SANDNS");
-        ok(1, verifyconfcert(certnairealmanddns, &conf, &hp, nairealmother), "match DNS even if NAIrealm fails");
+        ok(1, verifyconfcert(certsandns, &conf, hp.host, nairealm), "non-NAI realm and DNS");
+        ok(0, verifyconfcert(certsandnsother, &conf, hp.host, nairealm), "negative NAI realm match in SANDNS");
+        ok(1, verifyconfcert(certnairealmanddns, &conf, hp.host, nairealmother), "match DNS even if NAIrealm fails");
         hp.host = "test.other";
-        ok(1, verifyconfcert(certnairealmanddns, &conf, &hp, nairealm), "match NAIrealm even if DNS fails");
+        ok(1, verifyconfcert(certnairealmanddns, &conf, hp.host, nairealm), "match NAIrealm even if DNS fails");
 
         while (list_shift(conf.hostports))
             ;
