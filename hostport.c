@@ -282,7 +282,7 @@ int _internal_addressmatches(struct list *hostports, struct sockaddr *addr, uint
     struct sockaddr_in6 *sa6 = NULL;
     struct in_addr *a4 = NULL;
     struct addrinfo *res;
-    struct list_node *entry;
+    struct list_node *entry = NULL;
     struct hostportres *hp = NULL;
 
     if (addr->sa_family == AF_INET6) {
@@ -294,7 +294,10 @@ int _internal_addressmatches(struct list *hostports, struct sockaddr *addr, uint
     } else
         a4 = &((struct sockaddr_in *)addr)->sin_addr;
 
-    for (entry = list_first(hostports); entry; entry = list_next(entry)) {
+    if (hpreturn && *hpreturn)
+        for (entry = list_first(hostports); entry && entry->data != *hpreturn; entry = list_next(entry))
+            ;
+    for (entry = entry ? list_next(entry) : list_first(hostports); entry; entry = list_next(entry)) {
         hp = (struct hostportres *)entry->data;
         for (res = hp->addrinfo; res; res = res->ai_next) {
             if (hp->prefixlen >= (res->ai_family == AF_INET ? 32 : 128) && prefixlen >= (a4 ? 32 : 128)) {

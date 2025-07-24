@@ -1029,41 +1029,38 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch *match) {
     return r;
 }
 
-int certnamecheck(X509 *cert, struct hostportres *hp, int cncheck) {
+/**
+ * @brief check if the certificate is valid for a given name.
+ * The name may be a DNS name or an IP address string. A corresponding
+ * subjectAltName of type DNS or IP must mach the given name.
+ * 
+ * @param cert the certificate to mach
+ * @param name the name to match
+ * @param cncheck wether to also match the subject CN
+ * @return int 1 if the certificate matches, 0 otherwise
+ */
+int certnamecheck(X509 *cert, const char *name, int cncheck) {
     int r = 0;
     struct in6_addr tmp;
 
-    if (hp->prefixlen != 255) {
-        /* we disable the check for prefixes */
-        return 1;
-    }
-    if (inet_pton(AF_INET, hp->host, &tmp) || inet_pton(AF_INET6, hp->host, &tmp)) {
-        r = X509_check_ip_asc(cert, hp->host, 0);
+    if (inet_pton(AF_INET, name, &tmp) || inet_pton(AF_INET6, name, &tmp)) {
+        r = X509_check_ip_asc(cert, name, 0);
         if (r == 1) {
-            debug(DBG_DBG, "certnamecheck: found matching subjectaltname IP %s", hp->host);
+            debug(DBG_DBG, "certnamecheck: found matching subjectaltname IP %s", name);
             return 1;
         }
         if (r < 1)
-            debug(DBG_ERR, "certnamecheck: internal error in X509_check_ip_asc checking for %s", hp->host);
+            debug(DBG_ERR, "certnamecheck: internal error in X509_check_ip_asc checking for %s", name);
     }
 
     /* it's technically allowed to put an IP address in a SubjectAltDNS, so check it too */
-    r = X509_check_host(cert, hp->host, 0, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS | (cncheck ? 0 : X509_CHECK_FLAG_NEVER_CHECK_SUBJECT), NULL);
+    r = X509_check_host(cert, name, 0, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS | (cncheck ? 0 : X509_CHECK_FLAG_NEVER_CHECK_SUBJECT), NULL);
     if (r == 1) {
-        debug(DBG_DBG, "certnamecheck: found matching subjectaltname DNS %s", hp->host);
+        debug(DBG_DBG, "certnamecheck: found matching subjectaltname DNS %s", name);
         return 1;
     }
     if (r < 0)
-        debug(DBG_ERR, "certnamecheck: internal error in X509_check_host checking for %s", hp->host);
-    return 0;
-}
-
-int certnamecheckany(X509 *cert, struct list *hostports, int cncheck) {
-    struct list_node *entry;
-    for (entry = list_first(hostports); entry; entry = list_next(entry)) {
-        if (certnamecheck(cert, (struct hostportres *)entry->data, cncheck))
-            return 1;
-    }
+        debug(DBG_ERR, "certnamecheck: internal error in X509_check_host checking for %s", name);
     return 0;
 }
 
@@ -1084,7 +1081,7 @@ int certnairealmcheck(X509 *cert, const char *nairealm) {
     return result;
 }
 
-int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpconnected, const char *nairealm) {
+int verifyconfcert(X509 *cert, struct clsrvconf *conf, const char *connectname, const char *nairealm) {
     char *subject;
     int ok = 1;
     struct list_node *entry;
@@ -1096,22 +1093,17 @@ int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *hpcon
         if (nairealm && certnairealmcheck(cert, nairealm)) {
             debug(DBG_DBG, "verifyconfcert: NAIrealm match in certificate");
         } else if (conf->servername) {
-            struct hostportres servername = {.host = conf->servername, .port = NULL, .prefixlen = 255, .addrinfo = NULL};
-            if (!certnamecheck(cert, &servername, conf->certcncheck)) {
-                debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, servername.host);
+            if (!certnamecheck(cert, conf->servername, conf->certcncheck)) {
+                debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s) servername %s", conf->name, connectname, conf->servername);
                 ok = 0;
             }
-        } else if (hpconnected) {
-            if (!certnamecheck(cert, hpconnected, conf->certcncheck)) {
-                debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, hpconnected->host);
+        } else if (connectname) {
+            if (!certnamecheck(cert, connectname, conf->certcncheck)) {
+                debug(DBG_WARN, "verifyconfcert: certificate name check failed for host %s (%s)", conf->name, connectname);
                 ok = 0;
             }
-        } else {
-            if (!certnamecheckany(cert, conf->hostports, conf->certcncheck)) {
-                debug(DBG_DBG, "verifyconfcert: no matching CN or SAN found for host %s", conf->name);
-                ok = 0;
-            }
-        }
+        } else
+            ok = 0;
     }
 
     for (entry = list_first(conf->matchcertattrs); entry; entry = list_next(entry)) {

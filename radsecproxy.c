@@ -113,24 +113,12 @@ uint8_t protoname2int(const char *name) {
     return 255;
 }
 
-/* returns 1 if the len first bits are equal, else 0 */
-int prefixmatch(void *a1, void *a2, uint8_t len) {
-    static uint8_t mask[] = {0, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe};
-    uint8_t r, l = len / 8;
-    if (l && memcmp(a1, a2, l))
-        return 0;
-    r = len % 8;
-    if (!r)
-        return 1;
-    return (((uint8_t *)a1)[l] & mask[r]) == (((uint8_t *)a2)[l] & mask[r]);
-}
-
 /* returns next config with matching address, or NULL */
 struct clsrvconf *find_conf(uint8_t type, struct sockaddr *addr, struct list *confs, struct list_node **cur, uint8_t server_p, struct hostportres **hp) {
     struct list_node *entry;
     struct clsrvconf *conf;
 
-    for (entry = (cur && *cur ? list_next(*cur) : list_first(confs)); entry; entry = list_next(entry)) {
+    for (entry = (cur && *cur ? (hp && *hp ? *cur : list_next(*cur)) : list_first(confs)); entry; entry = list_next(entry)) {
         conf = (struct clsrvconf *)entry->data;
         if (conf->type == type && addressmatches(conf->hostports, addr, server_p, hp)) {
             if (cur)
