@@ -10,6 +10,7 @@ unreleased changes
 	- Rate-limit logging for discarded requests
 	- Remove dependency on libnettle
 	- Allow relative paths and Windows paths for file log destination
+	- Update client-certificate validation to latest draft RFC
 
 2025-03-25 1.11.2
 	Bug Fixes:
