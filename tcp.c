@@ -320,8 +320,12 @@ void tcpserverrd(struct client *client) {
 
     for (;;) {
         len = radtcpget(client->sock, client->conf->idletimeout, &buf);
-        if (!buf || !len) {
+        if (!buf || len < 1) {
             debug(DBG_ERR, "tcpserverrd: connection from %s lost", addr2string(client->addr, tmp, sizeof(tmp)));
+            if (buf) {
+                free(buf);
+                buf = NULL;
+            }
             break;
         }
         debug(DBG_DBG, "tcpserverrd: got Radius message from %s", addr2string(client->addr, tmp, sizeof(tmp)));
