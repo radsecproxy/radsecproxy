@@ -340,11 +340,13 @@ int addserver(struct clsrvconf *conf, const char *dynamiclookuparg) {
     pthread_mutex_lock(conf->lock);
     if (conf->servers) {
         debug(DBG_ERR, "addserver: currently works with just one server per conf");
+        pthread_mutex_unlock(conf->lock);
         return 0;
     }
     conf->servers = malloc(sizeof(struct server));
     if (!conf->servers) {
         debug(DBG_ERR, "malloc failed");
+        pthread_mutex_unlock(conf->lock);
         return 0;
     }
     memset(conf->servers, 0, sizeof(struct server));
