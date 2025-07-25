@@ -210,7 +210,7 @@ int tlsconnect(struct server *server, int timeout, int reconnect) {
                 goto concleanup;
             }
 
-            if (verifyconfcert(cert, server->conf, hp, server->dynamiclookuparg)) {
+            if (verifyconfcert(cert, server->conf, hp->host, server->dynamiclookuparg)) {
                 subj = getcertsubject(cert);
                 if (subj) {
                     debug(DBG_WARN, "tlsconnect: TLS connection to %s (%s port %s), subject %s, %s with cipher %s up",
@@ -407,7 +407,10 @@ void *tlsservernew(void *arg) {
               SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
     } else {
         while (conf) {
-            if (!conf->pskid && accepted_tls == conf->tlsconf && (verifyconfcert(cert, conf, NULL, NULL))) {
+            if (!conf->pskid && accepted_tls == conf->tlsconf &&
+                verifyconfcert(cert, conf,
+                               hp->prefixlen == 255 ? hp->host : addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)),
+                               NULL)) {
                 subj = getcertsubject(cert);
                 if (subj) {
                     debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s, %s with cipher %s up",

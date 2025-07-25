@@ -28,6 +28,7 @@ radsecproxy.8
 radsecproxy-hash.8
 radsecproxy.conf.5
 build-aux/*
+tests/t_find_client
 tests/t_fticks
 tests/t_rewrite
 tests/t_rewrite_config

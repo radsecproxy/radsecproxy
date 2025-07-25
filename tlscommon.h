@@ -56,7 +56,7 @@ struct tls *tlsgettls(char *conf);
 struct tls *tlsgetdefaultpsk(void);
 SSL_CTX *tlsgetctx(uint8_t type, struct tls *t);
 X509 *verifytlscert(SSL *ssl);
-int verifyconfcert(X509 *cert, struct clsrvconf *conf, struct hostportres *, const char *nairealm);
+int verifyconfcert(X509 *cert, struct clsrvconf *conf, const char *connectname, const char *nairealm);
 char *getcertsubject(X509 *cert);
 int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val);
 int addmatchcertattr(struct clsrvconf *conf, const char *match);
