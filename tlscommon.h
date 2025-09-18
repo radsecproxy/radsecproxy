@@ -27,6 +27,7 @@ struct tls {
     char **policyoids;
     char *cipherlist;
     char *ciphersuites;
+    char **opensslconfigs;
     int cacheexpiry;
     int tlsminversion;
     int tlsmaxversion;
