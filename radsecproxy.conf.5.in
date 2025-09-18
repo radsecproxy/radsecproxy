@@ -1043,6 +1043,16 @@ for DTLS.
 DH parameter \fIfile\fR to use. See \fBopenssl-dhparam\fR(1)
 .br
 Note: starting with OpenSSL 3.0, use of custom DH parameters is discouraged.
+.RE
+
+.BI "OpenSSLConfig " command
+.RS
+Execute any configuration command supported via the OpenSSL CONF API.
+Supported commands are described in the
+.BR SSL_CONF_cmd (3ssl)
+manual page.
+This command can be specified many times to execute different OpenSSL
+configuration commands.
 
 .SH "REWRITE BLOCK"
 .nf
