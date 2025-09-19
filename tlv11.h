@@ -10,7 +10,13 @@ struct tlv {
     uint8_t *v;
 };
 
+struct extattrtype {
+    uint8_t t;
+    uint8_t s;
+};
+
 struct tlv *maketlv(uint8_t, uint8_t, void *);
+struct tlv *makeexttlv(struct extattrtype t, uint8_t l, void *v);
 struct tlv *copytlv(struct tlv *);
 void freetlv(struct tlv *);
 int eqtlv(struct tlv *, struct tlv *);

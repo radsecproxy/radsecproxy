@@ -30,6 +30,24 @@ struct tlv *maketlv(uint8_t t, uint8_t l, void *v) {
     return tlv;
 }
 
+struct tlv *makeexttlv(struct extattrtype t, uint8_t l, void *v) {
+    struct tlv *tlv;
+    if (!l || !v)
+        return NULL;
+
+    tlv = maketlv(t.t, l + 1, NULL);
+    if (!tlv)
+        return NULL;
+    tlv->v = malloc(l + 1);
+    if (!tlv->v) {
+        free(tlv);
+        return NULL;
+    }
+    (tlv->v)[0] = t.s;
+    memcpy(tlv->v + 1, v, l);
+    return tlv;
+}
+
 struct tlv *copytlv(struct tlv *in) {
     return in ? maketlv(in->t, in->l, in->v) : NULL;
 }

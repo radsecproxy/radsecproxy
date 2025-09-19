@@ -1195,6 +1195,48 @@ errexit:
     freetlv(addattr);
 }
 
+void respondprotoerror(struct request *rq, uint32_t errcause) {
+    struct radmsg *msg;
+    uint32_t origcode = rq->msg->code;
+    uint32_t ncode, nerrcause;
+    char tmp[INET6_ADDRSTRLEN];
+
+    msg = radmsg_init(RAD_Protocol_Error, rq->msg->id, rq->msg->auth);
+    if (!msg) {
+        debug(DBG_ERR, "respondprotoerror: malloc failed");
+        return;
+    }
+
+    if (!radmsg_add(msg, maketlv(RAD_Attr_Message_Authenticator, 16, NULL), 1)) {
+        debug(DBG_ERR, "respondprotoerror: failed to add message authenticator");
+        goto errexit;
+    }
+
+    ncode = htonl(origcode);
+    if (!radmsg_add(msg, makeexttlv(RAD_ExtAttr_Original_Packet_Code, sizeof(uint32_t), &ncode), 0)) {
+        debug(DBG_ERR, "respondprotoerror: failed to add original packet code");
+        goto errexit;
+    }
+
+    nerrcause = htonl(errcause);
+    if (!radmsg_add(msg, maketlv(RAD_Attr_Error_Cause, sizeof(uint32_t), &nerrcause), 0)) {
+        debug(DBG_ERR, "respondprotoerror: failed to add error cause");
+        goto errexit;
+    }
+
+    //need to copy proxy state?
+    //reply log?
+    debug(DBG_DBG, "respondprotoerror: sending Protocol-Error (id %d, code %d, cause %d) to %s (%s)", msg->id, origcode, errcause, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
+
+    radmsg_free(rq->msg);
+    rq->msg = msg;
+    sendreply(newrqref(rq));
+    return;
+
+errexit:
+    radmsg_free(msg);
+}
+
 struct clsrvconf *choosesrvconf(struct list *srvconfs) {
     struct list_node *entry;
     struct clsrvconf *server, *best = NULL, *first = NULL;
@@ -1448,16 +1490,10 @@ int radsrv(struct request *rq) {
     memcpy(rq->rqauth, msg->auth, 16);
 
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
-    if (msg->code == RAD_Disconnect_Request) {
-        debug_limit(DBG_INFO, "radsrv: disconnect-request not supported");
-        respond(rq, RAD_Disconnect_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
-    }
-    if (msg->code == RAD_CoA_Request) {
-        debug_limit(DBG_INFO, "radsrv: CoA-request not supported");
-        respond(rq, RAD_CoA_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
-    }
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
-        debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
+        debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring code %d", msg->code);
+        if (rq->from->conf->protocolerror)
+            respondprotoerror(rq, RAD_Err_Unsupported_Extension);
         goto exit;
     }
 
@@ -1493,16 +1529,19 @@ int radsrv(struct request *rq) {
 
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {
+        if (rq->from->conf->protocolerror)
+            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         goto exit;
     }
 
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
-        if (msg->code == RAD_Accounting_Request) {
+        if (rq->from->conf->protocolerror)
+            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
+        else if (msg->code == RAD_Accounting_Request)
             respond(rq, RAD_Accounting_Response, NULL, 0);
-        } else
-            debug_limit(DBG_INFO, "radsrv: ignoring access request, no username attribute");
+        debug_limit(DBG_INFO, "radsrv: ignoring access request, no username attribute");
         goto exit;
     }
 
@@ -1511,6 +1550,7 @@ int radsrv(struct request *rq) {
         goto rmclrqexit;
     }
 
+    /* converty any non printable ascii character to hexencoding for logging */
     userascii = radattr2ascii(attr);
     if (!userascii)
         goto rmclrqexit;
@@ -1519,6 +1559,8 @@ int radsrv(struct request *rq) {
     /* will return with lock on the realm */
     to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
     if (!realm) {
+        if (rq->from->conf->protocolerror)
+            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         debug_limit(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
         goto exit;
     }
@@ -1530,12 +1572,17 @@ int radsrv(struct request *rq) {
             if (realm->acclog)
                 log_accounting_resp(from, msg, (char *)userascii);
             respond(rq, RAD_Accounting_Response, NULL, 0);
+        } else {
+            if (rq->from->conf->protocolerror)
+                respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         }
         goto exit;
     }
 
     if ((to->conf->loopprevention == 1 || (to->conf->loopprevention == UCHAR_MAX && options.loopprevention == 1)) &&
         !strcmp(from->conf->name, to->conf->name)) {
+        if (rq->from->conf->protocolerror)
+            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         debug_limit(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s, discarding",
                     from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
         goto exit;
@@ -1600,6 +1647,9 @@ int radsrv(struct request *rq) {
     return 1;
 
 rmclrqexit:
+    if (rq->from->conf->protocolerror)
+        //TODO or use 505 'other proxy processing error'?
+        respondprotoerror(rq, RAD_Err_Resources_Unavailable);
     rmclientrq(rq, msg->id);
 exit:
     freerq(rq);
@@ -2851,6 +2901,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->certnamecheck = 1;
     conf->reqmsgauth = options.reqmsgauth;
     conf->idletimeout = IDLE_TIMEOUT_DEFAULT;
+    conf->protocolerror = 1;
 
     if (!getgenericconfig(
             cf, block,

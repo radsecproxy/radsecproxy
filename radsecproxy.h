@@ -196,6 +196,7 @@ struct clsrvconf {
     long dtlsmtu;
     uint8_t reqmsgauth;
     uint8_t reqmsgauthproxy;
+    uint8_t protocolerror;
 };
 
 #include "tlscommon.h"

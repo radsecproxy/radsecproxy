@@ -27,6 +27,7 @@
 #define RAD_CoA_Request 43
 #define RAD_CoA_ACK 44
 #define RAD_CoA_NAK 45
+#define RAD_Protocol_Error 52
 
 #define RAD_Attr_User_Name 1
 #define RAD_Attr_User_Password 2
@@ -55,6 +56,8 @@
 #define RAD_Attr_Error_Cause 101
 #define RAD_Attr_Operator_Name 126
 
+#define RAD_ExtAttr_Original_Packet_Code (struct extattrtype){241, 2}
+
 #define RAD_Acct_Status_Start 1
 #define RAD_Acct_Status_Stop 2
 #define RAD_Acct_Status_Alive 3
@@ -64,6 +67,8 @@
 #define RAD_Acct_Status_Failed 15
 
 #define RAD_Err_Unsupported_Extension 406
+#define RAD_Err_Request_Not_Routable 502
+#define RAD_Err_Resources_Unavailable 506
 
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
