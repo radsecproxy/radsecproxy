@@ -68,6 +68,7 @@
 
 #define RAD_Err_Unsupported_Extension 406
 #define RAD_Err_Request_Not_Routable 502
+#define RAD_Err_Other_Proxy_Processing_Error 505
 #define RAD_Err_Resources_Unavailable 506
 
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16

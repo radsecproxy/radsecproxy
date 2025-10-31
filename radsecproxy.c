@@ -1805,7 +1805,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     }
 
     if (msg->code == RAD_Protocol_Error) {
-        uint32_t code = 0;
+        uint32_t code = 0, cause = 0;
         attr = radmsg_getexttype(msg, RAD_ExtAttr_Original_Packet_Code);
         if (!attr || attr->l != 5) {
             debug(DBG_WARN, "replyh: got Protocol-Error (id %d) from %s with invalid or missing Original-Packet-Code attribute", msg->id, server->conf->name);
@@ -1813,14 +1813,35 @@ int replyh(struct server *server, uint8_t *buf, int len) {
             pthread_mutex_unlock(rqout->lock);
             return 0;
         }
-        code = ntohl(*(uint32_t *)attr->v + 1);
+        code = ntohl(*(uint32_t *)(attr->v + 1));
         if (code != rqout->rq->msg->code) {
             debug(DBG_NOTICE, "replyh: Protocol-Error (id %d) from %s Original-Packet-Code %d does not match request, ignoring", msg->id, server->conf->name, code);
             goto errunlock;
         }
-        //TODO get reason attribute and act on it
-        //TODO maybe recirculate the request and send to different server
-        //TODO if forwarding to client, skip furhter attribute processing
+        attr = radmsg_gettype(msg, RAD_Attr_Error_Cause);
+        if (!attr || attr->l != 4) {
+            debug(DBG_WARN, "replyh: got Protocol-Error (id %d) from %s with invalid or missing Error-Cause attribute", msg->id, server->conf->name);
+            radmsg_free(msg);
+            pthread_mutex_unlock(rqout->lock);
+            return 0;
+        }
+        cause = ntohl(*(uint32_t *)attr->v);
+        if (cause == RAD_Err_Request_Not_Routable || cause == RAD_Err_Other_Proxy_Processing_Error) {
+            debug(DBG_INFO, "replyh: Protocol-Error (id %d) from %s indicating proxy network error: resending to alternate server not implemented!", msg->id, server->conf->name);
+            //TODO recirculate to other server
+        } else if (cause == RAD_Err_Unsupported_Extension) {
+            debug_limit(DBG_NOTICE, "replyh: Server %s (%s) does not support %s", server->conf->name, "ip?", radmsgtype2string(code));
+            //TODO try to recirculate too?
+        } else
+            debug(DBG_DBG, "replyh: Protocol-Error reason %d (id %d) from %s, forwarding upstream", cause, msg->id, server->conf->name);
+
+        //TODO refactor duplicate code
+        radmsg_free(rqout->rq->msg);
+        rqout->rq->msg = msg;
+        sendreply(newrqref(rqout->rq));
+        freerqoutdata(rqout);
+        pthread_mutex_unlock(rqout->lock);
+        return 1;
     }
 
     gettimeofday(&server->lastreply, NULL);
