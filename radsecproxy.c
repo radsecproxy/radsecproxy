@@ -1034,7 +1034,9 @@ const char *radmsgtype2string(uint8_t code) {
         "Accounting-Request", "Accounting-Response", "", "",
         "", "", "", "Access-Challenge",
         "Status-Server", "Status-Client"};
-    return code < 14 && *rad_msg_names[code] ? rad_msg_names[code] : "Unknown";
+    return code < 14 && *rad_msg_names[code] ? rad_msg_names[code]
+           : code == RAD_Protocol_Error      ? "Protocol-Error"
+                                             : "Unknown";
 }
 
 void char2hex(char *h, unsigned char c) {
