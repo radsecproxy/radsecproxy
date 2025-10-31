@@ -56,7 +56,7 @@
 #define RAD_Attr_Error_Cause 101
 #define RAD_Attr_Operator_Name 126
 
-#define RAD_ExtAttr_Original_Packet_Code (struct extattrtype){241, 2}
+#define RAD_ExtAttr_Original_Packet_Code (struct extattrtype){241, 4}
 
 #define RAD_Acct_Status_Start 1
 #define RAD_Acct_Status_Stop 2
