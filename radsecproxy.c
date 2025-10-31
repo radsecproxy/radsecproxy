@@ -1559,9 +1559,11 @@ int radsrv(struct request *rq) {
     /* will return with lock on the realm */
     to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
     if (!realm) {
-        if (rq->from->conf->protocolerror)
+        if (rq->from->conf->protocolerror) {
             respondprotoerror(rq, RAD_Err_Request_Not_Routable);
-        debug_limit(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
+            debug_limit(DBG_INFO, "radsrv: request not routable: don't know where to send it");
+        } else
+            debug_limit(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
         goto exit;
     }
 
