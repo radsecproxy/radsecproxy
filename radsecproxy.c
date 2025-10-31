@@ -1768,7 +1768,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     }
 
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge &&
-        msg->code != RAD_Accounting_Response) {
+        msg->code != RAD_Accounting_Response && msg->code != RAD_Protocol_Error) {
         debug_limit(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
         goto errunlock;
     }
@@ -1802,6 +1802,25 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         if (server->conf->statusserver == RSP_STATSRV_AUTO)
             server->conf->statusserver = RSP_STATSRV_MINIMAL;
         goto errunlock;
+    }
+
+    if (msg->code == RAD_Protocol_Error) {
+        uint32_t code = 0;
+        attr = radmsg_getexttype(msg, RAD_ExtAttr_Original_Packet_Code);
+        if (!attr || attr->l != 5) {
+            debug(DBG_WARN, "replyh: got Protocol-Error (id %d) from %s with invalid or missing Original-Packet-Code attribute", msg->id, server->conf->name);
+            radmsg_free(msg);
+            pthread_mutex_unlock(rqout->lock);
+            return 0;
+        }
+        code = ntohl(*(uint32_t *)attr->v + 1);
+        if (code != rqout->rq->msg->code) {
+            debug(DBG_NOTICE, "replyh: Protocol-Error (id %d) from %s Original-Packet-Code %d does not match request, ignoring", msg->id, server->conf->name, code);
+            goto errunlock;
+        }
+        //TODO get reason attribute and act on it
+        //TODO maybe recirculate the request and send to different server
+        //TODO if forwarding to client, skip furhter attribute processing
     }
 
     gettimeofday(&server->lastreply, NULL);

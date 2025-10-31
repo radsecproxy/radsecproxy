@@ -110,6 +110,26 @@ struct tlv *radmsg_gettype(struct radmsg *msg, uint8_t type) {
     return NULL;
 }
 
+/* returns first tlv of the given extended type */
+struct tlv *radmsg_getexttype(struct radmsg *msg, struct extattrtype type) {
+    struct tlv *tlv = NULL;
+    struct list_node *node;
+    struct list *tlvs = radmsg_getalltype(msg, type.t);
+
+    if (!tlvs)
+        return NULL;
+
+    for (node = list_first(tlvs); node; node = list_next(node)) {
+        if (((struct tlv *)node->data)->v[0] == type.s) {
+            tlv = (struct tlv *)node->data;
+            break;
+        }
+    }
+
+    list_free(tlvs);
+    return tlv;
+}
+
 /** Copy all attributes of type \a type from \a src to \a dst.
  *
  * If all attributes were copied successfully, the number of
@@ -309,7 +329,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
 
         if (t == RAD_Attr_Message_Authenticator && secret) {
             if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge ||
-                msg->code == RAD_Accounting_Response) {
+                msg->code == RAD_Accounting_Response || msg->code == RAD_Protocol_Error) {
                 if (rqauth)
                     memcpy(buf + 4, rqauth, 16);
                 else {
