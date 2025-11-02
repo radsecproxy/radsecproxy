@@ -1203,6 +1203,9 @@ void respondprotoerror(struct request *rq, uint32_t errcause) {
     uint32_t ncode, nerrcause;
     char tmp[INET6_ADDRSTRLEN];
 
+    if (!rq->from->conf->protocolerror)
+        return;
+
     msg = radmsg_init(RAD_Protocol_Error, rq->msg->id, rq->msg->auth);
     if (!msg) {
         debug(DBG_ERR, "respondprotoerror: malloc failed");
@@ -1494,8 +1497,7 @@ int radsrv(struct request *rq) {
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
         debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring code %d", msg->code);
-        if (rq->from->conf->protocolerror)
-            respondprotoerror(rq, RAD_Err_Unsupported_Extension);
+        respondprotoerror(rq, RAD_Err_Unsupported_Extension);
         goto exit;
     }
 
@@ -1531,19 +1533,19 @@ int radsrv(struct request *rq) {
 
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {
-        if (rq->from->conf->protocolerror)
-            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
+        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         goto exit;
     }
 
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
-        if (rq->from->conf->protocolerror)
-            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
-        else if (msg->code == RAD_Accounting_Request)
+        if (msg->code == RAD_Accounting_Request)
             respond(rq, RAD_Accounting_Response, NULL, 0);
-        debug_limit(DBG_INFO, "radsrv: ignoring access request, no username attribute");
+        else {
+            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
+            debug_limit(DBG_INFO, "radsrv: ignoring access request, no username attribute");
+        }
         goto exit;
     }
 
@@ -1561,11 +1563,8 @@ int radsrv(struct request *rq) {
     /* will return with lock on the realm */
     to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
     if (!realm) {
-        if (rq->from->conf->protocolerror) {
-            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
-            debug_limit(DBG_INFO, "radsrv: request not routable: don't know where to send it");
-        } else
-            debug_limit(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
+        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
+        debug_limit(DBG_INFO, "radsrv: realm %s not found, don't know where to send it", userascii);
         goto exit;
     }
 
@@ -1577,16 +1576,14 @@ int radsrv(struct request *rq) {
                 log_accounting_resp(from, msg, (char *)userascii);
             respond(rq, RAD_Accounting_Response, NULL, 0);
         } else {
-            if (rq->from->conf->protocolerror)
-                respondprotoerror(rq, RAD_Err_Request_Not_Routable);
+            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         }
         goto exit;
     }
 
     if ((to->conf->loopprevention == 1 || (to->conf->loopprevention == UCHAR_MAX && options.loopprevention == 1)) &&
         !strcmp(from->conf->name, to->conf->name)) {
-        if (rq->from->conf->protocolerror)
-            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
+        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         debug_limit(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s, discarding",
                     from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
         goto exit;
@@ -1651,9 +1648,8 @@ int radsrv(struct request *rq) {
     return 1;
 
 rmclrqexit:
-    if (rq->from->conf->protocolerror)
-        //TODO or use 505 'other proxy processing error'?
-        respondprotoerror(rq, RAD_Err_Resources_Unavailable);
+    //TODO or use 505 'other proxy processing error'?
+    respondprotoerror(rq, RAD_Err_Resources_Unavailable);
     rmclientrq(rq, msg->id);
 exit:
     freerq(rq);
