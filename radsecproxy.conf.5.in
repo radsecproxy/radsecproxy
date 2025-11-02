@@ -327,6 +327,14 @@ Enable this option if all clients and servers are known to always use Message-Au
 increase security. This setting can be overriden per client and per server (default off). 
 .RE
 
+.BR "ProtocolError (" on | off)
+.RS
+Enable sending Protocol-Error responses if requests can't be forwarded, allowing clients to clean 
+up their state early and not having to wait for a timeout.
+.br
+This setting can be overridden per client.
+.RE
+
 .BI "Include " file
 .RS
 This is not a normal configuration option; it can be specified multiple times.

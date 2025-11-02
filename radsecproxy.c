@@ -2948,7 +2948,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->certnamecheck = 1;
     conf->reqmsgauth = options.reqmsgauth;
     conf->idletimeout = IDLE_TIMEOUT_DEFAULT;
-    conf->protocolerror = 1;
+    conf->protocolerror = options.protocolerror;
 
     if (!getgenericconfig(
             cf, block,
@@ -2978,6 +2978,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "fticksVISINST", CONF_STR, &conf->fticks_visinst,
             "requireMessageAuthenticator", CONF_BLN, &conf->reqmsgauth,
             "requireMessageAuthenticatorProxy", CONF_BLN, &conf->reqmsgauthproxy,
+            "ProtocolError", CONF_BLN, &conf->protocolerror,
             NULL))
         debugx(1, DBG_ERR, "configuration error");
 
@@ -3555,7 +3556,7 @@ void getmainconfig(const char *configfile) {
             "SNI", CONF_BLN, &options.sni,
             "VerifyEAP", CONF_BLN, &options.verifyeap,
             "requireMessageAuthenticator", CONF_BLN, &options.reqmsgauth,
-
+            "ProtocolError", CONF_BLN, &options.protocolerror,
             NULL))
         debugx(1, DBG_ERR, "configuration error");
 
