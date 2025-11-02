@@ -1229,8 +1229,11 @@ void respondprotoerror(struct request *rq, uint32_t errcause) {
         goto errexit;
     }
 
-    //need to copy proxy state?
-    //reply log?
+    if (radmsg_copy_attrs(msg, rq->msg, RAD_Attr_Proxy_State) < 0) {
+        debug(DBG_ERR, "respond: unable to copy all Proxy-State attributes");
+        goto errexit;
+    }
+
     debug(DBG_DBG, "respondprotoerror: sending Protocol-Error (id %d, code %d, cause %d) to %s (%s)", msg->id, origcode, errcause, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
 
     radmsg_free(rq->msg);
