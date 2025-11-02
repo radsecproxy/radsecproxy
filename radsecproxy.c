@@ -1836,6 +1836,9 @@ int replyh(struct server *server, uint8_t *buf, int len) {
             debug(DBG_DBG, "replyh: Protocol-Error reason %d (id %d) from %s, forwarding upstream", cause, msg->id, server->conf->name);
 
         //TODO refactor duplicate code
+        msg->id = (char)rqout->rq->rqid;
+        memcpy(msg->auth, rqout->rq->rqauth, 16);
+
         radmsg_free(rqout->rq->msg);
         rqout->rq->msg = msg;
         sendreply(newrqref(rqout->rq));
