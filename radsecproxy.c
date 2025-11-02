@@ -1648,8 +1648,7 @@ int radsrv(struct request *rq) {
     return 1;
 
 rmclrqexit:
-    //TODO or use 505 'other proxy processing error'?
-    respondprotoerror(rq, RAD_Err_Resources_Unavailable);
+    respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
     rmclientrq(rq, msg->id);
 exit:
     freerq(rq);
@@ -1825,9 +1824,12 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         if (cause == RAD_Err_Request_Not_Routable || cause == RAD_Err_Other_Proxy_Processing_Error) {
             debug(DBG_INFO, "replyh: Protocol-Error (id %d) from %s indicating proxy network error: resending to alternate server not implemented!", msg->id, server->conf->name);
             //TODO recirculate to other server
+            if (!rqout->rq->from->conf->protocolerror)
+                goto errunlock;
         } else if (cause == RAD_Err_Unsupported_Extension) {
-            debug_limit(DBG_NOTICE, "replyh: Server %s (%s) does not support %s", server->conf->name, "ip?", radmsgtype2string(code));
+            debug_limit(DBG_NOTICE, "replyh: Server %s does not support %s", server->conf->name, radmsgtype2string(code));
             //TODO try to recirculate too?
+            goto errunlock;
         } else
             debug(DBG_DBG, "replyh: Protocol-Error reason %d (id %d) from %s, forwarding upstream", cause, msg->id, server->conf->name);
 
