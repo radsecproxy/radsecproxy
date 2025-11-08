@@ -1827,11 +1827,18 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         if (cause == RAD_Err_Request_Not_Routable || cause == RAD_Err_Other_Proxy_Processing_Error) {
             debug(DBG_INFO, "replyh: Protocol-Error (id %d) from %s indicating proxy network error: resending to alternate server not implemented!", msg->id, server->conf->name);
             //TODO recirculate to other server
-            if (!rqout->rq->from->conf->protocolerror)
+            if (!rqout->rq->from->conf->protocolerror) {
+                freerqoutdata(rqout);
                 goto errunlock;
+            }
         } else if (cause == RAD_Err_Unsupported_Extension) {
             debug_limit(DBG_NOTICE, "replyh: Server %s does not support %s", server->conf->name, radmsgtype2string(code));
             //TODO try to recirculate too?
+            /* create a not routable response instead */
+            rqout->rq->msg->id = rqout->rq->rqid;
+            memcpy(rqout->rq->msg->auth, rqout->rq->rqauth, 16);
+            respondprotoerror(rqout->rq, RAD_Err_Request_Not_Routable);
+            freerqoutdata(rqout);
             goto errunlock;
         } else
             debug(DBG_DBG, "replyh: Protocol-Error reason %d (id %d) from %s, forwarding upstream", cause, msg->id, server->conf->name);
