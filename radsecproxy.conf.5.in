@@ -1049,7 +1049,7 @@ Note: starting with OpenSSL 3.0, use of custom DH parameters is discouraged.
 .RS
 Execute any configuration command supported via the OpenSSL CONF API.
 Supported commands are described in the
-.BR SSL_CONF_cmd (3ssl)
+.BR SSL_CONF_cmd
 manual page.
 This command can be specified many times to execute different OpenSSL
 configuration commands.
