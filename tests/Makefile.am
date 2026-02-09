@@ -17,7 +17,8 @@ check_PROGRAMS = \
     t_unhex \
     t_utf8 \
     t_verify_eap \
-    t_coa
+    t_coa \
+    t_reverse_coa
 AM_CFLAGS = -g -Wall -Werror @OPENSSL_INCLUDES@ @TARGET_CFLAGS@
 LDADD = $(top_builddir)/librsp.a @OPENSSL_LIBS@
 LDFLAGS = @OPENSSL_LDFLAGS@ @TARGET_LDFLAGS@ @LDFLAGS@

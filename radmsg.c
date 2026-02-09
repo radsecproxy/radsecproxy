@@ -63,6 +63,26 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
     return msg;
 }
 
+struct radmsg *radmsg_dup(const struct radmsg *src) {
+    struct radmsg *dst;
+
+    if (!src)
+        return NULL;
+    dst = radmsg_init(src->code, src->id, (uint8_t *)src->auth);
+    if (!dst)
+        return NULL;
+    dst->authstate = src->authstate;
+    if (src->attrs) {
+        list_destroy(dst->attrs);
+        dst->attrs = copytlvlist(src->attrs);
+        if (!dst->attrs) {
+            radmsg_free(dst);
+            return NULL;
+        }
+    }
+    return dst;
+}
+
 int radmsg_add(struct radmsg *msg, struct tlv *attr, uint8_t front) {
     if (!msg || !msg->attrs)
         return 0;
@@ -153,6 +173,27 @@ int radmsg_copy_attrs(struct radmsg *dst,
     }
     list_free(list);
     return n;
+}
+
+/* validates a RADIUS response packet's authenticator (RFC 2865 section 3) against the
+   request authenticator it answers, without touching the caller's buffer. used by the
+   reverse-CoA response path to tell apart clients sharing one source address. */
+int radmsg_validate_response_auth(const uint8_t *buf, int buflen,
+                                  const uint8_t *secret, int secret_len,
+                                  const uint8_t *request_auth) {
+    uint8_t *copy;
+    int ok;
+
+    if (!buf || buflen < RADHDRLEN || !secret || !request_auth)
+        return 0;
+    copy = malloc(buflen);
+    if (!copy)
+        return 0;
+    memcpy(copy, buf, buflen);
+    ok = radmsgsign(copy, buflen, (unsigned char *)secret, secret_len, NULL, (uint8_t *)request_auth) &&
+         CRYPTO_memcmp(RADAUTH(copy), RADAUTH(buf), RADAUTHLEN) == 0;
+    free(copy);
+    return ok;
 }
 
 uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
