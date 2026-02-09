@@ -595,6 +595,43 @@ This setting is ignored when using TLS/DLTS transport or when \fB RequireMessage
 enabled.
 .RE
 
+.BI "CoAPort " port
+.RS
+UDP destination \fIport\fR used when sending reverse Change-of-Authorization (CoA) or
+Disconnect-Request packets to this client over UDP. Without this option, reverse CoA
+packets would be sent to the ephemeral source port of the last Access-Request from the
+NAS, which is almost never where the NAS listens for CoA. Default is 3799
+(per RFC 5176). Valid range is 1-65535. This option has no effect on TLS or DTLS clients,
+where reverse CoA is sent through the existing (D)TLS connection.
+.RE
+
+.BI "reverseCoARealm " "realm [" " realm ...]"
+.RS
+Enables reverse Change-of-Authorization (CoA) routing through this TLS/DTLS client. Each
+\fIrealm\fR is either a literal string matched against the \fB1\fR-prefixed variant of the
+\fBOperator-Name\fR (RFC 5580 TLS-realm namespace) in an incoming reverse-CoA request, or
+a POSIX extended regular expression delimited by slashes, e.g. \fB/\e.example\e.(com|org)$/\fR.
+When set, this client becomes a candidate for receiving reverse-CoA packets whose
+\fBOperator-Name\fR matches. Ignored for UDP/TCP clients.
+.RE
+
+.BI "NASidentifier " identifier
+.RS
+NAS identity used to select this client as the final-hop destination of a reverse-CoA
+request. Compared against the RADIUS attributes \fBNAS-Identifier\fR (32), \fBOperator-NAS-Identifier\fR
+(sub-attribute 8 of attribute 241), \fBNAS-IP-Address\fR (4), and \fBNAS-IPv6-Address\fR (95)
+in the incoming reverse-CoA request. Ignored for UDP/TCP clients.
+.RE
+
+.BI "reverseCoATimeout " seconds
+.RS
+Per-request lifetime for pending reverse-CoA requests forwarded through this client,
+in seconds. Default 30, minimum 10, maximum 120. The minimum is enforced to ensure the
+timeout outlasts upstream retransmission cycles (RetryInterval × RetryCount). When the
+timeout elapses without a response from the NAS, the request slot is reclaimed and any
+late response is silently discarded.
+.RE
+
 .SH "SERVER BLOCK"
 .nf
 .BI "server (" name |(( fqdn | address )[\fR: port ])) "\fR {"
@@ -705,6 +742,16 @@ The meaning of these options are very similar as for the client block, with mino
 .br
 - For the key derivation hash function, the hash function of the first cipher in the \fBCipherSuites\fR
 of the referenced \fBtls\fR block is used.
+.RE
+
+.BR "acceptReverseCoA (" on | off )
+.RS
+If \fBon\fR, accept reverse Change-of-Authorization (CoA) and Disconnect requests arriving on
+this TLS/DTLS connection from the server. The proxy will route each incoming request to a
+suitable RADIUS client (see \fBreverseCoARealm\fR and \fBNASidentifier\fR in the CLIENT block)
+and forward the NAS's response back to this server. Default \fBoff\fR.
+Only valid when the server \fBtype\fR is \fBtls\fR or \fBdtls\fR; specifying this option on a
+UDP or TCP server block is a fatal configuration error.
 .RE
 
 .BR "StatusServer (" on | off | minimal | auto )
