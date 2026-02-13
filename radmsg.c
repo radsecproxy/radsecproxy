@@ -288,14 +288,14 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         t = *p++;
         l = *p++;
         if (l < 2 || l > 255) {
-            debug(DBG_WARN, "buf2radmsg: invalid attribute length %d", l);
+            debug(DBG_WARN, "buf2radmsg: attribute %d: invalid length %d", t, l);
             radmsg_free(msg);
             return NULL;
         }
         l -= 2;
         if (l) {
             if (p - buf + l > len) {
-                debug(DBG_WARN, "buf2radmsg: attribute length %d exceeds packet length", l + 2);
+                debug(DBG_WARN, "buf2radmsg: attribute %d: length %d exceeds packet length", t, l + 2);
                 radmsg_free(msg);
                 return NULL;
             }
