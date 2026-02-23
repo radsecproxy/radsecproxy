@@ -24,7 +24,7 @@ EVP_MD_CTX *mdctxcreate(const EVP_MD *digest) {
     EVP_MD_CTX *ctx = EVP_MD_CTX_new();
     if (!ctx)
         return NULL;
-    if (!EVP_DigestInit(ctx, digest)) {
+    if (!EVP_DigestInit_ex(ctx, digest, NULL)) {
         EVP_MD_CTX_free(ctx);
         return NULL;
     }

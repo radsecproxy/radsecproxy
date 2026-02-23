@@ -161,12 +161,15 @@ int _validauth(unsigned char *rad, int len, unsigned char *reqauth, unsigned cha
         return result;
     }
 
+    memset(hash, 0, sizeof(hash));
+
+    /* ignore return values (errors). In case of error, the hash simply won't match */
     EVP_DigestUpdate(mdctx, rad, 4);
     EVP_DigestUpdate(mdctx, reqauth, 16);
     if (len > 20)
         EVP_DigestUpdate(mdctx, rad + 20, len - 20);
     EVP_DigestUpdate(mdctx, sec, sec_len);
-    EVP_DigestFinal(mdctx, hash, NULL);
+    EVP_DigestFinal_ex(mdctx, hash, NULL);
 
     result = !memcmp(hash, rad + 4, 16);
 
@@ -193,7 +196,7 @@ int _radsign(unsigned char *rad, int radlen, unsigned char *sec, int sec_len) {
 
     EVP_DigestUpdate(mdctx, rad, radlen);
     EVP_DigestUpdate(mdctx, sec, sec_len);
-    EVP_DigestFinal(mdctx, rad + 4, NULL);
+    EVP_DigestFinal_ex(mdctx, rad + 4, NULL);
 
     EVP_MD_CTX_free(mdctx);
     return 1;

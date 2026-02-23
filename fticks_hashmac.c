@@ -34,14 +34,9 @@ static void _hash(const uint8_t *in,
         out[0] = '\0';
 
     if (key == NULL) {
-        EVP_MD_CTX *ctx = mdctxcreate(sha256digest());
-        if (!ctx)
+        if (!EVP_Digest(in, strlen((char *)in), hash, NULL, sha256digest(), NULL))
             return;
-
-        EVP_DigestUpdate(ctx, in, strlen((char *)in));
-        EVP_DigestFinal(ctx, hash, NULL);
         _format_hash(hash, out_len, out);
-        EVP_MD_CTX_free(ctx);
     } else {
         if (!HMAC(sha256digest(), key, strlen((char *)key), in, strlen((char *)in), hash, NULL))
             return;

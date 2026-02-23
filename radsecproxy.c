@@ -582,6 +582,7 @@ static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared
     EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
     unsigned char hash[EVP_MD_size(md5digest())], *input;
     uint8_t i, offset = 0, out[128];
+    long err = 0;
 
     if (!mdctx) {
         debug(DBG_ERR, "pwdcrypt: creating EVP_MD_CTX failed");
@@ -590,13 +591,17 @@ static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared
 
     input = auth;
     for (;;) {
-        EVP_DigestUpdate(mdctx, shared, sharedlen);
-        EVP_DigestUpdate(mdctx, input, 16);
+        if (!EVP_DigestInit_ex(mdctx, NULL, NULL) ||
+            !EVP_DigestUpdate(mdctx, shared, sharedlen) ||
+            !EVP_DigestUpdate(mdctx, input, 16))
+            goto errexit;
         if (salt) {
-            EVP_DigestUpdate(mdctx, salt, saltlen);
+            if (!EVP_DigestUpdate(mdctx, salt, saltlen))
+                goto errexit;
             salt = NULL;
         }
-        EVP_DigestFinal(mdctx, hash, NULL);
+        if (!EVP_DigestFinal_ex(mdctx, hash, NULL))
+            goto errexit;
         for (i = 0; i < 16; i++)
             out[offset + i] = hash[i] ^ in[offset + i];
         if (encrypt_flag)
@@ -611,12 +616,19 @@ static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared
 
     EVP_MD_CTX_free(mdctx);
     return 1;
+
+errexit:
+    while ((err = ERR_get_error()))
+        debug(DBG_ERR, "pwdcrypt: digest failed: %s", ERR_error_string(err, NULL));
+    EVP_MD_CTX_free(mdctx);
+    return 0;
 }
 
 static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
     EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
     unsigned char hash[EVP_MD_size(md5digest())];
     uint8_t i, offset;
+    long err = 0;
 
     if (!mdctx) {
         debug(DBG_ERR, "msmppencrypt: creating EVP_MD_CTX failed");
@@ -629,10 +641,11 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     printfchars(NULL, "msppencrypt in", "%02x ", text, len);
 #endif
 
-    EVP_DigestUpdate(mdctx, shared, sharedlen);
-    EVP_DigestUpdate(mdctx, auth, 16);
-    EVP_DigestUpdate(mdctx, salt, 2);
-    EVP_DigestFinal(mdctx, hash, NULL);
+    if (!EVP_DigestUpdate(mdctx, shared, sharedlen) ||
+        !EVP_DigestUpdate(mdctx, auth, 16) ||
+        !EVP_DigestUpdate(mdctx, salt, 2) ||
+        !EVP_DigestFinal_ex(mdctx, hash, NULL))
+        goto errexit;
 
 #if 0
     printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
@@ -646,9 +659,11 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
-        EVP_DigestUpdate(mdctx, shared, sharedlen);
-        EVP_DigestUpdate(mdctx, text + offset - 16, 16);
-        EVP_DigestFinal(mdctx, hash, NULL);
+        if (!EVP_DigestInit_ex(mdctx, NULL, NULL) ||
+            !EVP_DigestUpdate(mdctx, shared, sharedlen) ||
+            !EVP_DigestUpdate(mdctx, text + offset - 16, 16) ||
+            !EVP_DigestFinal_ex(mdctx, hash, NULL))
+            goto errexit;
 #if 0
 	printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
 #endif
@@ -663,6 +678,12 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 
     EVP_MD_CTX_free(mdctx);
     return 1;
+
+errexit:
+    while ((err = ERR_get_error()))
+        debug(DBG_ERR, "msmppencrypt: digest failed: %s", ERR_error_string(err, NULL));
+    EVP_MD_CTX_free(mdctx);
+    return 0;
 }
 
 static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
@@ -670,6 +691,7 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     unsigned char hash[EVP_MD_size(md5digest())];
     uint8_t i, offset;
     char plain[255];
+    long err = 0;
 
     if (!mdctx) {
         debug(DBG_ERR, "msmppdecrypt: creating EVP_MD_CTX failed");
@@ -682,10 +704,11 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     printfchars(NULL, "msppdecrypt in", "%02x ", text, len);
 #endif
 
-    EVP_DigestUpdate(mdctx, shared, sharedlen);
-    EVP_DigestUpdate(mdctx, auth, 16);
-    EVP_DigestUpdate(mdctx, salt, 2);
-    EVP_DigestFinal(mdctx, hash, NULL);
+    if (!EVP_DigestUpdate(mdctx, shared, sharedlen) ||
+        !EVP_DigestUpdate(mdctx, auth, 16) ||
+        !EVP_DigestUpdate(mdctx, salt, 2) ||
+        !EVP_DigestFinal_ex(mdctx, hash, NULL))
+        goto errexit;
 
 #if 0
     printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
@@ -699,9 +722,11 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
-        EVP_DigestUpdate(mdctx, shared, sharedlen);
-        EVP_DigestUpdate(mdctx, text + offset - 16, 16);
-        EVP_DigestFinal(mdctx, hash, NULL);
+        if (!EVP_DigestInit_ex(mdctx, NULL, NULL) ||
+            !EVP_DigestUpdate(mdctx, shared, sharedlen) ||
+            !EVP_DigestUpdate(mdctx, text + offset - 16, 16) ||
+            !EVP_DigestFinal(mdctx, hash, NULL))
+            goto errexit;
 #if 0
 	printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
 #endif
@@ -717,6 +742,12 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 
     EVP_MD_CTX_free(mdctx);
     return 1;
+
+errexit:
+    while ((err = ERR_get_error()))
+        debug(DBG_ERR, "msmppdecrypt: digest failed: %s", ERR_error_string(err, NULL));
+    EVP_MD_CTX_free(mdctx);
+    return 0;
 }
 
 struct realm *newrealmref(struct realm *r) {
