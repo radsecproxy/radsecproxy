@@ -921,7 +921,7 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
 int pwdrecrypt(uint8_t *pwd, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth,
                uint8_t *oldsalt, uint8_t oldsaltlen, uint8_t *newsalt, uint8_t newsaltlen) {
     if (len < 16 || len > 128 || len % 16) {
-        debug(DBG_WARN, "pwdrecrypt: invalid password length");
+        debug(DBG_WARN, "pwdrecrypt: invalid password length (not a multiple of 16)");
         return 0;
     }
 
