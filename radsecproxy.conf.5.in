@@ -151,6 +151,15 @@ This can be set to off to only log the realm in Access-Accept/Reject log
 messages (for privacy).
 .RE
 
+.BR "LogCalledStationId (" on | off )
+.RS
+You can optionally instruct radsecproxy to include the Called-Station-Id
+field in the log line. This might help you determining the original
+source of the query (the authenticator, usually the Access Point or Switch).
+When used on Wi-Fi this fields include the SSID as well.
+The default value for LogCalledStationId is \fBoff\fR.
+.RE
+
 .BI "LogMAC " opt
 .RS
 The LogMAC option can be used to control if and how Calling-Station-Id (the
