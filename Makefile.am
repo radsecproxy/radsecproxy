@@ -46,7 +46,7 @@ AM_CFLAGS = \
 radsecproxy_LDFLAGS = @OPENSSL_LDFLAGS@ @TARGET_LDFLAGS@
 radsecproxy_LDADD = librsp.a @OPENSSL_LIBS@ @LIBS@
 radsecproxy_conf_LDFLAGS = @TARGET_LDFLAGS@
-radsecproxy_hash_LDADD = fticks_hashmac.o hash.o list.o utilcrypto.o @OPENSSL_LIBS@
+radsecproxy_hash_LDADD = debug.o fticks_hashmac.o hash.o list.o util.o utilcrypto.o @OPENSSL_LIBS@
 
 man_MANS = radsecproxy.8 radsecproxy-hash.8 radsecproxy.conf.5
 

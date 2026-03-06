@@ -7,7 +7,6 @@
 #include <unistd.h>
 
 #include "fticks_hashmac.h"
-#include "radsecproxy.h"
 
 void usage(void) {
     fprintf(stderr,
