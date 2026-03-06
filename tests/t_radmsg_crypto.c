@@ -58,21 +58,6 @@ int main(int argc, char *argv[]) {
                       "\x6c\xfe\x33\x27\xf8\xf7\xac\x60\xf9\x3e\x10\xe5\x4a\x1b\x1b\x85\x16\xb0\x66\xce\x50\xb0\xf1\x5d\x16\xb8\x3a\xe4\x53\x3f\x45\xc1",
                       32, salt, 2, "password with salt");
 
-    /* test long mppe key encryption with salt*/
-    /* this is the same as tunnel-password?*/
-    {
-        ++numtests;
-        uint8_t clearpassword[] = {"\x10MS-MPPE-Send-Key\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"};
-        uint8_t encryptedpassword[] = {"\x6c\xfe\x33\x27\xf8\xf7\xac\x60\xf9\x3e\x10\xe5\x4a\x1b\x1b\x85\x16\xb0\x66\xce\x50\xb0\xf1\x5d\x16\xb8\x3a\xe4\x53\x3f\x45\xc1"};
-
-        if (!msmppencrypt(clearpassword, 32, shared, sharedlen, auth, salt))
-            printf("not ok %d - msmppe encrypt: pwdcrypt returned 0\n", numtests);
-        else if (memcmp(clearpassword, encryptedpassword, 32) == 0)
-            printf("ok %d - msmppe encrypt\n", numtests);
-        else
-            printf("not ok %d - msmppe encrypt\n", numtests);
-    }
-
     printf("1..%d\n", numtests);
 
     return 0;

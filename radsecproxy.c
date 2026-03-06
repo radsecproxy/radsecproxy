@@ -772,11 +772,11 @@ int msmpprecrypt(uint8_t *msmpp, uint8_t len, uint8_t *oldsecret, int oldsecret_
         debug(DBG_WARN, "msmpprecrypt: incomplete data to do msmpp reencryption");
         return 0;
     }
-    if (!msmppdecrypt(msmpp + 2, len - 2, oldsecret, oldsecret_len, oldauth, msmpp)) {
+    if (!pwdcrypt(0, msmpp + 2, len - 2, oldsecret, oldsecret_len, oldauth, msmpp, 2)) {
         debug(DBG_WARN, "msmpprecrypt: failed to decrypt msppe key");
         return 0;
     }
-    if (!msmppencrypt(msmpp + 2, len - 2, newsecret, newsecret_len, newauth, msmpp)) {
+    if (!pwdcrypt(1, msmpp + 2, len - 2, newsecret, newsecret_len, newauth, msmpp, 2)) {
         debug(DBG_WARN, "msmpprecrypt: failed to encrypt msppe key");
         return 0;
     }
