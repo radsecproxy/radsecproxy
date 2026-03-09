@@ -406,16 +406,6 @@ errexit:
     return 0;
 }
 
-unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
-    while (length > 1) {
-        if (ATTRTYPE(attrs) == type)
-            return attrs;
-        length -= ATTRLEN(attrs);
-        attrs += ATTRLEN(attrs);
-    }
-    return NULL;
-}
-
 struct request *newrqref(struct request *rq) {
     if (rq) {
         pthread_mutex_lock(&rq->refmutex);
@@ -744,55 +734,6 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
         }
         pthread_mutex_unlock(&realm->mutex);
     }
-}
-
-int pwdrecrypt(uint8_t *pwd, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth,
-               uint8_t *oldsalt, uint8_t oldsaltlen, uint8_t *newsalt, uint8_t newsaltlen) {
-    if (len < 16 || len > 128 || len % 16) {
-        debug(DBG_WARN, "pwdrecrypt: invalid password length (not a multiple of 16)");
-        return 0;
-    }
-
-    if (!pwdcrypt(0, pwd, len, oldsecret, oldsecret_len, oldauth, oldsalt, oldsaltlen)) {
-        debug(DBG_WARN, "pwdrecrypt: cannot decrypt password");
-        return 0;
-    }
-#ifdef DEBUG
-    printfchars(NULL, "pwdrecrypt: password", "%02x ", pwd, len);
-#endif
-    if (!pwdcrypt(1, pwd, len, newsecret, newsecret_len, newauth, newsalt, newsaltlen)) {
-        debug(DBG_WARN, "pwdrecrypt: cannot encrypt password");
-        return 0;
-    }
-    return 1;
-}
-
-int msmpprecrypt(uint8_t *msmpp, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
-    if (len < 18 || !msmpp || !oldsecret || oldsecret_len == 0 || !newsecret || newsecret_len == 0 || !oldauth || !newauth) {
-        debug(DBG_WARN, "msmpprecrypt: incomplete data to do msmpp reencryption");
-        return 0;
-    }
-    if (!pwdcrypt(0, msmpp + 2, len - 2, oldsecret, oldsecret_len, oldauth, msmpp, 2)) {
-        debug(DBG_WARN, "msmpprecrypt: failed to decrypt msppe key");
-        return 0;
-    }
-    if (!pwdcrypt(1, msmpp + 2, len - 2, newsecret, newsecret_len, newauth, msmpp, 2)) {
-        debug(DBG_WARN, "msmpprecrypt: failed to encrypt msppe key");
-        return 0;
-    }
-    return 1;
-}
-
-int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct request *rq,
-           uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len) {
-    unsigned char *attr;
-
-    for (attr = attrs; (attr = attrget(attr, length - (attr - attrs), type)); attr += ATTRLEN(attr)) {
-        debug(DBG_DBG, "msmppe: Got %s", attrtxt);
-        if (!msmpprecrypt(ATTRVAL(attr), ATTRVALLEN(attr), oldsecret, oldsecret_len, newsecret, newsecret_len, rq->buf + 4, rq->rqauth))
-            return 0;
-    }
-    return 1;
 }
 
 int rewriteusername(struct request *rq, struct tlv *attr) {
@@ -1624,42 +1565,66 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     from = rqout->rq->from;
 
-    /* MS MPPE */
-    for (node = list_first(msg->attrs); node; node = list_next(node)) {
-        attr = (struct tlv *)node->data;
-        if (attr->t != RAD_Attr_Vendor_Specific)
-            continue;
-        if (attr->l <= 4)
-            break;
-        if (attr->v[0] != 0 || attr->v[1] != 0 || attr->v[2] != 1 || attr->v[3] != 55) /* 311 == MS */
-            continue;
-
-        sublen = attr->l - 4;
-        subattrs = attr->v + 4;
-        if (!attrvalidate(subattrs, sublen) ||
-            !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, "MS MPPE Send Key",
-                    rqout->rq, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len) ||
-            !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Recv_Key, "MS MPPE Recv Key",
-                    rqout->rq, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len))
-            break;
-    }
-    if (node) {
-        debug(DBG_WARN, "replyh: MS attribute handling failed, ignoring reply");
-        goto errunlock;
-    }
-
-    /* reencrypt tunnel-password RFC2868 */
-    attr = radmsg_gettype(msg, RAD_Attr_Tunnel_Password);
-    if (attr && msg->code == RAD_Access_Accept) {
+    /* perform reencryptions in access accepts*/
+    if (msg->code == RAD_Access_Accept) {
         uint8_t newsalt[2];
-        debug(DBG_DBG, "replyh: found tunnelpwdattr with value length %d", attr->l);
-        if (!RAND_bytes(newsalt, 2))
-            goto errunlock;
-        newsalt[0] |= 0x80;
-        if (!pwdrecrypt(attr->v + 3, attr->l - 3, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
-                        rqout->rq->msg->auth, rqout->rq->rqauth, attr->v + 1, 2, newsalt, 2))
-            goto errunlock;
-        memcpy(attr->v + 1, newsalt, 2);
+        for (node = list_first(msg->attrs); node; node = list_next(node)) {
+            attr = (struct tlv *)node->data;
+
+            /* tunnel-password RFC2868 */
+            if (attr->t == RAD_Attr_Tunnel_Password) {
+                if (attr->l < 16 || attr->l > 128 || attr->l % 16) {
+                    debug(DBG_WARN, "pwdrecrypt: invalid password length (not a multiple of 16)");
+                    goto errunlock;
+                }
+                if (!RAND_bytes(newsalt, 2))
+                    goto errunlock;
+                newsalt[0] |= 0x80;
+                if (!pwdrecrypt(attr->v + 3, attr->l - 3, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
+                                rqout->rq->msg->auth, rqout->rq->rqauth, attr->v + 1, 2, newsalt, 2))
+                    goto errunlock;
+                memcpy(attr->v + 1, newsalt, 2);
+            }
+
+            /* MS MPPE RFC 2548 */
+            if (attr->t == RAD_Attr_Vendor_Specific) {
+                if (attr->l <= 4)
+                    continue;
+                if ((uint32_t)*attr->v != htonl(311)) /* 311 == Microsoft */
+                    continue;
+                sublen = attr->l - 4;
+                subattrs = attr->v + 4;
+                if (!attrvalidate(subattrs, sublen)) {
+                    debug(DBG_WARN, "replyh: invalid MS vendor specific attribute, ignoring reply");
+                    goto errunlock;
+                }
+                while (sublen > 1) {
+                    if (ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Send_Key ||
+                        ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Recv_Key) {
+                        debug(DBG_DBG, "msmppe: Got type %d", ATTRTYPE(subattrs));
+                        if (ATTRLEN(subattrs) < 18 || (ATTRLEN(subattrs) - 2) % 16) {
+                            debug(DBG_WARN, "msmpprecrypt: invalid length of msmpp key");
+                            goto errunlock;
+                        }
+                        if (!RAND_bytes(newsalt, 2)) {
+                            debug(DBG_WARN, "msmpprecrypt: failed to generate new salt");
+                            goto errunlock;
+                        }
+                        newsalt[0] |= 0x80;
+                        if (!pwdrecrypt(ATTRVAL(subattrs) + 2, ATTRLEN(subattrs) - 2,
+                                        server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
+                                        rqout->rq->msg->auth, rqout->rq->rqauth, ATTRVAL(subattrs), 2, newsalt, 2)) {
+                            debug(DBG_WARN, "msmpprecrypt: recrypt failed");
+                            return 0;
+                        }
+                        memcpy(ATTRVAL(subattrs), newsalt, 2);
+                    }
+                    sublen -= ATTRLEN(subattrs);
+                    subattrs += ATTRLEN(subattrs);
+                }
+                return 1;
+            }
+        }
     }
 
     replylog(msg, server, rqout->rq);

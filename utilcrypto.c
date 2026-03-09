@@ -80,6 +80,22 @@ errexit:
     return 0;
 }
 
+int pwdrecrypt(uint8_t *pwd, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth,
+               uint8_t *oldsalt, uint8_t oldsaltlen, uint8_t *newsalt, uint8_t newsaltlen) {
+    if (!pwdcrypt(0, pwd, len, oldsecret, oldsecret_len, oldauth, oldsalt, oldsaltlen)) {
+        debug(DBG_WARN, "pwdrecrypt: cannot decrypt password");
+        return 0;
+    }
+#ifdef DEBUG
+    printfchars(NULL, "pwdrecrypt: password", "%02x ", pwd, len);
+#endif
+    if (!pwdcrypt(1, pwd, len, newsecret, newsecret_len, newauth, newsalt, newsaltlen)) {
+        debug(DBG_WARN, "pwdrecrypt: cannot encrypt password");
+        return 0;
+    }
+    return 1;
+}
+
 /* Local Variables: */
 /* c-file-style: "stroustrup" */
 /* End: */
