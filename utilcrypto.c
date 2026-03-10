@@ -114,10 +114,21 @@ int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint
     for (node = list_first(attrs); node; node = list_next(node)) {
         attr = (struct tlv *)node->data;
 
+        /* user password RFC2865 */
+        if (attr->t == RAD_Attr_User_Password) {
+            debug(DBG_DBG, "recryptattrs: reencrypting user password");
+            if (attr->l < 16 || attr->l > 128 || attr->l % 16) {
+                debug(DBG_WARN, "radsrv: invalid user password length");
+                return 0;
+            }
+            if (!pwdrecrypt(attr->v, attr->l, oldsecret, oldsecret_len, newsecret, newsecret_len, oldauth, newauth, NULL, 0, NULL, 0))
+                return 0;
+        }
+
         /* tunnel-password RFC2868 */
         if (attr->t == RAD_Attr_Tunnel_Password) {
             debug(DBG_DBG, "recryptattrs: reencrypting tunnel password");
-            if (attr->l < 16 || attr->l > 128 || attr->l % 16) {
+            if (attr->l < 16 || attr->l % 16) {
                 debug(DBG_WARN, "recryptattrs: invalid tunnel password length (not a multiple of 16)");
                 return 0;
             }

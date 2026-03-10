@@ -1375,15 +1375,12 @@ int radsrv(struct request *rq) {
     printfchars(NULL, "auth", "%02x ", msg->auth, 16);
 #endif
 
-    attr = radmsg_gettype(msg, RAD_Attr_User_Password);
-    if (attr) {
-        debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attr->l);
-        if (attr->l < 16 || attr->l % 16) {
-            debug(DBG_WARN, "radsrv: invalid user password length");
+    if (msg->code == RAD_Access_Request) {
+        if (!recryptattrs(msg->attrs, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len,
+                          rq->rqauth, msg->auth)) {
+            debug(DBG_WARN, "radsrv: reencrypting passwords failed");
             goto rmclrqexit;
         }
-        if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len, rq->rqauth, msg->auth, NULL, 0, NULL, 0))
-            goto rmclrqexit;
     }
 
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
