@@ -1573,8 +1573,9 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
             /* tunnel-password RFC2868 */
             if (attr->t == RAD_Attr_Tunnel_Password) {
+                debug(DBG_DBG, "replyh: reencrypting tunnel password");
                 if (attr->l < 16 || attr->l > 128 || attr->l % 16) {
-                    debug(DBG_WARN, "pwdrecrypt: invalid password length (not a multiple of 16)");
+                    debug(DBG_WARN, "replyh: invalid tunnel password length (not a multiple of 16), ignoring reply");
                     goto errunlock;
                 }
                 if (!RAND_bytes(newsalt, 2))
@@ -1601,9 +1602,9 @@ int replyh(struct server *server, uint8_t *buf, int len) {
                 while (sublen > 1) {
                     if (ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Send_Key ||
                         ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Recv_Key) {
-                        debug(DBG_DBG, "msmppe: Got type %d", ATTRTYPE(subattrs));
+                        debug(DBG_DBG, "replyh: reencrypting msmppe key type %d", ATTRTYPE(subattrs));
                         if (ATTRLEN(subattrs) < 18 || (ATTRLEN(subattrs) - 2) % 16) {
-                            debug(DBG_WARN, "msmpprecrypt: invalid length of msmpp key");
+                            debug(DBG_WARN, "replyh: invalid length of msmpp key, ignoring reply");
                             goto errunlock;
                         }
                         if (!RAND_bytes(newsalt, 2))
@@ -1612,15 +1613,14 @@ int replyh(struct server *server, uint8_t *buf, int len) {
                         if (!pwdrecrypt(ATTRVAL(subattrs) + 2, ATTRLEN(subattrs) - 2,
                                         server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
                                         rqout->rq->msg->auth, rqout->rq->rqauth, ATTRVAL(subattrs), 2, newsalt, 2)) {
-                            debug(DBG_WARN, "msmpprecrypt: recrypt failed");
-                            return 0;
+                            debug(DBG_WARN, "replyh: recrypt failed, ignoring reply");
+                            goto errunlock;
                         }
                         memcpy(ATTRVAL(subattrs), newsalt, 2);
                     }
                     sublen -= ATTRLEN(subattrs);
                     subattrs += ATTRLEN(subattrs);
                 }
-                return 1;
             }
         }
     }
