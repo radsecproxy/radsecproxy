@@ -1378,6 +1378,10 @@ int radsrv(struct request *rq) {
     attr = radmsg_gettype(msg, RAD_Attr_User_Password);
     if (attr) {
         debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attr->l);
+        if (attr->l < 16 || attr->l % 16) {
+            debug(DBG_WARN, "radsrv: invalid user password length");
+            goto rmclrqexit;
+        }
         if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len, rq->rqauth, msg->auth, NULL, 0, NULL, 0))
             goto rmclrqexit;
     }
