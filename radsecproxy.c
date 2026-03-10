@@ -1567,7 +1567,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     /* perform reencryptions in access accepts*/
     if (msg->code == RAD_Access_Accept) {
-        uint8_t newsalt[2];
+        uint8_t newsalt[2], saltindex = 0;
         for (node = list_first(msg->attrs); node; node = list_next(node)) {
             attr = (struct tlv *)node->data;
 
@@ -1579,7 +1579,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
                 }
                 if (!RAND_bytes(newsalt, 2))
                     goto errunlock;
-                newsalt[0] |= 0x80;
+                newsalt[0] = (newsalt[0] & 0x0f) | (saltindex++ << 4) | 0x80;
                 if (!pwdrecrypt(attr->v + 3, attr->l - 3, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
                                 rqout->rq->msg->auth, rqout->rq->rqauth, attr->v + 1, 2, newsalt, 2))
                     goto errunlock;
@@ -1606,11 +1606,9 @@ int replyh(struct server *server, uint8_t *buf, int len) {
                             debug(DBG_WARN, "msmpprecrypt: invalid length of msmpp key");
                             goto errunlock;
                         }
-                        if (!RAND_bytes(newsalt, 2)) {
-                            debug(DBG_WARN, "msmpprecrypt: failed to generate new salt");
+                        if (!RAND_bytes(newsalt, 2))
                             goto errunlock;
-                        }
-                        newsalt[0] |= 0x80;
+                        newsalt[0] = (newsalt[0] & 0x0f) | (saltindex++ << 4) | 0x80;
                         if (!pwdrecrypt(ATTRVAL(subattrs) + 2, ATTRLEN(subattrs) - 2,
                                         server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
                                         rqout->rq->msg->auth, rqout->rq->rqauth, ATTRVAL(subattrs), 2, newsalt, 2)) {
