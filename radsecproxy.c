@@ -1494,11 +1494,9 @@ int closeh(struct server *server) {
 int replyh(struct server *server, uint8_t *buf, int len) {
     struct client *from;
     struct rqout *rqout;
-    int sublen, ttlres;
-    unsigned char *subattrs;
+    int ttlres;
     struct radmsg *msg = NULL;
     struct tlv *attr;
-    struct list_node *node;
     char tmp[INET6_ADDRSTRLEN];
 
     pthread_mutex_lock(&server->lock);
@@ -1571,61 +1569,10 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     /* perform reencryptions in access accepts*/
     if (msg->code == RAD_Access_Accept) {
-        uint8_t newsalt[2], saltindex = 0;
-        for (node = list_first(msg->attrs); node; node = list_next(node)) {
-            attr = (struct tlv *)node->data;
-
-            /* tunnel-password RFC2868 */
-            if (attr->t == RAD_Attr_Tunnel_Password) {
-                debug(DBG_DBG, "replyh: reencrypting tunnel password");
-                if (attr->l < 16 || attr->l > 128 || attr->l % 16) {
-                    debug(DBG_WARN, "replyh: invalid tunnel password length (not a multiple of 16), ignoring reply");
-                    goto errunlock;
-                }
-                if (!RAND_bytes(newsalt, 2))
-                    goto errunlock;
-                newsalt[0] = (newsalt[0] & 0x0f) | (saltindex++ << 4) | 0x80;
-                if (!pwdrecrypt(attr->v + 3, attr->l - 3, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
-                                rqout->rq->msg->auth, rqout->rq->rqauth, attr->v + 1, 2, newsalt, 2))
-                    goto errunlock;
-                memcpy(attr->v + 1, newsalt, 2);
-            }
-
-            /* MS MPPE RFC 2548 */
-            if (attr->t == RAD_Attr_Vendor_Specific) {
-                if (attr->l <= 4)
-                    continue;
-                if ((uint32_t)*attr->v != htonl(311)) /* 311 == Microsoft */
-                    continue;
-                sublen = attr->l - 4;
-                subattrs = attr->v + 4;
-                if (!attrvalidate(subattrs, sublen)) {
-                    debug(DBG_WARN, "replyh: invalid MS vendor specific attribute, ignoring reply");
-                    goto errunlock;
-                }
-                while (sublen > 1) {
-                    if (ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Send_Key ||
-                        ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Recv_Key) {
-                        debug(DBG_DBG, "replyh: reencrypting msmppe key type %d", ATTRTYPE(subattrs));
-                        if (ATTRLEN(subattrs) < 18 || (ATTRLEN(subattrs) - 2) % 16) {
-                            debug(DBG_WARN, "replyh: invalid length of msmpp key, ignoring reply");
-                            goto errunlock;
-                        }
-                        if (!RAND_bytes(newsalt, 2))
-                            goto errunlock;
-                        newsalt[0] = (newsalt[0] & 0x0f) | (saltindex++ << 4) | 0x80;
-                        if (!pwdrecrypt(ATTRVAL(subattrs) + 2, ATTRLEN(subattrs) - 2,
-                                        server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
-                                        rqout->rq->msg->auth, rqout->rq->rqauth, ATTRVAL(subattrs), 2, newsalt, 2)) {
-                            debug(DBG_WARN, "replyh: recrypt failed, ignoring reply");
-                            goto errunlock;
-                        }
-                        memcpy(ATTRVAL(subattrs), newsalt, 2);
-                    }
-                    sublen -= ATTRLEN(subattrs);
-                    subattrs += ATTRLEN(subattrs);
-                }
-            }
+        if (!recryptattrs(msg->attrs, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
+                          rqout->rq->msg->auth, rqout->rq->rqauth)) {
+            debug(DBG_WARN, "replyh: reencrypting passwords failed, ignoring reply");
+            goto errunlock;
         }
     }
 

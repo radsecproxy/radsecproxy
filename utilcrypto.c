@@ -3,8 +3,10 @@
 
 #include <string.h>
 #include <openssl/err.h>
+#include <openssl/rand.h>
 #include "utilcrypto.h"
 #include "debug.h"
+#include "radmsg.h"
 
 /* OpenSSL documentation mentions performance implications when using EVP_ digest functions,
  * convert to a singleton.
@@ -92,6 +94,74 @@ int pwdrecrypt(uint8_t *pwd, uint8_t len, uint8_t *oldsecret, int oldsecret_len,
     if (!pwdcrypt(1, pwd, len, newsecret, newsecret_len, newauth, newsalt, newsaltlen)) {
         debug(DBG_WARN, "pwdrecrypt: cannot encrypt password");
         return 0;
+    }
+    return 1;
+}
+
+static int gensalt(unsigned char *salt, int len, uint32_t index) {
+    if (!RAND_bytes(salt, len))
+        return 0;
+    salt[0] = (salt[0] & 0x0f) | (index << 4) | 0x80;
+    return 1;
+}
+
+int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
+    uint8_t newsalt[2], saltindex = 0;
+    uint8_t sublen, *subattrs;
+    struct list_node *node;
+    struct tlv *attr;
+
+    for (node = list_first(attrs); node; node = list_next(node)) {
+        attr = (struct tlv *)node->data;
+
+        /* tunnel-password RFC2868 */
+        if (attr->t == RAD_Attr_Tunnel_Password) {
+            debug(DBG_DBG, "recryptattrs: reencrypting tunnel password");
+            if (attr->l < 16 || attr->l > 128 || attr->l % 16) {
+                debug(DBG_WARN, "recryptattrs: invalid tunnel password length (not a multiple of 16)");
+                return 0;
+            }
+            if (!gensalt(newsalt, 2, saltindex++))
+                return 0;
+            if (!pwdrecrypt(attr->v + 3, attr->l - 3, oldsecret, oldsecret_len, newsecret, newsecret_len,
+                            oldauth, newauth, attr->v + 1, 2, newsalt, 2))
+                return 0;
+            memcpy(attr->v + 1, newsalt, 2);
+        }
+
+        /* MS MPPE RFC 2548 */
+        if (attr->t == RAD_Attr_Vendor_Specific) {
+            if (attr->l <= 4)
+                continue;
+            if ((uint32_t)*attr->v != htonl(311)) /* 311 == Microsoft */
+                continue;
+            sublen = attr->l - 4;
+            subattrs = attr->v + 4;
+            if (!attrvalidate(subattrs, sublen)) {
+                debug(DBG_WARN, "recryptattrs: invalid MS vendor specific attribute");
+                return 0;
+            }
+            while (sublen > 1) {
+                if (ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Send_Key ||
+                    ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Recv_Key) {
+                    debug(DBG_DBG, "recryptattrs: reencrypting msmppe key type %d", ATTRTYPE(subattrs));
+                    if (ATTRLEN(subattrs) < 18 || (ATTRLEN(subattrs) - 2) % 16) {
+                        debug(DBG_WARN, "recryptattrs: invalid length of msmpp key");
+                        return 0;
+                    }
+                    if (!gensalt(newsalt, 2, saltindex++))
+                        return 0;
+                    if (!pwdrecrypt(ATTRVAL(subattrs) + 2, ATTRLEN(subattrs) - 2, oldsecret, oldsecret_len, newsecret, newsecret_len,
+                                    oldauth, newauth, ATTRVAL(subattrs), 2, newsalt, 2)) {
+                        debug(DBG_WARN, "recryptattrs: recrypt failed");
+                        return 0;
+                    }
+                    memcpy(ATTRVAL(subattrs), newsalt, 2);
+                }
+                sublen -= ATTRLEN(subattrs);
+                subattrs += ATTRLEN(subattrs);
+            }
+        }
     }
     return 1;
 }
