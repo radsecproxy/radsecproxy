@@ -623,7 +623,7 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
         return 0;
     }
 
-#if 0
+#ifdef MPPE_DEBUG
     printfchars(NULL, "msppencrypt auth in", "%02x ", auth, 16);
     printfchars(NULL, "msppencrypt salt in", "%02x ", salt, 2);
     printfchars(NULL, "msppencrypt in", "%02x ", text, len);
@@ -634,7 +634,7 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     EVP_DigestUpdate(mdctx, salt, 2);
     EVP_DigestFinal(mdctx, hash, NULL);
 
-#if 0
+#ifdef MPPE_DEBUG
     printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
 #endif
 
@@ -642,14 +642,15 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
         text[i] ^= hash[i];
 
     for (offset = 16; offset < len; offset += 16) {
-#if 0
+#ifdef MPPE_DEBUG
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
+        EVP_DigestInit(mdctx, md5digest());
         EVP_DigestUpdate(mdctx, shared, sharedlen);
         EVP_DigestUpdate(mdctx, text + offset - 16, 16);
         EVP_DigestFinal(mdctx, hash, NULL);
-#if 0
+#ifdef MPPE_DEBUG
 	printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
 #endif
 
@@ -657,7 +658,7 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
             text[offset + i] ^= hash[i];
     }
 
-#if 0
+#ifdef MPPE_DEBUG
     printfchars(NULL, "msppencrypt out", "%02x ", text, len);
 #endif
 
@@ -676,7 +677,7 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
         return 0;
     }
 
-#if 0
+#ifdef MPPE_DEBUG
     printfchars(NULL, "msppdecrypt auth in", "%02x ", auth, 16);
     printfchars(NULL, "msppdecrypt salt in", "%02x ", salt, 2);
     printfchars(NULL, "msppdecrypt in", "%02x ", text, len);
@@ -687,7 +688,7 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     EVP_DigestUpdate(mdctx, salt, 2);
     EVP_DigestFinal(mdctx, hash, NULL);
 
-#if 0
+#ifdef MPPE_DEBUG
     printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
 #endif
 
@@ -695,14 +696,15 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
         plain[i] = text[i] ^ hash[i];
 
     for (offset = 16; offset < len; offset += 16) {
-#if 0
+#ifdef MPPE_DEBUG
 	printf("text + offset - 16 c(%d): ", offset / 16);
 	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
+        EVP_DigestInit(mdctx, md5digest());
         EVP_DigestUpdate(mdctx, shared, sharedlen);
         EVP_DigestUpdate(mdctx, text + offset - 16, 16);
         EVP_DigestFinal(mdctx, hash, NULL);
-#if 0
+#ifdef MPPE_DEBUG
 	printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
 #endif
 
@@ -711,7 +713,7 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     }
 
     memcpy(text, plain, len);
-#if 0
+#ifdef MPPE_DEBUG
     printfchars(NULL, "msppdecrypt out", "%02x ", text, len);
 #endif
 
