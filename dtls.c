@@ -106,7 +106,7 @@ void *dtlsservernew(void *arg) {
     struct timeval timeout;
     struct addrinfo tmpsrvaddr;
     char tmp[INET6_ADDRSTRLEN], *subj;
-    struct hostportres *hp;
+    struct hostportres *hp = NULL;
 
     debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
 
