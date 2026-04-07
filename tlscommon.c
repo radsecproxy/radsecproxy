@@ -18,6 +18,7 @@
 #include <limits.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <openssl/conf.h>
 #include <openssl/err.h>
 #include <openssl/md5.h>
 #include <openssl/rand.h>
@@ -518,6 +519,50 @@ static X509_VERIFY_PARAM *createverifyparams(char **poids) {
     return pm;
 }
 
+static int configure_openssl(SSL_CTX *ctx, char **configs, char *name) {
+    int ret = 1;
+    int i;
+    SSL_CONF_CTX *cctx = SSL_CONF_CTX_new();
+
+    SSL_CONF_CTX_set_ssl_ctx(cctx, ctx);
+    SSL_CONF_CTX_set_flags(cctx, SSL_CONF_FLAG_FILE);
+    SSL_CONF_CTX_set_flags(cctx, SSL_CONF_FLAG_CLIENT);
+    SSL_CONF_CTX_set_flags(cctx, SSL_CONF_FLAG_SERVER);
+    SSL_CONF_CTX_set_flags(cctx, SSL_CONF_FLAG_CERTIFICATE);
+    SSL_CONF_CTX_set_flags(cctx, SSL_CONF_FLAG_SHOW_ERRORS);
+
+    ERR_clear_error();
+    for (i = 0; configs[i]; i++) {
+        char *command = configs[i];
+        char *param = command;
+        while (*param && !isspace(*param)) {
+            param++;
+        }
+        if (*param) {
+            *param = '\0';
+            param++;
+        }
+        while (*param && isspace(*param)) {
+            param++;
+        }
+        if (SSL_CONF_cmd(cctx, command, param) <= 0) {
+            debug(DBG_ERR, "configure_openssl: Failed to add configuration parameter '%s%s%s' to TLS context %s",
+                  command, (*param) ? " " : "", param, name);
+            ret = 0;
+            break;
+        }
+    }
+    if (ret) {
+        if (SSL_CONF_CTX_finish(cctx) == 0) {
+            debug(DBG_ERR, "configure_openssl: Failed to configure TLS context %s", name);
+            ret = 0;
+        }
+    }
+    SSL_CONF_CTX_free(cctx);
+
+    return ret;
+}
+
 static int tlsaddcacrl(SSL_CTX *ctx, struct tls *conf) {
     STACK_OF(X509_NAME) * calist;
     X509_STORE *x509_s;
@@ -745,6 +790,13 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     if (getenv(RSP_KEYLOG_ENV))
         SSL_CTX_set_keylog_callback(ctx, keylog_cb);
 #endif
+
+    if (conf->opensslconfigs) {
+        if (configure_openssl(ctx, conf->opensslconfigs, conf->name) == 0) {
+            SSL_CTX_free(ctx);
+            return NULL;
+        }
+    }
 
     debug(DBG_DBG, "tlscreatectx: created TLS context %s", conf->name);
     return ctx;
@@ -1199,6 +1251,7 @@ int conftls_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *v
                           "TlsVersion", CONF_STR, &tlsversion,
                           "DtlsVersion", CONF_STR, &dtlsversion,
                           "DhFile", CONF_STR, &dhfile,
+                          "OpenSSLConfig", CONF_MSTR, &conf->opensslconfigs,
                           NULL)) {
         debug(DBG_ERR, "conftls_cb: configuration error in block %s", val);
         goto errexit;
@@ -1311,6 +1364,7 @@ errexit:
 #else
     DH_free(conf->dhparam);
 #endif
+    freegconfmstr(conf->opensslconfigs);
     free(conf);
     return 0;
 }
