@@ -828,15 +828,6 @@ int checkttl(struct radmsg *msg, uint32_t *attrtype) {
     return -1;
 }
 
-const char *radmsgtype2string(uint8_t code) {
-    static const char *rad_msg_names[] = {
-        "", "Access-Request", "Access-Accept", "Access-Reject",
-        "Accounting-Request", "Accounting-Response", "", "",
-        "", "", "", "Access-Challenge",
-        "Status-Server", "Status-Client"};
-    return code < 14 && *rad_msg_names[code] ? rad_msg_names[code] : "Unknown";
-}
-
 void char2hex(char *h, unsigned char c) {
     static const char hexdigits[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                                      '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
@@ -1364,9 +1355,7 @@ int radsrv(struct request *rq) {
     }
 
     /* Create new Request Authenticator. */
-    if (msg->code == RAD_Accounting_Request)
-        memset(msg->auth, 0, 16);
-    else if (!RAND_bytes(msg->auth, 16)) {
+    if (msg->code == RAD_Access_Request && !RAND_bytes(msg->auth, 16)) {
         debug(DBG_WARN, "radsrv: failed to generate random auth");
         goto rmclrqexit;
     }

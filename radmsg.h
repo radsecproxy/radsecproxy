@@ -76,6 +76,16 @@ struct radmsg {
     uint8_t msgauthinvalid;
 };
 
+/* radius message header length including code, id, length and authenticator */
+#define RADHDRLEN 20
+#define RADCODE(buf) ((buf)[0])
+#define RADID(buf) ((buf)[1])
+/* radius message length is a 16bit value starting at byte 2, in network order*/
+#define RADLEN(buf) ntohs(*(uint16_t *)(buf + 2))
+#define RADAUTHLEN 16
+#define RADAUTH(buf) ((buf) + 4)
+
+#define ATTRHDRLEN 2
 #define ATTRTYPE(x) ((x)[0])
 #define ATTRLEN(x) ((x)[1])
 #define ATTRVAL(x) ((x) + 2)
@@ -99,6 +109,8 @@ int attrvalidate(unsigned char *attrs, int length);
 struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr);
 int resizeattr(struct tlv *attr, uint8_t newlen);
 int verifyeapformat(struct radmsg *msg);
+
+const char *radmsgtype2string(uint8_t code);
 
 /**
  * convert the attribute value to its string representation form the dictionary 

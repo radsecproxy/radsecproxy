@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include <openssl/err.h>
+#include <openssl/hmac.h>
 #include <openssl/rand.h>
 #include "utilcrypto.h"
 #include "debug.h"
@@ -25,7 +26,7 @@ const EVP_MD *sha256digest(void) {
     return sha256;
 }
 
-EVP_MD_CTX *mdctxcreate(const EVP_MD *digest) {
+static EVP_MD_CTX *mdctxcreate(const EVP_MD *digest) {
     EVP_MD_CTX *ctx = EVP_MD_CTX_new();
     if (!ctx)
         return NULL;
@@ -175,6 +176,48 @@ int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint
         }
     }
     return 1;
+}
+
+int radmsgsign(uint8_t *buf, size_t len, unsigned char *secret, size_t secret_len, uint8_t *pmsgauth, uint8_t *rqauth) {
+
+    switch (RADCODE(buf)) {
+    case RAD_Accounting_Request:
+        memset(RADAUTH(buf), 0, RADAUTHLEN);
+        break;
+    case RAD_Access_Accept:
+    case RAD_Access_Challenge:
+    case RAD_Access_Reject:
+    case RAD_Accounting_Response:
+        if (!rqauth) {
+            debug(DBG_ERR, "radmsgsign: missing original request to sign response");
+            return 0;
+        }
+        memcpy(RADAUTH(buf), rqauth, RADAUTHLEN);
+        break;
+    default:
+        /* take authenticator as-is */
+        break;
+    }
+
+    if (pmsgauth && !HMAC(md5digest(), secret, secret_len, buf, len, pmsgauth, NULL)) {
+        debug(DBG_ERR, "radmsgsign: calculating HMAC failed");
+        return 0;
+    }
+
+    {
+        EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
+
+        if (!mdctx ||
+            !EVP_DigestUpdate(mdctx, buf, len) ||
+            !EVP_DigestUpdate(mdctx, secret, secret_len) ||
+            !EVP_DigestFinal_ex(mdctx, RADAUTH(buf), NULL)) {
+            debug(DBG_ERR, "radmsgsign: calculating MD5 hash failed");
+            EVP_MD_CTX_free(mdctx);
+            return 0;
+        }
+        EVP_MD_CTX_free(mdctx);
+        return 1;
+    }
 }
 
 /* Local Variables: */
