@@ -120,10 +120,13 @@ int radmsg_copy_attrs(struct radmsg *dst,
                       uint8_t type) {
     struct list_node *node = NULL;
     struct list *list = radmsg_getalltype(src, type);
+    struct tlv *copy;
     int n = 0;
 
     for (node = list_first(list); node; node = list_next(node)) {
-        if (radmsg_add(dst, copytlv((struct tlv *)node->data), 0) != 1) {
+        copy = copytlv((struct tlv *)node->data);
+        if (!copy || radmsg_add(dst, copy, 0) != 1) {
+            freetlv(copy);
             n = -1;
             break;
         }
