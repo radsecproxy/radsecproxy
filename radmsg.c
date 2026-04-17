@@ -479,7 +479,7 @@ int verifyeapformat(struct radmsg *msg) {
         attr_len += attr->l;
     }
     if (eap_len != attr_len) {
-        debug(DBG_DBG, "verifyeapformat: eap length (%d) does not match attribute content length (%d)", eap_len, attr_len);
+        debug(DBG_DBG, "verifyeapformat: eap length (%zu) does not match attribute content length (%zu)", eap_len, attr_len);
         ret = 0;
         goto exit;
     }
