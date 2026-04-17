@@ -1425,7 +1425,7 @@ int radsrv(struct request *rq) {
 
     msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
     if (!msg) {
-        debug(DBG_NOTICE, "radsrv: error decoding packet (code %d, id %d ?) from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        debug(DBG_NOTICE, "radsrv: message decode/validation error (code %d, id %d ?) from %s (%s)", rq->buf[0], rq->buf[1], from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         freerq(rq);
         return 0;
     }
@@ -1439,20 +1439,21 @@ int radsrv(struct request *rq) {
 
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
     if (msg->code == RAD_Disconnect_Request) {
-        debug(DBG_INFO, "radsrv: disconnect-request not supported");
+        debug(DBG_INFO, "radsrv: disconnect-request not supported from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         respond(rq, RAD_Disconnect_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
     }
     if (msg->code == RAD_CoA_Request) {
-        debug(DBG_INFO, "radsrv: CoA-request not supported");
+        debug(DBG_INFO, "radsrv: CoA-request not supported from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         respond(rq, RAD_CoA_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
     }
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
-        debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
+        debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring code %d (id %d) from %s (%s)",
+              msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         goto exit;
     }
 
     if (msg->msgauthinvalid) {
-        debug(DBG_NOTICE, "radsrv: invalid message-authenticator (code %d, id %d) from %s (%s)", msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        debug(DBG_NOTICE, "radsrv: invalid message-authenticator in %s (id %d) from %s (%s)", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         freerq(rq);
         return 0;
     }
@@ -1479,7 +1480,7 @@ int radsrv(struct request *rq) {
 
     if (options.verifyeap &&
         msg->code == RAD_Access_Request && !verifyeapformat(msg)) {
-        debug(DBG_WARN, "radsrv: eap format error, forcing access-reject");
+        debug(DBG_WARN, "radsrv: eap format error from %s (%s), forcing access-reject", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         respond(rq, RAD_Access_Reject, NULL, 1);
         goto exit;
     }
@@ -1498,7 +1499,7 @@ int radsrv(struct request *rq) {
         if (msg->code == RAD_Accounting_Request) {
             respond(rq, RAD_Accounting_Response, NULL, 0);
         } else
-            debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
+            debug(DBG_INFO, "radsrv: ignoring access request from %s (%s), no username attribute", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         goto exit;
     }
 
@@ -1670,14 +1671,16 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     rqout = server->requests + buf[1];
     pthread_mutex_lock(rqout->lock);
     msg = buf2radmsg(buf, len, server->conf->secret, server->conf->secret_len, rqout->rq ? rqout->rq->msg->auth : NULL);
-    memset(buf, 0, len);
-    free(buf);
-    buf = NULL;
     if (!msg) {
-        debug(DBG_NOTICE, "replyh: message decode/validation error from server %s", server->conf->name);
+        debug(DBG_NOTICE, "replyh: message decode/validation error (code %d, id %d ?) from server %s", buf[0], buf[1], server->conf->name);
+        memset(buf, 0, len);
+        free(buf);
         pthread_mutex_unlock(rqout->lock);
         return 0;
     }
+    memset(buf, 0, len);
+    free(buf);
+    buf = NULL;
 
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge &&
         msg->code != RAD_Accounting_Response) {
@@ -1691,7 +1694,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     }
 
     if (msg->msgauthinvalid) {
-        debug(DBG_WARN, "replyh: message-authenticator invalid from server %s", server->conf->name);
+        debug(DBG_WARN, "replyh: invalid message-authenticator in %s (id %d) from server %s", radmsgtype2string(msg->code), msg->id, server->conf->name);
         radmsg_free(msg);
         pthread_mutex_unlock(rqout->lock);
         return 0;
