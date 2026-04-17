@@ -1424,18 +1424,15 @@ int radsrv(struct request *rq) {
     char tmp[INET6_ADDRSTRLEN];
 
     msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
-    memset(rq->buf, 0, rq->buflen);
-    free(rq->buf);
-    rq->buf = NULL;
-
-    if (!msg || msg->msgauthinvalid) {
-        debug(DBG_NOTICE, "radsrv: ignoring request from %s (%s), %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)),
-              msg ? "message-authenticator invalid" : "error decoding packet");
-        radmsg_free(msg);
+    if (!msg) {
+        debug(DBG_NOTICE, "radsrv: error decoding packet (code %d, id %d ?) from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         freerq(rq);
         return 0;
     }
 
+    memset(rq->buf, 0, rq->buflen);
+    free(rq->buf);
+    rq->buf = NULL;
     rq->msg = msg;
     rq->rqid = msg->id;
     memcpy(rq->rqauth, msg->auth, 16);
@@ -1452,6 +1449,12 @@ int radsrv(struct request *rq) {
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
         debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
         goto exit;
+    }
+
+    if (msg->msgauthinvalid) {
+        debug(DBG_NOTICE, "radsrv: invalid message-authenticator (code %d, id %d) from %s (%s)", msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        freerq(rq);
+        return 0;
     }
 
     purgedupcache(from);
