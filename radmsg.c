@@ -260,7 +260,10 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
         return -1;
     }
     if (secret) {
-        if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(*buf, size, secret, secret_len)) {
+        if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge ||
+             msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request ||
+             msg->code == RAD_CoA_NAK || msg->code == RAD_Disconnect_NAK) &&
+            !_radsign(*buf, size, secret, secret_len)) {
             free(*buf);
             *buf = NULL;
             return -1;
@@ -282,16 +285,16 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         return NULL;
     }
 
-    if (secret && buf[0] == RAD_Accounting_Request) {
+    if (secret && (buf[0] == RAD_Accounting_Request || buf[0] == RAD_CoA_Request || buf[0] == RAD_Disconnect_Request)) {
         memset(auth, 0, 16);
         if (!_validauth(buf, len, auth, secret, secret_len)) {
-            debug(DBG_WARN, "buf2radmsg: Accounting-Request message authentication failed");
+            debug(DBG_WARN, "buf2radmsg: invalid request authenticator");
             return NULL;
         }
     }
 
     if (rqauth && secret && !_validauth(buf, len, rqauth, secret, secret_len)) {
-        debug(DBG_WARN, "buf2radmsg: Invalid auth, ignoring reply");
+        debug(DBG_WARN, "buf2radmsg: invalid response authenticator");
         return NULL;
     }
 
