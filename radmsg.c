@@ -373,7 +373,7 @@ uint8_t attrname2val(char *attrname) {
 
 /* ATTRNAME is on the form vendor[:type].
    If only vendor is found, TYPE is set to 256 and 1 is returned.
-   If type is >= 256, 1 is returned.
+   If type is found and < 256, 1 is returned.
    Otherwise, 0 is returned.
 */
 /* should accept both names and numeric values, only numeric right now */
