@@ -66,7 +66,7 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
 
 int radmsg_add(struct radmsg *msg, struct tlv *attr, uint8_t front) {
     if (!msg || !msg->attrs)
-        return 1;
+        return 0;
     if (!attr || attr->l > RAD_Max_Attr_Value_Length)
         return 0;
     return front ? list_push_front(msg->attrs, attr) : list_push(msg->attrs, attr);
