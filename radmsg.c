@@ -236,7 +236,7 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     size = 20;
     for (node = list_first(msg->attrs); node; node = list_next(node))
         size += 2 + ((struct tlv *)node->data)->l;
-    if (size > 65535 || size < 0)
+    if (size > RAD_Max_Length || size < 0)
         return -1;
     *buf = malloc(size);
     if (!*buf)
