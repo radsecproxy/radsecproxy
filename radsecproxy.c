@@ -1447,8 +1447,8 @@ int radsrv(struct request *rq) {
         respond(rq, RAD_CoA_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
     }
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
-        debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring code %d (id %d) from %s (%s)",
-              msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        debug(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring %s (code %d, id %d) from %s (%s)",
+              radmsgtype2string(msg->code), msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         goto exit;
     }
 
@@ -1684,7 +1684,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge &&
         msg->code != RAD_Accounting_Response) {
-        debug(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
+        debug(DBG_INFO, "replyh: discarding message type %s (code %d), accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code), msg->code);
         goto errunlock;
     }
 
