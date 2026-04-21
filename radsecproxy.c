@@ -1700,13 +1700,6 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         return 0;
     }
 
-    if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
-        (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
-        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {
-            debug(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
-            goto errunlock;
-        }
-    }
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
 
     gettimeofday(&server->lastrcv, NULL);
@@ -1717,6 +1710,14 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         if (server->conf->statusserver == RSP_STATSRV_AUTO)
             server->conf->statusserver = RSP_STATSRV_MINIMAL;
         goto errunlock;
+    }
+
+    if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
+        (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
+        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {
+            debug(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
+            goto errunlock;
+        }
     }
 
     gettimeofday(&server->lastreply, NULL);
