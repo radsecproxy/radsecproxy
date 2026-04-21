@@ -1,3 +1,15 @@
+unreleased 1.11.3
+	Bug Fixes:
+	- Fix Message-Authenticator validation for Accounting-Request
+	- Fix DtlsVersion config
+	- Fix Request-/Response Authenticator for recognized but unsupported types
+	- Fix fail if outgoing radius message is too big
+	- Fix Status-Server might not work when using RequireMessageAuthenticator
+
+	Misc:
+	- Improve message decode/verification error logging
+	- Don't fail startup when config include glob finds 0 files
+
 2025-03-25 1.11.2
 	Bug Fixes:
 	- Fix Message-Authenticator validation for Accounting-Response
