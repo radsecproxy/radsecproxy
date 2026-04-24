@@ -372,12 +372,10 @@ void *tcpservernew(void *arg) {
 
     conf = find_clconf(handle, (struct sockaddr *)&from, NULL, NULL);
     if (conf) {
-        client = addclient(conf, 1);
+        client = addclient(conf, s, (struct sockaddr *)&from, 1);
         if (client) {
             if (conf->keepalive)
                 enable_keepalive(s);
-            client->sock = s;
-            client->addr = addr_copy((struct sockaddr *)&from);
             tcpserverrd(client);
             removeclient(client);
         } else

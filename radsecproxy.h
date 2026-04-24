@@ -1,6 +1,7 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2010-2012,2016, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs */
 /* See LICENSE for licensing information. */
 
 #ifndef _RADSECPROXY_H
@@ -31,6 +32,7 @@
 #define DUPLICATE_INTERVAL REQUEST_RETRY_INTERVAL *REQUEST_RETRY_COUNT
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
+#define STATUS_SERVER_PERIOD_REVERSE_COA 15
 #define IDLE_TIMEOUT_DEFAULT 600
 #define PSK_MIN_LENGTH 16
 #define RSP_SECRET_LEN_WARN 12
@@ -131,6 +133,7 @@ struct request {
     uint8_t rqauth[16];
     uint8_t newid;
     int udpsock; /* only for UDP */
+    struct sockaddr_storage *to_override; /* reverse coa udp dest override, replaces from->addr for port fix-up */
 };
 
 /* requests that our client will send */
@@ -139,6 +142,7 @@ struct rqout {
     struct request *rq;
     uint8_t tries;
     struct timeval expiry;
+    uint8_t sentauth[16];
 };
 
 struct gqueue {
@@ -196,9 +200,24 @@ struct clsrvconf {
     long dtlsmtu;
     uint8_t reqmsgauth;
     uint8_t reqmsgauthproxy;
+    char **reverse_coa_realms;
+    uint8_t accept_reverse_coa;
+    char *nas_identifier;
+    long reverse_coa_timeout;
+    uint16_t coaport; /* reverse coa destination port for udp clients, default 3799 */
 };
 
 #include "tlscommon.h"
+
+struct coa_dedup_slot {
+    uint8_t occupied;
+    uint8_t auth[16];
+    time_t received;
+    uint8_t *replybuf;
+    int replybuflen;
+};
+
+struct reverse_coa_route;
 
 struct client {
     struct clsrvconf *conf;
@@ -210,6 +229,9 @@ struct client {
     struct sockaddr *addr;
     time_t expiry; /* for udp */
     struct timeval tlsnewkey;
+    struct rqout *reverse_coa_rqs;
+    uint8_t reverse_coa_nextid;
+    struct reverse_coa_route *reverse_coa_route;
 };
 
 struct server {
@@ -232,6 +254,9 @@ struct server {
     uint8_t conreset;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
+    struct coa_dedup_slot reverse_coa_seen[MAX_REQUESTS];
+    pthread_mutex_t reverse_coa_lock;
+    time_t last_dedup_cleanup;
 };
 
 struct realm {
@@ -275,12 +300,16 @@ struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_n
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct list *find_all_clconf(uint8_t type, struct sockaddr *addr, struct list_node *cur, struct hostportres **hp);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
-struct client *addclient(struct clsrvconf *conf, uint8_t lock);
+struct client *addclient(struct clsrvconf *conf, int sock,
+                         const struct sockaddr *from, uint8_t lock);
 void removelockedclient(struct client *client);
 void removeclient(struct client *client);
 struct gqueue *newqueue(void);
 struct request *newrequest(void);
+struct request *newrqref(struct request *rq);
+void sendreply(struct request *rq);
 void freerq(struct request *rq);
+const char *radmsgtype2string(uint8_t code);
 int radsrv(struct request *rq);
 int timeouth(struct server *server);
 int closeh(struct server *server);

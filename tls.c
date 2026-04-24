@@ -1,11 +1,13 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2012, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs */
 /* See LICENSE for licensing information. */
 
 #include "debug.h"
 #include "hostport.h"
 #include "radsecproxy.h"
+#include "reverse_coa.h"
 #include "util.h"
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -300,6 +302,10 @@ void *tlsclientrd(void *arg) {
     for (;;) {
         len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf, 0);
         if (buf && len > 0) {
+            if (try_handle_reverse_coa_request(server, buf, len)) {
+                buf = NULL;
+                continue;
+            }
             if (!replyh(server, buf, len))
                 if (closeh(server))
                     break;
@@ -432,12 +438,11 @@ void *tlsservernew(void *arg) {
         goto exit;
     }
 
-    client = addclient(conf, 1);
+    client = addclient(conf, s, (struct sockaddr *)&from, 1);
     if (client) {
         if (conf->keepalive)
             enable_keepalive(s);
         client->ssl = ssl;
-        client->addr = addr_copy((struct sockaddr *)&from);
         tlsserverrd(client, 0);
         removeclient(client);
     } else
