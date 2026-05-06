@@ -38,7 +38,7 @@
 
 static struct hash *tlsconfs = NULL;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
 static struct tls *tlsdefaultpsk = NULL;
 #endif
 
@@ -295,7 +295,7 @@ static int cookie_verify_cb(SSL *ssl, const unsigned char *cookie, unsigned int 
     return 1;
 }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
 int client_hello_cb(SSL *ssl, int *al, void *arg) {
     const unsigned char *random;
     size_t randomlen;
@@ -342,7 +342,7 @@ static void ssl_info_callback(const SSL *ssl, int where, int ret) {
 }
 #endif
 
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
 int psk_use_session_cb(SSL *ssl, const EVP_MD *md, const unsigned char **id, size_t *idlen, SSL_SESSION **sess) {
     struct clsrvconf *conf = NULL;
     STACK_OF(SSL_CIPHER) * ciphers;
@@ -698,7 +698,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
         }
     }
     SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
     /* TLS 1.3 stuff */
     if (conf->ciphersuites) {
         if (!SSL_CTX_set_ciphersuites(ctx, conf->ciphersuites)) {
@@ -722,7 +722,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
             debug(DBG_WARN, "tlscreatectx: Failed to set dh params. Can continue, but some ciphers might not be available.");
         }
     }
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
     else {
         if (!SSL_CTX_set_dh_auto(ctx, 1)) {
             while ((error = ERR_get_error()))
@@ -736,7 +736,7 @@ static SSL_CTX *tlscreatectx(uint8_t type, struct tls *conf) {
     SSL_CTX_set_cookie_verify_cb(ctx, cookie_verify_cb);
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_cb);
     SSL_CTX_set_verify_depth(ctx, MAX_CERT_DEPTH + 1);
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
     SSL_CTX_set_psk_use_session_callback(ctx, psk_use_session_cb);
     SSL_CTX_set_psk_find_session_callback(ctx, psk_find_session_cb);
     SSL_CTX_set_client_hello_cb(ctx, client_hello_cb, NULL);
@@ -755,7 +755,7 @@ struct tls *tlsgettls(char *conf) {
 }
 
 struct tls *tlsgetdefaultpsk(void) {
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
     if (!tlsdefaultpsk) {
         if (!(tlsdefaultpsk = calloc(1, sizeof(struct tls)))) {
             debug(DBG_ERR, "malloc failed");
@@ -1143,7 +1143,7 @@ static int parse_tls_version(uint8_t dtls, const char *version) {
             return TLS1_1_VERSION;
         if (!strcasecmp("TLS1_2", version))
             return TLS1_2_VERSION;
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
         if (!strcasecmp("TLS1_3", version))
             return TLS1_3_VERSION;
 #endif
@@ -1508,7 +1508,7 @@ int sslaccepttimeout(SSL *ssl, int timeout) {
     return r;
 }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
 void ssl_msg_cb(int write_p, int version,
                 int content_type, const void *buf,
                 size_t len, SSL *ssl, void *arg) {
@@ -1554,7 +1554,7 @@ int sslconnecttimeout(SSL *ssl, int timeout) {
         return -1;
     }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
     SSL_set_msg_callback(ssl, ssl_msg_cb);
 #endif
 
@@ -1598,7 +1598,7 @@ int sslconnecttimeout(SSL *ssl, int timeout) {
 
     if (fcntl(socket, F_SETFL, origflags) == -1)
         debugerrno(errno, DBG_WARN, "Failed to set original flags back");
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
     removeclientselfiecache(ssl);
 #endif
     return r;
@@ -1870,7 +1870,7 @@ void *tlsserverwr(void *arg) {
         }
 
         gettimeofday(&now, NULL);
-#if OPENSSL_VERSION_NUMBER >= 0x10101000
+#if OPENSSL_VERSION_NUMBER >= 0x10101000 && !defined(LIBRESSL_VERSION_NUMBER)
         if (now.tv_sec - client->tlsnewkey.tv_sec > RSP_TLS_REKEY_INTERVAL && SSL_version(client->ssl) >= TLS1_3_VERSION) {
             debug(DBG_DBG, "tlsserverwr: perform key update for long-running connection");
             if (SSL_get_key_update_type(client->ssl) == SSL_KEY_UPDATE_NONE &&
