@@ -1091,7 +1091,7 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     }
     stationid = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Calling_Station_Id));
     if (stationid) {
-        sprintf((char *)logstationid, " stationid ");
+        snprintf((char *)logstationid, sizeof(logstationid), " stationid ");
         switch (options.log_mac) {
         case RSP_MAC_VENDOR_HASHED:
         case RSP_MAC_VENDOR_KEY_HASHED:
@@ -1103,11 +1103,11 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
             fticks_hashmac((uint8_t *)stationid, options.log_mac == RSP_MAC_FULLY_KEY_HASHED ? options.log_key : NULL, 65, (uint8_t *)logstationid + 11);
             break;
         case RSP_MAC_STATIC:
-            sprintf(logstationid + 11, "undisclosed");
+            snprintf(logstationid + 11, sizeof(logstationid) - 11, "undisclosed");
             break;
         case RSP_MAC_ORIGINAL:
         default:
-            strncpy(logstationid + 11, (char *)stationid, 128 - 12);
+            strlcpy(logstationid + 11, (char *)stationid, sizeof(logstationid) - 11);
         }
         free(stationid);
     }
@@ -2528,21 +2528,23 @@ int dynamicconfigsrv(struct server *server, const char *srvstring) {
     }
 
     for (i = 0; srv[i]; i++) {
-        char *hostport = malloc(strlen(srv[i]->host) + sizeof(":65535"));
+        size_t hostport_sz = strlen(srv[i]->host) + sizeof(":65535");
+        char *hostport = malloc(hostport_sz);
         if (!hostport) {
             debug(DBG_ERR, "malloc failed");
             goto exithostport;
         }
-        sprintf(hostport, "%s:%d", srv[i]->host, srv[i]->port);
+        snprintf(hostport, hostport_sz, "%s:%d", srv[i]->host, srv[i]->port);
         hostports[i] = hostport;
     }
 
-    servername = malloc(strlen("dynamic:") + strlen(server->dynamiclookuparg) + 1);
+    size_t servername_sz = strlen("dynamic:") + strlen(server->dynamiclookuparg) + 1;
+    servername = malloc(servername_sz);
     if (!servername) {
         debug(DBG_ERR, "malloc failed");
         goto exithostport;
     }
-    sprintf(servername, "dynamic:%s", server->dynamiclookuparg);
+    snprintf(servername, servername_sz, "dynamic:%s", server->dynamiclookuparg);
 
     conf->name = servername;
     conf->hostsrc = hostports;
@@ -2598,10 +2600,11 @@ int dynamicconfig(struct server *server) {
         srvext = strchr(conf->dynamiclookupcommand, ':');
         if (!srvext)
             return 0;
-        srvquery = malloc((strlen(srvext) + 1 + strlen(server->dynamiclookuparg) + 1) * sizeof(char));
+        size_t srvquery_sz = strlen(srvext) + 1 + strlen(server->dynamiclookuparg) + 1;
+        srvquery = malloc(srvquery_sz);
         if (!srvquery)
             return 0;
-        sprintf(srvquery, "%s%s%s", srvext + 1, conf->dynamiclookupcommand[strlen(conf->dynamiclookupcommand) - 1] == '.' ? "" : ".", server->dynamiclookuparg);
+        snprintf(srvquery, srvquery_sz, "%s%s%s", srvext + 1, conf->dynamiclookupcommand[strlen(conf->dynamiclookupcommand) - 1] == '.' ? "" : ".", server->dynamiclookuparg);
 
         result = dynamicconfigsrv(server, srvquery);
         free(srvquery);
