@@ -132,14 +132,15 @@ int pushgconfpaths(struct gconffile **cf, const char *cfgpath) {
             goto exit;
         }
         dir = dirname(curfile);
-        path = malloc(strlen(dir) + strlen(cfgpath) + 2);
+        size_t dlen = strlen(dir), plen = strlen(cfgpath);
+        path = malloc(dlen + plen + 2);
         if (!path) {
             debug(DBG_ERR, "malloc failed");
             goto exit;
         }
-        strcpy(path, dir);
-        path[strlen(dir)] = '/';
-        strcpy(path + strlen(dir) + 1, cfgpath);
+        strlcpy(path, dir, dlen + 1);
+        path[dlen] = '/';
+        strlcpy(path + dlen + 1, cfgpath, plen + 1);
     }
     memset(&globbuf, 0, sizeof(glob_t));
     if ((result = glob(path, 0, NULL, &globbuf))) {
@@ -544,12 +545,14 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
             }
             break;
         case CONF_CBK:
-            optval = malloc(strlen(opt) + strlen(val) + 2);
+            ;
+            size_t optval_sz = strlen(opt) + strlen(val) + 2;
+            optval = malloc(optval_sz);
             if (!optval) {
                 debug(DBG_ERR, "malloc failed");
                 goto errexit;
             }
-            sprintf(optval, "%s %s", opt, val);
+            snprintf(optval, optval_sz, "%s %s", opt, val);
             if (!cbk(cf, cbkarg, optval, opt, val)) {
                 free(optval);
                 goto errexit;
