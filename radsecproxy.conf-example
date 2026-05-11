@@ -142,6 +142,15 @@ tls default {
 #	modifyAttribute 1:/^(.*)@local$/\1@example.com/
 # }
 
+# Inject the client's source IP as a vendor-specific attribute.
+# Useful when proxying to preserve the original client IP address.
+# rewrite injectSourceIP {
+#       # Add source IP as vendor attribute (vendor 12345, sub-type 1)
+#       addMetaVendorAttribute 12345:1:source_ip
+#       # Or add source IP as Calling-Station-Id only if not already present
+#       # supplementMetaAttribute 31:source_ip
+# }
+
 client [2001:db8::1] {
 	type	tls
 	secret	verysecret

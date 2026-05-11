@@ -1289,6 +1289,7 @@ int radsrv(struct request *rq) {
     struct realm *realm = NULL;
     struct server *to = NULL;
     struct client *from = rq->from;
+    struct rewrite_context ctx = {from->addr, from->conf->name};
     int ttlres, result;
     char tmp[INET6_ADDRSTRLEN];
 
@@ -1364,7 +1365,7 @@ int radsrv(struct request *rq) {
         goto exit;
     }
 
-    if (from->conf->rewritein && (result = dorewrite(msg, from->conf->rewritein)) < 1) {
+    if (from->conf->rewritein && (result = dorewrite(msg, from->conf->rewritein, &ctx)) < 1) {
         if (result == 0) {
             debug_limit(DBG_NOTICE, "radsrv: rewrite %s results in invalid attribute(s) from %s (%s)", from->conf->rewritein->confname, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
             respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
@@ -1483,7 +1484,7 @@ int radsrv(struct request *rq) {
         }
     }
 
-    if (to->conf->rewriteout && (result = dorewrite(msg, to->conf->rewriteout)) < 1) {
+    if (to->conf->rewriteout && (result = dorewrite(msg, to->conf->rewriteout, &ctx)) < 1) {
         if (result == 0) {
             debug_limit(DBG_NOTICE, "radsrv: rewrite %s results in invalid attribute(s) from %s (%s) to %s", from->conf->rewriteout->confname, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
             respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
@@ -1602,6 +1603,7 @@ int closeh(struct server *server) {
 /* returns 0 if packet decode fails, -1 if authentication fails else 1 */
 int replyh(struct server *server, uint8_t *buf, int len) {
     struct client *from;
+    struct rewrite_context ctx;
     struct rqout *rqout;
     int ttlres, result = 0;
     struct radmsg *msg = NULL;
@@ -1677,6 +1679,8 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     }
 
     from = rqout->rq->from;
+    ctx.clientaddr = from->addr;
+    ctx.clientname = from->conf->name;
 
     if (msg->code == RAD_Protocol_Error) {
         uint32_t code = 0, cause = 0;
@@ -1720,7 +1724,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     gettimeofday(&server->lastreply, NULL);
 
-    if (server->conf->rewritein && (result = dorewrite(msg, server->conf->rewritein)) < 1) {
+    if (server->conf->rewritein && (result = dorewrite(msg, server->conf->rewritein, &ctx)) < 1) {
         debug(DBG_INFO, "replyh: rewritein failed");
         if (result == 0) {
             debug_limit(DBG_NOTICE, "replyh: rewrite %s results in invalid attribute(s) from %s", server->conf->rewritein->confname, server->conf->name);
@@ -1765,7 +1769,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         memcpy(attr->v, rqout->rq->origusername, strlen(rqout->rq->origusername));
     }
 
-    if (from->conf->rewriteout && (result = dorewrite(msg, from->conf->rewriteout)) < 1) {
+    if (from->conf->rewriteout && (result = dorewrite(msg, from->conf->rewriteout, &ctx)) < 1) {
         debug(DBG_WARN, "replyh: rewriteout failed");
         if (result == 0) {
             debug_limit(DBG_NOTICE, "replyh: rewrite %s results in invalid attribute(s) from %s", server->conf->rewritein->confname, server->conf->name);
@@ -3268,6 +3272,8 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
     char **addattrs = NULL, **addvattrs = NULL;
     char **modattrs = NULL, **modvattrs = NULL;
     char **supattrs = NULL, **supvattrs = NULL;
+    char **addmetaattrs = NULL, **addmetavattrs = NULL;
+    char **supmetaattrs = NULL, **supmetavattrs = NULL;
 
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
 
@@ -3283,10 +3289,15 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
                           "modifyVendorAttribute", CONF_MSTR, &modvattrs,
                           "supplementAttribute", CONF_MSTR_NOESC, &supattrs,
                           "supplementVendorAttribute", CONF_MSTR_NOESC, &supvattrs,
+                          "addMetaAttribute", CONF_MSTR, &addmetaattrs,
+                          "addMetaVendorAttribute", CONF_MSTR, &addmetavattrs,
+                          "supplementMetaAttribute", CONF_MSTR, &supmetaattrs,
+                          "supplementMetaVendorAttribute", CONF_MSTR, &supmetavattrs,
                           NULL))
         debugx(1, DBG_ERR, "configuration error");
     addrewrite(val, whitelist_mode, whitelist_mode ? wlattrs : rmattrs, whitelist_mode ? wlvattrs : rmvattrs,
-               addattrs, addvattrs, modattrs, modvattrs, supattrs, supvattrs);
+               addattrs, addvattrs, modattrs, modvattrs, supattrs, supvattrs,
+               addmetaattrs, addmetavattrs, supmetaattrs, supmetavattrs);
 
     freegconfmstr(whitelist_mode ? rmattrs : wlattrs);
     freegconfmstr(whitelist_mode ? rmvattrs : wlvattrs);
