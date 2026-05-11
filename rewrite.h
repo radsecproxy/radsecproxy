@@ -8,11 +8,24 @@
 #include "radmsg.h"
 #include <regex.h>
 
+struct sockaddr;
+
 struct modattr {
     uint8_t t;
     uint32_t vendor;
     char *replacement;
     regex_t *regex;
+};
+
+struct dynattr {
+    uint8_t t;
+    uint32_t vendor;
+    char *field;
+};
+
+struct rewrite_context {
+    struct sockaddr *clientaddr;
+    char *clientname;
 };
 
 struct rewrite {
@@ -23,12 +36,16 @@ struct rewrite {
     struct list *modattrs;       /*struct modattr*/
     struct list *modvattrs;      /*struct modattr*/
     struct list *supattrs;       /*struct tlv*/
+    struct list *addmetaattrs;   /*struct dynattr*/
+    struct list *supmetaattrs;   /*struct dynattr*/
 };
 
 void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmvattrs, char **addattrs,
-                char **addvattrs, char **modattrs, char **modvattrs, char **supattrs, char **supvattrs);
-int dorewrite(struct radmsg *msg, struct rewrite *rewrite);
+                char **addvattrs, char **modattrs, char **modvattrs, char **supattrs, char **supvattrs,
+                char **addmetaattrs, char **addmetavattrs, char **supmetaattrs, char **supmetavattrs);
+int dorewrite(struct radmsg *msg, struct rewrite *rewrite, struct rewrite_context *ctx);
 struct modattr *extractmodattr(char *nameval);
+struct dynattr *extractdynattr(char *nameval, char vendor_flag);
 struct rewrite *getrewrite(char *alt1, char *alt2);
 
 int dorewritemodattr(struct tlv *attr, struct modattr *modattr);

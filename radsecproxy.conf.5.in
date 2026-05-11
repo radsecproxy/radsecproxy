@@ -1075,7 +1075,11 @@ The rewrite actions are performed in this sequence:
 .br
 3. SupplementAttribute
 .br
-4. AddAttribute
+4. SupplementMetaAttribute
+.br
+5. AddAttribute
+.br
+6. AddMetaAttribute
 .RE
 
 All options can be specified multiple times. The allowed options in a rewrite
@@ -1111,6 +1115,44 @@ the same as for \fBaddAttribute\fR above.
 Add a vendor attribute to the radius message only if the \fIsubattribute\fR of
 this \fIvendor\fR is not yet present on the message. The format of is the same
 as for \fBaddVendorAttribute\fR above.
+.RE
+
+.BI "AddMetaAttribute " attribute \fR: keyword
+.RS
+Add an \fIattribute\fR to the radius message with a value resolved at runtime
+from connection metadata. The \fIattribute\fR must be specified using the
+numerical attribute id. The \fIkeyword\fR identifies which metadata to use.
+The metadata always refers to the originating client of the request, even
+when the rewrite is applied on a response path (i.e., \fBsource_ip\fR is
+the IP of the client that sent the original request, not the upstream
+server's IP).
+Supported keywords are:
+.br
+\fBsource_ip\fR \- the source IP address of the client connection (string)
+.br
+\fBsource_port\fR \- the source port of the client connection (string)
+.br
+\fBclient_name\fR \- the name of the client configuration block (string)
+.RE
+
+.BI "AddMetaVendorAttribute " vendor \fR: subattribute \fR: keyword
+.RS
+Add a vendor attribute to the radius message with a value resolved at runtime
+from connection metadata. Both \fIvendor\fR and \fIsubattribute\fR must be
+specified as numerical values. The \fIkeyword\fR is the same as for
+\fBAddMetaAttribute\fR above.
+.RE
+
+.BI "SupplementMetaAttribute " attribute \fR: keyword
+.RS
+Like \fBAddMetaAttribute\fR, but only adds the attribute if it is not already
+present on the message.
+.RE
+
+.BI "SupplementMetaVendorAttribute " vendor \fR: subattribute \fR: keyword
+.RS
+Like \fBAddMetaVendorAttribute\fR, but only adds the vendor attribute if the
+\fIsubattribute\fR of this \fIvendor\fR is not already present on the message.
 .RE
 
 .BI "ModifyAttribute " attribute \fR:/ regex \fR/ replace \fR/
