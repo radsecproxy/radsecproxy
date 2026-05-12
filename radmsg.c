@@ -9,6 +9,7 @@
 #include "util.h"
 #include <arpa/inet.h>
 #include <nettle/hmac.h>
+#include <nettle/version.h>
 #include <openssl/rand.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -149,7 +150,11 @@ int _checkmsgauth(unsigned char *rad, int radlen, uint8_t *authattr, uint8_t *se
 
     hmac_md5_set_key(&hmacctx, secret_len, secret);
     hmac_md5_update(&hmacctx, radlen, rad);
+#if NETTLE_VERSION_MAJOR >= 4
+    hmac_md5_digest(&hmacctx, hash);
+#else
     hmac_md5_digest(&hmacctx, sizeof(hash), hash);
+#endif
 
     memcpy(authattr, auth, MD5_DIGEST_SIZE);
 
@@ -172,7 +177,11 @@ int _validauth(unsigned char *rad, int len, unsigned char *reqauth, unsigned cha
     if (len > 20)
         md5_update(&mdctx, len - 20, rad + 20);
     md5_update(&mdctx, sec_len, sec);
+#if NETTLE_VERSION_MAJOR >= 4
+    md5_digest(&mdctx, hash);
+#else
     md5_digest(&mdctx, sizeof(hash), hash);
+#endif
 
     result = !memcmp(hash, rad + 4, 16);
 
@@ -192,7 +201,11 @@ int _createmessageauth(unsigned char *rad, int radlen, unsigned char *authattrva
     memset(authattrval, 0, 16);
     hmac_md5_set_key(&hmacctx, secret_len, secret);
     hmac_md5_update(&hmacctx, radlen, rad);
+#if NETTLE_VERSION_MAJOR >= 4
+    hmac_md5_digest(&hmacctx, authattrval);
+#else
     hmac_md5_digest(&hmacctx, MD5_DIGEST_SIZE, authattrval);
+#endif
 
     pthread_mutex_unlock(&lock);
     return 1;
@@ -207,7 +220,11 @@ int _radsign(unsigned char *rad, int radlen, unsigned char *sec, int sec_len) {
     md5_init(&mdctx);
     md5_update(&mdctx, radlen, rad);
     md5_update(&mdctx, sec_len, sec);
+#if NETTLE_VERSION_MAJOR >= 4
+    md5_digest(&mdctx, rad + 4);
+#else
     md5_digest(&mdctx, MD5_DIGEST_SIZE, rad + 4);
+#endif
 
     pthread_mutex_unlock(&lock);
     return 1;
