@@ -81,7 +81,7 @@ struct radmsg {
 #define RADCODE(buf) ((buf)[0])
 #define RADID(buf) ((buf)[1])
 /* radius message length is a 16bit value starting at byte 2, in network order*/
-#define RADLEN(buf) ntohs(*(uint16_t *)(buf + 2))
+#define RADLEN(buf) (uint16_t)(buf[2] << 8 | buf[3])
 #define RADAUTHLEN 16
 #define RADAUTH(buf) ((buf) + 4)
 

@@ -146,6 +146,7 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     struct list_node *node;
     struct tlv *tlv;
     int size;
+    uint16_t netshort;
     uint8_t *p, *pmsgauth = NULL;
 
     if (!msg || !msg->attrs)
@@ -161,7 +162,8 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
 
     RADCODE(*buf) = msg->code;
     RADID(*buf) = msg->id;
-    *(uint16_t *)(*buf + 2) = htons(size);
+    netshort = htons(size);
+    memcpy(*buf + 2, &netshort, sizeof(uint16_t));
     memcpy(RADAUTH(*buf), msg->auth, RADAUTHLEN);
 
     p = *buf + RADHDRLEN;
@@ -347,6 +349,7 @@ int verifyeapformat(struct radmsg *msg) {
     struct list *eap_attrs;
     struct list_node *node;
     size_t eap_len = 0, attr_len = 0;
+    uint8_t *val;
     int ret = 1;
 
     if (!(eap_attrs = radmsg_getalltype(msg, RAD_Attr_EAP_Message)))
@@ -363,7 +366,8 @@ int verifyeapformat(struct radmsg *msg) {
         goto exit;
     }
 
-    eap_len = ntohs(*(uint16_t *)(((struct tlv *)node->data)->v + 2));
+    val = ((struct tlv *)node->data)->v;
+    eap_len = (uint16_t)(val[2] << 8 | val[3]);
     for (; node; node = list_next(node)) {
         struct tlv *attr = (struct tlv *)node->data;
         if (attr->l == 0) {
