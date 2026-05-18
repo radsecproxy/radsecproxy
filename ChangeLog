@@ -5,6 +5,7 @@ unreleased 1.11.3
 	- Fix Request-/Response Authenticator for recognized but unsupported types
 	- Fix fail if outgoing radius message is too big
 	- Fix Status-Server might not work when using RequireMessageAuthenticator
+	- Fix crash on startup when log file is not writable (#198)
 
 	Misc:
 	- Improve message decode/verification error logging

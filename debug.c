@@ -81,13 +81,14 @@ int debug_set_destination(char *dest, int log_type) {
 
     if (!strncasecmp(dest, "file:///", 8)) {
         if (log_type != LOG_TYPE_FTICKS) {
+            FILE *test;
             debug_filepath = stringcopy(dest + 7, 0);
-            debug_file = fopen(debug_filepath, "a");
-            if (!debug_file)
+            test = fopen(debug_filepath, "a");
+            if (!test) {
                 debugx(1, DBG_ERR, "Failed to open logfile %s\n%s",
                        debug_filepath, strerror(errno));
-            fclose(debug_file);
-            debug_file = stderr;
+            }
+            fclose(test);
         } else {
             debug(DBG_WARN, "FTicksSyslogFacility starting with file:/// not "
                             "permitted, assuming default F-Ticks destination");
