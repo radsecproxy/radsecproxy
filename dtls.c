@@ -522,6 +522,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
+    server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
     server->conreset = reconnect;
