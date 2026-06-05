@@ -65,6 +65,7 @@
 #include <errno.h>
 #include <libgen.h>
 #include <nettle/md5.h>
+#include <nettle/version.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
@@ -601,7 +602,11 @@ static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared
             md5_update(&mdctx, saltlen, salt);
             salt = NULL;
         }
+#if NETTLE_VERSION_MAJOR >= 4
+        md5_digest(&mdctx, hash);
+#else
         md5_digest(&mdctx, sizeof(hash), hash);
+#endif
         for (i = 0; i < 16; i++)
             out[offset + i] = hash[i] ^ in[offset + i];
         if (encrypt_flag)
@@ -636,7 +641,11 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     md5_update(&mdctx, sharedlen, shared);
     md5_update(&mdctx, 16, auth);
     md5_update(&mdctx, 2, salt);
+#if NETTLE_VERSION_MAJOR >= 4
+    md5_digest(&mdctx, hash);
+#else
     md5_digest(&mdctx, sizeof(hash), hash);
+#endif
 
 #if 0
     printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
@@ -652,7 +661,11 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 #endif
         md5_update(&mdctx, sharedlen, shared);
         md5_update(&mdctx, 16, text + offset - 16);
+#if NETTLE_VERSION_MAJOR >= 4
+        md5_digest(&mdctx, hash);
+#else
         md5_digest(&mdctx, sizeof(hash), hash);
+#endif
 #if 0
 	printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
 #endif
@@ -688,7 +701,11 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
     md5_update(&mdctx, sharedlen, shared);
     md5_update(&mdctx, 16, auth);
     md5_update(&mdctx, 2, salt);
+#if NETTLE_VERSION_MAJOR >= 4
+    md5_digest(&mdctx, hash);
+#else
     md5_digest(&mdctx, sizeof(hash), hash);
+#endif
 
 #if 0
     printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
@@ -704,7 +721,11 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 #endif
         md5_update(&mdctx, sharedlen, shared);
         md5_update(&mdctx, 16, text + offset - 16);
+#if NETTLE_VERSION_MAJOR >= 4
+        md5_digest(&mdctx, hash);
+#else
         md5_digest(&mdctx, sizeof(hash), hash);
+#endif
 #if 0
 	printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
 #endif
