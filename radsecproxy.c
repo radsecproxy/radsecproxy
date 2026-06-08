@@ -1,6 +1,7 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2010-2013,2015-2016, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs */
 /* See LICENSE for licensing information. */
 
 /* For UDP there is one server instance consisting of udpserverrd and udpserverth
@@ -55,6 +56,7 @@
 #include "hash.h"
 #include "hostport.h"
 #include "radsecproxy.h"
+#include "reverse_coa.h"
 #include "tcp.h"
 #include "tls.h"
 #include "udp.h"
@@ -194,7 +196,8 @@ void removequeue(struct gqueue *q) {
     free(q);
 }
 
-struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
+struct client *addclient(struct clsrvconf *conf, int sock,
+                         const struct sockaddr *from, uint8_t lock) {
     struct client *new = NULL;
 
     if (lock)
@@ -202,35 +205,75 @@ struct client *addclient(struct clsrvconf *conf, uint8_t lock) {
     if (!conf->clients) {
         conf->clients = list_create();
         if (!conf->clients) {
-            if (lock)
-                pthread_mutex_unlock(conf->lock);
             debug(DBG_ERR, "malloc failed");
-            return NULL;
+            goto out_unlock;
         }
     }
 
     new = calloc(1, sizeof(struct client));
     if (!new) {
         debug(DBG_ERR, "malloc failed");
-        if (lock)
-            pthread_mutex_unlock(conf->lock);
-        return NULL;
+        goto out_unlock;
     }
-    if (!list_push(conf->clients, new)) {
-        free(new);
-        if (lock)
-            pthread_mutex_unlock(conf->lock);
-        return NULL;
-    }
+
+    if (!list_push(conf->clients, new))
+        goto out_free_client;
+
     new->conf = conf;
+    new->sock = sock;
+    /* set addr before register_reverse_coa_client so any concurrent
+       lookup that finds the new client via realm_reverse_coa_lock never dereferences
+       a NULL addr */
+    if (from) {
+        new->addr = addr_copy((struct sockaddr *)from);
+        if (!new->addr) {
+            debug(DBG_ERR, "malloc failed for client addr");
+            goto out_undo_list;
+        }
+    }
+
     if (conf->pdef->addclient)
         conf->pdef->addclient(new);
     else
         new->replyq = newqueue();
     pthread_mutex_init(&new->lock, NULL);
+    if (conf->reverse_coa_realms || conf->nas_identifier) {
+        new->reverse_coa_rqs = calloc(MAX_REQUESTS, sizeof(struct rqout));
+        if (!new->reverse_coa_rqs) {
+            debug(DBG_ERR, "malloc failed for reverse_coa_rqs");
+            goto out_undo_client;
+        }
+        new->reverse_coa_route = reverse_coa_route_new(new);
+        if (!new->reverse_coa_route) {
+            debug(DBG_ERR, "malloc failed for reverse_coa_route");
+            free(new->reverse_coa_rqs);
+            new->reverse_coa_rqs = NULL;
+            goto out_undo_client;
+        }
+        register_reverse_coa_client(new);
+    }
+
     if (lock)
         pthread_mutex_unlock(conf->lock);
     return new;
+
+out_undo_client:
+    pthread_mutex_destroy(&new->lock);
+    /* only destroy replyq if we own it. udp clients share the
+       static server_replyq via addclientudp; tearing it down here would break
+       all udp traffic on this instance. other transports get a queue from
+       newqueue() in the else branch above, which is safe to remove. */
+    if (!conf->pdef->addclient)
+        removequeue(new->replyq);
+out_undo_list:
+    free(new->addr);
+    list_removedata(conf->clients, new);
+out_free_client:
+    free(new);
+out_unlock:
+    if (lock)
+        pthread_mutex_unlock(conf->lock);
+    return NULL;
 }
 
 pthread_mutex_t *removeclientrqs_sendrq_freeserver_lock(void) {
@@ -273,6 +316,10 @@ void removelockedclient(struct client *client) {
     if (conf->clients) {
         removeclientrqs(client);
         removequeue(client->replyq);
+        unregister_reverse_coa_client(client);
+        reverse_coa_route_deref(client->reverse_coa_route);
+        client->reverse_coa_route = NULL;
+        free_reverse_coa_rqs(client);
         list_removedata(conf->clients, client);
         pthread_mutex_destroy(&client->lock);
         free(client->addr);
@@ -298,6 +345,8 @@ void freeserver(struct server *server, uint8_t destroymutex) {
     if (!server)
         return;
 
+    invalidate_reverse_coa_rqs_for_server(server, clconfs);
+
     pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
     if (server->requests) {
         rqout = server->requests;
@@ -312,10 +361,12 @@ void freeserver(struct server *server, uint8_t destroymutex) {
     if (server->ssl) {
         SSL_free(server->ssl);
     }
+    drain_coa_dedup(server);
     if (destroymutex) {
         pthread_mutex_destroy(&server->lock);
         pthread_cond_destroy(&server->newrq_cond);
         pthread_mutex_destroy(&server->newrq_mutex);
+        pthread_mutex_destroy(&server->reverse_coa_lock);
     }
     pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
     free(server);
@@ -349,37 +400,39 @@ int addserver(struct clsrvconf *conf, const char *dynamiclookuparg) {
     conf->servers->requests = calloc(MAX_REQUESTS, sizeof(struct rqout));
     if (!conf->servers->requests) {
         debug(DBG_ERR, "malloc failed");
-        goto errexit;
+        goto err_base;
     }
     for (i = 0; i < MAX_REQUESTS; i++) {
         conf->servers->requests[i].lock = malloc(sizeof(pthread_mutex_t));
         if (!conf->servers->requests[i].lock) {
             debug(DBG_ERR, "malloc failed");
-            goto errexit;
+            goto err_base;
         }
         if (pthread_mutex_init(conf->servers->requests[i].lock, NULL)) {
             debugerrno(errno, DBG_ERR, "mutex init failed");
             free(conf->servers->requests[i].lock);
             conf->servers->requests[i].lock = NULL;
-            goto errexit;
+            goto err_base;
         }
     }
     if (pthread_mutex_init(&conf->servers->lock, NULL)) {
         debugerrno(errno, DBG_ERR, "mutex init failed");
-        goto errexit;
+        goto err_base;
     }
     conf->servers->newrq = 0;
     conf->servers->conreset = 0;
     if (pthread_mutex_init(&conf->servers->newrq_mutex, NULL)) {
         debugerrno(errno, DBG_ERR, "mutex init failed");
-        pthread_mutex_destroy(&conf->servers->lock);
-        goto errexit;
+        goto err_lock;
     }
     if (pthread_cond_init(&conf->servers->newrq_cond, NULL)) {
         debugerrno(errno, DBG_ERR, "mutex init failed");
-        pthread_mutex_destroy(&conf->servers->newrq_mutex);
-        pthread_mutex_destroy(&conf->servers->lock);
-        goto errexit;
+        goto err_newrq_mutex;
+    }
+
+    if (pthread_mutex_init(&conf->servers->reverse_coa_lock, NULL)) {
+        debugerrno(errno, DBG_ERR, "mutex init failed");
+        goto err_newrq_cond;
     }
 
     conf->servers->state =
@@ -399,7 +452,13 @@ int addserver(struct clsrvconf *conf, const char *dynamiclookuparg) {
     pthread_mutex_unlock(conf->lock);
     return 1;
 
-errexit:
+err_newrq_cond:
+    pthread_cond_destroy(&conf->servers->newrq_cond);
+err_newrq_mutex:
+    pthread_mutex_destroy(&conf->servers->newrq_mutex);
+err_lock:
+    pthread_mutex_destroy(&conf->servers->lock);
+err_base:
     freeserver(conf->servers, 0);
     conf->servers = NULL;
     pthread_mutex_unlock(conf->lock);
@@ -447,6 +506,8 @@ void freerq(struct request *rq) {
     }
     if (rq->msg)
         radmsg_free(rq->msg);
+    if (rq->to_override)
+        free(rq->to_override);
     pthread_mutex_destroy(&rq->refmutex);
     free(rq);
 }
@@ -1031,12 +1092,25 @@ int checkttl(struct radmsg *msg, uint32_t *attrtype) {
 }
 
 const char *radmsgtype2string(uint8_t code) {
-    static const char *rad_msg_names[] = {
-        "", "Access-Request", "Access-Accept", "Access-Reject",
-        "Accounting-Request", "Accounting-Response", "", "",
-        "", "", "", "Access-Challenge",
-        "Status-Server", "Status-Client"};
-    return code < 14 && *rad_msg_names[code] ? rad_msg_names[code] : "Unknown";
+    static const char *const rad_msg_names[] = {
+        [RAD_Access_Request]      = "Access-Request",
+        [RAD_Access_Accept]       = "Access-Accept",
+        [RAD_Access_Reject]       = "Access-Reject",
+        [RAD_Accounting_Request]  = "Accounting-Request",
+        [RAD_Accounting_Response] = "Accounting-Response",
+        [RAD_Access_Challenge]    = "Access-Challenge",
+        [RAD_Status_Server]       = "Status-Server",
+        [RAD_Status_Client]       = "Status-Client",
+        [RAD_Disconnect_Request]  = "Disconnect-Request",
+        [RAD_Disconnect_ACK]      = "Disconnect-ACK",
+        [RAD_Disconnect_NAK]      = "Disconnect-NAK",
+        [RAD_CoA_Request]         = "CoA-Request",
+        [RAD_CoA_ACK]             = "CoA-ACK",
+        [RAD_CoA_NAK]             = "CoA-NAK",
+    };
+    if (code < sizeof(rad_msg_names) / sizeof(rad_msg_names[0]) && rad_msg_names[code])
+        return rad_msg_names[code];
+    return "Unknown";
 }
 
 void char2hex(char *h, unsigned char c) {
@@ -1432,7 +1506,12 @@ int radsrv(struct request *rq) {
     int ttlres;
     char tmp[INET6_ADDRSTRLEN];
 
-    msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
+    uint8_t *rqauth_for_parse = NULL;
+    uint8_t rqauth_buf[16];
+    if (lookup_reverse_coa_rqauth(from, rq->buf, rq->buflen, rqauth_buf))
+        rqauth_for_parse = rqauth_buf;
+
+    msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, rqauth_for_parse);
     memset(rq->buf, 0, rq->buflen);
     free(rq->buf);
     rq->buf = NULL;
@@ -1450,6 +1529,17 @@ int radsrv(struct request *rq) {
     memcpy(rq->rqauth, msg->auth, 16);
 
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
+
+    if (IS_COA_RESPONSE(msg->code)) {
+        if (forward_coa_response(from, msg)) {
+            debug(DBG_DBG, "radsrv: forwarded reverse coa response");
+            goto exit;
+        }
+        debug(DBG_WARN, "radsrv: %s (id %d) from %s did not match any pending reverse-coa request, dropping",
+              radmsgtype2string(msg->code), msg->id, from->conf->name);
+        goto exit;
+    }
+
     if (msg->code == RAD_Disconnect_Request) {
         debug_limit(DBG_INFO, "radsrv: disconnect-request not supported");
         respond(rq, RAD_Disconnect_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
@@ -1680,6 +1770,10 @@ int timeouth(struct server *server) {
 */
 int closeh(struct server *server) {
     debug(DBG_WARN, "closeh: connection to server %s lost", server->conf->name);
+
+    invalidate_reverse_coa_rqs_for_server(server, clconfs);
+    drain_coa_dedup(server);
+
     if (!server->dynamiclookuparg && server->conf->pdef->connecter) {
         server->conf->pdef->connecter(server, 0, 1);
         return 0;
@@ -1895,6 +1989,8 @@ void *clientwr(void *arg) {
 
     assert(server);
     conf = server->conf;
+    int statsrv_period = conf->accept_reverse_coa
+        ? STATUS_SERVER_PERIOD_REVERSE_COA : STATUS_SERVER_PERIOD;
 
 #define ZZZ 900
 
@@ -1947,13 +2043,13 @@ void *clientwr(void *arg) {
             rnd /= 32;
             if (conf->statusserver != RSP_STATSRV_OFF) {
                 secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
-                if (now.tv_sec - secs > STATUS_SERVER_PERIOD)
+                if (now.tv_sec - secs > statsrv_period)
                     secs = now.tv_sec;
-                if (!timeout.tv_sec || timeout.tv_sec > secs + STATUS_SERVER_PERIOD + rnd)
-                    timeout.tv_sec = secs + STATUS_SERVER_PERIOD + rnd;
+                if (!timeout.tv_sec || timeout.tv_sec > secs + statsrv_period + rnd)
+                    timeout.tv_sec = secs + statsrv_period + rnd;
             } else {
-                if (!timeout.tv_sec || timeout.tv_sec > now.tv_sec + STATUS_SERVER_PERIOD + rnd)
-                    timeout.tv_sec = now.tv_sec + STATUS_SERVER_PERIOD + rnd;
+                if (!timeout.tv_sec || timeout.tv_sec > now.tv_sec + statsrv_period + rnd)
+                    timeout.tv_sec = now.tv_sec + statsrv_period + rnd;
             }
 #if 0
 	    if (timeout.tv_sec > now.tv_sec)
@@ -2058,8 +2154,8 @@ void *clientwr(void *arg) {
         do_resend = 0;
         if (server->state == RSP_SERVER_STATE_CONNECTED && !(conf->statusserver == RSP_STATSRV_OFF)) {
             gettimeofday(&now, NULL);
-            if ((conf->statusserver == RSP_STATSRV_ON && now.tv_sec - (server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec) > STATUS_SERVER_PERIOD) ||
-                ((conf->statusserver == RSP_STATSRV_MINIMAL || conf->statusserver == RSP_STATSRV_ON) && statusserver_requested && now.tv_sec - laststatsrv.tv_sec > STATUS_SERVER_PERIOD) ||
+            if ((conf->statusserver == RSP_STATSRV_ON && now.tv_sec - (server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec) > statsrv_period) ||
+                ((conf->statusserver == RSP_STATSRV_MINIMAL || conf->statusserver == RSP_STATSRV_ON) && statusserver_requested && now.tv_sec - laststatsrv.tv_sec > statsrv_period) ||
                 (conf->statusserver == RSP_STATSRV_AUTO && server->lastreply.tv_sec >= laststatsrv.tv_sec)) {
 
                 laststatsrv = now;
@@ -2635,6 +2731,8 @@ void freeclsrvconf(struct clsrvconf *conf) {
         freegconfmstr(conf->confmatchcertattrs);
         freematchcertattr(conf);
 #endif
+        freegconfmstr(conf->reverse_coa_realms);
+        free(conf->nas_identifier);
         free(conf->name);
         if (conf->hostsrc)
             freegconfmstr(conf->hostsrc);
@@ -2842,7 +2940,7 @@ static int confapplytls(struct clsrvconf *conf, const char *block, char *default
 int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     struct clsrvconf *conf, *existing;
     char *conftype = NULL, *rewriteinalias = NULL;
-    long int dupinterval = LONG_MIN, addttl = LONG_MIN;
+    long int dupinterval = LONG_MIN, addttl = LONG_MIN, coaport = LONG_MIN;
     uint8_t ipv4only = 0, ipv6only = 0;
     struct list_node *entry;
 
@@ -2869,7 +2967,11 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "CertificateNameCheck", CONF_BLN, &conf->certnamecheck,
             "CertificateCNCheck", CONF_BLN, &conf->certcncheck,
             "ServerName", CONF_STR, &conf->servername,
+            "reverseCoARealm", CONF_MSTR, &conf->reverse_coa_realms,
+            "NASidentifier", CONF_STR, &conf->nas_identifier,
+            "reverseCoATimeout", CONF_LINT, &conf->reverse_coa_timeout,
 #endif
+            "CoAPort", CONF_LINT, &coaport,
             "DuplicateInterval", CONF_LINT, &dupinterval,
             "idleTimeout", CONF_LINT, &conf->idletimeout,
             "addTTL", CONF_LINT, &addttl,
@@ -2924,6 +3026,42 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         if (addttl < 1 || addttl > 255)
             debugx(1, DBG_ERR, "error in block %s, value of option addTTL is %d, must be 1-255", block, addttl);
         conf->addttl = (uint8_t)addttl;
+    }
+
+#if defined(RADPROT_TLS) || defined(RADPROT_DTLS)
+    if (conf->reverse_coa_realms || conf->nas_identifier) {
+        if (conf->reverse_coa_timeout == 0)
+            conf->reverse_coa_timeout = 30;
+        else if (conf->reverse_coa_timeout < 10) {
+            debug(DBG_WARN, "reverseCoATimeout %ld too low, using minimum 10s "
+                  "(must outlast upstream RetryInterval x RetryCount for %s)",
+                  conf->reverse_coa_timeout, conf->name);
+            conf->reverse_coa_timeout = 10;
+        } else if (conf->reverse_coa_timeout > 120) {
+            debug(DBG_WARN, "reverseCoATimeout %ld too high, using maximum 120s",
+                  conf->reverse_coa_timeout);
+            conf->reverse_coa_timeout = 120;
+        }
+    } else if (conf->reverse_coa_timeout != 0) {
+        debug(DBG_WARN, "reverseCoATimeout %ld on client %s has no effect: "
+              "reverseCoARealm or NASidentifier is required",
+              conf->reverse_coa_timeout, conf->name);
+    }
+#endif
+
+    if (coaport == LONG_MIN) {
+        conf->coaport = 3799;
+    } else if (coaport < 1 || coaport > 65535) {
+        debugx(1, DBG_ERR, "config error: CoAPort %ld out of range (1-65535) for client %s",
+               coaport, conf->name);
+    } else {
+        conf->coaport = (uint16_t)coaport;
+    }
+
+    if (coaport != LONG_MIN && conf->type != RAD_UDP) {
+        debug(DBG_WARN, "CoAPort %ld on client %s ignored: only applies to UDP clients "
+              "(TLS/DTLS use the existing tunnel)",
+              coaport, conf->name);
     }
 
     if (!conf->confrewritein)
@@ -3114,6 +3252,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                           "SNIservername", CONF_STR, &conf->sniservername,
                           "DTLSForceMTU", CONF_LINT, &conf->dtlsmtu,
                           "requireMessageAuthenticator", CONF_BLN, &conf->reqmsgauth,
+                          "acceptReverseCoA", CONF_BLN, &conf->accept_reverse_coa,
                           NULL)) {
         debug(DBG_ERR, "configuration error");
         goto errexit;
@@ -3197,6 +3336,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             goto errexit;
         }
         conf->addttl = (uint8_t)addttl;
+    }
+
+    if (conf->accept_reverse_coa && conf->type != RAD_TLS && conf->type != RAD_DTLS) {
+        debug(DBG_ERR, "error in block %s, acceptReverseCoA only supported for tls and dtls", block);
+        goto errexit;
     }
 
     if (statusserver) {
@@ -3413,6 +3557,8 @@ void getmainconfig(const char *configfile) {
     realms = list_create();
     if (!realms)
         debugx(1, DBG_ERR, "malloc failed");
+
+    init_reverse_coa();
 
     if (!getgenericconfig(
             &cfs, NULL,

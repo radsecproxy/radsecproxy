@@ -105,19 +105,18 @@ void removeudpclientfromreplyq(struct client *c) {
     pthread_mutex_unlock(&c->replyq->mutex);
 }
 
-static int addr_equal(struct sockaddr *a, struct sockaddr *b) {
+static int addr_equal_ip_only(struct sockaddr *a, struct sockaddr *b) {
+    if (a->sa_family != b->sa_family)
+        return 0;
     switch (a->sa_family) {
     case AF_INET:
         return !memcmp(&((struct sockaddr_in *)a)->sin_addr,
                        &((struct sockaddr_in *)b)->sin_addr,
-                       sizeof(struct in_addr)) &&
-               (((struct sockaddr_in *)a)->sin_port == ((struct sockaddr_in *)b)->sin_port);
+                       sizeof(struct in_addr));
     case AF_INET6:
         return IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6 *)a)->sin6_addr,
-                                  &((struct sockaddr_in6 *)b)->sin6_addr) &&
-               (((struct sockaddr_in6 *)a)->sin6_port == ((struct sockaddr_in6 *)b)->sin6_port);
+                                  &((struct sockaddr_in6 *)b)->sin6_addr);
     default:
-        /* Must not reach */
         return 0;
     }
 }
@@ -132,6 +131,51 @@ uint16_t port_get(struct sockaddr *sa) {
     return 0;
 }
 
+static int addr_equal(struct sockaddr *a, struct sockaddr *b) {
+    if (!addr_equal_ip_only(a, b))
+        return 0;
+    return port_get(a) == port_get(b);
+}
+
+/* caller holds p->lock. c->reverse_coa_rqs and c->addr are
+   set once inside addclient() under p->lock and freed once in
+   removelockedclient() under p->lock — both are stable for the duration
+   of this walk. c->lock is taken briefly only to read the rqs[id] slot,
+   which can be mutated concurrently by send_coa_to_client and
+   forward_coa_response. returns the matched client or NULL. */
+struct client *find_reverse_coa_client_for_response(struct clsrvconf *p, int sock,
+                                                            struct sockaddr *from,
+                                                            const uint8_t *buf, int len) {
+    struct list_node *node;
+    struct client *c;
+
+    for (node = list_first(p->clients); node; node = list_next(node)) {
+        uint8_t sentauth[16];
+        int have_sent = 0;
+        uint8_t resp_id = buf[1];
+
+        c = (struct client *)node->data;
+        if (sock != c->sock) continue;
+        if (!c->reverse_coa_rqs || !c->addr) continue;
+        if (!addr_equal_ip_only(from, c->addr)) continue;
+
+        pthread_mutex_lock(&c->lock);
+        if (c->reverse_coa_rqs[resp_id].rq) {
+            memcpy(sentauth, c->reverse_coa_rqs[resp_id].sentauth, 16);
+            have_sent = 1;
+        }
+        pthread_mutex_unlock(&c->lock);
+        if (!have_sent) continue;
+
+        if (radmsg_validate_response_auth(buf, len,
+                                          c->conf->secret, c->conf->secret_len,
+                                          sentauth)) {
+            return c;
+        }
+    }
+    return NULL;
+}
+
 /* exactly one of client and server must be non-NULL */
 /* return who we received from in *client or *server */
 /* return from in sa if not NULL */
@@ -139,7 +183,6 @@ int radudpget(int s, struct client **client, struct server **server, unsigned ch
     int cnt, len;
     unsigned char init_buf[4];
     struct sockaddr_storage from;
-    struct sockaddr *fromcopy;
     socklen_t fromlen = sizeof(from);
     struct clsrvconf *p;
     struct list_node *node;
@@ -219,20 +262,31 @@ int radudpget(int s, struct client **client, struct server **server, unsigned ch
                 removelockedclient(c);
                 break;
             }
+            /* coa response fallback. udp replies arrive from the nas coa listener
+               port (default 3799) instead of the ephemeral auth source port, so exact-sockaddr
+               lookup misses. find an ip-matching client with a pending reverse-coa rqout for this
+               msg->id whose shared secret validates the response authenticator. returning the
+               tracking client preserves correct secret/tracking for downstream radsrv without
+               creating a spurious client struct keyed on the coa port. */
+            if (!*client && len >= 20 && IS_COA_RESPONSE((*buf)[0])) {
+                c = find_reverse_coa_client_for_response(p, s, (struct sockaddr *)&from, *buf, len);
+                if (c) {
+                    gettimeofday(&now, NULL);
+                    c->expiry = now.tv_sec + 60;
+                    *client = c;
+                    debug(DBG_DBG, "radudpget: coa response fallback matched client %s for id %u via ip+auth check",
+                          c->conf->name, (*buf)[1]);
+                } else {
+                    debug(DBG_DBG, "radudpget: coa response fallback: no matching client for id %u from %s (will create new client)",
+                          (*buf)[1], addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
+                }
+            }
             if (!*client) {
-                fromcopy = addr_copy((struct sockaddr *)&from);
-                if (!fromcopy) {
-                    pthread_mutex_unlock(p->lock);
-                    continue;
-                }
-                c = addclient(p, 0);
+                c = addclient(p, s, (struct sockaddr *)&from, 0);
                 if (!c) {
-                    free(fromcopy);
                     pthread_mutex_unlock(p->lock);
                     continue;
                 }
-                c->sock = s;
-                c->addr = fromcopy;
                 gettimeofday(&now, NULL);
                 c->expiry = now.tv_sec + 60;
                 *client = c;
@@ -312,10 +366,12 @@ void *udpserverwr(void *arg) {
             debug(DBG_DBG, "udp server writer, got signal");
         }
         /* do this with lock, udpserverrd may set from = NULL if from expires */
-        if (reply->from)
+        if (reply->to_override)
+            memcpy(&to, reply->to_override, SOCKADDRP_SIZE((struct sockaddr *)reply->to_override));
+        else if (reply->from)
             memcpy(&to, reply->from->addr, SOCKADDRP_SIZE(reply->from->addr));
         pthread_mutex_unlock(&replyq->mutex);
-        if (reply->from) {
+        if (reply->from || reply->to_override) {
             if (sendto(reply->udpsock, reply->replybuf, reply->replybuflen, 0, (struct sockaddr *)&to, SOCKADDR_SIZE(to)) < 0)
                 debug(DBG_WARN, "udpserverwr: send failed");
         }

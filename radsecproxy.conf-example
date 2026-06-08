@@ -158,6 +158,8 @@ client 127.0.0.1 {
 #	rewriteIn example
 #	Can also do rewriting of outgoing messages
 #	rewriteOut example
+#	Destination port for reverse CoA sent to this UDP client (default 3799, per RFC 5176)
+#	CoAPort 3799
 }
 client 127.0.0.1 {
 	type	tcp
@@ -166,6 +168,10 @@ client 127.0.0.1 {
 client radius.example.com {
 	type tls
 # secret is optional for TLS
+	# Enable reverse CoA routing for this TLS client
+	#reverseCoARealm example.org
+	#NASidentifier my-nas-1
+	#reverseCoATimeout 30
 }
 client radius.example.com {
 	type dtls
@@ -202,6 +208,8 @@ server [2001:db8::1] {
 # in order to use tls parameters named myserver. We don't, so we will
 # use "tls defaultserver" if defined, or look for "tls default" as a
 # last resort
+	# Accept reverse CoA requests from this server
+	#acceptReverseCoA on
 }
 server radius.example.com {
 	type	tls

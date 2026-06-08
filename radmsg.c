@@ -1,5 +1,6 @@
 /* Copyright (c) 2007-2009, UNINETT AS
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs */
 /* See LICENSE for licensing information. */
 
 #include "debug.h"
@@ -63,6 +64,26 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
         return NULL;
     }
     return msg;
+}
+
+struct radmsg *radmsg_dup(const struct radmsg *src) {
+    struct radmsg *dst;
+
+    if (!src)
+        return NULL;
+    dst = radmsg_init(src->code, src->id, (uint8_t *)src->auth);
+    if (!dst)
+        return NULL;
+    dst->msgauthinvalid = src->msgauthinvalid;
+    if (src->attrs) {
+        list_destroy(dst->attrs);
+        dst->attrs = copytlvlist(src->attrs);
+        if (!dst->attrs) {
+            radmsg_free(dst);
+            return NULL;
+        }
+    }
+    return dst;
 }
 
 int radmsg_add(struct radmsg *msg, struct tlv *attr, uint8_t front) {
@@ -151,7 +172,8 @@ int _checkmsgauth(unsigned char *rad, int radlen, uint8_t *authattr, uint8_t *se
     return (memcmp(auth, hash, md5len) == 0);
 }
 
-int _validauth(unsigned char *rad, int len, unsigned char *reqauth, unsigned char *sec, int sec_len) {
+int _validauth(const unsigned char *rad, int len, const unsigned char *reqauth,
+               const unsigned char *sec, int sec_len) {
     EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
     unsigned char hash[EVP_MD_size(md5digest())];
     int result = 0; /* Fail. */
@@ -181,6 +203,14 @@ int _createmessageauth(unsigned char *rad, int radlen, unsigned char *authattrva
     memset(authattrval, 0, 16);
     HMAC(md5digest(), secret, secret_len, rad, radlen, authattrval, NULL);
     return 1;
+}
+
+int radmsg_validate_response_auth(const uint8_t *buf, int buflen,
+                                  const uint8_t *secret, int secret_len,
+                                  const uint8_t *request_auth) {
+    if (buflen < 20)
+        return 0;
+    return _validauth(buf, buflen, request_auth, secret, secret_len);
 }
 
 int _radsign(unsigned char *rad, int radlen, unsigned char *sec, int sec_len) {
@@ -249,12 +279,12 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
         return -1;
     }
     if (secret) {
-        if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(*buf, size, secret, secret_len)) {
+        if (NEEDS_RADSIGN(msg->code) && !_radsign(*buf, size, secret, secret_len)) {
             free(*buf);
             *buf = NULL;
             return -1;
         }
-        if (msg->code == RAD_Accounting_Request)
+        if (msg->code == RAD_Accounting_Request || IS_COA_REQUEST(msg->code))
             memcpy(msg->auth, *buf + 4, 16);
     }
     return size;
@@ -271,7 +301,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         return NULL;
     }
 
-    if (buf[0] == RAD_Accounting_Request)
+    if (buf[0] == RAD_Accounting_Request || IS_COA_REQUEST(buf[0]))
         rqauth = zeroauth;
     if (rqauth && secret && !_validauth(buf, len, rqauth, secret, secret_len)) {
         debug(DBG_WARN, "buf2radmsg: Invalid %s authenticator",
@@ -305,13 +335,15 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
 
         if (t == RAD_Attr_Message_Authenticator && secret) {
             if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge ||
-                msg->code == RAD_Accounting_Response) {
+                msg->code == RAD_Accounting_Response || IS_COA_RESPONSE(msg->code)) {
                 if (rqauth)
                     memcpy(buf + 4, rqauth, 16);
                 else {
                     debug(DBG_DBG, "buf2radmsg: unable to verify message-authenticator, missing original request");
                     msg->msgauthinvalid = 1;
                 }
+            } else if (IS_COA_REQUEST(msg->code)) {
+                memcpy(buf + 4, zeroauth, 16);
             } else if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server)
                 debug(DBG_DBG, "buf2radmsg: unexpected message-authenticator");
             if (l != 16 || !_checkmsgauth(buf, len, v, secret, secret_len)) {
