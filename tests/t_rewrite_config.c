@@ -28,7 +28,8 @@ int main(int argc, char *argv[]) {
         expected = maketlv(1, 8, expectedvalue);
 
         addrewrite(rewritename, 0, NULL, NULL, addattrs,
-                   NULL, NULL, NULL, NULL, NULL);
+                   NULL, NULL, NULL, NULL, NULL,
+                   NULL, NULL, NULL, NULL);
 
         result = getrewrite(rewritename, NULL);
 
@@ -59,7 +60,8 @@ int main(int argc, char *argv[]) {
         modvattrs[0] = stringcopy("9:102:/^(h323-credit-time).*$/\\1=86400/", 0);
         modvattrs[1] = NULL;
 
-        addrewrite(rewritename, 0, NULL, NULL, NULL, NULL, NULL, modvattrs, NULL, NULL);
+        addrewrite(rewritename, 0, NULL, NULL, NULL, NULL, NULL, modvattrs, NULL, NULL,
+                   NULL, NULL, NULL, NULL);
         result = getrewrite(rewritename, NULL);
 
         if (result && result->modvattrs && result->modvattrs->first) {

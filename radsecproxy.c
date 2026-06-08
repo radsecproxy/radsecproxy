@@ -1490,8 +1490,11 @@ int radsrv(struct request *rq) {
         goto exit;
     }
 
-    if (from->conf->rewritein && !dorewrite(msg, from->conf->rewritein))
-        goto rmclrqexit;
+    {
+        struct rewrite_context ctx = {from->addr, from->conf->name};
+        if (from->conf->rewritein && !dorewrite(msg, from->conf->rewritein, &ctx))
+            goto rmclrqexit;
+    }
 
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {
@@ -1584,8 +1587,11 @@ int radsrv(struct request *rq) {
             goto rmclrqexit;
     }
 
-    if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
-        goto rmclrqexit;
+    {
+        struct rewrite_context ctx = {from->addr, from->conf->name};
+        if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout, &ctx))
+            goto rmclrqexit;
+    }
 
     if (msg->code == RAD_Access_Request &&
         !ensuremsgauthfront(msg))
@@ -1754,9 +1760,12 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     gettimeofday(&server->lastreply, NULL);
 
-    if (server->conf->rewritein && !dorewrite(msg, server->conf->rewritein)) {
-        debug(DBG_INFO, "replyh: rewritein failed");
-        goto errunlock;
+    {
+        struct rewrite_context ctx = {rqout->rq->from->addr, rqout->rq->from->conf->name};
+        if (server->conf->rewritein && !dorewrite(msg, server->conf->rewritein, &ctx)) {
+            debug(DBG_INFO, "replyh: rewritein failed");
+            goto errunlock;
+        }
     }
 
     ttlres = checkttl(msg, options.ttlattrtype);
@@ -1822,9 +1831,12 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         memcpy(attr->v, rqout->rq->origusername, strlen(rqout->rq->origusername));
     }
 
-    if (from->conf->rewriteout && !dorewrite(msg, from->conf->rewriteout)) {
-        debug(DBG_WARN, "replyh: rewriteout failed");
-        goto errunlock;
+    {
+        struct rewrite_context ctx = {from->addr, from->conf->name};
+        if (from->conf->rewriteout && !dorewrite(msg, from->conf->rewriteout, &ctx)) {
+            debug(DBG_WARN, "replyh: rewriteout failed");
+            goto errunlock;
+        }
     }
 
     if ((msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject) &&
@@ -3297,6 +3309,8 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
     char **addattrs = NULL, **addvattrs = NULL;
     char **modattrs = NULL, **modvattrs = NULL;
     char **supattrs = NULL, **supvattrs = NULL;
+    char **addmetaattrs = NULL, **addmetavattrs = NULL;
+    char **supmetaattrs = NULL, **supmetavattrs = NULL;
 
     debug(DBG_DBG, "confrewrite_cb called for %s", block);
 
@@ -3312,10 +3326,15 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
                           "modifyVendorAttribute", CONF_MSTR, &modvattrs,
                           "supplementAttribute", CONF_MSTR_NOESC, &supattrs,
                           "supplementVendorAttribute", CONF_MSTR_NOESC, &supvattrs,
+                          "addMetaAttribute", CONF_MSTR, &addmetaattrs,
+                          "addMetaVendorAttribute", CONF_MSTR, &addmetavattrs,
+                          "supplementMetaAttribute", CONF_MSTR, &supmetaattrs,
+                          "supplementMetaVendorAttribute", CONF_MSTR, &supmetavattrs,
                           NULL))
         debugx(1, DBG_ERR, "configuration error");
     addrewrite(val, whitelist_mode, whitelist_mode ? wlattrs : rmattrs, whitelist_mode ? wlvattrs : rmvattrs,
-               addattrs, addvattrs, modattrs, modvattrs, supattrs, supvattrs);
+               addattrs, addvattrs, modattrs, modvattrs, supattrs, supvattrs,
+               addmetaattrs, addmetavattrs, supmetaattrs, supmetavattrs);
 
     freegconfmstr(whitelist_mode ? rmattrs : wlattrs);
     freegconfmstr(whitelist_mode ? rmvattrs : wlvattrs);
