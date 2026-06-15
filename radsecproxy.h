@@ -58,6 +58,10 @@
 #define RAD_DTLS 3
 #define RAD_PROTOCOUNT 4
 
+/* Define the Regex prefixes for the different subrealm configurations */
+#define RAD_REALM_REGEX_SUBREALM_ONLY "[^@]*\\."
+#define RAD_REALM_REGEX_SUBREALM_INCLUDE "([^@]*\\.)?"
+
 enum rsp_fticks_reporting_type {
     RSP_FTICKS_REPORTING_NONE = 0, /* Default.  */
     RSP_FTICKS_REPORTING_BASIC,
@@ -86,6 +90,12 @@ enum rsp_statsrv {
     RSP_STATSRV_ON,
     RSP_STATSRV_MINIMAL,
     RSP_STATSRV_AUTO
+};
+
+enum rsp_subrealm {
+    RSP_SUBREALM_NO = 0,
+    RSP_SUBREALM_INCLUDE,
+    RSP_SUBREALM_ONLY
 };
 
 struct options {
