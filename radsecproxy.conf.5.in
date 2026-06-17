@@ -709,7 +709,7 @@ Retries from radius clients are ignored and radsecproxy performs its own retry h
 since the requiremets differ when switching transport protocols.
 .RE
 
-.BI "RetryInterfval " interval
+.BI "RetryInterval " interval
 .RS
 Set the interval between each retry. Default is 5s.
 .RE
