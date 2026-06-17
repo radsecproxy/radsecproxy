@@ -50,6 +50,14 @@
 #   FullyHashed     -- Hash the entire string.
 #   FullyKeyHashed  -- Like FullyHashed but salt with F-Ticks-Key.
 
+# LogCalledStationId
+# You can optionally instruct radsecproxy to include the Called-Station-Id
+# field in the log line. This might help you determining the original
+# source of the query (the authenticator, usually the Access Point or Switch).
+# When used on Wi-Fi this fields include the SSID as well.
+# Default is off
+# LogCalledStationId on
+
 # In order to use LogMAC or FTicksMAC with one of VendorKeyHashed or
 # FullyKeyHashed, specify a key with LogKey or FTicksKey.
 #LogKey <key>
