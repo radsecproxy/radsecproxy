@@ -2512,23 +2512,18 @@ int dynamicconfigsrv(struct server *server, const char *srvstring) {
     }
 
     for (i = 0; srv[i]; i++) {
-        size_t hostport_sz = strlen(srv[i]->host) + sizeof(":65535");
-        char *hostport = malloc(hostport_sz);
-        if (!hostport) {
+        char *hostport;
+        if (asprintf(&hostport, "%s:%d", srv[i]->host, srv[i]->port) < 0) {
             debug(DBG_ERR, "malloc failed");
             goto exithostport;
         }
-        snprintf(hostport, hostport_sz, "%s:%d", srv[i]->host, srv[i]->port);
         hostports[i] = hostport;
     }
 
-    size_t servername_sz = strlen("dynamic:") + strlen(server->dynamiclookuparg) + 1;
-    servername = malloc(servername_sz);
-    if (!servername) {
+    if (asprintf(&servername, "dynamic:%s", server->dynamiclookuparg) < 0) {
         debug(DBG_ERR, "malloc failed");
         goto exithostport;
     }
-    snprintf(servername, servername_sz, "dynamic:%s", server->dynamiclookuparg);
 
     conf->name = servername;
     conf->hostsrc = hostports;
@@ -2584,11 +2579,9 @@ int dynamicconfig(struct server *server) {
         srvext = strchr(conf->dynamiclookupcommand, ':');
         if (!srvext)
             return 0;
-        size_t srvquery_sz = strlen(srvext) + 1 + strlen(server->dynamiclookuparg) + 1;
-        srvquery = malloc(srvquery_sz);
-        if (!srvquery)
+
+        if (asprintf(&srvquery, "%s%s%s", srvext + 1, conf->dynamiclookupcommand[strlen(conf->dynamiclookupcommand) - 1] == '.' ? "" : ".", server->dynamiclookuparg) < 0)
             return 0;
-        snprintf(srvquery, srvquery_sz, "%s%s%s", srvext + 1, conf->dynamiclookupcommand[strlen(conf->dynamiclookupcommand) - 1] == '.' ? "" : ".", server->dynamiclookuparg);
 
         result = dynamicconfigsrv(server, srvquery);
         free(srvquery);

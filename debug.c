@@ -2,6 +2,7 @@
  * Copyright (c) 2010-2011, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
+#define _GNU_SOURCE
 #ifdef __linux__
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -153,8 +154,8 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
     if (debug_tid) {
 #ifdef __linux__
         pid_t tid = syscall(SYS_gettid);
-        tidbuf = malloc(3 * sizeof(tid) + 1);
-        snprintf(tidbuf, 3 * sizeof(tid) + 1, "%u", tid);
+        if (asprintf(&tidbuf, "%u", tid) < 0)
+            tidbuf = NULL;
 #else
         pthread_t tid = pthread_self();
         uint8_t *ptid = (uint8_t *)&tid;
@@ -166,9 +167,10 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
             tmp += snprintf(tmp, 3, "%02x", ptid[i]);
         }
 #endif
-        tmp = malloc(strlen(tidbuf) + strlen(format) + 4);
-        snprintf(tmp, strlen(tidbuf) + strlen(format) + 4, "(%s) %s", tidbuf, format);
-        format = tmp;
+        if (asprintf(&tmp, "(%s) %s", tidbuf, format) < 0)
+            tmp = NULL;
+        else
+            format = tmp;
         free(tidbuf);
     }
 
