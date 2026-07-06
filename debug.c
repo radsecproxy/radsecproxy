@@ -240,7 +240,7 @@ void debugerrno(int err, uint8_t level, char *format, ...) {
         size_t len = strlen(format);
         char *tmp = malloc(len + 1024 + 2);
         assert(tmp);
-        strlcpy(tmp, format, len + 1);
+        snprintf(tmp, len + 1, "%s", format);
         tmp[len++] = ':';
         tmp[len++] = ' ';
         va_start(ap, format);

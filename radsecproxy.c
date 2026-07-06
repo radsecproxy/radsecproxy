@@ -1127,7 +1127,7 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
             break;
         case RSP_MAC_ORIGINAL:
         default:
-            strlcpy(logstationid + 11, (char *)stationid, sizeof(logstationid) - 11);
+            snprintf(logstationid + 11, sizeof(logstationid) - 11, "%s", (char *)stationid);
         }
         free(stationid);
     }
