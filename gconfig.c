@@ -1,6 +1,7 @@
 /* Copyright (c) 2007-2008, UNINETT AS */
 /* See LICENSE for licensing information. */
 
+#define _GNU_SOURCE
 #include "gconfig.h"
 #include "debug.h"
 #include "util.h"
@@ -132,14 +133,11 @@ int pushgconfpaths(struct gconffile **cf, const char *cfgpath) {
             goto exit;
         }
         dir = dirname(curfile);
-        path = malloc(strlen(dir) + strlen(cfgpath) + 2);
-        if (!path) {
-            debug(DBG_ERR, "malloc failed");
+
+        if (asprintf(&path, "%s/%s", dir, cfgpath) < 0) {
+            path = NULL;
             goto exit;
         }
-        strcpy(path, dir);
-        path[strlen(dir)] = '/';
-        strcpy(path + strlen(dir) + 1, cfgpath);
     }
     memset(&globbuf, 0, sizeof(glob_t));
     if ((result = glob(path, 0, NULL, &globbuf))) {
@@ -544,12 +542,10 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
             }
             break;
         case CONF_CBK:
-            optval = malloc(strlen(opt) + strlen(val) + 2);
-            if (!optval) {
+            if (asprintf(&optval, "%s %s", opt, val) < 0) {
                 debug(DBG_ERR, "malloc failed");
                 goto errexit;
             }
-            sprintf(optval, "%s %s", opt, val);
             if (!cbk(cf, cbkarg, optval, opt, val)) {
                 free(optval);
                 goto errexit;

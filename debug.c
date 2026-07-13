@@ -2,6 +2,7 @@
  * Copyright (c) 2010-2011, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
+#define _GNU_SOURCE
 #ifdef __linux__
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -153,8 +154,8 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
     if (debug_tid) {
 #ifdef __linux__
         pid_t tid = syscall(SYS_gettid);
-        tidbuf = malloc(3 * sizeof(tid) + 1);
-        sprintf(tidbuf, "%u", tid);
+        if (asprintf(&tidbuf, "%u", tid) < 0)
+            tidbuf = NULL;
 #else
         pthread_t tid = pthread_self();
         uint8_t *ptid = (uint8_t *)&tid;
@@ -163,12 +164,13 @@ void debug_logit(uint8_t level, const char *format, va_list ap) {
         tidbuf = malloc((2 * sizeof(tid) + 1));
         tmp = tidbuf;
         for (i = sizeof(tid) - 1; i >= 0; i--) {
-            tmp += sprintf(tmp, "%02x", ptid[i]);
+            tmp += snprintf(tmp, 3, "%02x", ptid[i]);
         }
 #endif
-        tmp = malloc(strlen(tidbuf) + strlen(format) + 4);
-        sprintf(tmp, "(%s) %s", tidbuf, format);
-        format = tmp;
+        if (asprintf(&tmp, "(%s) %s", tidbuf, format) < 0)
+            tmp = NULL;
+        else
+            format = tmp;
         free(tidbuf);
     }
 
@@ -238,7 +240,7 @@ void debugerrno(int err, uint8_t level, char *format, ...) {
         size_t len = strlen(format);
         char *tmp = malloc(len + 1024 + 2);
         assert(tmp);
-        strcpy(tmp, format);
+        snprintf(tmp, len + 1, "%s", format);
         tmp[len++] = ':';
         tmp[len++] = ' ';
         va_start(ap, format);
