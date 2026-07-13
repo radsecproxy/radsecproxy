@@ -1,4 +1,4 @@
-unreleased 1.11.3
+2026-07-13 1.11.3
 	Bug Fixes:
 	- Fix Message-Authenticator validation for Accounting-Request
 	- Fix DtlsVersion config
@@ -11,8 +11,8 @@ unreleased 1.11.3
 	Misc:
 	- Improve message decode/verification error logging
 	- Don't fail startup when config include glob finds 0 files
-	- Maintain compatibility with nettle-4
-	- Maintain compatibility with OpenSSL 4
+	- Maintain compatibility with nettle-4 (#197)
+	- Maintain compatibility with OpenSSL 4 (#202)
 
 2025-03-25 1.11.2
 	Bug Fixes:
