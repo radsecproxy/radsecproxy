@@ -1219,16 +1219,38 @@ int radsrv(struct request *rq) {
     struct server *to = NULL;
     struct client *from = rq->from;
     int ttlres;
-    char tmp[INET6_ADDRSTRLEN];
+    char tmp[INET6_ADDRSTRLEN], *err = NULL;
 
     msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
     memset(rq->buf, 0, rq->buflen);
     free(rq->buf);
     rq->buf = NULL;
 
-    if (!msg || msg->msgauthinvalid) {
-        debug_limit(DBG_NOTICE, "radsrv: message decode/validation error (code %d, id %d ?) from %s (%s)",
+    if (!msg) {
+        debug_limit(DBG_NOTICE, "radsrv: message decode error (code %d, id %d ?) from %s (%s)",
                     rq->buf[0], rq->buf[1], from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        radmsg_free(msg);
+        freerq(rq);
+        return 0;
+    }
+
+    switch (msg->auth_state) {
+    case RSP_RADMSG_AUTH_UNKNOWN:
+        err = "error verifying authenticator";
+    case RSP_RADMSG_INVALID:
+        err = "invalid request-authenticator";
+    case RSP_RADMSG_MSGAUTH_INVALID:
+        err = "invalid message-authenticator";
+
+        debug(DBG_NOTICE, "radsrv: %s in %s (id %d) from %s (%s)", err, radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        radmsg_free(msg);
+        freerq(rq);
+        return 0;
+    case RSP_RADMSG_VALID:
+    case RSP_RADMSG_MSGAUTH_VALID:
+        break;
+    default:
+        debug(DBG_ERR, "replyh: unhandled authenticator state, this is likely a bug!");
         radmsg_free(msg);
         freerq(rq);
         return 0;
@@ -1253,12 +1275,6 @@ int radsrv(struct request *rq) {
         goto exit;
     }
 
-    if (msg->msgauthinvalid) {
-        debug(DBG_NOTICE, "radsrv: invalid message-authenticator in %s (id %d) from %s (%s)", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
-        freerq(rq);
-        return 0;
-    }
-
     purgedupcache(from);
     if (!addclientrq(rq))
         goto exit;
@@ -1272,7 +1288,7 @@ int radsrv(struct request *rq) {
 
     if ((from->conf->reqmsgauth || from->conf->reqmsgauthproxy) && (from->conf->type == RAD_UDP || from->conf->type == RAD_TCP) &&
         msg->code == RAD_Access_Request) {
-        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL &&
+        if (msg->auth_state != RSP_RADMSG_MSGAUTH_VALID &&
             (from->conf->reqmsgauth || (from->conf->reqmsgauthproxy && radmsg_gettype(msg, RAD_Attr_Proxy_State) != NULL))) {
             debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), missing required message-authenticator", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
             goto exit;
@@ -1490,7 +1506,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     int ttlres;
     struct radmsg *msg = NULL;
     struct tlv *attr;
-    char tmp[INET6_ADDRSTRLEN];
+    char tmp[INET6_ADDRSTRLEN], *err = NULL;
 
     pthread_mutex_lock(&server->lock);
     server->lostrqs = 0;
@@ -1500,7 +1516,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     pthread_mutex_lock(rqout->lock);
     msg = buf2radmsg(buf, len, server->conf->secret, server->conf->secret_len, rqout->rq ? rqout->rq->msg->auth : NULL);
     if (!msg) {
-        debug(DBG_NOTICE, "replyh: message decode/validation error (code %d, id %d ?) from server %s", buf[0], buf[1], server->conf->name);
+        debug_limit(DBG_NOTICE, "replyh: message decode error (code %d, id %d ?) from server %s", buf[0], buf[1], server->conf->name);
         memset(buf, 0, len);
         free(buf);
         pthread_mutex_unlock(rqout->lock);
@@ -1517,15 +1533,28 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     }
 
     if (!rqout->tries || !rqout->rq) {
-        debug(DBG_INFO, "replyh: no outstanding request with this id (%d) from server %s, ignoring reply", msg->id, server->conf->name);
+        debug_limit(DBG_INFO, "replyh: no outstanding request with this id (%d) from server %s, ignoring reply", msg->id, server->conf->name);
         goto errunlock;
     }
 
-    if (msg->msgauthinvalid) {
-        debug(DBG_WARN, "replyh: invalid message-authenticator in %s (id %d) from server %s", radmsgtype2string(msg->code), msg->id, server->conf->name);
+    switch (msg->auth_state) {
+    case RSP_RADMSG_AUTH_UNKNOWN:
+        err = "error verifying authenticator";
+    case RSP_RADMSG_INVALID:
+        err = "invalid response-authenticator";
+    case RSP_RADMSG_MSGAUTH_INVALID:
+        err = "invalid message-authenticator";
+
+        debug_limit(DBG_WARN, "replyh: %s in %s (id %d) from server %s", err, radmsgtype2string(msg->code), msg->id, server->conf->name);
         radmsg_free(msg);
         pthread_mutex_unlock(rqout->lock);
         return 0;
+    case RSP_RADMSG_VALID:
+    case RSP_RADMSG_MSGAUTH_VALID:
+        break;
+    default:
+        debug(DBG_ERR, "replyh: unhandled authenticator state, this is likely a bug!");
+        goto errunlock;
     }
 
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
@@ -1542,8 +1571,8 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
         (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
-        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {
-            debug(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
+        if (msg->auth_state != RSP_RADMSG_MSGAUTH_VALID) {
+            debug_limit(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
             goto errunlock;
         }
     }

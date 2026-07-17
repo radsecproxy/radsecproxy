@@ -225,28 +225,6 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         return NULL;
     }
 
-    if (secret && secret_len > 0) {
-        uint8_t auth[RADAUTHLEN], msgauth[RADAUTHLEN];
-
-        memcpy(auth, RADAUTH(buf), RADAUTHLEN);
-        if (pmsgauth)
-            memcpy(msgauth, pmsgauth, RADAUTHLEN);
-
-        if (!radmsgsign(buf, len, secret, secret_len, pmsgauth, rqauth)) {
-            debug(DBG_ERR, "buf2radmsg: calculating signatures failed");
-            return NULL;
-        }
-
-        if (memcmp(auth, RADAUTH(buf), RADAUTHLEN) != 0) {
-            debug(DBG_WARN, "buf2radmsg: authenticator invalid (%s id %d)", radmsgtype2string(RADCODE(buf)), RADID(buf));
-            return NULL;
-        }
-        if (pmsgauth && memcmp(msgauth, pmsgauth, 16) != 0) {
-            debug(DBG_WARN, "buf2radmsg: message authenticator invalid (%s id %d)", radmsgtype2string(RADCODE(buf)), RADID(buf));
-            return NULL;
-        }
-    }
-
     msg = radmsg_init(RADCODE(buf), RADID(buf), RADAUTH(buf));
     if (!msg)
         return NULL;
@@ -257,6 +235,33 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
             freetlv(attr);
             radmsg_free(msg);
             return NULL;
+        }
+    }
+
+    if (secret && secret_len > 0) {
+        uint8_t auth[RADAUTHLEN], msgauth[RADAUTHLEN];
+
+        memcpy(auth, RADAUTH(buf), RADAUTHLEN);
+        if (pmsgauth)
+            memcpy(msgauth, pmsgauth, RADAUTHLEN);
+
+        if (!radmsgsign(buf, len, secret, secret_len, pmsgauth, rqauth)) {
+            debug(DBG_ERR, "buf2radmsg: calculating signatures failed");
+            msg->auth_state = RSP_RADMSG_AUTH_UNKNOWN;
+        } else {
+            if (memcmp(auth, RADAUTH(buf), RADAUTHLEN) != 0) {
+                debug(DBG_WARN, "buf2radmsg: authenticator invalid (%s id %d)", radmsgtype2string(RADCODE(buf)), RADID(buf));
+                msg->auth_state = RSP_RADMSG_INVALID;
+            } else
+                msg->auth_state = RSP_RADMSG_VALID;
+
+            if (pmsgauth) {
+                if (memcmp(msgauth, pmsgauth, 16) != 0) {
+                    debug(DBG_WARN, "buf2radmsg: message authenticator invalid (%s id %d)", radmsgtype2string(RADCODE(buf)), RADID(buf));
+                    msg->auth_state = RSP_RADMSG_MSGAUTH_INVALID;
+                } else
+                    msg->auth_state = RSP_RADMSG_MSGAUTH_VALID;
+            }
         }
     }
 

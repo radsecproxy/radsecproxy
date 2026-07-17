@@ -68,12 +68,20 @@
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
 
+enum radmsg_auth_state {
+    RSP_RADMSG_AUTH_UNKNOWN = 0, /* not yet verified or unable to verify */
+    RSP_RADMSG_INVALID,          /* request or response authenticator is invalid*/
+    RSP_RADMSG_VALID,            /* request or rewponse authenticator is valid, no message authenticator present */
+    RSP_RADMSG_MSGAUTH_INVALID,  /* message authenticator present but invalid */
+    RSP_RADMSG_MSGAUTH_VALID     /* message authenticator present and valid, implies request or response authenticator is also valid*/
+};
+
 struct radmsg {
     uint8_t code;
     uint8_t id;
     uint8_t auth[20];
     struct list *attrs; /*struct tlv*/
-    uint8_t msgauthinvalid;
+    enum radmsg_auth_state auth_state;
 };
 
 /* radius message header length including code, id, length and authenticator */
