@@ -930,7 +930,7 @@ static int certattr_matchothername(GENERAL_NAME *gn, struct certattrmatch *match
 static int certattr_matchwildcard(GENERAL_NAME *gn, struct certattrmatch *match) {
     char *v = NULL;
     char *wildcardtoken = "*.";
-    char *suffix = NULL;
+    const char *suffix = NULL;
     size_t l;
     int ret = 0;
 
