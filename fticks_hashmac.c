@@ -22,7 +22,7 @@ static void _format_hash(const uint8_t *hash, size_t out_len, uint8_t *out) {
     }
 
     for (ir = 0, iw = 0; iw <= out_len - 3; ir++, iw += 2)
-        sprintf((char *)out + iw, "%02x", hash[ir % EVP_MD_size(sha256digest())]);
+        snprintf((char *)out + iw, out_len - iw, "%02x", hash[ir % EVP_MD_size(sha256digest())]);
 }
 
 static void _hash(const uint8_t *in,

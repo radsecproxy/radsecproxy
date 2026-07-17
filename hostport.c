@@ -172,6 +172,8 @@ int resolvehostport(struct hostportres *hp, int af, int socktype, uint8_t passiv
             numaddr++;
     }
     if (numaddr) {
+        size_t buf_len = 0;
+        size_t bufsize = numaddr * (INET6_ADDRSTRLEN + 2);
         if (!(buf = calloc(numaddr, INET6_ADDRSTRLEN + 2))) {
             debug(DBG_ERR, "resolvehostport: calloc failed");
             return 1;
@@ -179,9 +181,12 @@ int resolvehostport(struct hostportres *hp, int af, int socktype, uint8_t passiv
         for (res = hp->addrinfo; res; res = res->ai_next) {
             if (!res->ai_addr)
                 continue;
-            strcat(buf, addr2string(res->ai_addr, tmp, sizeof(tmp)));
-            if (res->ai_next)
-                strcat(buf, ", ");
+            strncat(buf, addr2string(res->ai_addr, tmp, sizeof(tmp)), bufsize - buf_len - 1);
+            buf_len += strlen(tmp);
+            if (res->ai_next) {
+                strncat(buf, ", ", bufsize - buf_len - 1);
+                buf_len += 2;
+            }
         }
     }
     debug(DBG_DBG, "%s: %s -> %s", __func__,

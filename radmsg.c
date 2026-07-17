@@ -63,7 +63,7 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
 
 int radmsg_add(struct radmsg *msg, struct tlv *attr, uint8_t front) {
     if (!msg || !msg->attrs)
-        return 1;
+        return 0;
     if (!attr || attr->l > RAD_Max_Attr_Value_Length)
         return 0;
     return front ? list_push_front(msg->attrs, attr) : list_push(msg->attrs, attr);
@@ -117,10 +117,13 @@ int radmsg_copy_attrs(struct radmsg *dst,
                       uint8_t type) {
     struct list_node *node = NULL;
     struct list *list = radmsg_getalltype(src, type);
+    struct tlv *copy;
     int n = 0;
 
     for (node = list_first(list); node; node = list_next(node)) {
-        if (radmsg_add(dst, copytlv((struct tlv *)node->data), 0) != 1) {
+        copy = copytlv((struct tlv *)node->data);
+        if (!copy || radmsg_add(dst, copy, 0) != 1) {
+            freetlv(copy);
             n = -1;
             break;
         }
@@ -270,7 +273,7 @@ uint8_t attrname2val(char *attrname) {
 
 /* ATTRNAME is on the form vendor[:type].
    If only vendor is found, TYPE is set to 256 and 1 is returned.
-   If type is >= 256, 1 is returned.
+   If type is found and < 256, 1 is returned.
    Otherwise, 0 is returned.
 */
 /* should accept both names and numeric values, only numeric right now */
@@ -378,7 +381,7 @@ int verifyeapformat(struct radmsg *msg) {
         attr_len += attr->l;
     }
     if (eap_len != attr_len) {
-        debug(DBG_DBG, "verifyeapformat: eap length (%d) does not match attribute content length (%d)", eap_len, attr_len);
+        debug(DBG_DBG, "verifyeapformat: eap length (%zu) does not match attribute content length (%zu)", eap_len, attr_len);
         ret = 0;
         goto exit;
     }

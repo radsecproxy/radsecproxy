@@ -341,7 +341,7 @@ void *tlsservernew(void *arg) {
     struct client *client;
     struct tls *accepted_tls = NULL;
     char tmp[INET6_ADDRSTRLEN], *subj;
-    struct hostportres *hp;
+    struct hostportres *hp = NULL;
 
     s = *(int *)arg;
     free(arg);
