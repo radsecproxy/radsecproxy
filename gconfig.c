@@ -1,6 +1,7 @@
 /* Copyright (c) 2007-2008, UNINETT AS */
 /* See LICENSE for licensing information. */
 
+#define _GNU_SOURCE
 #include "gconfig.h"
 #include "debug.h"
 #include "util.h"
@@ -116,9 +117,8 @@ FILE *pushgconfpath(struct gconffile **cf, const char *path) {
     return pushgconffile(cf, f, path);
 }
 
-FILE *pushgconfpaths(struct gconffile **cf, const char *cfgpath) {
-    int i;
-    FILE *f = NULL;
+int pushgconfpaths(struct gconffile **cf, const char *cfgpath) {
+    int i, result, n = 0;
     glob_t globbuf;
     char *path, *curfile = NULL, *dir;
 
@@ -133,25 +133,27 @@ FILE *pushgconfpaths(struct gconffile **cf, const char *cfgpath) {
             goto exit;
         }
         dir = dirname(curfile);
-        path = malloc(strlen(dir) + strlen(cfgpath) + 2);
-        if (!path) {
-            debug(DBG_ERR, "malloc failed");
+
+        if (asprintf(&path, "%s/%s", dir, cfgpath) < 0) {
+            path = NULL;
             goto exit;
         }
-        strcpy(path, dir);
-        path[strlen(dir)] = '/';
-        strcpy(path + strlen(dir) + 1, cfgpath);
     }
     memset(&globbuf, 0, sizeof(glob_t));
-    if (glob(path, 0, NULL, &globbuf)) {
-        debug(DBG_WARN, "could not glob %s", path);
-        goto exit;
+    if ((result = glob(path, 0, NULL, &globbuf))) {
+        if (result != GLOB_NOMATCH) {
+            debug(DBG_WARN, "could not glob %s", path);
+            n = -1;
+            goto exit;
+        }
     }
 
     for (i = globbuf.gl_pathc - 1; i >= 0; i--) {
-        f = pushgconfpath(cf, globbuf.gl_pathv[i]);
-        if (!f)
+        if (!pushgconfpath(cf, globbuf.gl_pathv[i])) {
+            n = -1;
             break;
+        }
+        n++;
     }
     globfree(&globbuf);
 
@@ -160,7 +162,7 @@ exit:
         free(curfile);
         free(path);
     }
-    return f;
+    return n;
 }
 
 int popgconf(struct gconffile **cf) {
@@ -420,10 +422,11 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
             return 1;
 
         if (conftype == CONF_STR && !strcasecmp(opt, "include")) {
-            if (!pushgconfpaths(cf, val)) {
+            if ((n = pushgconfpaths(cf, val)) < 0) {
                 debug(DBG_ERR, "failed to include config file %s", val);
                 goto errexit;
             }
+            debug(DBG_DBG, "getgenericconfig: include %s, %d file(s)", val, n);
             free(val);
             continue;
         }
@@ -539,12 +542,10 @@ int getgenericconfig(struct gconffile **cf, char *block, ...) {
             }
             break;
         case CONF_CBK:
-            optval = malloc(strlen(opt) + strlen(val) + 2);
-            if (!optval) {
+            if (asprintf(&optval, "%s %s", opt, val) < 0) {
                 debug(DBG_ERR, "malloc failed");
                 goto errexit;
             }
-            sprintf(optval, "%s %s", opt, val);
             if (!cbk(cf, cbkarg, optval, opt, val)) {
                 free(optval);
                 goto errexit;

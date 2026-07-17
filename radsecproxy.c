@@ -643,15 +643,15 @@ static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 
     for (offset = 16; offset < len; offset += 16) {
 #ifdef MPPE_DEBUG
-	printf("text + offset - 16 c(%d): ", offset / 16);
-	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
+        printf("text + offset - 16 c(%d): ", offset / 16);
+        printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
         EVP_DigestInit(mdctx, md5digest());
         EVP_DigestUpdate(mdctx, shared, sharedlen);
         EVP_DigestUpdate(mdctx, text + offset - 16, 16);
         EVP_DigestFinal(mdctx, hash, NULL);
 #ifdef MPPE_DEBUG
-	printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
+        printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
 #endif
 
         for (i = 0; i < 16; i++)
@@ -697,15 +697,15 @@ static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sha
 
     for (offset = 16; offset < len; offset += 16) {
 #ifdef MPPE_DEBUG
-	printf("text + offset - 16 c(%d): ", offset / 16);
-	printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
+        printf("text + offset - 16 c(%d): ", offset / 16);
+        printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
 #endif
         EVP_DigestInit(mdctx, md5digest());
         EVP_DigestUpdate(mdctx, shared, sharedlen);
         EVP_DigestUpdate(mdctx, text + offset - 16, 16);
         EVP_DigestFinal(mdctx, hash, NULL);
 #ifdef MPPE_DEBUG
-	printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
+        printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
 #endif
 
         for (i = 0; i < 16; i++)
@@ -1091,7 +1091,7 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     }
     stationid = radattr2ascii(radmsg_gettype(rq->msg, RAD_Attr_Calling_Station_Id));
     if (stationid) {
-        sprintf((char *)logstationid, " stationid ");
+        snprintf((char *)logstationid, sizeof(logstationid), " stationid ");
         switch (options.log_mac) {
         case RSP_MAC_VENDOR_HASHED:
         case RSP_MAC_VENDOR_KEY_HASHED:
@@ -1103,11 +1103,11 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
             fticks_hashmac((uint8_t *)stationid, options.log_mac == RSP_MAC_FULLY_KEY_HASHED ? options.log_key : NULL, 65, (uint8_t *)logstationid + 11);
             break;
         case RSP_MAC_STATIC:
-            sprintf(logstationid + 11, "undisclosed");
+            snprintf(logstationid + 11, sizeof(logstationid) - 11, "undisclosed");
             break;
         case RSP_MAC_ORIGINAL:
         default:
-            strncpy(logstationid + 11, (char *)stationid, 128 - 12);
+            snprintf(logstationid + 11, sizeof(logstationid) - 11, "%s", (char *)stationid);
         }
         free(stationid);
     }
@@ -1438,8 +1438,8 @@ int radsrv(struct request *rq) {
     rq->buf = NULL;
 
     if (!msg || msg->msgauthinvalid) {
-        debug_limit(DBG_NOTICE, "radsrv: ignoring request from %s (%s), %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)),
-                    msg ? "message-authenticator invalid" : "error decoding packet");
+        debug_limit(DBG_NOTICE, "radsrv: message decode/validation error (code %d, id %d ?) from %s (%s)",
+                    rq->buf[0], rq->buf[1], from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         radmsg_free(msg);
         freerq(rq);
         return 0;
@@ -1451,16 +1451,23 @@ int radsrv(struct request *rq) {
 
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
     if (msg->code == RAD_Disconnect_Request) {
-        debug_limit(DBG_INFO, "radsrv: disconnect-request not supported");
+        debug_limit(DBG_INFO, "radsrv: disconnect-request not supported from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         respond(rq, RAD_Disconnect_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
     }
     if (msg->code == RAD_CoA_Request) {
-        debug_limit(DBG_INFO, "radsrv: CoA-request not supported");
+        debug_limit(DBG_INFO, "radsrv: CoA-request not supported from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         respond(rq, RAD_CoA_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
     }
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
-        debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring");
+        debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring %s (code %d, id %d) from %s (%s)",
+                    radmsgtype2string(msg->code), msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         goto exit;
+    }
+
+    if (msg->msgauthinvalid) {
+        debug(DBG_NOTICE, "radsrv: invalid message-authenticator in %s (id %d) from %s (%s)", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        freerq(rq);
+        return 0;
     }
 
     purgedupcache(from);
@@ -1485,7 +1492,7 @@ int radsrv(struct request *rq) {
 
     if (options.verifyeap &&
         msg->code == RAD_Access_Request && !verifyeapformat(msg)) {
-        debug_limit(DBG_WARN, "radsrv: eap format error, forcing access-reject");
+        debug_limit(DBG_WARN, "radsrv: eap format error from %s (%s), forcing access-reject", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         respond(rq, RAD_Access_Reject, NULL, 1);
         goto exit;
     }
@@ -1504,7 +1511,7 @@ int radsrv(struct request *rq) {
         if (msg->code == RAD_Accounting_Request) {
             respond(rq, RAD_Accounting_Response, NULL, 0);
         } else
-            debug_limit(DBG_INFO, "radsrv: ignoring access request, no username attribute");
+            debug_limit(DBG_INFO, "radsrv: ignoring access request from %s (%s), no username attribute", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         goto exit;
     }
 
@@ -1706,18 +1713,20 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     rqout = server->requests + buf[1];
     pthread_mutex_lock(rqout->lock);
     msg = buf2radmsg(buf, len, server->conf->secret, server->conf->secret_len, rqout->rq ? rqout->rq->msg->auth : NULL);
-    memset(buf, 0, len);
-    free(buf);
-    buf = NULL;
     if (!msg) {
-        debug(DBG_NOTICE, "replyh: message decode/validation error from server %s", server->conf->name);
+        debug(DBG_NOTICE, "replyh: message decode/validation error (code %d, id %d ?) from server %s", buf[0], buf[1], server->conf->name);
+        memset(buf, 0, len);
+        free(buf);
         pthread_mutex_unlock(rqout->lock);
         return 0;
     }
+    memset(buf, 0, len);
+    free(buf);
+    buf = NULL;
 
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge &&
         msg->code != RAD_Accounting_Response) {
-        debug_limit(DBG_INFO, "replyh: discarding message type %s, accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code));
+        debug_limit(DBG_INFO, "replyh: discarding message type %s (code %d), accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code), msg->code);
         goto errunlock;
     }
 
@@ -1727,19 +1736,12 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     }
 
     if (msg->msgauthinvalid) {
-        debug(DBG_WARN, "replyh: message-authenticator invalid from server %s", server->conf->name);
+        debug(DBG_WARN, "replyh: invalid message-authenticator in %s (id %d) from server %s", radmsgtype2string(msg->code), msg->id, server->conf->name);
         radmsg_free(msg);
         pthread_mutex_unlock(rqout->lock);
         return 0;
     }
 
-    if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
-        (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
-        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {
-            debug_limit(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
-            goto errunlock;
-        }
-    }
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
 
     gettimeofday(&server->lastrcv, NULL);
@@ -1750,6 +1752,14 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         if (server->conf->statusserver == RSP_STATSRV_AUTO)
             server->conf->statusserver = RSP_STATSRV_MINIMAL;
         goto errunlock;
+    }
+
+    if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
+        (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
+        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {
+            debug(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
+            goto errunlock;
+        }
     }
 
     gettimeofday(&server->lastreply, NULL);
@@ -2528,21 +2538,18 @@ int dynamicconfigsrv(struct server *server, const char *srvstring) {
     }
 
     for (i = 0; srv[i]; i++) {
-        char *hostport = malloc(strlen(srv[i]->host) + sizeof(":65535"));
-        if (!hostport) {
+        char *hostport;
+        if (asprintf(&hostport, "%s:%d", srv[i]->host, srv[i]->port) < 0) {
             debug(DBG_ERR, "malloc failed");
             goto exithostport;
         }
-        sprintf(hostport, "%s:%d", srv[i]->host, srv[i]->port);
         hostports[i] = hostport;
     }
 
-    servername = malloc(strlen("dynamic:") + strlen(server->dynamiclookuparg) + 1);
-    if (!servername) {
+    if (asprintf(&servername, "dynamic:%s", server->dynamiclookuparg) < 0) {
         debug(DBG_ERR, "malloc failed");
         goto exithostport;
     }
-    sprintf(servername, "dynamic:%s", server->dynamiclookuparg);
 
     conf->name = servername;
     conf->hostsrc = hostports;
@@ -2598,10 +2605,9 @@ int dynamicconfig(struct server *server) {
         srvext = strchr(conf->dynamiclookupcommand, ':');
         if (!srvext)
             return 0;
-        srvquery = malloc((strlen(srvext) + 1 + strlen(server->dynamiclookuparg) + 1) * sizeof(char));
-        if (!srvquery)
+
+        if (asprintf(&srvquery, "%s%s%s", srvext + 1, conf->dynamiclookupcommand[strlen(conf->dynamiclookupcommand) - 1] == '.' ? "" : ".", server->dynamiclookuparg) < 0)
             return 0;
-        sprintf(srvquery, "%s%s%s", srvext + 1, conf->dynamiclookupcommand[strlen(conf->dynamiclookupcommand) - 1] == '.' ? "" : ".", server->dynamiclookuparg);
 
         result = dynamicconfigsrv(server, srvquery);
         free(srvquery);

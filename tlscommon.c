@@ -121,7 +121,7 @@ void sslinit(void) {
  * 
  * @param name The X509_Name to be printed.
  */
-static char *print_x509_name(X509_NAME *name) {
+static char *print_x509_name(const X509_NAME *name) {
     BIO *bio;
     char *buf;
 
@@ -957,9 +957,15 @@ static int certattr_matchwildcard(GENERAL_NAME *gn, struct certattrmatch *match)
 
 static int certattr_matchcn(X509 *cert, struct certattrmatch *match) {
     int loc;
+#if OPENSSL_VERSION_NUMBER >= 0x30000000
+    const X509_NAME *nm;
+    const X509_NAME_ENTRY *e;
+    const ASN1_STRING *t;
+#else
     X509_NAME *nm;
     X509_NAME_ENTRY *e;
     ASN1_STRING *t;
+#endif
 
     nm = X509_get_subject_name(cert);
     loc = -1;

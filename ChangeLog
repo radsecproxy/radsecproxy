@@ -12,6 +12,22 @@ unreleased changes
 	- Allow relative paths and Windows paths for file log destination
 	- Update client-certificate validation to latest draft RFC
 
+2026-07-13 1.11.3
+	Bug Fixes:
+	- Fix Message-Authenticator validation for Accounting-Request
+	- Fix DtlsVersion config
+	- Fix Request-/Response Authenticator for recognized but unsupported types
+	- Fix fail if outgoing radius message is too big
+	- Fix Status-Server might not work when using RequireMessageAuthenticator
+	- Fix crash on startup when log file is not writable (#198)
+	- Fix DTLS reconnect loop (#200)
+
+	Misc:
+	- Improve message decode/verification error logging
+	- Don't fail startup when config include glob finds 0 files
+	- Maintain compatibility with nettle-4 (#197)
+	- Maintain compatibility with OpenSSL 4 (#202)
+
 2025-03-25 1.11.2
 	Bug Fixes:
 	- Fix Message-Authenticator validation for Accounting-Response

@@ -16,7 +16,7 @@
 #include <string.h>
 
 /* radius message length is a 16bit value starting at byte 2, in network order*/
-#define RADLEN(buf) ntohs(*(uint16_t *)(buf + 2))
+#define RADLEN(buf) (uint16_t)(buf[2] << 8 | buf[3])
 
 /**
  * @brief Get the length of a radius message form its raw buffer.
@@ -67,7 +67,7 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
 
 int radmsg_add(struct radmsg *msg, struct tlv *attr, uint8_t front) {
     if (!msg || !msg->attrs)
-        return 1;
+        return 0;
     if (!attr || attr->l > RAD_Max_Attr_Value_Length)
         return 0;
     return front ? list_push_front(msg->attrs, attr) : list_push(msg->attrs, attr);
@@ -121,10 +121,13 @@ int radmsg_copy_attrs(struct radmsg *dst,
                       uint8_t type) {
     struct list_node *node = NULL;
     struct list *list = radmsg_getalltype(src, type);
+    struct tlv *copy;
     int n = 0;
 
     for (node = list_first(list); node; node = list_next(node)) {
-        if (radmsg_add(dst, copytlv((struct tlv *)node->data), 0) != 1) {
+        copy = copytlv((struct tlv *)node->data);
+        if (!copy || radmsg_add(dst, copy, 0) != 1) {
+            freetlv(copy);
             n = -1;
             break;
         }
@@ -215,15 +218,15 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     struct list_node *node;
     struct tlv *tlv;
     int size;
+    uint16_t netshort;
     uint8_t *p, *msgauth = NULL;
 
     if (!msg || !msg->attrs)
         return -1;
     size = 20;
     for (node = list_first(msg->attrs); node; node = list_next(node))
-        size += 2 + ((struct tlv *)node->data)->l;
-    if (size > 65535 || size < 0)
-        return -1;
+        if ((size += 2 + ((struct tlv *)node->data)->l) > RAD_Max_Length)
+            return -1;
     *buf = malloc(size);
     if (!*buf)
         return -1;
@@ -231,7 +234,8 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     p = *buf;
     *p++ = msg->code;
     *p++ = msg->id;
-    *(uint16_t *)p = htons(size);
+    netshort = htons(size);
+    memcpy(p, &netshort, sizeof(uint16_t));
     p += 2;
     memcpy(p, msg->auth, 16);
     p += 16;
@@ -249,7 +253,10 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
         return -1;
     }
     if (secret) {
-        if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge || msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request) && !_radsign(*buf, size, secret, secret_len)) {
+        if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge ||
+             msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request ||
+             msg->code == RAD_CoA_NAK || msg->code == RAD_Disconnect_NAK) &&
+            !_radsign(*buf, size, secret, secret_len)) {
             free(*buf);
             *buf = NULL;
             return -1;
@@ -263,7 +270,7 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
 /* if secret set we also validate message-authenticator if present */
 struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len, uint8_t *rqauth) {
     struct radmsg *msg;
-    uint8_t t, l, *v = NULL, *p, zeroauth[16] = {0};
+    uint8_t t, l, *v = NULL, *p, auth[16] = {0};
     struct tlv *attr;
 
     if (len != RADLEN(buf)) {
@@ -271,11 +278,16 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         return NULL;
     }
 
-    if (buf[0] == RAD_Accounting_Request)
-        rqauth = zeroauth;
+    if (secret && (buf[0] == RAD_Accounting_Request || buf[0] == RAD_CoA_Request || buf[0] == RAD_Disconnect_Request)) {
+        memset(auth, 0, 16);
+        if (!_validauth(buf, len, auth, secret, secret_len)) {
+            debug(DBG_WARN, "buf2radmsg: invalid request authenticator");
+            return NULL;
+        }
+    }
+
     if (rqauth && secret && !_validauth(buf, len, rqauth, secret, secret_len)) {
-        debug(DBG_WARN, "buf2radmsg: Invalid %s authenticator",
-              (buf[0] == RAD_Access_Request || buf[0] == RAD_Accounting_Request) ? "request" : "response");
+        debug(DBG_WARN, "buf2radmsg: invalid response authenticator");
         return NULL;
     }
 
@@ -312,6 +324,8 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
                     debug(DBG_DBG, "buf2radmsg: unable to verify message-authenticator, missing original request");
                     msg->msgauthinvalid = 1;
                 }
+            } else if (msg->code == RAD_Accounting_Request) {
+                memset(buf + 4, 0, 16);
             } else if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server)
                 debug(DBG_DBG, "buf2radmsg: unexpected message-authenticator");
             if (l != 16 || !_checkmsgauth(buf, len, v, secret, secret_len)) {
@@ -348,7 +362,7 @@ uint8_t attrname2val(char *attrname) {
 
 /* ATTRNAME is on the form vendor[:type].
    If only vendor is found, TYPE is set to 256 and 1 is returned.
-   If type is >= 256, 1 is returned.
+   If type is found and < 256, 1 is returned.
    Otherwise, 0 is returned.
 */
 /* should accept both names and numeric values, only numeric right now */
@@ -427,6 +441,7 @@ int verifyeapformat(struct radmsg *msg) {
     struct list *eap_attrs;
     struct list_node *node;
     size_t eap_len = 0, attr_len = 0;
+    uint8_t *val;
     int ret = 1;
 
     if (!(eap_attrs = radmsg_getalltype(msg, RAD_Attr_EAP_Message)))
@@ -443,7 +458,8 @@ int verifyeapformat(struct radmsg *msg) {
         goto exit;
     }
 
-    eap_len = ntohs(*(uint16_t *)(((struct tlv *)node->data)->v + 2));
+    val = ((struct tlv *)node->data)->v;
+    eap_len = (uint16_t)(val[2] << 8 | val[3]);
     for (; node; node = list_next(node)) {
         struct tlv *attr = (struct tlv *)node->data;
         if (attr->l == 0) {
@@ -454,7 +470,7 @@ int verifyeapformat(struct radmsg *msg) {
         attr_len += attr->l;
     }
     if (eap_len != attr_len) {
-        debug(DBG_DBG, "verifyeapformat: eap length (%d) does not match attribute content length (%d)", eap_len, attr_len);
+        debug(DBG_DBG, "verifyeapformat: eap length (%zu) does not match attribute content length (%zu)", eap_len, attr_len);
         ret = 0;
         goto exit;
     }
