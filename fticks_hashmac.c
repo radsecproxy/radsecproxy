@@ -2,13 +2,19 @@
 /* See LICENSE for licensing information. */
 
 #include "fticks_hashmac.h"
-#include "utilcrypto.h"
 #include <ctype.h>
 #include <errno.h>
 #include <openssl/hmac.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+const EVP_MD *sha256digest(void) {
+    static const EVP_MD *sha256;
+    if (!sha256)
+        sha256 = EVP_sha256();
+    return sha256;
+}
 
 /** \a HASH is an input buffer of length SHA256_DIGEST_SIZE bytes.
     \a OUT_LEN is the size in bytes of \OUT.

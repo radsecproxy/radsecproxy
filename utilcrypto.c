@@ -1,6 +1,7 @@
 /* Copyright (c) 2023, SWITCH */
 /* See LICENSE for licensing information. */
 
+#include <arpa/inet.h>
 #include <string.h>
 #include <openssl/err.h>
 #include <openssl/hmac.h>
@@ -17,13 +18,6 @@ const EVP_MD *md5digest(void) {
     if (!md5)
         md5 = EVP_md5();
     return md5;
-}
-
-const EVP_MD *sha256digest(void) {
-    static const EVP_MD *sha256;
-    if (!sha256)
-        sha256 = EVP_sha256();
-    return sha256;
 }
 
 static EVP_MD_CTX *mdctxcreate(const EVP_MD *digest) {
