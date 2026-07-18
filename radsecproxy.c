@@ -1219,7 +1219,7 @@ int radsrv(struct request *rq) {
     struct server *to = NULL;
     struct client *from = rq->from;
     int ttlres;
-    char tmp[INET6_ADDRSTRLEN], *err = NULL;
+    char tmp[INET6_ADDRSTRLEN];
 
     msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
     memset(rq->buf, 0, rq->buflen);
@@ -1236,13 +1236,13 @@ int radsrv(struct request *rq) {
 
     switch (msg->auth_state) {
     case RSP_RADMSG_AUTH_UNKNOWN:
-        err = "error verifying authenticator";
+        debug(DBG_ERR, "replyh: unknown auth state. this should never happen!");
     case RSP_RADMSG_INVALID:
-        err = "invalid request-authenticator";
     case RSP_RADMSG_MSGAUTH_INVALID:
-        err = "invalid message-authenticator";
 
-        debug(DBG_NOTICE, "radsrv: %s in %s (id %d) from %s (%s)", err, radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        debug_limit(DBG_WARN, "replyh: invalid %s in %s (id %d) from server %s",
+                    RSP_RADMSG_MSGAUTH_INVALID ? "message-authenticator" : "request-authenticator",
+                    radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         radmsg_free(msg);
         freerq(rq);
         return 0;
@@ -1506,7 +1506,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     int ttlres;
     struct radmsg *msg = NULL;
     struct tlv *attr;
-    char tmp[INET6_ADDRSTRLEN], *err = NULL;
+    char tmp[INET6_ADDRSTRLEN];
 
     pthread_mutex_lock(&server->lock);
     server->lostrqs = 0;
@@ -1539,13 +1539,13 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     switch (msg->auth_state) {
     case RSP_RADMSG_AUTH_UNKNOWN:
-        err = "error verifying authenticator";
+        debug(DBG_ERR, "replyh: unknown auth state. this should never happen!");
     case RSP_RADMSG_INVALID:
-        err = "invalid response-authenticator";
     case RSP_RADMSG_MSGAUTH_INVALID:
-        err = "invalid message-authenticator";
 
-        debug_limit(DBG_WARN, "replyh: %s in %s (id %d) from server %s", err, radmsgtype2string(msg->code), msg->id, server->conf->name);
+        debug_limit(DBG_WARN, "replyh: invalid %s in %s (id %d) from server %s",
+                    RSP_RADMSG_MSGAUTH_INVALID ? "message-authenticator" : "response-authenticator",
+                    radmsgtype2string(msg->code), msg->id, server->conf->name);
         radmsg_free(msg);
         pthread_mutex_unlock(rqout->lock);
         return 0;
