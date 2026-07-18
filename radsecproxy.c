@@ -1755,7 +1755,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     }
 
     if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
-        (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
+        rqout->rq->msg->code == RAD_Access_Request) {
         if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {
             debug(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
             goto errunlock;
