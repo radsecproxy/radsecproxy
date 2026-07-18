@@ -242,8 +242,10 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         uint8_t auth[RADAUTHLEN], msgauth[RADAUTHLEN];
 
         memcpy(auth, RADAUTH(buf), RADAUTHLEN);
-        if (pmsgauth)
+        if (pmsgauth) {
             memcpy(msgauth, pmsgauth, RADAUTHLEN);
+            memset(pmsgauth, 0, RADAUTHLEN);
+        }
 
         if (!radmsgsign(buf, len, secret, secret_len, pmsgauth, rqauth)) {
             debug(DBG_ERR, "buf2radmsg: calculating signatures failed");

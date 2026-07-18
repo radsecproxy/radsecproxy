@@ -194,6 +194,7 @@ int radmsgsign(uint8_t *buf, size_t len, unsigned char *secret, size_t secret_le
         break;
     default:
         /* take authenticator as-is */
+        skip_auth_calc = 1;
         break;
     }
 
@@ -202,7 +203,7 @@ int radmsgsign(uint8_t *buf, size_t len, unsigned char *secret, size_t secret_le
         return 0;
     }
 
-    {
+    if (!skip_auth_calc) {
         EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
 
         if (!mdctx ||
@@ -214,8 +215,8 @@ int radmsgsign(uint8_t *buf, size_t len, unsigned char *secret, size_t secret_le
             return 0;
         }
         EVP_MD_CTX_free(mdctx);
-        return 1;
     }
+    return 1;
 }
 
 /* Local Variables: */
