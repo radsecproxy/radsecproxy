@@ -22,7 +22,7 @@ int listconfig(struct gconffile **cf, char *block, int compact) {
             return 0; /* Success.  */
 
         if (conftype == CONF_STR && !strcasecmp(opt, "include")) {
-            if (!pushgconfpaths(cf, val))
+            if (pushgconfpaths(cf, val) < 0)
                 debugx(1, DBG_ERR, "failed to include config file %s", val);
             continue;
         }

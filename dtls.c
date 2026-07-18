@@ -106,7 +106,7 @@ void *dtlsservernew(void *arg) {
     struct timeval timeout;
     struct addrinfo tmpsrvaddr;
     char tmp[INET6_ADDRSTRLEN], *subj;
-    struct hostportres *hp;
+    struct hostportres *hp = NULL;
 
     debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
 
@@ -525,6 +525,7 @@ int dtlsconnect(struct server *server, int timeout, int reconnect) {
 
     pthread_mutex_lock(&server->lock);
     server->state = RSP_SERVER_STATE_CONNECTED;
+    server->lostrqs = 0;
     pthread_mutex_unlock(&server->lock);
     pthread_mutex_lock(&server->newrq_mutex);
     server->conreset = reconnect;
