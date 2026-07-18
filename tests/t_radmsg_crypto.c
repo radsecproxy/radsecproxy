@@ -2,9 +2,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <../debug.h>
+#include <../radmsg.h>
 #include <../utilcrypto.h>
 
-/* this is not to test digest functions extensively, but to ensure OpenSSL digest APIs are called correctly */
+/* this is not to test digest functions extensively, but to ensure OpenSSL digest APIs are called correctly
+   and length and sanity checks work as intended */
+
+extern int _recryptattr(struct tlv *attr, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth);
 
 /* dummy values*/
 uint8_t *shared = (uint8_t *)"secret";
@@ -53,6 +57,15 @@ void test_radmsgsign(uint8_t *packet, uint8_t *expected, size_t len, uint8_t *rq
         printf("ok %d - %s radmsgsign\n", ++numtests, test);
 }
 
+void test_recryptattr(uint8_t type, uint8_t len, char *value, int expected, char *test) {
+    struct tlv *attr = maketlv(type, len, (uint8_t *)value);
+    if (_recryptattr(attr, shared, sharedlen, shared, sharedlen, auth, auth) == expected)
+        printf("ok %d - %s\n", ++numtests, test);
+    else
+        printf("not ok %d - %s\n", ++numtests, test);
+    freetlv(attr);
+}
+
 int main(int argc, char *argv[]) {
 
     debug_init("t_crypto");
@@ -96,6 +109,27 @@ int main(int argc, char *argv[]) {
     test_radmsgsign((uint8_t *)"\x02\x02\x00\x14\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff",
                     (uint8_t *)"\x02\x02\x00\x14\x7b\xac\x77\xb8\xc4\xf6\xb8\x50\x50\x9c\x6f\x89\xd1\xb2\xe9\x4c",
                     20, auth, "access-accept");
+
+    test_recryptattr(RAD_Attr_User_Name, 4, "user", 1, "non-password attribute");
+
+    test_recryptattr(RAD_Attr_User_Password, 16, "passwordpassword", 1, "valid user-password");
+    test_recryptattr(RAD_Attr_User_Password, 8, "password", 0, "user-password too short");
+    test_recryptattr(RAD_Attr_User_Password, 0, "", 0, "zero-lenght user-password");
+    test_recryptattr(RAD_Attr_User_Password, 129, "passwordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpassword+", 0, "user-password too long");
+    test_recryptattr(RAD_Attr_User_Password, 24, "passwordpasswordpassword", 0, "user-password not multiple of 16");
+
+    test_recryptattr(RAD_Attr_Tunnel_Password, 19, "t\x12\x34passwordpassword", 1, "valid tunnel-password");
+    test_recryptattr(RAD_Attr_Tunnel_Password, 18, "\x12\x34passwordpassword", 0, "tunnel-password missing tag");
+    test_recryptattr(RAD_Attr_Tunnel_Password, 16, "passwordpassword", 0, "tunnel-password missing salt");
+    test_recryptattr(RAD_Attr_Tunnel_Password, 27, "t\x12\x34passwordpasswordpassword", 0, "tunnel-password odd length");
+
+    test_recryptattr(RAD_Attr_Vendor_Specific, 8, "\x00\x00\x00\x01test", 1, "vendor-specific non-microsoft");
+    test_recryptattr(RAD_Attr_Vendor_Specific, 10, "\x00\x00\x01\x37\x01\x06test", 1, "vendor-specific microsoft not mppe");
+    test_recryptattr(RAD_Attr_Vendor_Specific, 56, "\x00\x00\x01\x37\x10\x34\x12\x34passwordpasswordpasswordpasswordpasswordpassword", 1, "vendor-specific microsoft mppe 16");
+    test_recryptattr(RAD_Attr_Vendor_Specific, 56, "\x00\x00\x01\x37\x11\x34\x12\x34passwordpasswordpasswordpasswordpasswordpassword", 1, "vendor-specific microsoft mppe 17");
+    test_recryptattr(RAD_Attr_Vendor_Specific, 16, "\x00\x00\x01\x37\x10\x0c\x12\x34password", 0, "vendor-specific microsoft mppe too short");
+    test_recryptattr(RAD_Attr_Vendor_Specific, 22, "\x00\x00\x01\x37\x10\x12passwordpassword", 0, "vendor-specific microsoft mppe missing salt");
+    test_recryptattr(RAD_Attr_Vendor_Specific, 24, "\x00\x00\x01\x37\x10\x15\x12\x34passwordpassword1", 0, "vendor-specific microsoft mppe odd length");
 
     printf("1..%d\n", numtests);
 

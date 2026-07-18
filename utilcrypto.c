@@ -105,75 +105,82 @@ static int gensalt(unsigned char *salt, int len, uint32_t index) {
     return 1;
 }
 
-int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
+int _recryptattr(struct tlv *attr, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
     uint8_t newsalt[2], saltindex = 0;
     uint8_t sublen, *subattrs;
+
+    /* user password RFC2865 */
+    if (attr->t == RAD_Attr_User_Password) {
+        debug(DBG_DBG, "recryptattrs: reencrypting user password");
+        if (attr->l < RAD_PWD_BLOCK_SIZE || attr->l > 128 || attr->l % RAD_PWD_BLOCK_SIZE) {
+            debug(DBG_WARN, "radsrv: invalid user password length %d", attr->l);
+            return 0;
+        }
+        if (!pwdrecrypt(attr->v, attr->l, oldsecret, oldsecret_len, newsecret, newsecret_len, oldauth, newauth, NULL, 0, NULL, 0))
+            return 0;
+    }
+
+    /* tunnel-password RFC2868 */
+    if (attr->t == RAD_Attr_Tunnel_Password) {
+        debug(DBG_DBG, "recryptattrs: reencrypting tunnel password");
+        if ((attr->l - RAD_PWD_SALT_LEN - 1) < RAD_PWD_BLOCK_SIZE || (attr->l - RAD_PWD_SALT_LEN - 1) % RAD_PWD_BLOCK_SIZE) {
+            debug(DBG_WARN, "recryptattrs: invalid tunnel password length %d", attr->l);
+            return 0;
+        }
+        if (!gensalt(newsalt, RAD_PWD_SALT_LEN, saltindex++))
+            return 0;
+        if (!pwdrecrypt(attr->v + RAD_PWD_SALT_LEN + 1, attr->l - RAD_PWD_SALT_LEN - 1, oldsecret, oldsecret_len, newsecret, newsecret_len,
+                        oldauth, newauth, attr->v + 1, RAD_PWD_SALT_LEN, newsalt, RAD_PWD_SALT_LEN))
+            return 0;
+        memcpy(attr->v + 1, newsalt, RAD_PWD_SALT_LEN);
+    }
+
+    /* MS MPPE RFC 2548 */
+    if (attr->t == RAD_Attr_Vendor_Specific) {
+        if (attr->l <= 4)
+            return 1;
+        if (memcmp(attr->v, RAD_VS_MS, 4) != 0)
+            return 1;
+        sublen = attr->l - 4;
+        subattrs = attr->v + 4;
+        if (!attrvalidate(subattrs, sublen)) {
+            debug(DBG_WARN, "recryptattrs: invalid MS vendor specific attribute");
+            return 0;
+        }
+        while (sublen > 1) {
+            if (ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Send_Key ||
+                ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Recv_Key) {
+                debug(DBG_DBG, "recryptattrs: reencrypting msmppe key type %d", ATTRTYPE(subattrs));
+                if (ATTRVALLEN(subattrs) - RAD_PWD_SALT_LEN < RAD_PWD_BLOCK_SIZE || (ATTRVALLEN(subattrs) - RAD_PWD_SALT_LEN) % RAD_PWD_BLOCK_SIZE) {
+                    debug(DBG_WARN, "recryptattrs: invalid msmpp key length %d", ATTRVALLEN(subattrs));
+                    return 0;
+                }
+                if (!gensalt(newsalt, RAD_PWD_SALT_LEN, saltindex++))
+                    return 0;
+                if (!pwdrecrypt(ATTRVAL(subattrs) + RAD_PWD_SALT_LEN, ATTRVALLEN(subattrs) - RAD_PWD_SALT_LEN, oldsecret, oldsecret_len, newsecret, newsecret_len,
+                                oldauth, newauth, ATTRVAL(subattrs), RAD_PWD_SALT_LEN, newsalt, RAD_PWD_SALT_LEN)) {
+                    debug(DBG_WARN, "recryptattrs: recrypt failed");
+                    return 0;
+                }
+                memcpy(ATTRVAL(subattrs), newsalt, 2);
+            }
+            sublen -= ATTRLEN(subattrs);
+            subattrs += ATTRLEN(subattrs);
+        }
+    }
+    return 1;
+}
+
+int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
     struct list_node *node;
     struct tlv *attr;
 
     for (node = list_first(attrs); node; node = list_next(node)) {
         attr = (struct tlv *)node->data;
-
-        /* user password RFC2865 */
-        if (attr->t == RAD_Attr_User_Password) {
-            debug(DBG_DBG, "recryptattrs: reencrypting user password");
-            if (attr->l < RAD_PWD_BLOCK_SIZE || attr->l > 128 || attr->l % RAD_PWD_BLOCK_SIZE) {
-                debug(DBG_WARN, "radsrv: invalid user password length");
-                return 0;
-            }
-            if (!pwdrecrypt(attr->v, attr->l, oldsecret, oldsecret_len, newsecret, newsecret_len, oldauth, newauth, NULL, 0, NULL, 0))
-                return 0;
-        }
-
-        /* tunnel-password RFC2868 */
-        if (attr->t == RAD_Attr_Tunnel_Password) {
-            debug(DBG_DBG, "recryptattrs: reencrypting tunnel password");
-            if (attr->l - RAD_PWD_SALT_LEN - 1 < RAD_PWD_BLOCK_SIZE || (attr->l - RAD_PWD_SALT_LEN - 1) % RAD_PWD_BLOCK_SIZE) {
-                debug(DBG_WARN, "recryptattrs: invalid tunnel password length (not a multiple of 16)");
-                return 0;
-            }
-            if (!gensalt(newsalt, RAD_PWD_SALT_LEN, saltindex++))
-                return 0;
-            if (!pwdrecrypt(attr->v + RAD_PWD_SALT_LEN + 1, attr->l - RAD_PWD_SALT_LEN + 1, oldsecret, oldsecret_len, newsecret, newsecret_len,
-                            oldauth, newauth, attr->v + 1, RAD_PWD_SALT_LEN, newsalt, RAD_PWD_SALT_LEN))
-                return 0;
-            memcpy(attr->v + 1, newsalt, RAD_PWD_SALT_LEN);
-        }
-
-        /* MS MPPE RFC 2548 */
-        if (attr->t == RAD_Attr_Vendor_Specific) {
-            if (attr->l <= 4)
-                continue;
-            if (memcmp(attr->v, RAD_VS_MS, 4) != 0)
-                continue;
-            sublen = attr->l - 4;
-            subattrs = attr->v + 4;
-            if (!attrvalidate(subattrs, sublen)) {
-                debug(DBG_WARN, "recryptattrs: invalid MS vendor specific attribute");
-                return 0;
-            }
-            while (sublen > 1) {
-                if (ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Send_Key ||
-                    ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Recv_Key) {
-                    debug(DBG_DBG, "recryptattrs: reencrypting msmppe key type %d", ATTRTYPE(subattrs));
-                    if (ATTRVALLEN(subattrs) - RAD_PWD_SALT_LEN < RAD_PWD_BLOCK_SIZE || (ATTRVALLEN(subattrs) - RAD_PWD_SALT_LEN) % RAD_PWD_BLOCK_SIZE) {
-                        debug(DBG_WARN, "recryptattrs: invalid length of msmpp key");
-                        return 0;
-                    }
-                    if (!gensalt(newsalt, RAD_PWD_SALT_LEN, saltindex++))
-                        return 0;
-                    if (!pwdrecrypt(ATTRVAL(subattrs) + RAD_PWD_SALT_LEN, ATTRVALLEN(subattrs) - RAD_PWD_SALT_LEN, oldsecret, oldsecret_len, newsecret, newsecret_len,
-                                    oldauth, newauth, ATTRVAL(subattrs), RAD_PWD_SALT_LEN, newsalt, RAD_PWD_SALT_LEN)) {
-                        debug(DBG_WARN, "recryptattrs: recrypt failed");
-                        return 0;
-                    }
-                    memcpy(ATTRVAL(subattrs), newsalt, 2);
-                }
-                sublen -= ATTRLEN(subattrs);
-                subattrs += ATTRLEN(subattrs);
-            }
-        }
+        if (!_recryptattr(attr, oldsecret, oldsecret_len, newsecret, newsecret_len, oldauth, newauth))
+            return 0;
     }
+
     return 1;
 }
 
