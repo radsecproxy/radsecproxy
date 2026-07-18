@@ -37,6 +37,11 @@ int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared, uint8
     uint8_t i, offset = 0, out[128];
     long err = 0;
 
+    if (len % RAD_PWD_BLOCK_SIZE) {
+        debug(DBG_ERR, "pwdcrypt: length not a multiple of 16! there is likely a bug!");
+        return 0;
+    }
+
     if (!mdctx) {
         debug(DBG_ERR, "pwdcrypt: creating EVP_MD_CTX failed");
         return 0;
@@ -46,7 +51,7 @@ int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared, uint8
     for (;;) {
         if (!EVP_DigestInit_ex(mdctx, NULL, NULL) ||
             !EVP_DigestUpdate(mdctx, shared, sharedlen) ||
-            !EVP_DigestUpdate(mdctx, input, 16))
+            !EVP_DigestUpdate(mdctx, input, RAD_PWD_BLOCK_SIZE))
             goto errexit;
         if (salt) {
             if (!EVP_DigestUpdate(mdctx, salt, saltlen))
@@ -55,13 +60,13 @@ int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared, uint8
         }
         if (!EVP_DigestFinal_ex(mdctx, hash, NULL))
             goto errexit;
-        for (i = 0; i < 16; i++)
+        for (i = 0; i < RAD_PWD_BLOCK_SIZE; i++)
             out[offset + i] = hash[i] ^ in[offset + i];
         if (encrypt_flag)
             input = out + offset;
         else
             input = in + offset;
-        offset += 16;
+        offset += RAD_PWD_BLOCK_SIZE;
         if (offset == len)
             break;
     }
@@ -151,14 +156,14 @@ int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint
                 if (ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Send_Key ||
                     ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Recv_Key) {
                     debug(DBG_DBG, "recryptattrs: reencrypting msmppe key type %d", ATTRTYPE(subattrs));
-                    if (ATTRLEN(subattrs) < 18 || (ATTRLEN(subattrs) - 2) % 16) {
+                    if (ATTRVALLEN(subattrs) < 18 || (ATTRVALLEN(subattrs) - 2) % 16) {
                         debug(DBG_WARN, "recryptattrs: invalid length of msmpp key");
                         return 0;
                     }
-                    if (!gensalt(newsalt, 2, saltindex++))
+                    if (!gensalt(newsalt, RAD_PWD_SALT_LEN, saltindex++))
                         return 0;
-                    if (!pwdrecrypt(ATTRVAL(subattrs) + 2, ATTRLEN(subattrs) - 2, oldsecret, oldsecret_len, newsecret, newsecret_len,
-                                    oldauth, newauth, ATTRVAL(subattrs), 2, newsalt, 2)) {
+                    if (!pwdrecrypt(ATTRVAL(subattrs) + RAD_PWD_SALT_LEN, ATTRVALLEN(subattrs) - RAD_PWD_SALT_LEN, oldsecret, oldsecret_len, newsecret, newsecret_len,
+                                    oldauth, newauth, ATTRVAL(subattrs), RAD_PWD_SALT_LEN, newsalt, RAD_PWD_SALT_LEN)) {
                         debug(DBG_WARN, "recryptattrs: recrypt failed");
                         return 0;
                     }
@@ -173,6 +178,7 @@ int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint
 }
 
 int radmsgsign(uint8_t *buf, size_t len, unsigned char *secret, size_t secret_len, uint8_t *pmsgauth, uint8_t *rqauth) {
+    int skip_auth_calc = 0;
 
     switch (RADCODE(buf)) {
     case RAD_Accounting_Request:

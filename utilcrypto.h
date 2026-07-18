@@ -8,6 +8,9 @@
 #include <openssl/evp.h>
 #include "list.h"
 
+#define RAD_PWD_BLOCK_SIZE 16
+#define RAD_PWD_SALT_LEN 2
+
 const EVP_MD *md5digest(void);
 const EVP_MD *sha256digest(void);
 

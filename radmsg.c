@@ -198,12 +198,12 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
     }
 
     p = buf + RADHDRLEN;
-    while (p - buf + ATTRHDRLEN <= len) {
+    while ((p - buf) + ATTRHDRLEN <= len) {
         if (ATTRLEN(p) < ATTRHDRLEN) {
             debug(DBG_WARN, "buf2radmsg: attribute %d: invalid length %d", ATTRTYPE(p), ATTRLEN(p));
             return NULL;
         }
-        if (p - buf + ATTRLEN(p) > len) {
+        if ((p - buf) + ATTRLEN(p) > len) {
             debug(DBG_WARN, "buf2radmsg: attribute %d: length %d exceeds packet length", ATTRTYPE(p), ATTRLEN(p));
             return NULL;
         }
@@ -230,7 +230,7 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         return NULL;
 
     for (p = buf + RADHDRLEN; p - buf < len; p += ATTRLEN(p)) {
-        attr = maketlv(ATTRTYPE(p), ATTRLEN(p), ATTRVAL(p));
+        attr = maketlv(ATTRTYPE(p), ATTRVALLEN(p), ATTRVAL(p));
         if (!attr || !radmsg_add(msg, attr, 0)) {
             freetlv(attr);
             radmsg_free(msg);
@@ -299,7 +299,7 @@ int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
 
 int attrvalidate(unsigned char *attrs, int length) {
     while (length > 1) {
-        if (ATTRLEN(attrs) < 2) {
+        if (ATTRLEN(attrs) < ATTRHDRLEN) {
             debug(DBG_INFO, "attrvalidate: invalid attribute length %d", ATTRLEN(attrs));
             return 0;
         }

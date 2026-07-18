@@ -97,8 +97,8 @@ struct radmsg {
 #define ATTRHDRLEN 2
 #define ATTRTYPE(x) ((x)[0])
 #define ATTRLEN(x) ((x)[1])
-#define ATTRVAL(x) ((x) + 2)
-#define ATTRVALLEN(x) ((x)[1] - 2)
+#define ATTRVAL(x) ((x) + ATTRHDRLEN)
+#define ATTRVALLEN(x) ((x)[1] - ATTRHDRLEN)
 
 int get_checked_rad_length(uint8_t *buf);
 void radmsg_free(struct radmsg *);
