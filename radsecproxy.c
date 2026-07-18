@@ -1837,15 +1837,14 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         cause = ntohl(*(uint32_t *)attr->v);
         if (cause == RAD_Err_Request_Not_Routable || cause == RAD_Err_Other_Proxy_Processing_Error) {
             debug(DBG_INFO, "replyh: Protocol-Error (id %d) from %s indicating proxy network error: resending to alternate server not implemented!", msg->id, server->conf->name);
-            //TODO recirculate to other server
+            /* recirculation not yet implemented, just forward if enabled */
             if (!rqout->rq->from->conf->protocolerror) {
                 freerqoutdata(rqout);
                 goto errunlock;
             }
         } else if (cause == RAD_Err_Unsupported_Extension) {
             debug_limit(DBG_NOTICE, "replyh: Server %s does not support %s", server->conf->name, radmsgtype2string(code));
-            //TODO try to recirculate too?
-            /* create a not routable response instead */
+            /* recirculation not yet implemented, convert to not routable*/
             rqout->rq->msg->id = rqout->rq->rqid;
             memcpy(rqout->rq->msg->auth, rqout->rq->rqauth, 16);
             respondprotoerror(rqout->rq, RAD_Err_Request_Not_Routable);
@@ -1854,16 +1853,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         } else
             debug(DBG_DBG, "replyh: Protocol-Error reason %d (id %d) from %s, forwarding upstream", cause, msg->id, server->conf->name);
 
-        //TODO refactor duplicate code
-        msg->id = (char)rqout->rq->rqid;
-        memcpy(msg->auth, rqout->rq->rqauth, 16);
-
-        radmsg_free(rqout->rq->msg);
-        rqout->rq->msg = msg;
-        sendreply(newrqref(rqout->rq));
-        freerqoutdata(rqout);
-        pthread_mutex_unlock(rqout->lock);
-        return 1;
+        goto forwardreply;
     }
 
     gettimeofday(&server->lastreply, NULL);
@@ -1925,9 +1915,6 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         if (options.fticks_reporting && from->conf->fticks_viscountry != NULL)
             fticks_log(&options, from, msg, rqout->rq);
 
-    msg->id = (char)rqout->rq->rqid;
-    memcpy(msg->auth, rqout->rq->rqauth, 16);
-
     if (rqout->rq->origusername && (attr = radmsg_gettype(msg, RAD_Attr_User_Name))) {
         if (!resizeattr(attr, strlen(rqout->rq->origusername))) {
             debug(DBG_WARN, "replyh: malloc failed, ignoring reply");
@@ -1948,7 +1935,11 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     if (ttlres == -1 && (options.addttl || from->conf->addttl))
         addttlattr(msg, options.ttlattrtype, from->conf->addttl ? from->conf->addttl : options.addttl);
 
-    debug(DBG_DBG, "replyh: passing %s (id %d) to client %s (%s)", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+    debug(DBG_DBG, "replyh: passing %s (id %d) to client %s (%s)", radmsgtype2string(msg->code), rqout->rq->rqid, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+
+forwardreply:
+    msg->id = rqout->rq->rqid;
+    memcpy(msg->auth, rqout->rq->rqauth, 16);
 
     radmsg_free(rqout->rq->msg);
     rqout->rq->msg = msg;
