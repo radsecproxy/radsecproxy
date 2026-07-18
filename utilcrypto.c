@@ -117,7 +117,7 @@ int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint
         /* user password RFC2865 */
         if (attr->t == RAD_Attr_User_Password) {
             debug(DBG_DBG, "recryptattrs: reencrypting user password");
-            if (attr->l < 16 || attr->l > 128 || attr->l % 16) {
+            if (attr->l < RAD_PWD_BLOCK_SIZE || attr->l > 128 || attr->l % RAD_PWD_BLOCK_SIZE) {
                 debug(DBG_WARN, "radsrv: invalid user password length");
                 return 0;
             }
@@ -128,16 +128,16 @@ int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint
         /* tunnel-password RFC2868 */
         if (attr->t == RAD_Attr_Tunnel_Password) {
             debug(DBG_DBG, "recryptattrs: reencrypting tunnel password");
-            if (attr->l < 16 || attr->l % 16) {
+            if (attr->l - RAD_PWD_SALT_LEN - 1 < RAD_PWD_BLOCK_SIZE || (attr->l - RAD_PWD_SALT_LEN - 1) % RAD_PWD_BLOCK_SIZE) {
                 debug(DBG_WARN, "recryptattrs: invalid tunnel password length (not a multiple of 16)");
                 return 0;
             }
-            if (!gensalt(newsalt, 2, saltindex++))
+            if (!gensalt(newsalt, RAD_PWD_SALT_LEN, saltindex++))
                 return 0;
-            if (!pwdrecrypt(attr->v + 3, attr->l - 3, oldsecret, oldsecret_len, newsecret, newsecret_len,
-                            oldauth, newauth, attr->v + 1, 2, newsalt, 2))
+            if (!pwdrecrypt(attr->v + RAD_PWD_SALT_LEN + 1, attr->l - RAD_PWD_SALT_LEN + 1, oldsecret, oldsecret_len, newsecret, newsecret_len,
+                            oldauth, newauth, attr->v + 1, RAD_PWD_SALT_LEN, newsalt, RAD_PWD_SALT_LEN))
                 return 0;
-            memcpy(attr->v + 1, newsalt, 2);
+            memcpy(attr->v + 1, newsalt, RAD_PWD_SALT_LEN);
         }
 
         /* MS MPPE RFC 2548 */
@@ -156,7 +156,7 @@ int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint
                 if (ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Send_Key ||
                     ATTRTYPE(subattrs) == RAD_VS_ATTR_MS_MPPE_Recv_Key) {
                     debug(DBG_DBG, "recryptattrs: reencrypting msmppe key type %d", ATTRTYPE(subattrs));
-                    if (ATTRVALLEN(subattrs) < 18 || (ATTRVALLEN(subattrs) - 2) % 16) {
+                    if (ATTRVALLEN(subattrs) - RAD_PWD_SALT_LEN < RAD_PWD_BLOCK_SIZE || (ATTRVALLEN(subattrs) - RAD_PWD_SALT_LEN) % RAD_PWD_BLOCK_SIZE) {
                         debug(DBG_WARN, "recryptattrs: invalid length of msmpp key");
                         return 0;
                     }
