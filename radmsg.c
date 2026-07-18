@@ -252,14 +252,12 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
             msg->auth_state = RSP_RADMSG_AUTH_UNKNOWN;
         } else {
             if (memcmp(auth, RADAUTH(buf), RADAUTHLEN) != 0) {
-                debug(DBG_WARN, "buf2radmsg: authenticator invalid (%s id %d)", radmsgtype2string(RADCODE(buf)), RADID(buf));
                 msg->auth_state = RSP_RADMSG_INVALID;
             } else
                 msg->auth_state = RSP_RADMSG_VALID;
 
             if (pmsgauth) {
                 if (memcmp(msgauth, pmsgauth, 16) != 0) {
-                    debug(DBG_WARN, "buf2radmsg: message authenticator invalid (%s id %d)", radmsgtype2string(RADCODE(buf)), RADID(buf));
                     msg->auth_state = RSP_RADMSG_MSGAUTH_INVALID;
                 } else
                     msg->auth_state = RSP_RADMSG_MSGAUTH_VALID;
