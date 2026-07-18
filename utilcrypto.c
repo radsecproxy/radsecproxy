@@ -139,7 +139,7 @@ int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint
         if (attr->t == RAD_Attr_Vendor_Specific) {
             if (attr->l <= 4)
                 continue;
-            if ((uint32_t)*attr->v != htonl(311)) /* 311 == Microsoft */
+            if (memcmp(attr->v, RAD_VS_MS, 4) != 0)
                 continue;
             sublen = attr->l - 4;
             subattrs = attr->v + 4;

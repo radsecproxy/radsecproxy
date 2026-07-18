@@ -65,6 +65,7 @@
 
 #define RAD_Err_Unsupported_Extension 406
 
+#define RAD_VS_MS "\x00\x00\x01\x37"
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
 
