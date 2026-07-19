@@ -1483,11 +1483,7 @@ int radsrv(struct request *rq) {
     char tmp[INET6_ADDRSTRLEN];
 
     msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
-    memset(rq->buf, 0, rq->buflen);
-    free(rq->buf);
-    rq->buf = NULL;
-
-    if (!msg || msg->msgauthinvalid) {
+    if (!msg) {
         debug_limit(DBG_NOTICE, "radsrv: message decode/validation error (code %d, id %d ?) from %s (%s)",
                     rq->buf[0], rq->buf[1], from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         radmsg_free(msg);
@@ -1495,6 +1491,9 @@ int radsrv(struct request *rq) {
         return 0;
     }
 
+    memset(rq->buf, 0, rq->buflen);
+    free(rq->buf);
+    rq->buf = NULL;
     rq->msg = msg;
     rq->rqid = msg->id;
     memcpy(rq->rqauth, msg->auth, 16);
