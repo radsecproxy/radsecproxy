@@ -1836,7 +1836,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         }
         cause = ntohl(*(uint32_t *)attr->v);
         if (cause == RAD_Err_Request_Not_Routable || cause == RAD_Err_Other_Proxy_Processing_Error) {
-            debug(DBG_INFO, "replyh: Protocol-Error (id %d) from %s indicating proxy network error: resending to alternate server not implemented!", msg->id, server->conf->name);
+            debug(DBG_INFO, "replyh: Protocol-Error (id %d) from %s indicating proxy network error, forwarding to client", msg->id, server->conf->name);
             /* recirculation not yet implemented, just forward if enabled */
             if (!rqout->rq->from->conf->protocolerror) {
                 freerqoutdata(rqout);
@@ -1851,7 +1851,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
             freerqoutdata(rqout);
             goto errunlock;
         } else
-            debug(DBG_DBG, "replyh: Protocol-Error reason %d (id %d) from %s, forwarding upstream", cause, msg->id, server->conf->name);
+            debug(DBG_DBG, "replyh: Protocol-Error reason %d (id %d) from %s, forwarding to client", cause, msg->id, server->conf->name);
 
         goto forwardreply;
     }
