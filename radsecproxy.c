@@ -3504,6 +3504,7 @@ void getmainconfig(const char *configfile) {
     memset(&sourceargs, 0, sizeof(sourceargs));
     options.logfullusername = 1;
     options.verifyeap = 1;
+    options.protocolerror = 1;
 
     clconfs = list_create();
     if (!clconfs)
