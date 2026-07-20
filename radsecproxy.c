@@ -938,13 +938,16 @@ int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct
     return 1;
 }
 
+/* 1 = success, 0 = resulting attribute invalid, -1 = memory error*/
 int rewriteusername(struct request *rq, struct tlv *attr) {
+    int result = 0;
+
     char *orig = (char *)tlv2str(attr);
     if (!orig)
-        return 0;
-    if (!dorewritemodattr(attr, rq->from->conf->rewriteusername)) {
+        return -1;
+    if ((result = dorewritemodattr(attr, rq->from->conf->rewriteusername)) < 1) {
         free(orig);
-        return 0;
+        return result;
     }
     if (strlen(orig) != attr->l || memcmp(orig, attr->v, attr->l))
         rq->origusername = (char *)orig;
@@ -1479,7 +1482,7 @@ int radsrv(struct request *rq) {
     struct realm *realm = NULL;
     struct server *to = NULL;
     struct client *from = rq->from;
-    int ttlres;
+    int ttlres, result;
     char tmp[INET6_ADDRSTRLEN];
 
     msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
@@ -1538,8 +1541,16 @@ int radsrv(struct request *rq) {
         goto exit;
     }
 
-    if (from->conf->rewritein && !dorewrite(msg, from->conf->rewritein))
-        goto rmclrqexit;
+    if (from->conf->rewritein && (result = dorewrite(msg, from->conf->rewritein)) < 1) {
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "radsrv: rewrite results in invalid attribute(s) from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+            respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+            goto exit;
+        } else {
+            debug(DBG_WARN, "radsrv: rewrite malloc failed, ignoring request");
+            goto rmclrqexit;
+        }
+    }
 
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {
@@ -1559,9 +1570,14 @@ int radsrv(struct request *rq) {
         goto exit;
     }
 
-    if (from->conf->rewriteusername && !rewriteusername(rq, attr)) {
-        debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
-        goto rmclrqexit;
+    if (from->conf->rewriteusername && (result = rewriteusername(rq, attr)) < 1) {
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "radsrv: username rewrite results in invalid attribute from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+            respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+        } else {
+            debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
+            goto rmclrqexit;
+        }
     }
 
     /* converty any non printable ascii character to hexencoding for logging */
@@ -1640,8 +1656,16 @@ int radsrv(struct request *rq) {
             goto rmclrqexit;
     }
 
-    if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
-        goto rmclrqexit;
+    if (to->conf->rewriteout && (result = dorewrite(msg, to->conf->rewriteout)) < 1) {
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "radsrv: rewrite results in invalid attribute(s) from %s (%s) to %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
+            respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+            goto exit;
+        } else {
+            debug(DBG_WARN, "radsrv: rewrite malloc failed, ignoring request");
+            goto rmclrqexit;
+        }
+    }
 
     if (msg->code == RAD_Access_Request &&
         !ensuremsgauthfront(msg))
@@ -1658,7 +1682,6 @@ int radsrv(struct request *rq) {
     return 1;
 
 rmclrqexit:
-    respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
     rmclientrq(rq, msg->id);
 exit:
     freerq(rq);
@@ -1857,7 +1880,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     gettimeofday(&server->lastreply, NULL);
 
-    if (server->conf->rewritein && !dorewrite(msg, server->conf->rewritein)) {
+    if (server->conf->rewritein && dorewrite(msg, server->conf->rewritein) < 1) {
         debug(DBG_INFO, "replyh: rewritein failed");
         goto errunlock;
     }
@@ -1915,14 +1938,14 @@ int replyh(struct server *server, uint8_t *buf, int len) {
             fticks_log(&options, from, msg, rqout->rq);
 
     if (rqout->rq->origusername && (attr = radmsg_gettype(msg, RAD_Attr_User_Name))) {
-        if (!resizeattr(attr, strlen(rqout->rq->origusername))) {
+        if (resizeattr(attr, strlen(rqout->rq->origusername)) < 1) {
             debug(DBG_WARN, "replyh: malloc failed, ignoring reply");
             goto errunlock;
         }
         memcpy(attr->v, rqout->rq->origusername, strlen(rqout->rq->origusername));
     }
 
-    if (from->conf->rewriteout && !dorewrite(msg, from->conf->rewriteout)) {
+    if (from->conf->rewriteout && dorewrite(msg, from->conf->rewriteout) < 1) {
         debug(DBG_WARN, "replyh: rewriteout failed");
         goto errunlock;
     }

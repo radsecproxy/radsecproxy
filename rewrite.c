@@ -383,15 +383,17 @@ void dorewriterm(struct radmsg *msg, uint8_t *rmattrs, uint32_t *rmvattrs, int i
     }
 }
 
+/* 1 = success, 0 = resulting attribute invalid, -1 = memory error*/
 int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
-    size_t nmatch = 10, reslen = 0, start = 0;
+    size_t nmatch = 10, start = 0;
+    uint16_t reslen = 0;
     regmatch_t pmatch[10], *pfield;
-    int i;
+    int i, result;
     char *in, *out;
 
     in = stringcopy((char *)attr->v, attr->l);
     if (!in)
-        return 0;
+        return -1;
 
     if (regexec(modattr->regex, in, nmatch, pmatch, 0)) {
         free(in);
@@ -411,10 +413,13 @@ int dorewritemodattr(struct tlv *attr, struct modattr *modattr) {
         }
     }
     reslen += i - start;
-    if (!resizeattr(attr, reslen)) {
-        debug(DBG_INFO, "rewritten attribute to length %zu failed, discarding message", reslen);
+    if ((result = resizeattr(attr, reslen)) < 1) {
+        if (result == 0)
+            debug(DBG_NOTICE, "dorewritemodattr: rewrite failed, resulting length %zu of attribute %d is too long", reslen, attr->t);
+        else
+            debug(DBG_ERR, "dorewritemodattr: rewrite failed memory allocation error");
         free(in);
-        return 0;
+        return result;
     }
 
     start = 0;
@@ -457,9 +462,10 @@ int replacesubtlv(struct tlv *vendortlv, uint8_t *p, struct tlv *newtlv) {
     return 1;
 }
 
+/* 1 = success, 0 = resulting attribute invalid, -1 = memory error*/
 int dorewritemodvattr(struct tlv *vendortlv, struct modattr *modvattr) {
     struct tlv *tmpattr;
-    int offset;
+    int offset, result = 0;
 
     if (vendortlv->l <= 4 || !attrvalidate(vendortlv->v + 4, vendortlv->l - 4))
         return 0;
@@ -467,29 +473,29 @@ int dorewritemodvattr(struct tlv *vendortlv, struct modattr *modvattr) {
         if (ATTRTYPE(vendortlv->v + offset) == modvattr->t) {
             tmpattr = maketlv(ATTRTYPE(vendortlv->v + offset), ATTRVALLEN(vendortlv->v + offset), ATTRVAL(vendortlv->v + offset));
             if (!tmpattr)
-                return 0;
-            if (dorewritemodattr(tmpattr, modvattr)) {
+                return -1;
+            if ((result = dorewritemodattr(tmpattr, modvattr)) > 0) {
                 int size_diff = tmpattr->l - ATTRVALLEN(vendortlv->v + offset);
                 int rem_size = vendortlv->l - offset - ATTRLEN(vendortlv->v + offset);
                 uint8_t *next;
 
                 if (size_diff > 0)
-                    if (!resizeattr(vendortlv, vendortlv->l + size_diff)) {
+                    if ((result = resizeattr(vendortlv, vendortlv->l + size_diff)) < 1) {
                         freetlv(tmpattr);
-                        return 0;
+                        return result;
                     }
                 next = vendortlv->v + offset + ATTRLEN(vendortlv->v + offset);
                 memmove(next + size_diff, next, rem_size);
                 if (size_diff < 0)
-                    if (!resizeattr(vendortlv, vendortlv->l + size_diff)) {
+                    if ((result = resizeattr(vendortlv, vendortlv->l + size_diff)) < 1) {
                         freetlv(tmpattr);
-                        return 0;
+                        return result;
                     }
 
                 tlv2buf(vendortlv->v + offset, tmpattr);
             } else {
                 freetlv(tmpattr);
-                return 0;
+                return result;
             }
             freetlv(tmpattr);
         }
@@ -497,9 +503,11 @@ int dorewritemodvattr(struct tlv *vendortlv, struct modattr *modvattr) {
     return 1;
 }
 
+/* 1 = success, 0 = resulting attribute invalid, -1 = memory error*/
 int dorewritemod(struct radmsg *msg, struct list *modattrs, struct list *modvattrs) {
     struct list_node *n, *m;
     uint32_t vendor;
+    int result = 0;
 
     for (n = list_first(msg->attrs); n; n = list_next(n)) {
         struct tlv *attr = (struct tlv *)n->data;
@@ -508,14 +516,14 @@ int dorewritemod(struct radmsg *msg, struct list *modattrs, struct list *modvatt
             vendor = ntohl(vendor);
             for (m = list_first(modvattrs); m; m = list_next(m)) {
                 if (vendor == ((struct modattr *)m->data)->vendor &&
-                    !dorewritemodvattr(attr, (struct modattr *)m->data))
-                    return 0;
+                    (result = dorewritemodvattr(attr, (struct modattr *)m->data)) < 1)
+                    return result;
             }
         } else {
             for (m = list_first(modattrs); m; m = list_next(m))
                 if (((struct tlv *)n->data)->t == ((struct modattr *)m->data)->t &&
-                    !dorewritemodattr((struct tlv *)n->data, (struct modattr *)m->data))
-                    return 0;
+                    (result = dorewritemodattr((struct tlv *)n->data, (struct modattr *)m->data)) < 1)
+                    return result;
         }
     }
     return 1;
@@ -585,23 +593,30 @@ int dorewritesup(struct radmsg *msg, struct list *supattrs) {
     return 1;
 }
 
+/**
+ * @brief perform a rewrite action on a message
+ * 
+ * @param msg the message to rewrite
+ * @param rewrite rewrite action to execute
+ * @return int 1 on success, 0 if rewrite results in invalid attributes, -1 on memory errors
+ */
 int dorewrite(struct radmsg *msg, struct rewrite *rewrite) {
-    int rv = 1; /* Success.  */
+    int result = 0;
 
     if (rewrite) {
         if (rewrite->removeattrs || rewrite->removevendorattrs)
             dorewriterm(msg, rewrite->removeattrs, rewrite->removevendorattrs, rewrite->whitelist_mode);
         if (rewrite->modattrs || rewrite->modvattrs)
-            if (!dorewritemod(msg, rewrite->modattrs, rewrite->modvattrs))
-                rv = 0;
+            if ((result = dorewritemod(msg, rewrite->modattrs, rewrite->modvattrs)) < 1)
+                return result;
         if (rewrite->supattrs)
             if (!dorewritesup(msg, rewrite->supattrs))
-                rv = 0;
+                return -1;
         if (rewrite->addattrs)
             if (!dorewriteadd(msg, rewrite->addattrs))
-                rv = 0;
+                return -1;
     }
-    return rv;
+    return 1;
 }
 
 /** Ad vendor attribute with VENDOR + ATTR and push it on MSG.  ATTR

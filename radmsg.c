@@ -443,13 +443,23 @@ struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr) {
     return newtlv;
 }
 
+/**
+ * @brief resize a radius attribute
+ * 
+ * If the newlen is less than the original lengh, the existing data is truncated. If it is longer, the
+ * additional bytes may contain random data.
+ * 
+ * @param attr the attribute to resize
+ * @param newlen the new length
+ * @return int 1 if resize was successful, 0 if newlen is illegal, -1 on memory allocaiton error.
+ */
 int resizeattr(struct tlv *attr, size_t newlen) {
     if (newlen > RAD_Max_Attr_Value_Length)
         return 0;
 
     if (resizetlv(attr, newlen))
         return 1;
-    return 0;
+    return -1;
 }
 
 /**
