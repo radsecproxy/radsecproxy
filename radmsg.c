@@ -443,7 +443,7 @@ struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr) {
     return newtlv;
 }
 
-int resizeattr(struct tlv *attr, uint8_t newlen) {
+int resizeattr(struct tlv *attr, size_t newlen) {
     if (newlen > RAD_Max_Attr_Value_Length)
         return 0;
 

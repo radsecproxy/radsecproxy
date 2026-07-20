@@ -30,7 +30,7 @@ int test_resize(int start_size, int target_size, uint8_t shouldfail) {
 }
 
 int main(int argc, char *argv[]) {
-    int testcount = 4;
+    int testcount = 5;
 
     printf("1..%d\n", testcount);
     testcount = 1;
@@ -54,6 +54,11 @@ int main(int argc, char *argv[]) {
     if (!test_resize(128, 254, 1))
         printf("not ");
     printf("ok %d - resizeattr to oversize\n", testcount++);
+
+    /* test resizeattr to oversize with uint8 overflow */
+    if (!test_resize(128, 257, 1))
+        printf("not ");
+    printf("ok %d - resizeattr to oversize with overflow\n", testcount++);
 
     return 0;
 }
