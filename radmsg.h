@@ -8,6 +8,7 @@
 
 #include "tlv11.h"
 #include <stdint.h>
+#include <stddef.h>
 
 #define RAD_Min_Length 20
 #define RAD_Max_Length 4096
@@ -97,7 +98,7 @@ uint8_t attrname2val(char *attrname);
 int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type);
 int attrvalidate(unsigned char *attrs, int length);
 struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr);
-int resizeattr(struct tlv *attr, uint8_t newlen);
+int resizeattr(struct tlv *attr, size_t newlen);
 int verifyeapformat(struct radmsg *msg);
 
 /**
