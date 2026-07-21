@@ -516,23 +516,22 @@ void sendrq(struct request *rq) {
         if (!to->nextid)
             to->nextid = start;
         /* might simplify if only try nextid, might be ok */
-        for (i = to->nextid; i < MAX_REQUESTS; i++) {
-            if (_internal_sendrq(to, i, rq))
-                break;
-        }
+        for (i = to->nextid; to->requests[i].rq && i < MAX_REQUESTS; i++)
+            ;
         if (i == MAX_REQUESTS) {
-            for (i = start; i < to->nextid; i++) {
-                if (_internal_sendrq(to, i, rq))
-                    break;
-            }
+            for (i = start; to->requests[i].rq && i < to->nextid; i++)
+                ;
             if (i == to->nextid) {
                 debug(DBG_WARN, "sendrq: no room in queue for server %s, dropping request", to->conf->name);
                 goto errexit;
             }
         }
-
         if (i >= start) /* i is not reserved for statusserver */
             to->nextid = i + 1;
+
+        if (_internal_sendrq(to, i, rq) < 1) {
+            goto errexit;
+        }
     }
 
     if (!to->newrq) {
