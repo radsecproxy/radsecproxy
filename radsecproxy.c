@@ -1168,7 +1168,7 @@ void respond(struct request *rq, uint8_t code, struct tlv *addattr,
     struct tlv *attr;
     char tmp[INET6_ADDRSTRLEN];
 
-    msg = radmsg_init(code, rq->msg->id, rq->msg->auth);
+    msg = radmsg_init(code, rq->rqid, rq->rqauth);
     if (!msg) {
         debug(DBG_ERR, "respond: malloc failed");
         goto errexit;
@@ -1211,7 +1211,7 @@ void respondprotoerror(struct request *rq, uint32_t errcause) {
     if (!rq->from->conf->protocolerror)
         return;
 
-    msg = radmsg_init(RAD_Protocol_Error, rq->msg->id, rq->msg->auth);
+    msg = radmsg_init(RAD_Protocol_Error, rq->rqid, rq->rqauth);
     if (!msg) {
         debug(DBG_ERR, "respondprotoerror: malloc failed");
         return;
