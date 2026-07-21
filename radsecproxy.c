@@ -3029,7 +3029,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     if (conf->confrewritein) {
         conf->rewritein = getrewrite(conf->confrewritein, NULL);
         if (!conf->rewritein) {
-            debug(DBG_ERR, "error in block %s, rewrite block %s not defined", block, conf->rewritein);
+            debug(DBG_ERR, "error in block %s, rewrite block %s not defined", block, conf->confrewritein);
             return 0;
         }
     }
@@ -3039,7 +3039,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
     if (conf->confrewriteout) {
         conf->rewriteout = getrewrite(conf->confrewriteout, NULL);
         if (!conf->rewriteout) {
-            debug(DBG_ERR, "error in block %s, rewrite block %s not defined", block, conf->rewriteout);
+            debug(DBG_ERR, "error in block %s, rewrite block %s not defined", block, conf->confrewriteout);
             return 0;
         }
     }
