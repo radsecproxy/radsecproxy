@@ -467,6 +467,7 @@ void freerqoutdata(struct rqout *rqout) {
     memset(&rqout->expiry, 0, sizeof(struct timeval));
 }
 
+/* 1 = ok, 0 = request with this id already in queue, -1 error serializing packet*/
 int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
     if (!to->requests[id].rq) {
         pthread_mutex_lock(to->requests[id].lock);
@@ -477,7 +478,7 @@ int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
             if (!rq->buf || rq->buflen <= 0) {
                 pthread_mutex_unlock(to->requests[id].lock);
                 debug(DBG_ERR, "sendrq: radmsg2buf failed");
-                return 0;
+                return -1;
             }
             debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", id, to->conf->name);
             to->requests[id].rq = rq;
@@ -489,7 +490,8 @@ int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
     return 0;
 }
 
-void sendrq(struct request *rq) {
+/* 1 = success, 0 = enqueueing request failed*/
+int sendrq(struct request *rq) {
     int i, start;
     struct server *to;
 
@@ -535,15 +537,14 @@ void sendrq(struct request *rq) {
 
     pthread_mutex_unlock(&to->newrq_mutex);
     pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
-    return;
+    return 1;
 
 errexit:
-    if (rq->from)
-        rmclientrq(rq, rq->rqid);
     freerq(rq);
     if (to)
         pthread_mutex_unlock(&to->newrq_mutex);
     pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
+    return 0;
 }
 
 void sendreply(struct request *rq) {
@@ -1675,7 +1676,10 @@ int radsrv(struct request *rq) {
 
     free(userascii);
     rq->to = to;
-    sendrq(rq);
+    if (!sendrq(rq)) {
+        debug_limit(DBG_NOTICE, "radsrv: failed to send packet to server from %s (%s) to %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
+        respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+    }
     pthread_mutex_unlock(&realm->mutex);
     freerealm(realm);
     return 1;
@@ -2193,7 +2197,8 @@ void *clientwr(void *arg) {
                 if (statsrvrq) {
                     statsrvrq->to = server;
                     debug(DBG_DBG, "clientwr: sending %s to %s", radmsgtype2string(RAD_Status_Server), conf->name);
-                    sendrq(statsrvrq);
+                    if (!sendrq(statsrvrq))
+                        debug(DBG_ERR, "clientwr: failed to send status-server request, this is likely a bug!");
                 }
                 statusserver_requested = 0;
             }
