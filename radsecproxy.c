@@ -1775,7 +1775,7 @@ int closeh(struct server *server) {
 int replyh(struct server *server, uint8_t *buf, int len) {
     struct client *from;
     struct rqout *rqout;
-    int sublen, ttlres;
+    int sublen, ttlres, result = 0;
     unsigned char *subattrs;
     struct radmsg *msg = NULL;
     struct tlv *attr;
@@ -1883,8 +1883,12 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     gettimeofday(&server->lastreply, NULL);
 
-    if (server->conf->rewritein && dorewrite(msg, server->conf->rewritein) < 1) {
+    if (server->conf->rewritein && (result = dorewrite(msg, server->conf->rewritein)) < 1) {
         debug(DBG_INFO, "replyh: rewritein failed");
+        if (result == 0) {
+            respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
+            freerqoutdata(rqout);
+        }
         goto errunlock;
     }
 
@@ -1948,8 +1952,12 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         memcpy(attr->v, rqout->rq->origusername, strlen(rqout->rq->origusername));
     }
 
-    if (from->conf->rewriteout && dorewrite(msg, from->conf->rewriteout) < 1) {
+    if (from->conf->rewriteout && (result = dorewrite(msg, from->conf->rewriteout)) < 1) {
         debug(DBG_WARN, "replyh: rewriteout failed");
+        if (result == 0) {
+            respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
+            freerqoutdata(rqout);
+        }
         goto errunlock;
     }
 
@@ -2170,6 +2178,9 @@ void *clientwr(void *arg) {
                         incrementlostrqs(server);
                     }
                 }
+                if (rqout->rq->from) {
+                    respondprotoerror(rqout->rq, RAD_Err_Request_Not_Routable);
+                }
                 freerqoutdata(rqout);
                 pthread_mutex_unlock(rqout->lock);
                 continue;
@@ -2210,8 +2221,13 @@ errexitwait:
     for (i = 0; i < MAX_REQUESTS; i++) {
         rqout = server->requests + i;
         pthread_mutex_lock(rqout->lock);
-        if (rqout->rq)
-            rmclientrq(rqout->rq, rqout->rq->rqid);
+        if (rqout->rq) {
+            if (rqout->rq->from && (rqout->rq->from->conf->type == RAD_TCP || rqout->rq->from->conf->type == RAD_TLS)) {
+                respondprotoerror(rqout->rq, RAD_Err_Request_Not_Routable);
+            } else {
+                rmclientrq(rqout->rq, rqout->rq->rqid);
+            }
+        }
         freerqoutdata(rqout);
         pthread_mutex_unlock(rqout->lock);
     }
@@ -2226,6 +2242,12 @@ errexit:
         pthread_mutex_lock(server->conf->lock);
         server->conf->servers = NULL;
         pthread_mutex_unlock(server->conf->lock);
+    }
+    for (i = 0; i < MAX_REQUESTS; i++) {
+        pthread_mutex_lock(server->requests[i].lock);
+        if (server->requests[i].rq && server->requests[i].rq->from)
+            respondprotoerror(server->requests[i].rq, RAD_Err_Request_Not_Routable);
+        pthread_mutex_unlock(server->requests[i].lock);
     }
     freeserver(server, 1);
     return NULL;
