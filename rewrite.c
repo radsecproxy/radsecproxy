@@ -283,6 +283,7 @@ void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmva
         rewrite = malloc(sizeof(struct rewrite));
         if (!rewrite)
             debugx(1, DBG_ERR, "malloc failed");
+        rewrite->confname = stringcopy(value, 0);
         rewrite->whitelist_mode = whitelist_mode;
         rewrite->removeattrs = rma;
         rewrite->removevendorattrs = rmva;

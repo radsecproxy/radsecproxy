@@ -1543,7 +1543,7 @@ int radsrv(struct request *rq) {
 
     if (from->conf->rewritein && (result = dorewrite(msg, from->conf->rewritein)) < 1) {
         if (result == 0) {
-            debug_limit(DBG_NOTICE, "radsrv: rewrite results in invalid attribute(s) from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+            debug_limit(DBG_NOTICE, "radsrv: rewrite %s results in invalid attribute(s) from %s (%s)", from->conf->rewritein->confname, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
             respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
             goto exit;
         } else {
@@ -1658,7 +1658,7 @@ int radsrv(struct request *rq) {
 
     if (to->conf->rewriteout && (result = dorewrite(msg, to->conf->rewriteout)) < 1) {
         if (result == 0) {
-            debug_limit(DBG_NOTICE, "radsrv: rewrite results in invalid attribute(s) from %s (%s) to %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
+            debug_limit(DBG_NOTICE, "radsrv: rewrite %s results in invalid attribute(s) from %s (%s) to %s", from->conf->rewriteout->confname, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
             respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
             goto exit;
         } else {
@@ -1886,9 +1886,11 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     if (server->conf->rewritein && (result = dorewrite(msg, server->conf->rewritein)) < 1) {
         debug(DBG_INFO, "replyh: rewritein failed");
         if (result == 0) {
+            debug_limit(DBG_NOTICE, "replyh: rewrite %s results in invalid attribute(s) from %s", server->conf->rewritein->confname, server->conf->name);
             respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
             freerqoutdata(rqout);
-        }
+        } else
+            debug(DBG_WARN, "replyh: rewrite malloc failed, ignoring response");
         goto errunlock;
     }
 
@@ -1955,9 +1957,11 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     if (from->conf->rewriteout && (result = dorewrite(msg, from->conf->rewriteout)) < 1) {
         debug(DBG_WARN, "replyh: rewriteout failed");
         if (result == 0) {
+            debug_limit(DBG_NOTICE, "replyh: rewrite %s results in invalid attribute(s) from %s", server->conf->rewritein->confname, server->conf->name);
             respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
             freerqoutdata(rqout);
-        }
+        } else
+            debug(DBG_WARN, "replyh: rewrite malloc failed, ignoring response");
         goto errunlock;
     }
 
