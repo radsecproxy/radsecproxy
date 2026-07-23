@@ -595,6 +595,24 @@ This setting is ignored when using TLS/DLTS transport or when \fB RequireMessage
 enabled.
 .RE
 
+.BR "AcceptCoA (" on | off )
+.RS
+Authorize this client to send CoA-Request and Disconnect-Request messages
+(default \fBoff\fR), i.e. treat it as a Dynamic Authorization Client per RFC
+5176. Messages from a client without \fBAcceptCoA\fR enabled are answered with
+a CoA-NAK/Disconnect-NAK carrying Error-Cause 502 (Request Not Routable, as
+mandated by RFC 8559 section 4.3.1); this is the same refusal used for any
+other unroutable CoA/Disconnect request, by design (RFC 8559 section 3.3:
+a single indistinguishable refusal code, so an unauthorized sender cannot
+distinguish "not authorized" from "not routable").
+.br
+Since CoA/Disconnect-Request duplicate detection and Event-Timestamp
+freshness checking (RFC 5176 section 6.3) both use the client's
+\fBDuplicateInterval\fR window, consider raising it for clients that send
+CoA/Disconnect (RFC 5176 recommends 300s; note \fBDuplicateInterval\fR is
+capped at 255s).
+.RE
+
 .SH "SERVER BLOCK"
 .nf
 .BI "server (" name |(( fqdn | address )[\fR: port ])) "\fR {"
@@ -793,6 +811,21 @@ This should always be be enabled unless the server is known to only support lega
 This setting is ignored when using TLS/DTLS transport.
 .RE
 
+.BI "NASidentifier " identifier
+.RS
+For a server used as a \fBcoaServer\fR (see the \fBREALM BLOCK\fR section),
+\fIidentifier\fR identifies the NAS this server conf represents for CoA/Disconnect
+stage-2 routing. A request's NAS identification attributes are tried against
+this server independently, in no particular precedence - any one matching is
+enough to select it: Operator-NAS-Identifier (RFC 8559 section 3.4; only the
+first instance is ever consulted, a second is an invalid attribute) or
+NAS-Identifier is matched against \fIidentifier\fR, and NAS-IP-Address or
+NAS-IPv6-Address is matched against this server's \fBHost\fR address(es) (a
+NAS-IPv6-Address carrying an IPv4-mapped address is compared against an IPv4
+\fBHost\fR). See \fBCOA/DISCONNECT ROUTING\fR below for how this fits into
+overall CoA/Disconnect routing.
+.RE
+
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
 
@@ -835,15 +868,19 @@ The allowed options in a realm block are:
 .BI "Server " server
 .br
 .BI "AccountingServer " server
+.br
+.BI "CoaServer " server
 .RS
 Specify the \fIserver\fR to which requests for this realm should be forwarded.
 \fIserver\fR references a previously defined \fBserver\fR block (see the
-\fBSERVER BLOCK\fR section). Each \fBserver\fR and \fBaccountingServer\fR can be
-specified multiple times, or omitted completely. If no \fBserver\fR is
-configured, the proxy will deny all Access-Requests for this realm. If no
-\fBaccountingServer\fR is configured, the proxy will silently ignore all
-Accounting-Requests for this realm. See the \fBSERVER SELECTION\fR section below
-for details.
+\fBSERVER BLOCK\fR section). Each \fBserver\fR, \fBaccountingServer\fR and
+\fBcoaServer\fR can be specified multiple times, or omitted completely. If no
+\fBserver\fR is configured, the proxy will deny all Access-Requests for this
+realm. If no \fBaccountingServer\fR is configured, the proxy will silently
+ignore all Accounting-Requests for this realm. If no \fBcoaServer\fR is
+configured, the proxy will NAK all CoA-Request/Disconnect-Request messages
+routed to this realm with Error-Cause 502 (Request Not Routable). See the
+\fBSERVER SELECTION\fR section below for details.
 .RE
 
 .BR "AccountingResponse (" on | off )
@@ -915,6 +952,92 @@ nothing, ignoring accounting requests. If instead \fBAccountingResponse\fR is
 set to on, the proxy will log some of the accounting information and send an
 Accounting-Response back. This stops clients from retransmitting
 Accounting-Request messages when a realm has no accountingServer configured.
+
+.SS "COA/DISCONNECT ROUTING"
+
+CoA-Request and Disconnect-Request messages (RFC 5176) are routed differently
+from Access-Requests and Accounting-Requests: instead of the realm part of the
+User-Name attribute, the realm is taken \fBonly\fR from the Operator-Name
+attribute (RFC 8559 section 3.2), using the "realm" (namespace \fB1\fR)
+Operator-Name-Format. User-Name is never consulted for this routing decision,
+even when present. The realm match uses the same subject shape as a
+User-Name lookup (the extracted realm is matched as if it were the realm part
+of a "user@realm" identifier), so a plain (non-regex) realm block name matches
+CoA/Disconnect traffic exactly like it does Access-Requests. A
+CoA/Disconnect-Request without a usable Operator-Name, whose Operator-Name
+realm has no matching realm block, or whose matching realm block has no
+\fBcoaServer\fR at all, is answered with Error-Cause 502 (Request Not
+Routable).
+
+A CoA/Disconnect-Request from a client without \fBAcceptCoA\fR enabled is
+likewise answered with Error-Cause 502 rather than forwarded (see
+\fBAcceptCoA\fR in the \fBCLIENT BLOCK\fR section).
+
+Within the matched realm, if the request carries a NAS identification
+attribute (Operator-NAS-Identifier, NAS-Identifier, NAS-IP-Address or
+NAS-IPv6-Address - all are tried, and any one matching is enough to select a
+coaServer), the proxy prefers a \fBcoaServer\fR whose \fBNASidentifier\fR
+option or \fBHost\fR address matches (RFC 8559 section 3.3), and fails over
+between matching, healthy coaServers exactly like \fBServer\fR/\fBAccountingServer\fR do. What happens when nothing matches depends on
+whether the realm is "NAS-discriminating", i.e. whether \fIany\fR of its
+\fBcoaServer\fR entries has \fBNASidentifier\fR configured:
+.IP \(bu 3
+in a NAS-discriminating (typically final-hop) realm, no match is answered
+with Error-Cause 403 (NAS Identification Mismatch) - this is what
+distinguishes a NAS the realm actually knows about from one it does not;
+.IP \(bu 3
+in a realm where no coaServer has \fBNASidentifier\fR configured (a mid-chain
+realm, proxying by Operator-Name alone per RFC 8559 section 4.3.2), NAS
+identification attributes are informational only - they never cause a
+refusal, and routing falls back to the first healthy coaServer, the same as
+if no NAS identification attribute were present at all.
+.PP
+If the request carries no NAS identification attribute, the first healthy
+\fBcoaServer\fR is used directly, with the same fail-over behaviour as
+\fBServer\fR/\fBAccountingServer\fR.
+
+At the final hop (the network hosting the NAS), RFC 8559 section 4.2 requires
+Operator-Name and Operator-NAS-Identifier to be stripped before delivery to the
+NAS, and a NAS identification attribute (NAS-Identifier, NAS-IP-Address or
+NAS-IPv6-Address) to be present in what is delivered. This is not done
+automatically; configure a \fBRewriteOut\fR block on the NAS-facing
+\fBcoaServer\fR that removes attributes 126 (Operator-Name) and 241 (the
+RFC 6929 Extended-Type-1 space that carries Operator-NAS-Identifier as
+sub-type 8), and, if the NAS requires it, an
+\fBAddVendorAttribute\fR/\fBAddAttribute\fR that adds a NAS-Identifier. For
+example:
+
+.nf
+rewrite stripOperatorAttrs {
+    removeAttribute 126
+    removeAttribute 241
+}
+
+server nas1-dynauth {
+    type udp
+    host 10.0.0.1
+    port 3799
+    secret ...
+    rewriteOut stripOperatorAttrs
+}
+.fi
+
+Note that \fBremoveAttribute 241\fR removes \fIall\fR Extended-Type-1
+attributes, not just an Operator-NAS-Identifier (sub-type 8) - there is no
+per-sub-type removal; a value like \fBremoveAttribute 241.8\fR is not special
+syntax, it is silently parsed as plain attribute 241 (the same as
+\fBremoveAttribute 241\fR), since attribute numbers are parsed with the C
+library's \fBatoi\fR(3), which stops at the first non-digit character.
+
+Note also that a \fBrewrite\fR block that removes or otherwise modifies
+Proxy-State, State or Class violates RFC 5176 section 3.1 (a forwarding proxy
+MUST treat these as opaque, and MUST NOT reorder or modify them); do not
+target these attributes in a rewrite block applied to CoA/Disconnect traffic.
+
+Event-Timestamp freshness (RFC 5176 section 6.3) is checked, when the
+attribute is present, against the sending client's \fBDuplicateInterval\fR (the
+two windows are required to be equal); with \fBDuplicateInterval\fR left at
+its default, that window is only 10 seconds.
 
 .SH "TLS BLOCK"
 .nf
