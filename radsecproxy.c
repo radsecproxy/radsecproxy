@@ -547,7 +547,8 @@ errexit:
     return 0;
 }
 
-void sendreply(struct request *rq) {
+/* 1 = success, 0 = failed to enqueue packet*/
+int sendreply(struct request *rq) {
     uint8_t first;
     struct client *to = rq->from;
 
@@ -558,7 +559,7 @@ void sendreply(struct request *rq) {
     if (!rq->replybuf || rq->replybuflen <= 0) {
         freerq(rq);
         debug(DBG_ERR, "sendreply: radmsg2buf failed");
-        return;
+        return 0;
     }
 
     pthread_mutex_lock(&to->replyq->mutex);
@@ -568,7 +569,7 @@ void sendreply(struct request *rq) {
         pthread_mutex_unlock(&to->replyq->mutex);
         freerq(rq);
         debug(DBG_ERR, "sendreply: malloc failed");
-        return;
+        return 0;
     }
 
     if (first) {
@@ -576,6 +577,7 @@ void sendreply(struct request *rq) {
         pthread_cond_signal(&to->replyq->cond);
     }
     pthread_mutex_unlock(&to->replyq->mutex);
+    return 1;
 }
 
 static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt, uint8_t saltlen) {
@@ -1194,7 +1196,8 @@ void respond(struct request *rq, uint8_t code, struct tlv *addattr,
 
     radmsg_free(rq->msg);
     rq->msg = msg;
-    sendreply(newrqref(rq));
+    if (!sendreply(newrqref(rq)))
+        debug(DBG_ERR, "respond: sending %s (id %d) to %s (%s) failed", radmsgtype2string(msg->code), msg->id, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
     return;
 
 errexit:
@@ -1243,7 +1246,8 @@ void respondprotoerror(struct request *rq, uint32_t errcause) {
 
     radmsg_free(rq->msg);
     rq->msg = msg;
-    sendreply(newrqref(rq));
+    if (!sendreply(newrqref(rq)))
+        debug(DBG_ERR, "respondprotoerror: sending Protocol-Error (id %d, code %d, cause %d) to %s (%s) failed", msg->id, origcode, errcause, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
     return;
 
 errexit:
@@ -1390,7 +1394,8 @@ int addclientrq(struct request *rq) {
             if (now.tv_sec - r->created.tv_sec < r->from->conf->dupinterval) {
                 if (r->replybuf) {
                     debug(DBG_INFO, "addclientrq: already sent reply to request with id %d from %s, resending", rq->rqid, addr2string(r->from->addr, tmp, sizeof(tmp)));
-                    sendreply(newrqref(r));
+                    if (!sendreply(newrqref(r)))
+                        debug(DBG_ERR, "addclientrq: resending prevous reply failed. This should never happen and is likel a bug");
                 } else
                     debug(DBG_INFO, "addclientrq: already got request with id %d from %s, ignoring", rq->rqid, addr2string(r->from->addr, tmp, sizeof(tmp)));
                 return 0;
@@ -1838,6 +1843,8 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         }
     }
 
+    from = rqout->rq->from;
+
     if (msg->code == RAD_Protocol_Error) {
         uint32_t code = 0, cause = 0;
         attr = radmsg_getexttype(msg, RAD_ExtAttr_Original_Packet_Code);
@@ -1899,8 +1906,6 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         debug_limit(DBG_INFO, "replyh: ignoring reply from server %s, ttl exceeded", server->conf->name);
         goto errunlock;
     }
-
-    from = rqout->rq->from;
 
     /* MS MPPE */
     for (node = list_first(msg->attrs); node; node = list_next(node)) {
@@ -1980,7 +1985,10 @@ forwardreply:
 
     radmsg_free(rqout->rq->msg);
     rqout->rq->msg = msg;
-    sendreply(newrqref(rqout->rq));
+    if (!sendreply(newrqref(rqout->rq))) {
+        debug_limit(DBG_NOTICE, "replyh: failed to send %s (id %s) to client %s (%s)", radmsgtype2string(msg->code), rqout->rq->rqid, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
+    }
     freerqoutdata(rqout);
     pthread_mutex_unlock(rqout->lock);
     return 1;
