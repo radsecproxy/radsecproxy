@@ -1157,7 +1157,7 @@ static int parse_tls_version(uint8_t dtls, const char *version) {
     return -1;
 }
 
-static int conf_tls_version(uint8_t dtls, const char *version, int *min, int *max) {
+int conf_tls_version(uint8_t dtls, const char *version, int *min, int *max) {
     char *ver, *s, *smin, *smax;
     ver = stringcopy(version, strlen(version));
     s = strchr(ver, ':');
@@ -1171,7 +1171,9 @@ static int conf_tls_version(uint8_t dtls, const char *version, int *min, int *ma
     *min = parse_tls_version(dtls, smin);
     *max = parse_tls_version(dtls, smax);
     free(ver);
-    return *min >= 0 && *max >= 0 && (*max == 0 || dtls ? *min >= *max : *min <= *max);
+    return *min >= 0 && *max >= 0 &&
+           (dtls ? (*min >= *max || *min == 0)
+                 : (*min <= *max || *max == 0));
 }
 #endif
 

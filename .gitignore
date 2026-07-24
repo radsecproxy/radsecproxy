@@ -32,6 +32,7 @@ tests/t_find_client
 tests/t_fticks
 tests/t_rewrite
 tests/t_rewrite_config
+tests/t_tls_config
 tests/t_resizeattr
 tests/t_verify_cert
 tests/t_radmsg
