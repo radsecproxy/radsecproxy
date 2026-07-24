@@ -1157,6 +1157,14 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
         debug(level, "missing response to %s for user %s%s from %s (%s) to %s",
               radmsgtype2string(msg->code), logusername, logstationid,
               rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)), servername);
+    } else if (msg->code == RAD_Protocol_Error) {
+        struct tlv *cause = radmsg_gettype(msg, RAD_Attr_Error_Cause);
+        struct tlv *origcodeattr = radmsg_getexttype(msg, RAD_ExtAttr_Original_Packet_Code);
+        uint32_t origcode = *(uint32_t *)(origcodeattr->v + 1);
+        origcode = ntohl(origcode);
+        debug(level, "%s %d %s (response to %s) from %s to %s (%s)", radmsgtype2string(msg->code),
+              tlv2longint(cause), attrval2strdict(cause), radmsgtype2string(origcode),
+              servername, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
     }
     free(username);
     free(cui);
@@ -1558,8 +1566,8 @@ int radsrv(struct request *rq) {
 
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {
+        debug_limit(DBG_NOTICE, "radsrv: error in request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         respondprotoerror(rq, RAD_Err_Request_Not_Routable);
-        debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         goto exit;
     }
 
@@ -1568,8 +1576,8 @@ int radsrv(struct request *rq) {
         if (msg->code == RAD_Accounting_Request)
             respond(rq, RAD_Accounting_Response, NULL, 0);
         else {
+            debug_limit(DBG_NOTICE, "radsrv: error in access request from %s (%s), no username attribute", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
             respondprotoerror(rq, RAD_Err_Request_Not_Routable);
-            debug_limit(DBG_INFO, "radsrv: ignoring access request from %s (%s), no username attribute", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         }
         goto exit;
     }
@@ -1593,8 +1601,8 @@ int radsrv(struct request *rq) {
     /* will return with lock on the realm */
     to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
     if (!realm) {
-        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         debug_limit(DBG_INFO, "radsrv: realm %s not found, don't know where to send it", userascii);
+        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         goto exit;
     }
 
@@ -1606,6 +1614,7 @@ int radsrv(struct request *rq) {
                 log_accounting_resp(from, msg, (char *)userascii);
             respond(rq, RAD_Accounting_Response, NULL, 0);
         } else {
+            debug_limit(DBG_INFO, "radsrv: no servers configured for realm %s (from client %s (%s))", realm->name, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
             respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         }
         goto exit;
@@ -1613,9 +1622,9 @@ int radsrv(struct request *rq) {
 
     if ((to->conf->loopprevention == 1 || (to->conf->loopprevention == UCHAR_MAX && options.loopprevention == 1)) &&
         !strcmp(from->conf->name, to->conf->name)) {
-        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
-        debug_limit(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s, discarding",
+        debug_limit(DBG_WARN, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s",
                     from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
+        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         goto exit;
     }
 
@@ -1881,9 +1890,9 @@ int replyh(struct server *server, uint8_t *buf, int len) {
             respondprotoerror(rqout->rq, RAD_Err_Request_Not_Routable);
             freerqoutdata(rqout);
             goto errunlock;
-        } else
-            debug(DBG_DBG, "replyh: Protocol-Error reason %d %s (id %d) from %s, forwarding to client", cause, attrval2strdict(attr), msg->id, server->conf->name);
+        }
 
+        replylog(msg, server, rqout->rq);
         goto forwardreply;
     }
 
