@@ -12,6 +12,10 @@ unreleased changes
 	- Allow relative paths and Windows paths for file log destination
 	- Update client-certificate validation to latest draft RFC
 
+	Bug Fixes:
+	- Fix config check error message for rewrite in server block
+	- Fix DtlsVersion config
+
 2026-07-13 1.11.3
 	Bug Fixes:
 	- Fix Message-Authenticator validation for Accounting-Request
