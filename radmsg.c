@@ -528,6 +528,11 @@ const char *attrval2strdict(struct tlv *attr) {
             return RAD_Attr_Acct_Terminate_Cause_Dict[val] ? RAD_Attr_Acct_Terminate_Cause_Dict[val] : RAD_Attr_Dict_Undef;
         break;
 
+    case RAD_Attr_Error_Cause:
+        if (val < sizeof(RAD_Attr_Error_Cause_Dict) / sizeof(RAD_Attr_Error_Cause_Dict[0]))
+            return RAD_Attr_Error_Cause_Dict[val] ? RAD_Attr_Error_Cause_Dict[val] : RAD_Attr_Dict_Undef;
+        break;
+
     default:
         break;
     }

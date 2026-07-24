@@ -1207,8 +1207,8 @@ errexit:
 
 void respondprotoerror(struct request *rq, uint32_t errcause) {
     struct radmsg *msg;
-    uint32_t origcode = rq->msg->code;
-    uint32_t ncode, nerrcause;
+    uint32_t origcode = htonl(rq->msg->code);
+    struct tlv *causeattr;
     char tmp[INET6_ADDRSTRLEN];
 
     if (!rq->from->conf->protocolerror)
@@ -1225,14 +1225,12 @@ void respondprotoerror(struct request *rq, uint32_t errcause) {
         goto errexit;
     }
 
-    ncode = htonl(origcode);
-    if (!radmsg_add(msg, makeexttlv(RAD_ExtAttr_Original_Packet_Code, sizeof(uint32_t), &ncode), 0)) {
+    if (!radmsg_add(msg, makeexttlv(RAD_ExtAttr_Original_Packet_Code, sizeof(uint32_t), &origcode), 0)) {
         debug(DBG_ERR, "respondprotoerror: failed to add original packet code");
         goto errexit;
     }
 
-    nerrcause = htonl(errcause);
-    if (!radmsg_add(msg, maketlv(RAD_Attr_Error_Cause, sizeof(uint32_t), &nerrcause), 0)) {
+    if (!(causeattr = maketlvlongint(RAD_Attr_Error_Cause, errcause)) || !radmsg_add(msg, causeattr, 0)) {
         debug(DBG_ERR, "respondprotoerror: failed to add error cause");
         goto errexit;
     }
@@ -1242,12 +1240,12 @@ void respondprotoerror(struct request *rq, uint32_t errcause) {
         goto errexit;
     }
 
-    debug(DBG_DBG, "respondprotoerror: sending Protocol-Error (id %d, code %d, cause %d) to %s (%s)", msg->id, origcode, errcause, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
+    debug(DBG_DBG, "respondprotoerror: sending Protocol-Error (id %d, code %d, cause %d %s) to %s (%s)", msg->id, rq->msg->code, errcause, attrval2strdict(causeattr), rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
 
     radmsg_free(rq->msg);
     rq->msg = msg;
     if (!sendreply(newrqref(rq)))
-        debug(DBG_ERR, "respondprotoerror: sending Protocol-Error (id %d, code %d, cause %d) to %s (%s) failed", msg->id, origcode, errcause, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
+        debug(DBG_ERR, "respondprotoerror: sending Protocol-Error (id %d, code %d, cause %d %s) to %s (%s) failed", msg->id, rq->msg->code, errcause, attrval2strdict(causeattr), rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
     return;
 
 errexit:
@@ -1866,7 +1864,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
             pthread_mutex_unlock(rqout->lock);
             return 0;
         }
-        cause = ntohl(*(uint32_t *)attr->v);
+        cause = tlv2longint(attr);
         if (cause == RAD_Err_Request_Not_Routable || cause == RAD_Err_Other_Proxy_Processing_Error) {
             debug(DBG_INFO, "replyh: Protocol-Error (id %d) from %s indicating proxy network error, forwarding to client", msg->id, server->conf->name);
             /* recirculation not yet implemented, just forward if enabled */
@@ -1883,7 +1881,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
             freerqoutdata(rqout);
             goto errunlock;
         } else
-            debug(DBG_DBG, "replyh: Protocol-Error reason %d (id %d) from %s, forwarding to client", cause, msg->id, server->conf->name);
+            debug(DBG_DBG, "replyh: Protocol-Error reason %d %s (id %d) from %s, forwarding to client", cause, attrval2strdict(attr), msg->id, server->conf->name);
 
         goto forwardreply;
     }

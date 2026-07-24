@@ -30,6 +30,11 @@ struct tlv *maketlv(uint8_t t, uint8_t l, void *v) {
     return tlv;
 }
 
+struct tlv *maketlvlongint(uint8_t t, uint32_t v) {
+    uint32_t netval = htonl(v);
+    return maketlv(t, sizeof(netval), &netval);
+}
+
 struct tlv *makeexttlv(struct extattrtype t, uint8_t l, void *v) {
     struct tlv *tlv;
     if (!l || !v)

@@ -16,6 +16,7 @@ struct extattrtype {
 };
 
 struct tlv *maketlv(uint8_t, uint8_t, void *);
+struct tlv *maketlvlongint(uint8_t t, uint32_t v);
 struct tlv *makeexttlv(struct extattrtype t, uint8_t l, void *v);
 struct tlv *copytlv(struct tlv *);
 void freetlv(struct tlv *);
