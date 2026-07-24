@@ -5,6 +5,7 @@ LOG_DRIVER = env AM_TAP_AWK='$(AWK)' $(SHELL) \
                   $(top_srcdir)/build-aux/tap-driver.sh
 
 check_PROGRAMS = \
+    t_coa \
     t_find_client \
     t_fticks \
     t_rewrite \

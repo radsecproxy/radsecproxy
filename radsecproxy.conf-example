@@ -258,3 +258,46 @@ realm * {
 #realm * {
 #        replymessage "User unknown"
 #}
+
+# CoA/Disconnect-Request (RFC 5176) example: a home-side server sends CoA to
+# us over UDP, we proxy it toward the NAS's dynauth port.
+#
+# acceptCoA authorizes this client to send CoA-Request/Disconnect-Request;
+# without it, CoA/Disconnect from this client is NAKed with Error-Cause 502.
+#client 10.20.30.40 {
+#	type	udp
+#	secret	secret
+#	acceptCoA on
+## CoA duplicate-detection and Event-Timestamp freshness (RFC 5176 6.3) both
+## use this client's DuplicateInterval; RFC 5176 recommends 300s for
+## DAC-facing clients (note: capped at 255s).
+#	DuplicateInterval 255
+#}
+#
+## the NAS's dynauth listener (RFC 5176 default port 3799); NASidentifier
+## disambiguates when a realm lists more than one coaServer, and also makes
+## this a "NAS-discriminating" realm - a NAS identification attribute that
+## matches no coaServer here gets Error-Cause 403, not just a silent fallback
+#server 10.0.0.1 {
+#	type	udp
+#	port	3799
+#	secret	secret
+#	statusServer off
+#	NASidentifier nas1
+## RFC 8559 4.2 requires stripping Operator-Name/Operator-NAS-Identifier before
+## delivery to the NAS; see rewrite block "stripOperatorAttrs" below
+#	rewriteOut stripOperatorAttrs
+#}
+#
+## CoA is routed by the Operator-Name attribute (RFC 8559 3.2), never by
+## User-Name; a plain realm name works here exactly like it does for
+## Access-Requests. Requests with no Operator-Name, or an unknown/empty-
+## coaServer realm, get Error-Cause 502.
+#realm visited-lab.example {
+#	coaServer 10.0.0.1
+#}
+#
+#rewrite stripOperatorAttrs {
+#	removeAttribute 126
+#	removeAttribute 241
+#}

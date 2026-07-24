@@ -1,5 +1,6 @@
 /* Copyright (c) 2007-2009, UNINETT AS
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs */
 /* See LICENSE for licensing information. */
 
 #include "debug.h"
@@ -253,15 +254,12 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
         return -1;
     }
     if (secret) {
-        if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge ||
-             msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request ||
-             msg->code == RAD_CoA_NAK || msg->code == RAD_Disconnect_NAK) &&
-            !_radsign(*buf, size, secret, secret_len)) {
+        if (NEEDS_RADSIGN(msg->code) && !_radsign(*buf, size, secret, secret_len)) {
             free(*buf);
             *buf = NULL;
             return -1;
         }
-        if (msg->code == RAD_Accounting_Request)
+        if (msg->code == RAD_Accounting_Request || IS_COA_REQUEST(msg->code))
             memcpy(msg->auth, *buf + 4, 16);
     }
     return size;
@@ -270,24 +268,19 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
 /* if secret set we also validate message-authenticator if present */
 struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len, uint8_t *rqauth) {
     struct radmsg *msg;
-    uint8_t t, l, *v = NULL, *p, auth[16] = {0};
+    uint8_t t, l, *v = NULL, *p, zeroauth[16] = {0};
     struct tlv *attr;
+    int acctstyle_auth = buf[0] == RAD_Accounting_Request || IS_COA_REQUEST(buf[0]);
 
     if (len != RADLEN(buf)) {
         debug(DBG_WARN, "buf2radmsg: length field does not match buffer length");
         return NULL;
     }
 
-    if (secret && (buf[0] == RAD_Accounting_Request || buf[0] == RAD_CoA_Request || buf[0] == RAD_Disconnect_Request)) {
-        memset(auth, 0, 16);
-        if (!_validauth(buf, len, auth, secret, secret_len)) {
-            debug(DBG_WARN, "buf2radmsg: invalid request authenticator");
-            return NULL;
-        }
-    }
-
+    if (acctstyle_auth)
+        rqauth = zeroauth;
     if (rqauth && secret && !_validauth(buf, len, rqauth, secret, secret_len)) {
-        debug(DBG_WARN, "buf2radmsg: invalid response authenticator");
+        debug(DBG_WARN, "buf2radmsg: invalid %s authenticator", acctstyle_auth ? "request" : "response");
         return NULL;
     }
 
@@ -317,14 +310,14 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
 
         if (t == RAD_Attr_Message_Authenticator && secret) {
             if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge ||
-                msg->code == RAD_Accounting_Response) {
+                msg->code == RAD_Accounting_Response || IS_COA_RESPONSE(msg->code)) {
                 if (rqauth)
                     memcpy(buf + 4, rqauth, 16);
                 else {
                     debug(DBG_DBG, "buf2radmsg: unable to verify message-authenticator, missing original request");
                     msg->msgauthinvalid = 1;
                 }
-            } else if (msg->code == RAD_Accounting_Request) {
+            } else if (msg->code == RAD_Accounting_Request || IS_COA_REQUEST(msg->code)) {
                 memset(buf + 4, 0, 16);
             } else if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server)
                 debug(DBG_DBG, "buf2radmsg: unexpected message-authenticator");

@@ -1,6 +1,7 @@
 /* Copyright (c) 2007-2008, UNINETT AS
  * Copyright (c) 2015, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs */
 /* See LICENSE for licensing information. */
 
 #ifndef _RADMSG_H
@@ -28,6 +29,13 @@
 #define RAD_CoA_ACK 44
 #define RAD_CoA_NAK 45
 
+#define IS_COA_REQUEST(c) ((c) == RAD_CoA_Request || (c) == RAD_Disconnect_Request)
+#define IS_COA_RESPONSE(c) ((c) == RAD_CoA_ACK || (c) == RAD_CoA_NAK || \
+                            (c) == RAD_Disconnect_ACK || (c) == RAD_Disconnect_NAK)
+#define NEEDS_RADSIGN(c) ((c) == RAD_Access_Accept || (c) == RAD_Access_Reject || \
+                          (c) == RAD_Access_Challenge || (c) == RAD_Accounting_Response || \
+                          (c) == RAD_Accounting_Request || IS_COA_REQUEST(c) || IS_COA_RESPONSE(c))
+
 #define RAD_Attr_User_Name 1
 #define RAD_Attr_User_Password 2
 #define RAD_Attr_CHAP_Password 3
@@ -37,6 +45,7 @@
 #define RAD_Attr_Vendor_Specific 26
 #define RAD_Attr_Called_Station_Id 30
 #define RAD_Attr_Calling_Station_Id 31
+#define RAD_Attr_NAS_Identifier 32
 #define RAD_Attr_Proxy_State 33
 #define RAD_Attr_Acct_Status_Type 40
 #define RAD_Attr_Acct_Input_Octets 42
@@ -52,8 +61,11 @@
 #define RAD_Attr_EAP_Message 79
 #define RAD_Attr_Message_Authenticator 80
 #define RAD_Attr_CUI 89
+#define RAD_Attr_NAS_IPv6_Address 95
 #define RAD_Attr_Error_Cause 101
 #define RAD_Attr_Operator_Name 126
+#define RAD_Attr_Extended_Type_1 241
+#define RAD_Extended_Operator_NAS_Id 8
 
 #define RAD_Acct_Status_Start 1
 #define RAD_Acct_Status_Stop 2
@@ -64,6 +76,8 @@
 #define RAD_Acct_Status_Failed 15
 
 #define RAD_Err_Unsupported_Extension 406
+#define RAD_Err_NAS_Identification_Mismatch 403
+#define RAD_Err_Request_Not_Routable 502
 
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17

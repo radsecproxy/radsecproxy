@@ -1,6 +1,7 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2010-2012,2016, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs */
 /* See LICENSE for licensing information. */
 
 #ifndef _RADSECPROXY_H
@@ -196,6 +197,8 @@ struct clsrvconf {
     long dtlsmtu;
     uint8_t reqmsgauth;
     uint8_t reqmsgauthproxy;
+    uint8_t accept_coa;
+    char *nas_identifier;
 };
 
 #include "tlscommon.h"
@@ -247,6 +250,7 @@ struct realm {
     struct list *subrealms;
     struct list *srvconfs;
     struct list *accsrvconfs;
+    struct list *coasrvconfs;
 };
 
 struct protodefs {
@@ -288,6 +292,9 @@ int replyh(struct server *server, uint8_t *buf, int buflen);
 struct addrinfo *resolve_hostport_addrinfo(uint8_t type, char *hostport);
 uint8_t *radattr2ascii(struct tlv *attr); /* TODO: mv this to radmsg? */
 extern pthread_attr_t pthread_attr;
+
+struct clsrvconf *choosesrvconf(struct list *srvconfs);
+int addserver(struct clsrvconf *conf, const char *dynamiclookuparg);
 
 #endif /* _RADSECPROXY_H */
 
