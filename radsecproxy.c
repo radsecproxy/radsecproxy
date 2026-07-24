@@ -1507,7 +1507,8 @@ int radsrv(struct request *rq) {
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
         debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring %s (code %d, id %d) from %s (%s)", radmsgtype2string(msg->code), msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
-        respondprotoerror(rq, RAD_Err_Unsupported_Extension);
+        if (from->conf->type != RAD_UDP)
+            respondprotoerror(rq, RAD_Err_Unsupported_Extension);
         goto exit;
     }
 
