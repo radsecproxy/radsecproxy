@@ -258,14 +258,15 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         } else {
             if (memcmp(auth, RADAUTH(buf), RADAUTHLEN) != 0) {
                 msg->auth_state = RSP_RADMSG_INVALID;
-            } else
+            } else {
                 msg->auth_state = RSP_RADMSG_VALID;
 
-            if (pmsgauth) {
-                if (memcmp(msgauth, pmsgauth, 16) != 0) {
-                    msg->auth_state = RSP_RADMSG_MSGAUTH_INVALID;
-                } else
-                    msg->auth_state = RSP_RADMSG_MSGAUTH_VALID;
+                if (pmsgauth) {
+                    if (memcmp(msgauth, pmsgauth, 16) != 0) {
+                        msg->auth_state = RSP_RADMSG_MSGAUTH_INVALID;
+                    } else
+                        msg->auth_state = RSP_RADMSG_MSGAUTH_VALID;
+                }
             }
         }
     }
