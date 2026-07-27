@@ -59,7 +59,7 @@
 #include "tls.h"
 #include "udp.h"
 #include "util.h"
-#include "utilcrypto.h"
+#include "radmsgcrypto.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <ctype.h>
@@ -406,16 +406,6 @@ errexit:
     return 0;
 }
 
-unsigned char *attrget(unsigned char *attrs, int length, uint8_t type) {
-    while (length > 1) {
-        if (ATTRTYPE(attrs) == type)
-            return attrs;
-        length -= ATTRLEN(attrs);
-        attrs += ATTRLEN(attrs);
-    }
-    return NULL;
-}
-
 struct request *newrqref(struct request *rq) {
     if (rq) {
         pthread_mutex_lock(&rq->refmutex);
@@ -576,149 +566,6 @@ void sendreply(struct request *rq) {
         pthread_cond_signal(&to->replyq->cond);
     }
     pthread_mutex_unlock(&to->replyq->mutex);
-}
-
-static int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt, uint8_t saltlen) {
-    EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
-    unsigned char hash[EVP_MD_size(md5digest())], *input;
-    uint8_t i, offset = 0, out[128];
-
-    if (!mdctx) {
-        debug(DBG_ERR, "pwdcrypt: creating EVP_MD_CTX failed");
-        return 0;
-    }
-
-    input = auth;
-    for (;;) {
-        EVP_DigestUpdate(mdctx, shared, sharedlen);
-        EVP_DigestUpdate(mdctx, input, 16);
-        if (salt) {
-            EVP_DigestUpdate(mdctx, salt, saltlen);
-            salt = NULL;
-        }
-        EVP_DigestFinal(mdctx, hash, NULL);
-        for (i = 0; i < 16; i++)
-            out[offset + i] = hash[i] ^ in[offset + i];
-        if (encrypt_flag)
-            input = out + offset;
-        else
-            input = in + offset;
-        offset += 16;
-        if (offset == len)
-            break;
-    }
-    memcpy(in, out, len);
-
-    EVP_MD_CTX_free(mdctx);
-    return 1;
-}
-
-static int msmppencrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
-    EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
-    unsigned char hash[EVP_MD_size(md5digest())];
-    uint8_t i, offset;
-
-    if (!mdctx) {
-        debug(DBG_ERR, "msmppencrypt: creating EVP_MD_CTX failed");
-        return 0;
-    }
-
-#ifdef MPPE_DEBUG
-    printfchars(NULL, "msppencrypt auth in", "%02x ", auth, 16);
-    printfchars(NULL, "msppencrypt salt in", "%02x ", salt, 2);
-    printfchars(NULL, "msppencrypt in", "%02x ", text, len);
-#endif
-
-    EVP_DigestUpdate(mdctx, shared, sharedlen);
-    EVP_DigestUpdate(mdctx, auth, 16);
-    EVP_DigestUpdate(mdctx, salt, 2);
-    EVP_DigestFinal(mdctx, hash, NULL);
-
-#ifdef MPPE_DEBUG
-    printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
-#endif
-
-    for (i = 0; i < 16; i++)
-        text[i] ^= hash[i];
-
-    for (offset = 16; offset < len; offset += 16) {
-#ifdef MPPE_DEBUG
-        printf("text + offset - 16 c(%d): ", offset / 16);
-        printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
-#endif
-        EVP_DigestInit(mdctx, md5digest());
-        EVP_DigestUpdate(mdctx, shared, sharedlen);
-        EVP_DigestUpdate(mdctx, text + offset - 16, 16);
-        EVP_DigestFinal(mdctx, hash, NULL);
-#ifdef MPPE_DEBUG
-        printfchars(NULL, "msppencrypt hash", "%02x ", hash, 16);
-#endif
-
-        for (i = 0; i < 16; i++)
-            text[offset + i] ^= hash[i];
-    }
-
-#ifdef MPPE_DEBUG
-    printfchars(NULL, "msppencrypt out", "%02x ", text, len);
-#endif
-
-    EVP_MD_CTX_free(mdctx);
-    return 1;
-}
-
-static int msmppdecrypt(uint8_t *text, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt) {
-    EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
-    unsigned char hash[EVP_MD_size(md5digest())];
-    uint8_t i, offset;
-    char plain[255];
-
-    if (!mdctx) {
-        debug(DBG_ERR, "msmppdecrypt: creating EVP_MD_CTX failed");
-        return 0;
-    }
-
-#ifdef MPPE_DEBUG
-    printfchars(NULL, "msppdecrypt auth in", "%02x ", auth, 16);
-    printfchars(NULL, "msppdecrypt salt in", "%02x ", salt, 2);
-    printfchars(NULL, "msppdecrypt in", "%02x ", text, len);
-#endif
-
-    EVP_DigestUpdate(mdctx, shared, sharedlen);
-    EVP_DigestUpdate(mdctx, auth, 16);
-    EVP_DigestUpdate(mdctx, salt, 2);
-    EVP_DigestFinal(mdctx, hash, NULL);
-
-#ifdef MPPE_DEBUG
-    printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
-#endif
-
-    for (i = 0; i < 16; i++)
-        plain[i] = text[i] ^ hash[i];
-
-    for (offset = 16; offset < len; offset += 16) {
-#ifdef MPPE_DEBUG
-        printf("text + offset - 16 c(%d): ", offset / 16);
-        printfchars(NULL, NULL, "%02x ", text + offset - 16, 16);
-#endif
-        EVP_DigestInit(mdctx, md5digest());
-        EVP_DigestUpdate(mdctx, shared, sharedlen);
-        EVP_DigestUpdate(mdctx, text + offset - 16, 16);
-        EVP_DigestFinal(mdctx, hash, NULL);
-#ifdef MPPE_DEBUG
-        printfchars(NULL, "msppdecrypt hash", "%02x ", hash, 16);
-#endif
-
-        for (i = 0; i < 16; i++)
-            plain[offset + i] = text[offset + i] ^ hash[i];
-    }
-
-    memcpy(text, plain, len);
-#ifdef MPPE_DEBUG
-    printfchars(NULL, "msppdecrypt out", "%02x ", text, len);
-#endif
-
-    EVP_MD_CTX_free(mdctx);
-    return 1;
 }
 
 struct realm *newrealmref(struct realm *r) {
@@ -889,55 +736,6 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
     }
 }
 
-int pwdrecrypt(uint8_t *pwd, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth,
-               uint8_t *oldsalt, uint8_t oldsaltlen, uint8_t *newsalt, uint8_t newsaltlen) {
-    if (len < 16 || len > 128 || len % 16) {
-        debug(DBG_WARN, "pwdrecrypt: invalid password length");
-        return 0;
-    }
-
-    if (!pwdcrypt(0, pwd, len, oldsecret, oldsecret_len, oldauth, oldsalt, oldsaltlen)) {
-        debug(DBG_WARN, "pwdrecrypt: cannot decrypt password");
-        return 0;
-    }
-#ifdef DEBUG
-    printfchars(NULL, "pwdrecrypt: password", "%02x ", pwd, len);
-#endif
-    if (!pwdcrypt(1, pwd, len, newsecret, newsecret_len, newauth, newsalt, newsaltlen)) {
-        debug(DBG_WARN, "pwdrecrypt: cannot encrypt password");
-        return 0;
-    }
-    return 1;
-}
-
-int msmpprecrypt(uint8_t *msmpp, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
-    if (len < 18 || !msmpp || !oldsecret || oldsecret_len == 0 || !newsecret || newsecret_len == 0 || !oldauth || !newauth) {
-        debug(DBG_WARN, "msmpprecrypt: incomplete data to do msmpp reencryption");
-        return 0;
-    }
-    if (!msmppdecrypt(msmpp + 2, len - 2, oldsecret, oldsecret_len, oldauth, msmpp)) {
-        debug(DBG_WARN, "msmpprecrypt: failed to decrypt msppe key");
-        return 0;
-    }
-    if (!msmppencrypt(msmpp + 2, len - 2, newsecret, newsecret_len, newauth, msmpp)) {
-        debug(DBG_WARN, "msmpprecrypt: failed to encrypt msppe key");
-        return 0;
-    }
-    return 1;
-}
-
-int msmppe(unsigned char *attrs, int length, uint8_t type, char *attrtxt, struct request *rq,
-           uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len) {
-    unsigned char *attr;
-
-    for (attr = attrs; (attr = attrget(attr, length - (attr - attrs), type)); attr += ATTRLEN(attr)) {
-        debug(DBG_DBG, "msmppe: Got %s", attrtxt);
-        if (!msmpprecrypt(ATTRVAL(attr), ATTRVALLEN(attr), oldsecret, oldsecret_len, newsecret, newsecret_len, rq->buf + 4, rq->rqauth))
-            return 0;
-    }
-    return 1;
-}
-
 int rewriteusername(struct request *rq, struct tlv *attr) {
     char *orig = (char *)tlv2str(attr);
     if (!orig)
@@ -1028,15 +826,6 @@ int checkttl(struct radmsg *msg, uint32_t *attrtype) {
             }
         }
     return -1;
-}
-
-const char *radmsgtype2string(uint8_t code) {
-    static const char *rad_msg_names[] = {
-        "", "Access-Request", "Access-Accept", "Access-Reject",
-        "Accounting-Request", "Accounting-Response", "", "",
-        "", "", "", "Access-Challenge",
-        "Status-Server", "Status-Client"};
-    return code < 14 && *rad_msg_names[code] ? rad_msg_names[code] : "Unknown";
 }
 
 void char2hex(char *h, unsigned char c) {
@@ -1437,9 +1226,30 @@ int radsrv(struct request *rq) {
     free(rq->buf);
     rq->buf = NULL;
 
-    if (!msg || msg->msgauthinvalid) {
-        debug_limit(DBG_NOTICE, "radsrv: message decode/validation error (code %d, id %d ?) from %s (%s)",
+    if (!msg) {
+        debug_limit(DBG_NOTICE, "radsrv: message decode error (code %d, id %d ?) from %s (%s)",
                     rq->buf[0], rq->buf[1], from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        radmsg_free(msg);
+        freerq(rq);
+        return 0;
+    }
+
+    switch (msg->authstate) {
+    case RSP_RADMSG_AUTH_UNKNOWN:
+        debug(DBG_ERR, "replyh: unknown auth state. this should never happen!");
+    case RSP_RADMSG_INVALID:
+    case RSP_RADMSG_MSGAUTH_INVALID:
+        debug_limit(DBG_WARN, "replyh: invalid %s in %s (id %d) from server %s",
+                    RSP_RADMSG_MSGAUTH_INVALID ? "message-authenticator" : "request-authenticator",
+                    radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        radmsg_free(msg);
+        freerq(rq);
+        return 0;
+    case RSP_RADMSG_VALID:
+    case RSP_RADMSG_MSGAUTH_VALID:
+        break;
+    default:
+        debug(DBG_ERR, "replyh: unhandled authenticator state, this is likely a bug!");
         radmsg_free(msg);
         freerq(rq);
         return 0;
@@ -1464,12 +1274,6 @@ int radsrv(struct request *rq) {
         goto exit;
     }
 
-    if (msg->msgauthinvalid) {
-        debug(DBG_NOTICE, "radsrv: invalid message-authenticator in %s (id %d) from %s (%s)", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
-        freerq(rq);
-        return 0;
-    }
-
     purgedupcache(from);
     if (!addclientrq(rq))
         goto exit;
@@ -1483,7 +1287,7 @@ int radsrv(struct request *rq) {
 
     if ((from->conf->reqmsgauth || from->conf->reqmsgauthproxy) && (from->conf->type == RAD_UDP || from->conf->type == RAD_TCP) &&
         msg->code == RAD_Access_Request) {
-        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL &&
+        if (msg->authstate != RSP_RADMSG_MSGAUTH_VALID &&
             (from->conf->reqmsgauth || (from->conf->reqmsgauthproxy && radmsg_gettype(msg, RAD_Attr_Proxy_State) != NULL))) {
             debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), missing required message-authenticator", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
             goto exit;
@@ -1573,9 +1377,7 @@ int radsrv(struct request *rq) {
     }
 
     /* Create new Request Authenticator. */
-    if (msg->code == RAD_Accounting_Request)
-        memset(msg->auth, 0, 16);
-    else if (!RAND_bytes(msg->auth, 16)) {
+    if (msg->code == RAD_Access_Request && !RAND_bytes(msg->auth, 16)) {
         debug(DBG_WARN, "radsrv: failed to generate random auth");
         goto rmclrqexit;
     }
@@ -1584,11 +1386,10 @@ int radsrv(struct request *rq) {
     printfchars(NULL, "auth", "%02x ", msg->auth, 16);
 #endif
 
-    attr = radmsg_gettype(msg, RAD_Attr_User_Password);
-    if (attr) {
-        debug(DBG_DBG, "radsrv: found userpwdattr with value length %d", attr->l);
-        if (!pwdrecrypt(attr->v, attr->l, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len, rq->rqauth, msg->auth, NULL, 0, NULL, 0))
-            goto rmclrqexit;
+    if (!recryptattrs(msg->attrs, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len,
+                      rq->rqauth, msg->auth)) {
+        debug(DBG_WARN, "radsrv: reencrypting passwords failed");
+        goto rmclrqexit;
     }
 
     if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
@@ -1699,11 +1500,9 @@ int closeh(struct server *server) {
 int replyh(struct server *server, uint8_t *buf, int len) {
     struct client *from;
     struct rqout *rqout;
-    int sublen, ttlres;
-    unsigned char *subattrs;
+    int ttlres;
     struct radmsg *msg = NULL;
     struct tlv *attr;
-    struct list_node *node;
     char tmp[INET6_ADDRSTRLEN];
 
     pthread_mutex_lock(&server->lock);
@@ -1714,7 +1513,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     pthread_mutex_lock(rqout->lock);
     msg = buf2radmsg(buf, len, server->conf->secret, server->conf->secret_len, rqout->rq ? rqout->rq->msg->auth : NULL);
     if (!msg) {
-        debug(DBG_NOTICE, "replyh: message decode/validation error (code %d, id %d ?) from server %s", buf[0], buf[1], server->conf->name);
+        debug_limit(DBG_NOTICE, "replyh: message decode error (code %d, id %d ?) from server %s", buf[0], buf[1], server->conf->name);
         memset(buf, 0, len);
         free(buf);
         pthread_mutex_unlock(rqout->lock);
@@ -1731,15 +1530,28 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     }
 
     if (!rqout->tries || !rqout->rq) {
-        debug(DBG_INFO, "replyh: no outstanding request with this id (%d) from server %s, ignoring reply", msg->id, server->conf->name);
+        debug_limit(DBG_INFO, "replyh: no outstanding request with this id (%d) from server %s, ignoring reply", msg->id, server->conf->name);
         goto errunlock;
     }
 
-    if (msg->msgauthinvalid) {
-        debug(DBG_WARN, "replyh: invalid message-authenticator in %s (id %d) from server %s", radmsgtype2string(msg->code), msg->id, server->conf->name);
+    switch (msg->authstate) {
+    case RSP_RADMSG_AUTH_UNKNOWN:
+        debug(DBG_ERR, "replyh: unknown auth state. this should never happen!");
+    case RSP_RADMSG_INVALID:
+    case RSP_RADMSG_MSGAUTH_INVALID:
+
+        debug_limit(DBG_WARN, "replyh: invalid %s in %s (id %d) from server %s",
+                    RSP_RADMSG_MSGAUTH_INVALID ? "message-authenticator" : "response-authenticator",
+                    radmsgtype2string(msg->code), msg->id, server->conf->name);
         radmsg_free(msg);
         pthread_mutex_unlock(rqout->lock);
         return 0;
+    case RSP_RADMSG_VALID:
+    case RSP_RADMSG_MSGAUTH_VALID:
+        break;
+    default:
+        debug(DBG_ERR, "replyh: unhandled authenticator state, this is likely a bug!");
+        goto errunlock;
     }
 
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
@@ -1756,8 +1568,8 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
         rqout->rq->msg->code == RAD_Access_Request) {
-        if (radmsg_gettype(msg, RAD_Attr_Message_Authenticator) == NULL) {
-            debug(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
+        if (msg->authstate != RSP_RADMSG_MSGAUTH_VALID) {
+            debug_limit(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
             goto errunlock;
         }
     }
@@ -1777,42 +1589,10 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     from = rqout->rq->from;
 
-    /* MS MPPE */
-    for (node = list_first(msg->attrs); node; node = list_next(node)) {
-        attr = (struct tlv *)node->data;
-        if (attr->t != RAD_Attr_Vendor_Specific)
-            continue;
-        if (attr->l <= 4)
-            break;
-        if (attr->v[0] != 0 || attr->v[1] != 0 || attr->v[2] != 1 || attr->v[3] != 55) /* 311 == MS */
-            continue;
-
-        sublen = attr->l - 4;
-        subattrs = attr->v + 4;
-        if (!attrvalidate(subattrs, sublen) ||
-            !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Send_Key, "MS MPPE Send Key",
-                    rqout->rq, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len) ||
-            !msmppe(subattrs, sublen, RAD_VS_ATTR_MS_MPPE_Recv_Key, "MS MPPE Recv Key",
-                    rqout->rq, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len))
-            break;
-    }
-    if (node) {
-        debug(DBG_WARN, "replyh: MS attribute handling failed, ignoring reply");
+    if (!recryptattrs(msg->attrs, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
+                      rqout->rq->msg->auth, rqout->rq->rqauth)) {
+        debug(DBG_WARN, "replyh: reencrypting passwords failed, ignoring reply");
         goto errunlock;
-    }
-
-    /* reencrypt tunnel-password RFC2868 */
-    attr = radmsg_gettype(msg, RAD_Attr_Tunnel_Password);
-    if (attr && msg->code == RAD_Access_Accept) {
-        uint8_t newsalt[2];
-        debug(DBG_DBG, "replyh: found tunnelpwdattr with value length %d", attr->l);
-        if (!RAND_bytes(newsalt, 2))
-            goto errunlock;
-        newsalt[0] |= 0x80;
-        if (!pwdrecrypt(attr->v + 3, attr->l - 3, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
-                        rqout->rq->msg->auth, rqout->rq->rqauth, attr->v + 1, 2, newsalt, 2))
-            goto errunlock;
-        memcpy(attr->v + 1, newsalt, 2);
     }
 
     replylog(msg, server, rqout->rq);
