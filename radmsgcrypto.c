@@ -113,7 +113,7 @@ int _recryptattr(struct tlv *attr, uint8_t *oldsecret, int oldsecret_len, uint8_
     if (attr->t == RAD_Attr_User_Password) {
         debug(DBG_DBG, "recryptattrs: reencrypting user password");
         if (attr->l < RAD_PWD_BLOCK_SIZE || attr->l > 128 || attr->l % RAD_PWD_BLOCK_SIZE) {
-            debug(DBG_WARN, "radsrv: invalid user password length %d", attr->l);
+            debug(DBG_WARN, "recryptattrs: invalid user password length %d", attr->l);
             return 0;
         }
         if (!pwdrecrypt(attr->v, attr->l, oldsecret, oldsecret_len, newsecret, newsecret_len, oldauth, newauth, NULL, 0, NULL, 0))
