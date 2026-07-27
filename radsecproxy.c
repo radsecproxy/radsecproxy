@@ -59,7 +59,7 @@
 #include "tls.h"
 #include "udp.h"
 #include "util.h"
-#include "utilcrypto.h"
+#include "radmsgcrypto.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <ctype.h>

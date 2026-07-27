@@ -7,7 +7,7 @@
 #include "raddict.h"
 #include "radmsg.h"
 #include "util.h"
-#include "utilcrypto.h"
+#include "radmsgcrypto.h"
 #include <arpa/inet.h>
 #include <openssl/rand.h>
 #include <pthread.h>

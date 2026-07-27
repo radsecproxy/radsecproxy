@@ -6,7 +6,7 @@
 #include <openssl/err.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
-#include "utilcrypto.h"
+#include "radmsgcrypto.h"
 #include "debug.h"
 #include "radmsg.h"
 

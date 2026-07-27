@@ -22,6 +22,7 @@ librsp_a_SOURCES = \
 	hostport.c hostport.h \
 	list.c list.h \
 	radmsg.c radmsg.h raddict.h \
+	radmsgcrypto.c radmsgcrypto.h \
 	radsecproxy.c radsecproxy.h \
 	rewrite.c rewrite.h \
 	tcp.c tcp.h \
@@ -29,8 +30,7 @@ librsp_a_SOURCES = \
 	tlscommon.c tlscommon.h \
 	tlv11.c tlv11.h \
 	udp.c udp.h \
-	util.c util.h \
-	utilcrypto.c utilcrypto.h
+	util.c util.h
 
 radsecproxy_conf_SOURCES = \
 	catgconf.c \

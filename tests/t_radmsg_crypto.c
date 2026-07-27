@@ -3,7 +3,7 @@
 #include <string.h>
 #include <../debug.h>
 #include <../radmsg.h>
-#include <../utilcrypto.h>
+#include <../radmsgcrypto.h>
 
 /* this is not to test digest functions extensively, but to ensure OpenSSL digest APIs are called correctly
    and length and sanity checks work as intended */
