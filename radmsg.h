@@ -91,9 +91,9 @@ struct radmsg {
 #define RADID(buf) ((buf)[1])
 /* radius message length is a 16bit value starting at byte 2, in network order*/
 #define RADLEN(buf) (uint16_t)(buf[2] << 8 | buf[3])
-#define RADLEN_SET(buf, val)    \
-    buf[2] = (val >> 8) & 0xff; \
-    buf[3] = val & 0xff;
+#define RADLEN_SET(buf, val)      \
+    (buf)[2] = (val >> 8) & 0xff; \
+    (buf)[3] = val & 0xff;
 
 #define RADAUTHLEN 16
 #define RADAUTH(buf) ((buf) + 4)
@@ -126,7 +126,6 @@ int attrvalidate(unsigned char *attrs, int length);
 struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr);
 int resizeattr(struct tlv *attr, uint8_t newlen);
 int verifyeapformat(struct radmsg *msg);
-
 const char *radmsgtype2string(uint8_t code);
 
 /**
