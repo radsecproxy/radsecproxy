@@ -197,6 +197,11 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         return NULL;
     }
 
+    if (len > RAD_Max_Length) {
+        debug(DBG_WARN, "buf2radmsg: packet too long: %d", len);
+        return NULL;
+    }
+
     p = buf + RADHDRLEN;
     while ((p - buf) + ATTRHDRLEN <= len) {
         if (ATTRLEN(p) < ATTRHDRLEN) {
