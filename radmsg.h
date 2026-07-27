@@ -65,7 +65,7 @@
 
 #define RAD_Err_Unsupported_Extension 406
 
-#define RAD_VS_MS "\x00\x00\x01\x37"
+#define RAD_VS_VENDOR_MS "\x00\x00\x01\x37"
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
 
@@ -103,6 +103,10 @@ struct radmsg {
 #define ATTRLEN(x) ((x)[1])
 #define ATTRVAL(x) ((x) + ATTRHDRLEN)
 #define ATTRVALLEN(x) ((x)[1] - ATTRHDRLEN)
+
+#define VSATTRMINVALLEN 5
+#define VSATTRVENDORLEN 4
+#define VSATTRVAL(buf) (buf + VSATTRVENDORLEN)
 
 int get_checked_rad_length(uint8_t *buf);
 void radmsg_free(struct radmsg *);

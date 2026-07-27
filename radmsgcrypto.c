@@ -137,12 +137,12 @@ int _recryptattr(struct tlv *attr, uint8_t *oldsecret, int oldsecret_len, uint8_
 
     /* MS MPPE RFC 2548 */
     if (attr->t == RAD_Attr_Vendor_Specific) {
-        if (attr->l <= 4)
+        if (attr->l < VSATTRMINVALLEN)
             return 1;
-        if (memcmp(attr->v, RAD_VS_MS, 4) != 0)
+        if (memcmp(attr->v, RAD_VS_VENDOR_MS, VSATTRVENDORLEN) != 0)
             return 1;
-        sublen = attr->l - 4;
-        subattrs = attr->v + 4;
+        sublen = attr->l - VSATTRVENDORLEN;
+        subattrs = VSATTRVAL(attr->v);
         if (!attrvalidate(subattrs, sublen)) {
             debug(DBG_WARN, "recryptattrs: invalid MS vendor specific attribute");
             return 0;
@@ -162,7 +162,7 @@ int _recryptattr(struct tlv *attr, uint8_t *oldsecret, int oldsecret_len, uint8_
                     debug(DBG_WARN, "recryptattrs: recrypt failed");
                     return 0;
                 }
-                memcpy(ATTRVAL(subattrs), newsalt, 2);
+                memcpy(ATTRVAL(subattrs), newsalt, RAD_PWD_SALT_LEN);
             }
             sublen -= ATTRLEN(subattrs);
             subattrs += ATTRLEN(subattrs);
