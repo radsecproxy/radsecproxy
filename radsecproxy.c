@@ -1234,7 +1234,7 @@ int radsrv(struct request *rq) {
         return 0;
     }
 
-    switch (msg->auth_state) {
+    switch (msg->authstate) {
     case RSP_RADMSG_AUTH_UNKNOWN:
         debug(DBG_ERR, "replyh: unknown auth state. this should never happen!");
     case RSP_RADMSG_INVALID:
@@ -1288,7 +1288,7 @@ int radsrv(struct request *rq) {
 
     if ((from->conf->reqmsgauth || from->conf->reqmsgauthproxy) && (from->conf->type == RAD_UDP || from->conf->type == RAD_TCP) &&
         msg->code == RAD_Access_Request) {
-        if (msg->auth_state != RSP_RADMSG_MSGAUTH_VALID &&
+        if (msg->authstate != RSP_RADMSG_MSGAUTH_VALID &&
             (from->conf->reqmsgauth || (from->conf->reqmsgauthproxy && radmsg_gettype(msg, RAD_Attr_Proxy_State) != NULL))) {
             debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), missing required message-authenticator", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
             goto exit;
@@ -1537,7 +1537,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         goto errunlock;
     }
 
-    switch (msg->auth_state) {
+    switch (msg->authstate) {
     case RSP_RADMSG_AUTH_UNKNOWN:
         debug(DBG_ERR, "replyh: unknown auth state. this should never happen!");
     case RSP_RADMSG_INVALID:
@@ -1571,7 +1571,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     if (server->conf->reqmsgauth && (server->conf->type == RAD_UDP || server->conf->type == RAD_TCP) &&
         (msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject)) {
-        if (msg->auth_state != RSP_RADMSG_MSGAUTH_VALID) {
+        if (msg->authstate != RSP_RADMSG_MSGAUTH_VALID) {
             debug_limit(DBG_NOTICE, "replyh: discarding %s (id %d) from %s, missing message-authenticator", radmsgtype2string(msg->code), msg->id, server->conf->name);
             goto errunlock;
         }

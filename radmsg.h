@@ -82,7 +82,7 @@ struct radmsg {
     uint8_t id;
     uint8_t auth[20];
     struct list *attrs; /*struct tlv*/
-    enum radmsg_auth_state auth_state;
+    enum radmsg_auth_state authstate;
 };
 
 /* radius message header length including code, id, length and authenticator */
