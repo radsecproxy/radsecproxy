@@ -149,7 +149,6 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     struct list_node *node;
     struct tlv *tlv;
     int size;
-    uint16_t netshort;
     uint8_t *p, *pmsgauth = NULL;
 
     if (!msg || !msg->attrs)
@@ -165,16 +164,21 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
 
     RADCODE(*buf) = msg->code;
     RADID(*buf) = msg->id;
-    netshort = htons(size);
-    memcpy(*buf + 2, &netshort, sizeof(uint16_t));
+    RADLEN_SET(*buf, size);
     memcpy(RADAUTH(*buf), msg->auth, RADAUTHLEN);
 
     p = *buf + RADHDRLEN;
     for (node = list_first(msg->attrs); node; node = list_next(node)) {
         tlv = (struct tlv *)node->data;
         p = tlv2buf(p, tlv);
-        if (tlv->t == RAD_Attr_Message_Authenticator && secret)
-            pmsgauth = ATTRVAL(p);
+        if (tlv->t == RAD_Attr_Message_Authenticator && secret) {
+            if (pmsgauth) {
+                debug(DBG_ERR, "radmsg2buf: multiple message-authenticator attributes");
+                free(*buf);
+                return -1;
+            } else
+                pmsgauth = ATTRVAL(p);
+        }
         p += tlv->l + 2;
     }
     if (secret && secret_len > 0 && !radmsgsign(*buf, size, secret, secret_len, pmsgauth, msg->auth)) {
