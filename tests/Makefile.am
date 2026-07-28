@@ -10,8 +10,10 @@ check_PROGRAMS = \
     t_rewrite \
     t_resizeattr \
     t_rewrite_config \
+    t_tls_config \
     t_verify_cert \
     t_radmsg \
+    t_radmsg_crypto \
     t_unhex \
     t_utf8 \
     t_verify_eap

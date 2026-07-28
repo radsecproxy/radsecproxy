@@ -72,21 +72,48 @@
 #define RAD_Err_Other_Proxy_Processing_Error 505
 #define RAD_Err_Resources_Unavailable 506
 
+#define RAD_VS_VENDOR_MS "\x00\x00\x01\x37"
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
 #define RAD_VS_ATTR_MS_MPPE_Recv_Key 17
+
+enum radmsg_auth_state {
+    RSP_RADMSG_AUTH_UNKNOWN = 0, /* not yet verified or unable to verify */
+    RSP_RADMSG_INVALID,          /* request or response authenticator is invalid*/
+    RSP_RADMSG_VALID,            /* request or rewponse authenticator is valid, no message authenticator present */
+    RSP_RADMSG_MSGAUTH_INVALID,  /* message authenticator present but invalid */
+    RSP_RADMSG_MSGAUTH_VALID     /* message authenticator present and valid, implies request or response authenticator is also valid*/
+};
 
 struct radmsg {
     uint8_t code;
     uint8_t id;
     uint8_t auth[20];
     struct list *attrs; /*struct tlv*/
-    uint8_t msgauthinvalid;
+    enum radmsg_auth_state authstate;
 };
 
+/* radius message header length including code, id, length and authenticator */
+#define RADHDRLEN 20
+#define RADCODE(buf) ((buf)[0])
+#define RADID(buf) ((buf)[1])
+/* radius message length is a 16bit value starting at byte 2, in network order*/
+#define RADLEN(buf) (uint16_t)(buf[2] << 8 | buf[3])
+#define RADLEN_SET(buf, val)      \
+    (buf)[2] = (val >> 8) & 0xff; \
+    (buf)[3] = val & 0xff;
+
+#define RADAUTHLEN 16
+#define RADAUTH(buf) ((buf) + 4)
+
+#define ATTRHDRLEN 2
 #define ATTRTYPE(x) ((x)[0])
 #define ATTRLEN(x) ((x)[1])
-#define ATTRVAL(x) ((x) + 2)
-#define ATTRVALLEN(x) ((x)[1] - 2)
+#define ATTRVAL(x) ((x) + ATTRHDRLEN)
+#define ATTRVALLEN(x) ((x)[1] - ATTRHDRLEN)
+
+#define VSATTRMINVALLEN 5
+#define VSATTRVENDORLEN 4
+#define VSATTRVAL(buf) (buf + VSATTRVENDORLEN)
 
 int get_checked_rad_length(uint8_t *buf);
 void radmsg_free(struct radmsg *);
@@ -107,6 +134,7 @@ int attrvalidate(unsigned char *attrs, int length);
 struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr);
 int resizeattr(struct tlv *attr, size_t newlen);
 int verifyeapformat(struct radmsg *msg);
+const char *radmsgtype2string(uint8_t code);
 
 /**
  * convert the attribute value to its string representation form the dictionary 

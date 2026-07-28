@@ -2,13 +2,19 @@
 /* See LICENSE for licensing information. */
 
 #include "fticks_hashmac.h"
-#include "utilcrypto.h"
 #include <ctype.h>
 #include <errno.h>
 #include <openssl/hmac.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+const EVP_MD *sha256digest(void) {
+    static const EVP_MD *sha256;
+    if (!sha256)
+        sha256 = EVP_sha256();
+    return sha256;
+}
 
 /** \a HASH is an input buffer of length SHA256_DIGEST_SIZE bytes.
     \a OUT_LEN is the size in bytes of \OUT.
@@ -34,14 +40,9 @@ static void _hash(const uint8_t *in,
         out[0] = '\0';
 
     if (key == NULL) {
-        EVP_MD_CTX *ctx = mdctxcreate(sha256digest());
-        if (!ctx)
+        if (!EVP_Digest(in, strlen((char *)in), hash, NULL, sha256digest(), NULL))
             return;
-
-        EVP_DigestUpdate(ctx, in, strlen((char *)in));
-        EVP_DigestFinal(ctx, hash, NULL);
         _format_hash(hash, out_len, out);
-        EVP_MD_CTX_free(ctx);
     } else {
         if (!HMAC(sha256digest(), key, strlen((char *)key), in, strlen((char *)in), hash, NULL))
             return;

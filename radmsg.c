@@ -7,16 +7,12 @@
 #include "raddict.h"
 #include "radmsg.h"
 #include "util.h"
-#include "utilcrypto.h"
+#include "radmsgcrypto.h"
 #include <arpa/inet.h>
 #include <openssl/rand.h>
-#include <openssl/hmac.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-
-/* radius message length is a 16bit value starting at byte 2, in network order*/
-#define RADLEN(buf) (uint16_t)(buf[2] << 8 | buf[3])
 
 /**
  * @brief Get the length of a radius message form its raw buffer.
@@ -157,71 +153,6 @@ int radmsg_copy_attrs(struct radmsg *dst,
     return n;
 }
 
-int _checkmsgauth(unsigned char *rad, int radlen, uint8_t *authattr, uint8_t *secret, int secret_len) {
-    size_t md5len = EVP_MD_size(md5digest());
-    uint8_t auth[md5len], hash[md5len];
-
-    /* hmac is calculated with message-authenticator being sixteen octets of zero */
-    memcpy(auth, authattr, sizeof(auth));
-    memset(authattr, 0, md5len);
-
-    if (!HMAC(md5digest(), secret, secret_len, rad, radlen, hash, NULL)) {
-        debug(DBG_ERR, "checkmsgauth: error calcualting HMAC");
-        return 0;
-    }
-    memcpy(authattr, auth, md5len);
-
-    return (memcmp(auth, hash, md5len) == 0);
-}
-
-int _validauth(unsigned char *rad, int len, unsigned char *reqauth, unsigned char *sec, int sec_len) {
-    EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
-    unsigned char hash[EVP_MD_size(md5digest())];
-    int result = 0; /* Fail. */
-
-    if (!mdctx) {
-        debug(DBG_ERR, "_validauth: creating EVP_MD_CTX failed");
-        return result;
-    }
-
-    EVP_DigestUpdate(mdctx, rad, 4);
-    EVP_DigestUpdate(mdctx, reqauth, 16);
-    if (len > 20)
-        EVP_DigestUpdate(mdctx, rad + 20, len - 20);
-    EVP_DigestUpdate(mdctx, sec, sec_len);
-    EVP_DigestFinal(mdctx, hash, NULL);
-
-    result = !memcmp(hash, rad + 4, 16);
-
-    EVP_MD_CTX_free(mdctx);
-    return result;
-}
-
-int _createmessageauth(unsigned char *rad, int radlen, unsigned char *authattrval, uint8_t *secret, int secret_len) {
-    if (!authattrval)
-        return 1;
-
-    memset(authattrval, 0, 16);
-    HMAC(md5digest(), secret, secret_len, rad, radlen, authattrval, NULL);
-    return 1;
-}
-
-int _radsign(unsigned char *rad, int radlen, unsigned char *sec, int sec_len) {
-    EVP_MD_CTX *mdctx = mdctxcreate(md5digest());
-
-    if (!mdctx) {
-        debug(DBG_ERR, "_validauth: creating EVP_MD_CTX failed");
-        return 0;
-    }
-
-    EVP_DigestUpdate(mdctx, rad, radlen);
-    EVP_DigestUpdate(mdctx, sec, sec_len);
-    EVP_DigestFinal(mdctx, rad + 4, NULL);
-
-    EVP_MD_CTX_free(mdctx);
-    return 1;
-}
-
 uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
     p[0] = tlv->t;
     p[1] = tlv->l + 2;
@@ -238,60 +169,51 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     struct list_node *node;
     struct tlv *tlv;
     int size;
-    uint16_t netshort;
-    uint8_t *p, *msgauth = NULL;
+    uint8_t *p, *pmsgauth = NULL;
 
     if (!msg || !msg->attrs)
         return -1;
-    size = 20;
+    size = RADHDRLEN;
     for (node = list_first(msg->attrs); node; node = list_next(node))
-        if ((size += 2 + ((struct tlv *)node->data)->l) > RAD_Max_Length)
-            return -1;
+        size += ATTRHDRLEN + ((struct tlv *)node->data)->l;
+    if (size > RAD_Max_Length || size < 0)
+        return -1;
     *buf = malloc(size);
     if (!*buf)
         return -1;
 
-    p = *buf;
-    *p++ = msg->code;
-    *p++ = msg->id;
-    netshort = htons(size);
-    memcpy(p, &netshort, sizeof(uint16_t));
-    p += 2;
-    memcpy(p, msg->auth, 16);
-    p += 16;
+    RADCODE(*buf) = msg->code;
+    RADID(*buf) = msg->id;
+    RADLEN_SET(*buf, size);
+    memcpy(RADAUTH(*buf), msg->auth, RADAUTHLEN);
 
+    p = *buf + RADHDRLEN;
     for (node = list_first(msg->attrs); node; node = list_next(node)) {
         tlv = (struct tlv *)node->data;
         p = tlv2buf(p, tlv);
-        if (tlv->t == RAD_Attr_Message_Authenticator && secret)
-            msgauth = ATTRVAL(p);
+        if (tlv->t == RAD_Attr_Message_Authenticator && secret) {
+            if (pmsgauth) {
+                debug(DBG_ERR, "radmsg2buf: multiple message-authenticator attributes");
+                free(*buf);
+                return -1;
+            } else
+                pmsgauth = ATTRVAL(p);
+        }
         p += tlv->l + 2;
     }
-    if (msgauth && !_createmessageauth(*buf, size, msgauth, secret, secret_len)) {
+    if (secret && secret_len > 0 && !radmsgsign(*buf, size, secret, secret_len, pmsgauth, msg->auth)) {
+        debug(DBG_ERR, "radmsg2buf: calculating signatures failed");
         free(*buf);
-        *buf = NULL;
         return -1;
     }
-    if (secret) {
-        if ((msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge ||
-             msg->code == RAD_Accounting_Response || msg->code == RAD_Accounting_Request ||
-             msg->code == RAD_Protocol_Error || msg->code == RAD_CoA_NAK || msg->code == RAD_Disconnect_NAK) &&
-            !_radsign(*buf, size, secret, secret_len)) {
-
-            free(*buf);
-            *buf = NULL;
-            return -1;
-        }
-        if (msg->code == RAD_Accounting_Request)
-            memcpy(msg->auth, *buf + 4, 16);
-    }
+    memcpy(msg->auth, RADAUTH(*buf), RADAUTHLEN);
     return size;
 }
 
 /* if secret set we also validate message-authenticator if present */
 struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len, uint8_t *rqauth) {
     struct radmsg *msg;
-    uint8_t t, l, *v = NULL, *p, auth[16] = {0};
+    uint8_t *p, *pmsgauth = NULL;
     struct tlv *attr;
 
     if (len != RADLEN(buf)) {
@@ -299,77 +221,80 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
         return NULL;
     }
 
-    if (secret && (buf[0] == RAD_Accounting_Request || buf[0] == RAD_CoA_Request || buf[0] == RAD_Disconnect_Request)) {
-        memset(auth, 0, 16);
-        if (!_validauth(buf, len, auth, secret, secret_len)) {
-            debug(DBG_WARN, "buf2radmsg: invalid request authenticator");
-            return NULL;
-        }
-    }
-
-    if (rqauth && secret && !_validauth(buf, len, rqauth, secret, secret_len)) {
-        debug(DBG_WARN, "buf2radmsg: invalid response authenticator");
+    if (len > RAD_Max_Length) {
+        debug(DBG_WARN, "buf2radmsg: packet too long: %d", len);
         return NULL;
     }
 
-    msg = radmsg_init(buf[0], buf[1], (uint8_t *)buf + 4);
+    p = buf + RADHDRLEN;
+    while ((p - buf) + ATTRHDRLEN <= len) {
+        if (ATTRLEN(p) < ATTRHDRLEN) {
+            debug(DBG_WARN, "buf2radmsg: attribute %d: invalid length %d", ATTRTYPE(p), ATTRLEN(p));
+            return NULL;
+        }
+        if ((p - buf) + ATTRLEN(p) > len) {
+            debug(DBG_WARN, "buf2radmsg: attribute %d: length %d exceeds packet length", ATTRTYPE(p), ATTRLEN(p));
+            return NULL;
+        }
+        if (ATTRTYPE(p) == RAD_Attr_Message_Authenticator) {
+            if (pmsgauth) {
+                debug(DBG_WARN, "buf2radmsg: multiple message-authenticator found");
+                return NULL;
+            }
+            if (ATTRLEN(p) != RADAUTHLEN + ATTRHDRLEN) {
+                debug(DBG_WARN, "buf2radmsg: invalid message-authenticator length");
+                return NULL;
+            }
+            pmsgauth = ATTRVAL(p);
+        }
+        p += ATTRLEN(p);
+    }
+    if (p - buf != len) {
+        debug(DBG_WARN, "buf2radmsg: attributes did not fill packet exactly");
+        return NULL;
+    }
+
+    msg = radmsg_init(RADCODE(buf), RADID(buf), RADAUTH(buf));
     if (!msg)
         return NULL;
 
-    p = buf + 20;
-    while (p - buf + 2 <= len) {
-        t = *p++;
-        l = *p++;
-        if (l < 2 || l > 255) {
-            debug(DBG_WARN, "buf2radmsg: attribute %d: invalid length %d", t, l);
-            radmsg_free(msg);
-            return NULL;
-        }
-        l -= 2;
-        if (l) {
-            if (p - buf + l > len) {
-                debug(DBG_WARN, "buf2radmsg: attribute %d: length %d exceeds packet length", t, l + 2);
-                radmsg_free(msg);
-                return NULL;
-            }
-            v = p;
-            p += l;
-        }
-
-        if (t == RAD_Attr_Message_Authenticator && secret) {
-            if (msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || msg->code == RAD_Access_Challenge ||
-                msg->code == RAD_Accounting_Response || msg->code == RAD_Protocol_Error) {
-                if (rqauth)
-                    memcpy(buf + 4, rqauth, 16);
-                else {
-                    debug(DBG_DBG, "buf2radmsg: unable to verify message-authenticator, missing original request");
-                    msg->msgauthinvalid = 1;
-                }
-            } else if (msg->code == RAD_Accounting_Request || msg->code == RAD_CoA_Request || msg->code == RAD_Disconnect_Request) {
-                memset(buf + 4, 0, 16);
-            } else if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server)
-                debug(DBG_DBG, "buf2radmsg: unexpected message-authenticator");
-            if (l != 16 || !_checkmsgauth(buf, len, v, secret, secret_len)) {
-                debug(DBG_DBG, "buf2radmsg: message-authenticator invalid");
-                msg->msgauthinvalid = 1;
-            } else
-                debug(DBG_DBG, "buf2radmsg: message-authenticator ok");
-            if (rqauth)
-                memcpy(buf + 4, msg->auth, 16);
-        }
-
-        attr = maketlv(t, l, v);
+    for (p = buf + RADHDRLEN; p - buf < len; p += ATTRLEN(p)) {
+        attr = maketlv(ATTRTYPE(p), ATTRVALLEN(p), ATTRVAL(p));
         if (!attr || !radmsg_add(msg, attr, 0)) {
             freetlv(attr);
             radmsg_free(msg);
             return NULL;
         }
     }
-    if (p - buf < len) {
-        debug(DBG_WARN, "buf2radmsg: attributes did not fill packet");
-        radmsg_free(msg);
-        return NULL;
+
+    if (secret && secret_len > 0) {
+        uint8_t auth[RADAUTHLEN], msgauth[RADAUTHLEN];
+
+        memcpy(auth, RADAUTH(buf), RADAUTHLEN);
+        if (pmsgauth) {
+            memcpy(msgauth, pmsgauth, RADAUTHLEN);
+            memset(pmsgauth, 0, RADAUTHLEN);
+        }
+
+        if (!radmsgsign(buf, len, secret, secret_len, pmsgauth, rqauth)) {
+            debug(DBG_ERR, "buf2radmsg: calculating signatures failed");
+            msg->authstate = RSP_RADMSG_AUTH_UNKNOWN;
+        } else {
+            if (memcmp(auth, RADAUTH(buf), RADAUTHLEN) != 0) {
+                msg->authstate = RSP_RADMSG_INVALID;
+            } else {
+                msg->authstate = RSP_RADMSG_VALID;
+
+                if (pmsgauth) {
+                    if (memcmp(msgauth, pmsgauth, 16) != 0) {
+                        msg->authstate = RSP_RADMSG_MSGAUTH_INVALID;
+                    } else
+                        msg->authstate = RSP_RADMSG_MSGAUTH_VALID;
+                }
+            }
+        }
     }
+
     return msg;
 }
 
@@ -402,7 +327,7 @@ int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type) {
 
 int attrvalidate(unsigned char *attrs, int length) {
     while (length > 1) {
-        if (ATTRLEN(attrs) < 2) {
+        if (ATTRLEN(attrs) < ATTRHDRLEN) {
             debug(DBG_INFO, "attrvalidate: invalid attribute length %d", ATTRLEN(attrs));
             return 0;
         }
@@ -509,6 +434,15 @@ int verifyeapformat(struct radmsg *msg) {
 exit:
     list_free(eap_attrs);
     return ret;
+}
+
+const char *radmsgtype2string(uint8_t code) {
+    static const char *rad_msg_names[] = {
+        "", "Access-Request", "Access-Accept", "Access-Reject",
+        "Accounting-Request", "Accounting-Response", "", "",
+        "", "", "", "Access-Challenge",
+        "Status-Server", "Status-Client"};
+    return code < 14 && *rad_msg_names[code] ? rad_msg_names[code] : "Unknown";
 }
 
 const char *attrval2strdict(struct tlv *attr) {
