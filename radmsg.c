@@ -165,6 +165,19 @@ uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
     return p;
 }
 
+/**
+ * @brief serialize msg to buffer buf. Request/Response and Message-Authenticators are calculated
+ * on the fly using secret.
+ * 
+ * @param msg 
+ * @param secret 
+ * @param secret_len 
+ * @param buf 
+ * @return int 
+ *  on success, size of serialized buffer
+ *  on failure 0 if msg is invalid (too big or invalid attributes)
+ *            -1 on memory errors
+ */
 int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **buf) {
     struct list_node *node;
     struct tlv *tlv;
@@ -177,7 +190,7 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     for (node = list_first(msg->attrs); node; node = list_next(node))
         size += ATTRHDRLEN + ((struct tlv *)node->data)->l;
     if (size > RAD_Max_Length || size < 0)
-        return -1;
+        return 0;
     *buf = malloc(size);
     if (!*buf)
         return -1;
@@ -195,7 +208,7 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
             if (pmsgauth) {
                 debug(DBG_ERR, "radmsg2buf: multiple message-authenticator attributes");
                 free(*buf);
-                return -1;
+                return 0;
             } else
                 pmsgauth = ATTRVAL(p);
         }
