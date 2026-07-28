@@ -1462,10 +1462,16 @@ int radsrv(struct request *rq) {
     printfchars(NULL, "auth", "%02x ", msg->auth, 16);
 #endif
 
-    if (!recryptattrs(msg->attrs, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len,
-                      rq->rqauth, msg->auth)) {
-        debug(DBG_WARN, "radsrv: reencrypting passwords failed");
-        goto rmclrqexit;
+    if ((result = recryptattrs(msg->attrs, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len,
+                               rq->rqauth, msg->auth)) < 1) {
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "radsrv: reencrypting passwords failed, invalid attribute(s) from %s (%s) to %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
+            respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+            goto exit;
+        } else {
+            debug(DBG_WARN, "radsrv: reencrypting passwords failed");
+            goto rmclrqexit;
+        }
     }
 
     if (to->conf->rewriteout && (result = dorewrite(msg, to->conf->rewriteout)) < 1) {
@@ -1727,10 +1733,16 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     from = rqout->rq->from;
 
-    if (!recryptattrs(msg->attrs, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
-                      rqout->rq->msg->auth, rqout->rq->rqauth)) {
-        debug(DBG_WARN, "replyh: reencrypting passwords failed, ignoring reply");
-        goto errunlock;
+    if ((result = recryptattrs(msg->attrs, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
+                               rqout->rq->msg->auth, rqout->rq->rqauth)) < 1) {
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "replyh: reencrypting passwords failed, invalid attribute(s) from %s", server->conf->rewritein->confname, server->conf->name);
+            respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
+            freerqoutdata(rqout);
+        } else {
+            debug(DBG_WARN, "replyh: reencrypting passwords failed, ignoring reply");
+            goto errunlock;
+        }
     }
 
     replylog(msg, server, rqout->rq);
