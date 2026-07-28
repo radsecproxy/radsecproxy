@@ -932,7 +932,7 @@ int pwdrecrypt(uint8_t *pwd, uint8_t len, uint8_t *oldsecret, int oldsecret_len,
 }
 
 int msmpprecrypt(uint8_t *msmpp, uint8_t len, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
-    if (len < 18)
+    if (len < 18 || (len - 2) % 16)
         return 0;
     if (!msmppdecrypt(msmpp + 2, len - 2, oldsecret, oldsecret_len, oldauth, msmpp)) {
         debug(DBG_WARN, "msmpprecrypt: failed to decrypt msppe key");

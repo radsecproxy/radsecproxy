@@ -4,6 +4,7 @@ unreleased 1.11.4
 	- Fix Message-Authenticator verification for CoA/Disconnect-Request
 	- Fix config check error message for rewrite in server block (#205)
 	- Fix DtlsVersion config
+	- Fix MS-MPPE size/alignment check (GHSA-wj29-mxmc-q98c)
 
 	Misc:
 	- Explain F-Ticks minimum requirements
