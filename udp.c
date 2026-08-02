@@ -122,16 +122,6 @@ static int addr_equal(struct sockaddr *a, struct sockaddr *b) {
     }
 }
 
-uint16_t port_get(struct sockaddr *sa) {
-    switch (sa->sa_family) {
-    case AF_INET:
-        return ntohs(((struct sockaddr_in *)sa)->sin_port);
-    case AF_INET6:
-        return ntohs(((struct sockaddr_in6 *)sa)->sin6_port);
-    }
-    return 0;
-}
-
 /* exactly one of client and server must be non-NULL */
 /* return who we received from in *client or *server */
 /* return from in sa if not NULL */

@@ -155,15 +155,119 @@ struct modattr *extractmodvattr(char *nameval) {
     return modvattr;
 }
 
+static int validmetafield(const char *field) {
+    return strcmp(field, "source_ip") == 0 ||
+           strcmp(field, "source_port") == 0 ||
+           strcmp(field, "client_name") == 0;
+}
+
+struct dynattr *extractdynattr(char *nameval, char vendor_flag) {
+    int name = 0;
+    long vendor = 0;
+    char *s, *s2;
+    struct dynattr *da;
+
+    s = strchr(nameval, ':');
+    if (!s)
+        return NULL;
+    name = atoi(nameval);
+
+    if (vendor_flag) {
+        s2 = strchr(s + 1, ':');
+        if (!s2)
+            return NULL;
+        vendor = name;
+        name = atoi(s + 1);
+        s = s2;
+    }
+
+    s++;
+    if (name < 1 || name > 255)
+        return NULL;
+    /* RADIUS vendor PEN is 24-bit per RFC 2865 */
+    if (vendor_flag && (vendor < 1 || vendor > 0xFFFFFF))
+        return NULL;
+    if (!validmetafield(s))
+        return NULL;
+
+    da = malloc(sizeof(struct dynattr));
+    if (!da)
+        return NULL;
+    da->t = name;
+    da->vendor = vendor;
+    da->field = stringcopy(s, 0);
+    if (!da->field) {
+        free(da);
+        return NULL;
+    }
+    return da;
+}
+
+static struct tlv *resolvedynattr(struct dynattr *da, struct rewrite_context *ctx) {
+    char buf[INET6_ADDRSTRLEN];
+    char portbuf[6];
+    const char *val = NULL;
+    struct tlv *a;
+
+    if (!ctx)
+        return NULL;
+
+    if (strcmp(da->field, "source_ip") == 0) {
+        if (ctx->clientaddr) {
+            val = addr2string(ctx->clientaddr, buf, sizeof(buf));
+            /* addr2string returns literal "getnameinfo_failed" on failure,
+             * not NULL. Use pointer identity to detect success. */
+            if (val != buf)
+                val = NULL;
+        }
+    } else if (strcmp(da->field, "source_port") == 0) {
+        if (ctx->clientaddr) {
+            uint16_t p = port_get(ctx->clientaddr);
+            if (p > 0) {
+                snprintf(portbuf, sizeof(portbuf), "%u", p);
+                val = portbuf;
+            }
+        }
+    } else if (strcmp(da->field, "client_name") == 0) {
+        val = ctx->clientname;
+    }
+
+    if (!val || !*val) {
+        debug(DBG_INFO, "resolvedynattr: failed to resolve %s", da->field);
+        return NULL;
+    }
+
+    if (strlen(val) > RAD_Max_Attr_Value_Length) {
+        debug(DBG_INFO, "resolvedynattr: value too long for %s", da->field);
+        return NULL;
+    }
+
+    a = maketlv(da->t, strlen(val), (void *)val);
+    if (!a)
+        return NULL;
+    if (da->vendor) {
+        struct tlv *va = makevendortlv(da->vendor, a);
+        if (!va) {
+            freetlv(a);
+            return NULL;
+        }
+        a = va;
+    }
+    return a;
+}
+
 void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmvattrs, char **addattrs,
-                char **addvattrs, char **modattrs, char **modvattrs, char **supattrs, char **supvattrs) {
+                char **addvattrs, char **modattrs, char **modvattrs, char **supattrs, char **supvattrs,
+                char **addmetaattrs, char **addmetavattrs, char **supmetaattrs, char **supmetavattrs) {
     struct rewrite *rewrite = NULL;
     int i, n;
     uint8_t *rma = NULL;
     uint32_t *p, *rmva = NULL;
     struct list *adda = NULL, *moda = NULL, *modva = NULL, *supa = NULL;
+    struct list *addma = NULL, *supma = NULL;
     struct tlv *a;
     struct modattr *m;
+    struct dynattr *da;
 
     if (rmattrs) {
         for (n = 0; rmattrs[n];)
@@ -279,7 +383,65 @@ void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmva
         freegconfmstr(supvattrs);
     }
 
-    if (rma || rmva || adda || moda || modva || supa) {
+    if (addmetaattrs) {
+        addma = list_create();
+        if (!addma)
+            debugx(1, DBG_ERR, "malloc failed");
+        for (i = 0; addmetaattrs[i]; i++) {
+            da = extractdynattr(addmetaattrs[i], 0);
+            if (!da)
+                debugx(1, DBG_ERR, "addrewrite: invalid meta attribute %s", addmetaattrs[i]);
+            if (!list_push(addma, da))
+                debugx(1, DBG_ERR, "malloc failed");
+        }
+        freegconfmstr(addmetaattrs);
+    }
+
+    if (addmetavattrs) {
+        if (!addma)
+            addma = list_create();
+        if (!addma)
+            debugx(1, DBG_ERR, "malloc failed");
+        for (i = 0; addmetavattrs[i]; i++) {
+            da = extractdynattr(addmetavattrs[i], 1);
+            if (!da)
+                debugx(1, DBG_ERR, "addrewrite: invalid meta vendor attribute %s", addmetavattrs[i]);
+            if (!list_push(addma, da))
+                debugx(1, DBG_ERR, "malloc failed");
+        }
+        freegconfmstr(addmetavattrs);
+    }
+
+    if (supmetaattrs) {
+        supma = list_create();
+        if (!supma)
+            debugx(1, DBG_ERR, "malloc failed");
+        for (i = 0; supmetaattrs[i]; i++) {
+            da = extractdynattr(supmetaattrs[i], 0);
+            if (!da)
+                debugx(1, DBG_ERR, "addrewrite: invalid meta attribute %s", supmetaattrs[i]);
+            if (!list_push(supma, da))
+                debugx(1, DBG_ERR, "malloc failed");
+        }
+        freegconfmstr(supmetaattrs);
+    }
+
+    if (supmetavattrs) {
+        if (!supma)
+            supma = list_create();
+        if (!supma)
+            debugx(1, DBG_ERR, "malloc failed");
+        for (i = 0; supmetavattrs[i]; i++) {
+            da = extractdynattr(supmetavattrs[i], 1);
+            if (!da)
+                debugx(1, DBG_ERR, "addrewrite: invalid meta vendor attribute %s", supmetavattrs[i]);
+            if (!list_push(supma, da))
+                debugx(1, DBG_ERR, "malloc failed");
+        }
+        freegconfmstr(supmetavattrs);
+    }
+
+    if (rma || rmva || adda || moda || modva || supa || addma || supma) {
         rewrite = malloc(sizeof(struct rewrite));
         if (!rewrite)
             debugx(1, DBG_ERR, "malloc failed");
@@ -290,6 +452,8 @@ void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmva
         rewrite->modattrs = moda;
         rewrite->modvattrs = modva;
         rewrite->supattrs = supa;
+        rewrite->addmetaattrs = addma;
+        rewrite->supmetaattrs = supma;
     }
 
     if (!rewriteconfs)
@@ -585,7 +749,40 @@ int dorewritesup(struct radmsg *msg, struct list *supattrs) {
     return 1;
 }
 
-int dorewrite(struct radmsg *msg, struct rewrite *rewrite) {
+static int dorewriteaddmeta(struct radmsg *msg, struct list *addmetaattrs, struct rewrite_context *ctx) {
+    struct list_node *n;
+    struct tlv *a;
+
+    for (n = list_first(addmetaattrs); n; n = list_next(n)) {
+        a = resolvedynattr((struct dynattr *)n->data, ctx);
+        if (!a)
+            continue;
+        if (!radmsg_add(msg, a, 0)) {
+            freetlv(a);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int dorewritesupmeta(struct radmsg *msg, struct list *supmetaattrs, struct rewrite_context *ctx) {
+    struct list_node *n;
+    struct tlv *a;
+
+    for (n = list_first(supmetaattrs); n; n = list_next(n)) {
+        a = resolvedynattr((struct dynattr *)n->data, ctx);
+        if (!a)
+            continue;
+        if (!dorewritesupattr(msg, a)) {
+            freetlv(a);
+            return 0;
+        }
+        freetlv(a);
+    }
+    return 1;
+}
+
+int dorewrite(struct radmsg *msg, struct rewrite *rewrite, struct rewrite_context *ctx) {
     int rv = 1; /* Success.  */
 
     if (rewrite) {
@@ -597,9 +794,25 @@ int dorewrite(struct radmsg *msg, struct rewrite *rewrite) {
         if (rewrite->supattrs)
             if (!dorewritesup(msg, rewrite->supattrs))
                 rv = 0;
+        if (rewrite->supmetaattrs) {
+            if (ctx) {
+                if (!dorewritesupmeta(msg, rewrite->supmetaattrs, ctx))
+                    rv = 0;
+            } else {
+                debug(DBG_WARN, "dorewrite: supmetaattrs configured but no rewrite_context");
+            }
+        }
         if (rewrite->addattrs)
             if (!dorewriteadd(msg, rewrite->addattrs))
                 rv = 0;
+        if (rewrite->addmetaattrs) {
+            if (ctx) {
+                if (!dorewriteaddmeta(msg, rewrite->addmetaattrs, ctx))
+                    rv = 0;
+            } else {
+                debug(DBG_WARN, "dorewrite: addmetaattrs configured but no rewrite_context");
+            }
+        }
     }
     return rv;
 }

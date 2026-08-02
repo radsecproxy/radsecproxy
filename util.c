@@ -110,6 +110,16 @@ void port_set(struct sockaddr *sa, uint16_t port) {
     }
 }
 
+uint16_t port_get(struct sockaddr *sa) {
+    switch (sa->sa_family) {
+    case AF_INET:
+        return ntohs(((struct sockaddr_in *)sa)->sin_port);
+    case AF_INET6:
+        return ntohs(((struct sockaddr_in6 *)sa)->sin6_port);
+    }
+    return 0;
+}
+
 struct sockaddr *addr_copy(struct sockaddr *in) {
     struct sockaddr *out = NULL;
 

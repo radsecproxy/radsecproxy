@@ -16,6 +16,7 @@ int verifyutf8(const unsigned char *str, size_t str_len);
 const char *addr2string(struct sockaddr *addr, char *buf, size_t len);
 struct sockaddr *addr_copy(struct sockaddr *in);
 void port_set(struct sockaddr *sa, uint16_t port);
+uint16_t port_get(struct sockaddr *sa);
 void sock_dgram_skip(int socket);
 
 void printfchars(char *prefixfmt, char *prefix, char *charfmt, uint8_t *chars, int len);
