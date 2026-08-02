@@ -5,8 +5,11 @@
 #include "debug.h"
 #include <netdb.h>
 #include <netinet/in.h>
-#include <resolv.h>
+
 #include <string.h>
+
+#ifdef HAVE_NS_INITPARSE
+#include <resolv.h>
 
 /**
  * Read a character string from a dns response
@@ -347,3 +350,21 @@ void freesrvresponse(struct srv_record **response) {
 void freenaptrresponse(struct naptr_record **response) {
     freeresponselist((void **)response);
 }
+
+#else /* !HAVE_NS_INITPARSE */
+
+struct srv_record **querysrv(const char *name, int timeout) {
+    (void)name; (void)timeout;
+    return NULL;
+}
+
+struct naptr_record **querynaptr(const char *name, int timeout) {
+    (void)name; (void)timeout;
+    return NULL;
+}
+
+void freeresponselist(void **list) { (void)list; }
+void freesrvresponse(struct srv_record **response) { (void)response; }
+void freenaptrresponse(struct naptr_record **response) { (void)response; }
+
+#endif /* HAVE_NS_INITPARSE */
