@@ -1,4 +1,4 @@
-unreleased 1.11.4
+2026-08-10 1.11.4
 	Bug Fixes:
 	- Fix potential crash when rewrite is too big
 	- Fix Message-Authenticator verification for CoA/Disconnect-Request
