@@ -260,13 +260,13 @@ struct radmsg *buf2radmsg(uint8_t *buf, int len, uint8_t *secret, int secret_len
             debug(DBG_ERR, "buf2radmsg: calculating signatures failed");
             msg->authstate = RSP_RADMSG_AUTH_UNKNOWN;
         } else {
-            if (memcmp(auth, RADAUTH(buf), RADAUTHLEN) != 0) {
+            if (CRYPTO_memcmp(auth, RADAUTH(buf), RADAUTHLEN) != 0) {
                 msg->authstate = RSP_RADMSG_INVALID;
             } else {
                 msg->authstate = RSP_RADMSG_VALID;
 
                 if (pmsgauth) {
-                    if (memcmp(msgauth, pmsgauth, 16) != 0) {
+                    if (CRYPTO_memcmp(msgauth, pmsgauth, 16) != 0) {
                         msg->authstate = RSP_RADMSG_MSGAUTH_INVALID;
                     } else
                         msg->authstate = RSP_RADMSG_MSGAUTH_VALID;
