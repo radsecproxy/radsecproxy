@@ -329,10 +329,10 @@ increase security. This setting can be overriden per client and per server (defa
 
 .BR "ProtocolError (" on | off)
 .RS
-Enable sending Protocol-Error responses if requests can't be forwarded, allowing clients to clean 
+Send Protocol-Error responses if requests can't be forwarded, allowing clients to clean 
 up their state early and not having to wait for a timeout.
 .br
-This setting can be overridden per client.
+This setting can be overridden per client (default on).
 .RE
 
 .BI "Include " file
@@ -601,6 +601,12 @@ This should always be enabled if the client is a NAS.
 .br
 This setting is ignored when using TLS/DLTS transport or when \fB RequireMessageAuthenticator\fR is
 enabled.
+.RE
+
+.BR "ProtocolError (" on | off)
+.RS
+Send Protocol-Error responses if requests can't be forwarded, allowing clients to clean 
+up their state early and not having to wait for a timeout (default on).
 .RE
 
 .SH "SERVER BLOCK"
