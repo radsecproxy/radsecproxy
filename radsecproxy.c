@@ -1303,10 +1303,10 @@ int radsrv(struct request *rq) {
 
     switch (msg->authstate) {
     case RSP_RADMSG_AUTH_UNKNOWN:
-        debug(DBG_ERR, "replyh: unknown auth state. this should never happen!");
+        debug(DBG_ERR, "radsrv: unknown auth state. this should never happen!");
     case RSP_RADMSG_INVALID:
     case RSP_RADMSG_MSGAUTH_INVALID:
-        debug_limit(DBG_WARN, "replyh: invalid %s in %s (id %d) from server %s",
+        debug_limit(DBG_WARN, "radsrv: invalid %s in %s (id %d) from server %s",
                     RSP_RADMSG_MSGAUTH_INVALID ? "message-authenticator" : "request-authenticator",
                     radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         radmsg_free(msg);
@@ -1316,7 +1316,7 @@ int radsrv(struct request *rq) {
     case RSP_RADMSG_MSGAUTH_VALID:
         break;
     default:
-        debug(DBG_ERR, "replyh: unhandled authenticator state, this is likely a bug!");
+        debug(DBG_ERR, "radsrv: unhandled authenticator state, this is likely a bug!");
         radmsg_free(msg);
         freerq(rq);
         return 0;
