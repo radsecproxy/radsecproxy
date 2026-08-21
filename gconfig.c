@@ -25,7 +25,7 @@ char *strtokenquote(char *s, char **token, char *del, char *quote, char *comment
         t++;
     if (!*t || (comment && strchr(comment, *t))) {
         *token = NULL;
-        return t + 1; /* needs to be non-NULL, but value doesn't matter */
+        return t + (*t ? 1 : 0); /* if we are at NULL terminator, don't advance */
     }
     if (quote && (q = strchr(quote, *t))) {
         t++;
@@ -42,8 +42,11 @@ char *strtokenquote(char *s, char **token, char *del, char *quote, char *comment
     t++;
     while (*t && !strchr(del, *t))
         t++;
-    *t = '\0';
-    return t + 1;
+    if (*t) {
+        *t = '\0';
+        return t + 1;
+    } else
+        return t;
 }
 
 int pushgconfdata(struct gconffile **cf, const char *data) {
