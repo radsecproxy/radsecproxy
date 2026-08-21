@@ -1681,9 +1681,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         attr = radmsg_getexttype(msg, RAD_ExtAttr_Original_Packet_Code);
         if (!attr || attr->l != 5) {
             debug(DBG_WARN, "replyh: got Protocol-Error (id %d) from %s with invalid or missing Original-Packet-Code attribute", msg->id, server->conf->name);
-            radmsg_free(msg);
-            pthread_mutex_unlock(rqout->lock);
-            return 0;
+            goto errunlock;
         }
         code = ntohl(*(uint32_t *)(attr->v + 1));
         if (code != rqout->rq->msg->code) {
@@ -1692,10 +1690,10 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         }
         attr = radmsg_gettype(msg, RAD_Attr_Error_Cause);
         if (!attr || attr->l != 4) {
-            debug(DBG_WARN, "replyh: got Protocol-Error (id %d) from %s with invalid or missing Error-Cause attribute", msg->id, server->conf->name);
-            radmsg_free(msg);
-            pthread_mutex_unlock(rqout->lock);
-            return 0;
+            debug(DBG_NOTICE, "replyh: got Protocol-Error (id %d) from %s with invalid or missing Error-Cause attribute", msg->id, server->conf->name);
+            respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
+            freerqoutdata(rqout);
+            goto errunlock;
         }
         cause = tlv2longint(attr);
         if (cause == RAD_Err_Request_Not_Routable || cause == RAD_Err_Other_Proxy_Processing_Error) {
