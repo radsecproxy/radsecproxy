@@ -327,10 +327,10 @@ int dovendorrewriterm(struct tlv *attr, uint32_t *removevendorattrs, int inverte
     uint32_t vendor;
     uint8_t *subattrs;
 
-    if (!removevendorattrs || attr->l <= 4)
+    if (!removevendorattrs || attr->l <= sizeof(uint32_t))
         return 0;
 
-    memcpy(&vendor, attr->v, 4);
+    memcpy(&vendor, attr->v, sizeof(uint32_t));
     vendor = ntohl(vendor);
     while (*removevendorattrs && *removevendorattrs != vendor)
         removevendorattrs += 2;
@@ -504,7 +504,7 @@ int dorewritemod(struct radmsg *msg, struct list *modattrs, struct list *modvatt
     for (n = list_first(msg->attrs); n; n = list_next(n)) {
         struct tlv *attr = (struct tlv *)n->data;
         if (attr->t == RAD_Attr_Vendor_Specific) {
-            memcpy(&vendor, attr->v, 4);
+            memcpy(&vendor, attr->v, sizeof(uint32_t));
             vendor = ntohl(vendor);
             for (m = list_first(modvattrs); m; m = list_next(m)) {
                 if (vendor == ((struct modattr *)m->data)->vendor &&
