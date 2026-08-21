@@ -105,6 +105,7 @@ static int gensalt(unsigned char *salt, int len, uint32_t index) {
     return 1;
 }
 
+/* 1 = ok, 0 = format error, -1 = memory error */
 int _recryptattr(struct tlv *attr, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
     uint8_t newsalt[2], saltindex = 0;
     uint8_t sublen, *subattrs;
@@ -117,7 +118,7 @@ int _recryptattr(struct tlv *attr, uint8_t *oldsecret, int oldsecret_len, uint8_
             return 0;
         }
         if (!pwdrecrypt(attr->v, attr->l, oldsecret, oldsecret_len, newsecret, newsecret_len, oldauth, newauth, NULL, 0, NULL, 0))
-            return 0;
+            return -1;
     }
 
     /* tunnel-password RFC2868 */
@@ -131,7 +132,7 @@ int _recryptattr(struct tlv *attr, uint8_t *oldsecret, int oldsecret_len, uint8_
             return 0;
         if (!pwdrecrypt(attr->v + RAD_PWD_SALT_LEN + 1, attr->l - RAD_PWD_SALT_LEN - 1, oldsecret, oldsecret_len, newsecret, newsecret_len,
                         oldauth, newauth, attr->v + 1, RAD_PWD_SALT_LEN, newsalt, RAD_PWD_SALT_LEN))
-            return 0;
+            return -1;
         memcpy(attr->v + 1, newsalt, RAD_PWD_SALT_LEN);
     }
 
@@ -160,7 +161,7 @@ int _recryptattr(struct tlv *attr, uint8_t *oldsecret, int oldsecret_len, uint8_
                 if (!pwdrecrypt(ATTRVAL(subattrs) + RAD_PWD_SALT_LEN, ATTRVALLEN(subattrs) - RAD_PWD_SALT_LEN, oldsecret, oldsecret_len, newsecret, newsecret_len,
                                 oldauth, newauth, ATTRVAL(subattrs), RAD_PWD_SALT_LEN, newsalt, RAD_PWD_SALT_LEN)) {
                     debug(DBG_WARN, "recryptattrs: recrypt failed");
-                    return 0;
+                    return -1;
                 }
                 memcpy(ATTRVAL(subattrs), newsalt, RAD_PWD_SALT_LEN);
             }
@@ -171,14 +172,16 @@ int _recryptattr(struct tlv *attr, uint8_t *oldsecret, int oldsecret_len, uint8_
     return 1;
 }
 
+/* 1 = ok, 0 = format error, -1 = memory error */
 int recryptattrs(struct list *attrs, uint8_t *oldsecret, int oldsecret_len, uint8_t *newsecret, int newsecret_len, uint8_t *oldauth, uint8_t *newauth) {
     struct list_node *node;
     struct tlv *attr;
+    int result;
 
     for (node = list_first(attrs); node; node = list_next(node)) {
         attr = (struct tlv *)node->data;
-        if (!_recryptattr(attr, oldsecret, oldsecret_len, newsecret, newsecret_len, oldauth, newauth))
-            return 0;
+        if ((result = _recryptattr(attr, oldsecret, oldsecret_len, newsecret, newsecret_len, oldauth, newauth)) < 1)
+            return result;
     }
 
     return 1;

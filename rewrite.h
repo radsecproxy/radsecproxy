@@ -23,6 +23,7 @@ struct rewrite {
     struct list *modattrs;       /*struct modattr*/
     struct list *modvattrs;      /*struct modattr*/
     struct list *supattrs;       /*struct tlv*/
+    char *confname;              /*name of the rewrite config block*/
 };
 
 void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmvattrs, char **addattrs,

@@ -106,6 +106,26 @@ struct tlv *radmsg_gettype(struct radmsg *msg, uint8_t type) {
     return NULL;
 }
 
+/* returns first tlv of the given extended type */
+struct tlv *radmsg_getexttype(struct radmsg *msg, struct extattrtype type) {
+    struct tlv *tlv = NULL;
+    struct list_node *node;
+    struct list *tlvs = radmsg_getalltype(msg, type.t);
+
+    if (!tlvs)
+        return NULL;
+
+    for (node = list_first(tlvs); node; node = list_next(node)) {
+        if (((struct tlv *)node->data)->v[0] == type.s) {
+            tlv = (struct tlv *)node->data;
+            break;
+        }
+    }
+
+    list_free(tlvs);
+    return tlv;
+}
+
 /** Copy all attributes of type \a type from \a src to \a dst.
  *
  * If all attributes were copied successfully, the number of
@@ -145,6 +165,19 @@ uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
     return p;
 }
 
+/**
+ * @brief serialize msg to buffer buf. Request/Response and Message-Authenticators are calculated
+ * on the fly using secret.
+ * 
+ * @param msg 
+ * @param secret 
+ * @param secret_len 
+ * @param buf 
+ * @return int 
+ *  on success, size of serialized buffer
+ *  on failure 0 if msg is invalid (too big or invalid attributes)
+ *            -1 on memory errors
+ */
 int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **buf) {
     struct list_node *node;
     struct tlv *tlv;
@@ -156,8 +189,10 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     size = RADHDRLEN;
     for (node = list_first(msg->attrs); node; node = list_next(node))
         size += ATTRHDRLEN + ((struct tlv *)node->data)->l;
-    if (size > RAD_Max_Length || size < 0)
-        return -1;
+    if (size > RAD_Max_Length || size < 0) {
+        debug(DBG_ERR, "radmsg2buf: illegal message size %d", size);
+        return 0;
+    }
     *buf = malloc(size);
     if (!*buf)
         return -1;
@@ -175,7 +210,7 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
             if (pmsgauth) {
                 debug(DBG_ERR, "radmsg2buf: multiple message-authenticator attributes");
                 free(*buf);
-                return -1;
+                return 0;
             } else
                 pmsgauth = ATTRVAL(p);
         }
@@ -348,13 +383,23 @@ struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr) {
     return newtlv;
 }
 
-int resizeattr(struct tlv *attr, uint8_t newlen) {
+/**
+ * @brief resize a radius attribute
+ * 
+ * If the newlen is less than the original lengh, the existing data is truncated. If it is longer, the
+ * additional bytes may contain random data.
+ * 
+ * @param attr the attribute to resize
+ * @param newlen the new length
+ * @return int 1 if resize was successful, 0 if newlen is illegal, -1 on memory allocaiton error.
+ */
+int resizeattr(struct tlv *attr, size_t newlen) {
     if (newlen > RAD_Max_Attr_Value_Length)
         return 0;
 
     if (resizetlv(attr, newlen))
         return 1;
-    return 0;
+    return -1;
 }
 
 /**
@@ -430,6 +475,11 @@ const char *attrval2strdict(struct tlv *attr) {
     case RAD_Attr_Acct_Terminate_Cause:
         if (val < sizeof(RAD_Attr_Acct_Terminate_Cause_Dict) / sizeof(RAD_Attr_Acct_Terminate_Cause_Dict[0]))
             return RAD_Attr_Acct_Terminate_Cause_Dict[val] ? RAD_Attr_Acct_Terminate_Cause_Dict[val] : RAD_Attr_Dict_Undef;
+        break;
+
+    case RAD_Attr_Error_Cause:
+        if (val < sizeof(RAD_Attr_Error_Cause_Dict) / sizeof(RAD_Attr_Error_Cause_Dict[0]))
+            return RAD_Attr_Error_Cause_Dict[val] ? RAD_Attr_Error_Cause_Dict[val] : RAD_Attr_Dict_Undef;
         break;
 
     default:

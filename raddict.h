@@ -37,6 +37,28 @@ const char *RAD_Attr_Acct_Status_Type_Dict[] = {
     [15] = "Failed",
 };
 
+const char *RAD_Attr_Error_Cause_Dict[] = {
+    [201] = "Residual Session Context Removed",
+    [202] = "Invalid EAP Packet",
+    [401] = "Unsupported Attribute",
+    [402] = "Missing Attribute",
+    [403] = "NAS Identification Mismatch",
+    [404] = "Invalid Request",
+    [405] = "Unsupported Service",
+    [406] = "Unsupported Extension",
+    [407] = "Invalid Attribute Value",
+    [501] = "Administratively Prohibited",
+    [502] = "Request Not Routable",
+    [503] = "Session Context Not Found",
+    [504] = "Session Context Not Removable",
+    [505] = "Other Proxy Processing Error",
+    [506] = "Resources Unavailable",
+    [507] = "Request Initiated",
+    [508] = "Multiple Session Selection Unsupported",
+    [509] = "Location-Info-Required",
+    [601] = "Response Too Big",
+};
+
 #define RAD_Attr_Dict_Undef "UNKNOWN"
 
 #endif /*_RADDICT_H*/

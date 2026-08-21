@@ -327,6 +327,14 @@ Enable this option if all clients and servers are known to always use Message-Au
 increase security. This setting can be overriden per client and per server (default off). 
 .RE
 
+.BR "ProtocolError (" on | off)
+.RS
+Send Protocol-Error responses if requests can't be forwarded, allowing clients to clean 
+up their state early and not having to wait for a timeout.
+.br
+This setting can be overridden per client (default on).
+.RE
+
 .BI "Include " file
 .RS
 This is not a normal configuration option; it can be specified multiple times.
@@ -593,6 +601,12 @@ This should always be enabled if the client is a NAS.
 .br
 This setting is ignored when using TLS/DLTS transport or when \fB RequireMessageAuthenticator\fR is
 enabled.
+.RE
+
+.BR "ProtocolError (" on | off)
+.RS
+Send Protocol-Error responses if requests can't be forwarded, allowing clients to clean 
+up their state early and not having to wait for a timeout (default on).
 .RE
 
 .SH "SERVER BLOCK"

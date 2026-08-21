@@ -457,6 +457,7 @@ void freerqoutdata(struct rqout *rqout) {
     memset(&rqout->expiry, 0, sizeof(struct timeval));
 }
 
+/* 1 = ok, 0 = request with this id already in queue, -1 error serializing packet*/
 int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
     if (!to->requests[id].rq) {
         pthread_mutex_lock(to->requests[id].lock);
@@ -464,10 +465,13 @@ int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
             rq->newid = id;
             rq->msg->id = id;
             rq->buflen = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len, &rq->buf);
-            if (!rq->buf || rq->buflen <= 0) {
+            if (!rq->buf || rq->buflen < 1) {
                 pthread_mutex_unlock(to->requests[id].lock);
                 debug(DBG_ERR, "sendrq: radmsg2buf failed");
-                return 0;
+                if (rq->buflen < 1)
+                    return rq->buflen;
+                else
+                    return -1;
             }
             debug(DBG_DBG, "sendrq: inserting packet with id %d in queue for %s", id, to->conf->name);
             to->requests[id].rq = rq;
@@ -479,8 +483,9 @@ int _internal_sendrq(struct server *to, uint8_t id, struct request *rq) {
     return 0;
 }
 
-void sendrq(struct request *rq) {
-    int i, start;
+/* 1 = success, 0 = msg format error or no room in queue, -1 malloc error */
+int sendrq(struct request *rq) {
+    int i, start, result = 0;
     struct server *to;
 
     pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
@@ -491,7 +496,7 @@ void sendrq(struct request *rq) {
     start = to->conf->statusserver == RSP_STATSRV_OFF ? 0 : 1;
     pthread_mutex_lock(&to->newrq_mutex);
     if (start && rq->msg->code == RAD_Status_Server) {
-        if (!_internal_sendrq(to, 0, rq)) {
+        if ((result = _internal_sendrq(to, 0, rq)) < 1) {
             debug(DBG_INFO, "sendrq: status server already in queue, dropping request");
             goto errexit;
         }
@@ -499,23 +504,22 @@ void sendrq(struct request *rq) {
         if (!to->nextid)
             to->nextid = start;
         /* might simplify if only try nextid, might be ok */
-        for (i = to->nextid; i < MAX_REQUESTS; i++) {
-            if (_internal_sendrq(to, i, rq))
-                break;
-        }
+        for (i = to->nextid; to->requests[i].rq && i < MAX_REQUESTS; i++)
+            ;
         if (i == MAX_REQUESTS) {
-            for (i = start; i < to->nextid; i++) {
-                if (_internal_sendrq(to, i, rq))
-                    break;
-            }
+            for (i = start; to->requests[i].rq && i < to->nextid; i++)
+                ;
             if (i == to->nextid) {
                 debug(DBG_WARN, "sendrq: no room in queue for server %s, dropping request", to->conf->name);
                 goto errexit;
             }
         }
-
         if (i >= start) /* i is not reserved for statusserver */
             to->nextid = i + 1;
+
+        if ((result = _internal_sendrq(to, i, rq)) < 1) {
+            goto errexit;
+        }
     }
 
     if (!to->newrq) {
@@ -526,18 +530,18 @@ void sendrq(struct request *rq) {
 
     pthread_mutex_unlock(&to->newrq_mutex);
     pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
-    return;
+    return 1;
 
 errexit:
-    if (rq->from)
-        rmclientrq(rq, rq->rqid);
     freerq(rq);
     if (to)
         pthread_mutex_unlock(&to->newrq_mutex);
     pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
+    return result;
 }
 
-void sendreply(struct request *rq) {
+/* 1 = success, 0 = msg format error, -1 malloc error */
+int sendreply(struct request *rq) {
     uint8_t first;
     struct client *to = rq->from;
 
@@ -545,10 +549,13 @@ void sendreply(struct request *rq) {
         rq->replybuflen = radmsg2buf(rq->msg, to->conf->secret, to->conf->secret_len, &rq->replybuf);
     radmsg_free(rq->msg);
     rq->msg = NULL;
-    if (!rq->replybuf || rq->replybuflen <= 0) {
+    if (!rq->replybuf || rq->replybuflen < 1) {
         freerq(rq);
         debug(DBG_ERR, "sendreply: radmsg2buf failed");
-        return;
+        if (rq->replybuflen < 1)
+            return rq->replybuflen;
+        else
+            return -1;
     }
 
     pthread_mutex_lock(&to->replyq->mutex);
@@ -558,7 +565,7 @@ void sendreply(struct request *rq) {
         pthread_mutex_unlock(&to->replyq->mutex);
         freerq(rq);
         debug(DBG_ERR, "sendreply: malloc failed");
-        return;
+        return 0;
     }
 
     if (first) {
@@ -566,6 +573,7 @@ void sendreply(struct request *rq) {
         pthread_cond_signal(&to->replyq->cond);
     }
     pthread_mutex_unlock(&to->replyq->mutex);
+    return 1;
 }
 
 struct realm *newrealmref(struct realm *r) {
@@ -737,12 +745,14 @@ void removeserversubrealms(struct list *realmlist, struct clsrvconf *srv) {
 }
 
 int rewriteusername(struct request *rq, struct tlv *attr) {
+    int result = 0;
+
     char *orig = (char *)tlv2str(attr);
     if (!orig)
-        return 0;
-    if (!dorewritemodattr(attr, rq->from->conf->rewriteusername)) {
+        return -1;
+    if ((result = dorewritemodattr(attr, rq->from->conf->rewriteusername)) < 1) {
         free(orig);
-        return 0;
+        return result;
     }
     if (strlen(orig) != attr->l || memcmp(orig, attr->v, attr->l))
         rq->origusername = (char *)orig;
@@ -939,6 +949,15 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
         debug(level, "missing response to %s for user %s%s from %s (%s) to %s",
               radmsgtype2string(msg->code), logusername, logstationid,
               rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)), servername);
+    } else if (msg->code == RAD_Protocol_Error) {
+        struct tlv *cause = radmsg_gettype(msg, RAD_Attr_Error_Cause);
+        struct tlv *origcodeattr = radmsg_getexttype(msg, RAD_ExtAttr_Original_Packet_Code);
+        uint32_t origcode;
+        memcpy(&origcode, origcodeattr->v + 1, sizeof(uint32_t));
+        origcode = ntohl(origcode);
+        debug(level, "%s %d %s (response to %s) from %s to %s (%s)", radmsgtype2string(msg->code),
+              tlv2longint(cause), attrval2strdict(cause), radmsgtype2string(origcode),
+              servername, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
     }
     free(username);
     free(cui);
@@ -952,7 +971,7 @@ void respond(struct request *rq, uint8_t code, struct tlv *addattr,
     struct tlv *attr;
     char tmp[INET6_ADDRSTRLEN];
 
-    msg = radmsg_init(code, rq->msg->id, rq->msg->auth);
+    msg = radmsg_init(code, rq->rqid, rq->rqauth);
     if (!msg) {
         debug(DBG_ERR, "respond: malloc failed");
         goto errexit;
@@ -978,12 +997,60 @@ void respond(struct request *rq, uint8_t code, struct tlv *addattr,
 
     radmsg_free(rq->msg);
     rq->msg = msg;
-    sendreply(newrqref(rq));
+    if (sendreply(newrqref(rq)) < 1)
+        debug(DBG_ERR, "respond: sending %s (id %d) to %s (%s) failed", radmsgtype2string(msg->code), msg->id, rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
     return;
 
 errexit:
     radmsg_free(msg);
     freetlv(addattr);
+}
+
+void respondprotoerror(struct request *rq, uint32_t errcause) {
+    struct radmsg *msg;
+    uint32_t origcode = htonl(rq->msg->code);
+    struct tlv *causeattr;
+    char tmp[INET6_ADDRSTRLEN];
+
+    if (!rq->from->conf->protocolerror)
+        return;
+
+    msg = radmsg_init(RAD_Protocol_Error, rq->rqid, rq->rqauth);
+    if (!msg) {
+        debug(DBG_ERR, "respondprotoerror: malloc failed");
+        return;
+    }
+
+    if (!radmsg_add(msg, maketlv(RAD_Attr_Message_Authenticator, 16, NULL), 1)) {
+        debug(DBG_ERR, "respondprotoerror: failed to add message authenticator");
+        goto errexit;
+    }
+
+    if (!radmsg_add(msg, makeexttlv(RAD_ExtAttr_Original_Packet_Code, sizeof(uint32_t), &origcode), 0)) {
+        debug(DBG_ERR, "respondprotoerror: failed to add original packet code");
+        goto errexit;
+    }
+
+    if (!(causeattr = maketlvlongint(RAD_Attr_Error_Cause, errcause)) || !radmsg_add(msg, causeattr, 0)) {
+        debug(DBG_ERR, "respondprotoerror: failed to add error cause");
+        goto errexit;
+    }
+
+    if (radmsg_copy_attrs(msg, rq->msg, RAD_Attr_Proxy_State) < 0) {
+        debug(DBG_ERR, "respond: unable to copy all Proxy-State attributes");
+        goto errexit;
+    }
+
+    debug(DBG_DBG, "respondprotoerror: sending Protocol-Error (id %d, code %d, cause %d %s) to %s (%s)", msg->id, rq->msg->code, errcause, attrval2strdict(causeattr), rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
+
+    radmsg_free(rq->msg);
+    rq->msg = msg;
+    if (sendreply(newrqref(rq)) < 1)
+        debug(DBG_ERR, "respondprotoerror: sending Protocol-Error (id %d, code %d, cause %d %s) to %s (%s) failed", msg->id, rq->msg->code, errcause, attrval2strdict(causeattr), rq->from->conf->name, addr2string(rq->from->addr, tmp, sizeof(tmp)));
+    return;
+
+errexit:
+    radmsg_free(msg);
 }
 
 struct clsrvconf *choosesrvconf(struct list *srvconfs) {
@@ -1126,7 +1193,8 @@ int addclientrq(struct request *rq) {
             if (now.tv_sec - r->created.tv_sec < r->from->conf->dupinterval) {
                 if (r->replybuf) {
                     debug(DBG_INFO, "addclientrq: already sent reply to request with id %d from %s, resending", rq->rqid, addr2string(r->from->addr, tmp, sizeof(tmp)));
-                    sendreply(newrqref(r));
+                    if (sendreply(newrqref(r)) < 1)
+                        debug(DBG_ERR, "addclientrq: resending prevous reply failed. This should never happen and is likel a bug");
                 } else
                     debug(DBG_INFO, "addclientrq: already got request with id %d from %s, ignoring", rq->rqid, addr2string(r->from->addr, tmp, sizeof(tmp)));
                 return 0;
@@ -1218,7 +1286,7 @@ int radsrv(struct request *rq) {
     struct realm *realm = NULL;
     struct server *to = NULL;
     struct client *from = rq->from;
-    int ttlres;
+    int ttlres, result;
     char tmp[INET6_ADDRSTRLEN];
 
     msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
@@ -1236,10 +1304,10 @@ int radsrv(struct request *rq) {
 
     switch (msg->authstate) {
     case RSP_RADMSG_AUTH_UNKNOWN:
-        debug(DBG_ERR, "replyh: unknown auth state. this should never happen!");
+        debug(DBG_ERR, "radsrv: unknown auth state. this should never happen!");
     case RSP_RADMSG_INVALID:
     case RSP_RADMSG_MSGAUTH_INVALID:
-        debug_limit(DBG_WARN, "replyh: invalid %s in %s (id %d) from server %s",
+        debug_limit(DBG_WARN, "radsrv: invalid %s in %s (id %d) from server %s",
                     RSP_RADMSG_MSGAUTH_INVALID ? "message-authenticator" : "request-authenticator",
                     radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         radmsg_free(msg);
@@ -1249,7 +1317,7 @@ int radsrv(struct request *rq) {
     case RSP_RADMSG_MSGAUTH_VALID:
         break;
     default:
-        debug(DBG_ERR, "replyh: unhandled authenticator state, this is likely a bug!");
+        debug(DBG_ERR, "radsrv: unhandled authenticator state, this is likely a bug!");
         radmsg_free(msg);
         freerq(rq);
         return 0;
@@ -1260,17 +1328,10 @@ int radsrv(struct request *rq) {
     memcpy(rq->rqauth, msg->auth, 16);
 
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
-    if (msg->code == RAD_Disconnect_Request) {
-        debug_limit(DBG_INFO, "radsrv: disconnect-request not supported from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
-        respond(rq, RAD_Disconnect_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
-    }
-    if (msg->code == RAD_CoA_Request) {
-        debug_limit(DBG_INFO, "radsrv: CoA-request not supported from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
-        respond(rq, RAD_CoA_NAK, maketlv(RAD_Attr_Error_Cause, sizeof(RAD_Err_Unsupported_Extension), &(int){RAD_Err_Unsupported_Extension}), 1);
-    }
     if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
-        debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring %s (code %d, id %d) from %s (%s)",
-                    radmsgtype2string(msg->code), msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring %s (code %d, id %d) from %s (%s)", radmsgtype2string(msg->code), msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        if (from->conf->type != RAD_UDP)
+            respondprotoerror(rq, RAD_Err_Unsupported_Extension);
         goto exit;
     }
 
@@ -1301,29 +1362,46 @@ int radsrv(struct request *rq) {
         goto exit;
     }
 
-    if (from->conf->rewritein && !dorewrite(msg, from->conf->rewritein))
-        goto rmclrqexit;
+    if (from->conf->rewritein && (result = dorewrite(msg, from->conf->rewritein)) < 1) {
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "radsrv: rewrite %s results in invalid attribute(s) from %s (%s)", from->conf->rewritein->confname, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+            respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+            goto exit;
+        } else {
+            debug(DBG_WARN, "radsrv: rewrite malloc failed, ignoring request");
+            goto rmclrqexit;
+        }
+    }
 
     ttlres = checkttl(msg, options.ttlattrtype);
     if (!ttlres) {
-        debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        debug_limit(DBG_NOTICE, "radsrv: error in request from client %s (%s), ttl exceeded", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         goto exit;
     }
 
     attr = radmsg_gettype(msg, RAD_Attr_User_Name);
     if (!attr) {
-        if (msg->code == RAD_Accounting_Request) {
+        if (msg->code == RAD_Accounting_Request)
             respond(rq, RAD_Accounting_Response, NULL, 0);
-        } else
-            debug_limit(DBG_INFO, "radsrv: ignoring access request from %s (%s), no username attribute", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        else {
+            debug_limit(DBG_NOTICE, "radsrv: error in access request from %s (%s), no username attribute", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
+        }
         goto exit;
     }
 
-    if (from->conf->rewriteusername && !rewriteusername(rq, attr)) {
-        debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
-        goto rmclrqexit;
+    if (from->conf->rewriteusername && (result = rewriteusername(rq, attr)) < 1) {
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "radsrv: username rewrite results in invalid attribute from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+            respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+        } else {
+            debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
+            goto rmclrqexit;
+        }
     }
 
+    /* converty any non printable ascii character to hexencoding for logging */
     userascii = radattr2ascii(attr);
     if (!userascii)
         goto rmclrqexit;
@@ -1332,7 +1410,8 @@ int radsrv(struct request *rq) {
     /* will return with lock on the realm */
     to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
     if (!realm) {
-        debug_limit(DBG_INFO, "radsrv: ignoring request, don't know where to send it");
+        debug_limit(DBG_INFO, "radsrv: realm %s not found, don't know where to send it", userascii);
+        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         goto exit;
     }
 
@@ -1343,14 +1422,18 @@ int radsrv(struct request *rq) {
             if (realm->acclog)
                 log_accounting_resp(from, msg, (char *)userascii);
             respond(rq, RAD_Accounting_Response, NULL, 0);
+        } else {
+            debug_limit(DBG_INFO, "radsrv: no servers configured for realm %s (from client %s (%s))", realm->name, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         }
         goto exit;
     }
 
     if ((to->conf->loopprevention == 1 || (to->conf->loopprevention == UCHAR_MAX && options.loopprevention == 1)) &&
         !strcmp(from->conf->name, to->conf->name)) {
-        debug_limit(DBG_INFO, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s, discarding",
+        debug_limit(DBG_WARN, "radsrv: Loop prevented, not forwarding request from client %s (%s) to server %s",
                     from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
+        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
         goto exit;
     }
 
@@ -1386,14 +1469,28 @@ int radsrv(struct request *rq) {
     printfchars(NULL, "auth", "%02x ", msg->auth, 16);
 #endif
 
-    if (!recryptattrs(msg->attrs, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len,
-                      rq->rqauth, msg->auth)) {
-        debug(DBG_WARN, "radsrv: reencrypting passwords failed");
-        goto rmclrqexit;
+    if ((result = recryptattrs(msg->attrs, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len,
+                               rq->rqauth, msg->auth)) < 1) {
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "radsrv: reencrypting passwords failed, invalid attribute(s) from %s (%s) to %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
+            respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+            goto exit;
+        } else {
+            debug(DBG_WARN, "radsrv: reencrypting passwords failed");
+            goto rmclrqexit;
+        }
     }
 
-    if (to->conf->rewriteout && !dorewrite(msg, to->conf->rewriteout))
-        goto rmclrqexit;
+    if (to->conf->rewriteout && (result = dorewrite(msg, to->conf->rewriteout)) < 1) {
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "radsrv: rewrite %s results in invalid attribute(s) from %s (%s) to %s", from->conf->rewriteout->confname, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
+            respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+            goto exit;
+        } else {
+            debug(DBG_WARN, "radsrv: rewrite malloc failed, ignoring request");
+            goto rmclrqexit;
+        }
+    }
 
     if (msg->code == RAD_Access_Request &&
         !ensuremsgauthfront(msg))
@@ -1404,7 +1501,11 @@ int radsrv(struct request *rq) {
 
     free(userascii);
     rq->to = to;
-    sendrq(rq);
+    if ((result = sendrq(rq)) < 1) {
+        debug_limit(DBG_NOTICE, "radsrv: failed to send packet to server from %s (%s) to %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
+        if (result == 0)
+            respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+    }
     pthread_mutex_unlock(&realm->mutex);
     freerealm(realm);
     return 1;
@@ -1500,7 +1601,7 @@ int closeh(struct server *server) {
 int replyh(struct server *server, uint8_t *buf, int len) {
     struct client *from;
     struct rqout *rqout;
-    int ttlres;
+    int ttlres, result = 0;
     struct radmsg *msg = NULL;
     struct tlv *attr;
     char tmp[INET6_ADDRSTRLEN];
@@ -1524,7 +1625,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     buf = NULL;
 
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge &&
-        msg->code != RAD_Accounting_Response) {
+        msg->code != RAD_Accounting_Response && msg->code != RAD_Protocol_Error) {
         debug_limit(DBG_INFO, "replyh: discarding message type %s (code %d), accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code), msg->code);
         goto errunlock;
     }
@@ -1574,10 +1675,58 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         }
     }
 
+    from = rqout->rq->from;
+
+    if (msg->code == RAD_Protocol_Error) {
+        uint32_t code = 0, cause = 0;
+        attr = radmsg_getexttype(msg, RAD_ExtAttr_Original_Packet_Code);
+        if (!attr || attr->l != 5) {
+            debug(DBG_WARN, "replyh: got Protocol-Error (id %d) from %s with invalid or missing Original-Packet-Code attribute", msg->id, server->conf->name);
+            goto errunlock;
+        }
+        memcpy(&code, attr->v + 1, sizeof(uint32_t));
+        code = ntohl(code);
+        if (code != rqout->rq->msg->code) {
+            debug(DBG_NOTICE, "replyh: Protocol-Error (id %d) from %s Original-Packet-Code %d does not match request, ignoring", msg->id, server->conf->name, code);
+            goto errunlock;
+        }
+        attr = radmsg_gettype(msg, RAD_Attr_Error_Cause);
+        if (!attr || attr->l != 4) {
+            debug(DBG_NOTICE, "replyh: got Protocol-Error (id %d) from %s with invalid or missing Error-Cause attribute", msg->id, server->conf->name);
+            respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
+            freerqoutdata(rqout);
+            goto errunlock;
+        }
+        cause = tlv2longint(attr);
+        if (cause == RAD_Err_Request_Not_Routable || cause == RAD_Err_Other_Proxy_Processing_Error) {
+            debug(DBG_INFO, "replyh: Protocol-Error (id %d) from %s indicating proxy network error, forwarding to client", msg->id, server->conf->name);
+            /* recirculation not yet implemented, just forward if enabled */
+            if (!rqout->rq->from->conf->protocolerror) {
+                freerqoutdata(rqout);
+                goto errunlock;
+            }
+        } else if (cause == RAD_Err_Unsupported_Extension) {
+            debug_limit(DBG_NOTICE, "replyh: Server %s does not support %s", server->conf->name, radmsgtype2string(code));
+            /* recirculation not yet implemented, convert to not routable*/
+            respondprotoerror(rqout->rq, RAD_Err_Request_Not_Routable);
+            freerqoutdata(rqout);
+            goto errunlock;
+        }
+
+        replylog(msg, server, rqout->rq);
+        goto forwardreply;
+    }
+
     gettimeofday(&server->lastreply, NULL);
 
-    if (server->conf->rewritein && !dorewrite(msg, server->conf->rewritein)) {
+    if (server->conf->rewritein && (result = dorewrite(msg, server->conf->rewritein)) < 1) {
         debug(DBG_INFO, "replyh: rewritein failed");
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "replyh: rewrite %s results in invalid attribute(s) from %s", server->conf->rewritein->confname, server->conf->name);
+            respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
+            freerqoutdata(rqout);
+        } else
+            debug(DBG_WARN, "replyh: rewrite malloc failed, ignoring response");
         goto errunlock;
     }
 
@@ -1589,10 +1738,16 @@ int replyh(struct server *server, uint8_t *buf, int len) {
 
     from = rqout->rq->from;
 
-    if (!recryptattrs(msg->attrs, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
-                      rqout->rq->msg->auth, rqout->rq->rqauth)) {
-        debug(DBG_WARN, "replyh: reencrypting passwords failed, ignoring reply");
-        goto errunlock;
+    if ((result = recryptattrs(msg->attrs, server->conf->secret, server->conf->secret_len, from->conf->secret, from->conf->secret_len,
+                               rqout->rq->msg->auth, rqout->rq->rqauth)) < 1) {
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "replyh: reencrypting passwords failed, invalid attribute(s) from %s", server->conf->rewritein->confname, server->conf->name);
+            respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
+            freerqoutdata(rqout);
+        } else {
+            debug(DBG_WARN, "replyh: reencrypting passwords failed, ignoring reply");
+            goto errunlock;
+        }
     }
 
     replylog(msg, server, rqout->rq);
@@ -1601,19 +1756,22 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         if (options.fticks_reporting && from->conf->fticks_viscountry != NULL)
             fticks_log(&options, from, msg, rqout->rq);
 
-    msg->id = (char)rqout->rq->rqid;
-    memcpy(msg->auth, rqout->rq->rqauth, 16);
-
     if (rqout->rq->origusername && (attr = radmsg_gettype(msg, RAD_Attr_User_Name))) {
-        if (!resizeattr(attr, strlen(rqout->rq->origusername))) {
+        if (resizeattr(attr, strlen(rqout->rq->origusername)) < 1) {
             debug(DBG_WARN, "replyh: malloc failed, ignoring reply");
             goto errunlock;
         }
         memcpy(attr->v, rqout->rq->origusername, strlen(rqout->rq->origusername));
     }
 
-    if (from->conf->rewriteout && !dorewrite(msg, from->conf->rewriteout)) {
+    if (from->conf->rewriteout && (result = dorewrite(msg, from->conf->rewriteout)) < 1) {
         debug(DBG_WARN, "replyh: rewriteout failed");
+        if (result == 0) {
+            debug_limit(DBG_NOTICE, "replyh: rewrite %s results in invalid attribute(s) from %s", server->conf->rewritein->confname, server->conf->name);
+            respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
+            freerqoutdata(rqout);
+        } else
+            debug(DBG_WARN, "replyh: rewrite malloc failed, ignoring response");
         goto errunlock;
     }
 
@@ -1624,11 +1782,19 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     if (ttlres == -1 && (options.addttl || from->conf->addttl))
         addttlattr(msg, options.ttlattrtype, from->conf->addttl ? from->conf->addttl : options.addttl);
 
-    debug(DBG_DBG, "replyh: passing %s (id %d) to client %s (%s)", radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+    debug(DBG_DBG, "replyh: passing %s (id %d) to client %s (%s)", radmsgtype2string(msg->code), rqout->rq->rqid, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+
+forwardreply:
+    msg->id = rqout->rq->rqid;
+    memcpy(msg->auth, rqout->rq->rqauth, 16);
 
     radmsg_free(rqout->rq->msg);
     rqout->rq->msg = msg;
-    sendreply(newrqref(rqout->rq));
+    if ((result = sendreply(newrqref(rqout->rq))) < 1) {
+        debug_limit(DBG_NOTICE, "replyh: failed to send %s (id %s) to client %s (%s)", radmsgtype2string(msg->code), rqout->rq->rqid, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        if (result == 0)
+            respondprotoerror(rqout->rq, RAD_Err_Other_Proxy_Processing_Error);
+    }
     freerqoutdata(rqout);
     pthread_mutex_unlock(rqout->lock);
     return 1;
@@ -1830,6 +1996,9 @@ void *clientwr(void *arg) {
                         incrementlostrqs(server);
                     }
                 }
+                if (rqout->rq->from) {
+                    respondprotoerror(rqout->rq, RAD_Err_Request_Not_Routable);
+                }
                 freerqoutdata(rqout);
                 pthread_mutex_unlock(rqout->lock);
                 continue;
@@ -1857,7 +2026,8 @@ void *clientwr(void *arg) {
                 if (statsrvrq) {
                     statsrvrq->to = server;
                     debug(DBG_DBG, "clientwr: sending %s to %s", radmsgtype2string(RAD_Status_Server), conf->name);
-                    sendrq(statsrvrq);
+                    if (sendrq(statsrvrq) < 1)
+                        debug(DBG_ERR, "clientwr: failed to send status-server request, this is likely a bug!");
                 }
                 statusserver_requested = 0;
             }
@@ -1869,8 +2039,13 @@ errexitwait:
     for (i = 0; i < MAX_REQUESTS; i++) {
         rqout = server->requests + i;
         pthread_mutex_lock(rqout->lock);
-        if (rqout->rq)
-            rmclientrq(rqout->rq, rqout->rq->rqid);
+        if (rqout->rq) {
+            if (rqout->rq->from && (rqout->rq->from->conf->type == RAD_TCP || rqout->rq->from->conf->type == RAD_TLS)) {
+                respondprotoerror(rqout->rq, RAD_Err_Request_Not_Routable);
+            } else {
+                rmclientrq(rqout->rq, rqout->rq->rqid);
+            }
+        }
         freerqoutdata(rqout);
         pthread_mutex_unlock(rqout->lock);
     }
@@ -1885,6 +2060,12 @@ errexit:
         pthread_mutex_lock(server->conf->lock);
         server->conf->servers = NULL;
         pthread_mutex_unlock(server->conf->lock);
+    }
+    for (i = 0; i < MAX_REQUESTS; i++) {
+        pthread_mutex_lock(server->requests[i].lock);
+        if (server->requests[i].rq && server->requests[i].rq->from)
+            respondprotoerror(server->requests[i].rq, RAD_Err_Request_Not_Routable);
+        pthread_mutex_unlock(server->requests[i].lock);
     }
     freeserver(server, 1);
     return NULL;
@@ -2639,6 +2820,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->certnamecheck = 1;
     conf->reqmsgauth = options.reqmsgauth;
     conf->idletimeout = IDLE_TIMEOUT_DEFAULT;
+    conf->protocolerror = options.protocolerror;
 
     if (!getgenericconfig(
             cf, block,
@@ -2668,6 +2850,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "fticksVISINST", CONF_STR, &conf->fticks_visinst,
             "requireMessageAuthenticator", CONF_BLN, &conf->reqmsgauth,
             "requireMessageAuthenticatorProxy", CONF_BLN, &conf->reqmsgauthproxy,
+            "ProtocolError", CONF_BLN, &conf->protocolerror,
             NULL))
         debugx(1, DBG_ERR, "configuration error");
 
@@ -3187,6 +3370,7 @@ void getmainconfig(const char *configfile) {
     memset(&sourceargs, 0, sizeof(sourceargs));
     options.logfullusername = 1;
     options.verifyeap = 1;
+    options.protocolerror = 1;
 
     clconfs = list_create();
     if (!clconfs)
@@ -3245,7 +3429,7 @@ void getmainconfig(const char *configfile) {
             "SNI", CONF_BLN, &options.sni,
             "VerifyEAP", CONF_BLN, &options.verifyeap,
             "requireMessageAuthenticator", CONF_BLN, &options.reqmsgauth,
-
+            "ProtocolError", CONF_BLN, &options.protocolerror,
             NULL))
         debugx(1, DBG_ERR, "configuration error");
 

@@ -8,6 +8,7 @@
 
 #include "tlv11.h"
 #include <stdint.h>
+#include <stddef.h>
 
 #define RAD_Min_Length 20
 #define RAD_Max_Length 4096
@@ -27,6 +28,7 @@
 #define RAD_CoA_Request 43
 #define RAD_CoA_ACK 44
 #define RAD_CoA_NAK 45
+#define RAD_Protocol_Error 52
 
 #define RAD_Attr_User_Name 1
 #define RAD_Attr_User_Password 2
@@ -55,6 +57,8 @@
 #define RAD_Attr_Error_Cause 101
 #define RAD_Attr_Operator_Name 126
 
+#define RAD_ExtAttr_Original_Packet_Code (struct extattrtype){241, 4}
+
 #define RAD_Acct_Status_Start 1
 #define RAD_Acct_Status_Stop 2
 #define RAD_Acct_Status_Alive 3
@@ -64,6 +68,9 @@
 #define RAD_Acct_Status_Failed 15
 
 #define RAD_Err_Unsupported_Extension 406
+#define RAD_Err_Request_Not_Routable 502
+#define RAD_Err_Other_Proxy_Processing_Error 505
+#define RAD_Err_Resources_Unavailable 506
 
 #define RAD_VS_VENDOR_MS "\x00\x00\x01\x37"
 #define RAD_VS_ATTR_MS_MPPE_Send_Key 16
@@ -113,6 +120,7 @@ void radmsg_free(struct radmsg *);
 struct radmsg *radmsg_init(uint8_t, uint8_t, uint8_t *);
 int radmsg_add(struct radmsg *, struct tlv *, uint8_t front);
 struct tlv *radmsg_gettype(struct radmsg *, uint8_t);
+struct tlv *radmsg_getexttype(struct radmsg *msg, struct extattrtype type);
 struct list *radmsg_getalltype(const struct radmsg *msg, uint8_t type);
 int radmsg_copy_attrs(struct radmsg *dst,
                       const struct radmsg *src,
@@ -124,7 +132,7 @@ uint8_t attrname2val(char *attrname);
 int vattrname2val(char *attrname, uint32_t *vendor, uint32_t *type);
 int attrvalidate(unsigned char *attrs, int length);
 struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr);
-int resizeattr(struct tlv *attr, uint8_t newlen);
+int resizeattr(struct tlv *attr, size_t newlen);
 int verifyeapformat(struct radmsg *msg);
 const char *radmsgtype2string(uint8_t code);
 

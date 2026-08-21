@@ -30,6 +30,29 @@ struct tlv *maketlv(uint8_t t, uint8_t l, void *v) {
     return tlv;
 }
 
+struct tlv *maketlvlongint(uint8_t t, uint32_t v) {
+    uint32_t netval = htonl(v);
+    return maketlv(t, sizeof(netval), &netval);
+}
+
+struct tlv *makeexttlv(struct extattrtype t, uint8_t l, void *v) {
+    struct tlv *tlv;
+    if (!l || !v)
+        return NULL;
+
+    tlv = maketlv(t.t, l + 1, NULL);
+    if (!tlv)
+        return NULL;
+    tlv->v = malloc(l + 1);
+    if (!tlv->v) {
+        free(tlv);
+        return NULL;
+    }
+    (tlv->v)[0] = t.s;
+    memcpy(tlv->v + 1, v, l);
+    return tlv;
+}
+
 struct tlv *copytlv(struct tlv *in) {
     return in ? maketlv(in->t, in->l, in->v) : NULL;
 }
@@ -120,11 +143,13 @@ struct tlv *resizetlv(struct tlv *tlv, uint8_t newlen) {
 }
 
 uint32_t tlv2longint(struct tlv *tlv) {
+    uint32_t value;
     if (!tlv)
         return 0;
     if (tlv->l != sizeof(uint32_t))
         return 0;
-    return ntohl(*(uint32_t *)tlv->v);
+    memcpy(&value, tlv->v, sizeof(uint32_t));
+    return (ntohl(value));
 }
 
 char *tlv2ipv4addr(struct tlv *tlv) {
