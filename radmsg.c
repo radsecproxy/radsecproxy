@@ -189,8 +189,10 @@ int radmsg2buf(struct radmsg *msg, uint8_t *secret, int secret_len, uint8_t **bu
     size = RADHDRLEN;
     for (node = list_first(msg->attrs); node; node = list_next(node))
         size += ATTRHDRLEN + ((struct tlv *)node->data)->l;
-    if (size > RAD_Max_Length || size < 0)
+    if (size > RAD_Max_Length || size < 0) {
+        debug(DBG_ERR, "radmsg2buf: illegal message size %d", size);
         return 0;
+    }
     *buf = malloc(size);
     if (!*buf)
         return -1;
