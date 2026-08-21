@@ -143,11 +143,13 @@ struct tlv *resizetlv(struct tlv *tlv, uint8_t newlen) {
 }
 
 uint32_t tlv2longint(struct tlv *tlv) {
+    uint32_t value;
     if (!tlv)
         return 0;
     if (tlv->l != sizeof(uint32_t))
         return 0;
-    return ntohl(*(uint32_t *)tlv->v);
+    memcpy(&value, tlv->v, sizeof(uint32_t));
+    return (ntohl(value));
 }
 
 char *tlv2ipv4addr(struct tlv *tlv) {

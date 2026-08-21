@@ -952,7 +952,8 @@ void replylog(struct radmsg *msg, struct server *server, struct request *rq) {
     } else if (msg->code == RAD_Protocol_Error) {
         struct tlv *cause = radmsg_gettype(msg, RAD_Attr_Error_Cause);
         struct tlv *origcodeattr = radmsg_getexttype(msg, RAD_ExtAttr_Original_Packet_Code);
-        uint32_t origcode = *(uint32_t *)(origcodeattr->v + 1);
+        uint32_t origcode;
+        memcpy(&origcode, origcodeattr->v + 1, sizeof(uint32_t));
         origcode = ntohl(origcode);
         debug(level, "%s %d %s (response to %s) from %s to %s (%s)", radmsgtype2string(msg->code),
               tlv2longint(cause), attrval2strdict(cause), radmsgtype2string(origcode),
@@ -1683,7 +1684,8 @@ int replyh(struct server *server, uint8_t *buf, int len) {
             debug(DBG_WARN, "replyh: got Protocol-Error (id %d) from %s with invalid or missing Original-Packet-Code attribute", msg->id, server->conf->name);
             goto errunlock;
         }
-        code = ntohl(*(uint32_t *)(attr->v + 1));
+        memcpy(&code, attr->v + 1, sizeof(uint32_t));
+        code = ntohl(code);
         if (code != rqout->rq->msg->code) {
             debug(DBG_NOTICE, "replyh: Protocol-Error (id %d) from %s Original-Packet-Code %d does not match request, ignoring", msg->id, server->conf->name, code);
             goto errunlock;
@@ -1706,8 +1708,6 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         } else if (cause == RAD_Err_Unsupported_Extension) {
             debug_limit(DBG_NOTICE, "replyh: Server %s does not support %s", server->conf->name, radmsgtype2string(code));
             /* recirculation not yet implemented, convert to not routable*/
-            rqout->rq->msg->id = rqout->rq->rqid;
-            memcpy(rqout->rq->msg->auth, rqout->rq->rqauth, 16);
             respondprotoerror(rqout->rq, RAD_Err_Request_Not_Routable);
             freerqoutdata(rqout);
             goto errunlock;
