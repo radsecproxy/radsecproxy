@@ -504,6 +504,8 @@ int dorewritemod(struct radmsg *msg, struct list *modattrs, struct list *modvatt
     for (n = list_first(msg->attrs); n; n = list_next(n)) {
         struct tlv *attr = (struct tlv *)n->data;
         if (attr->t == RAD_Attr_Vendor_Specific) {
+            if (attr->l < 4)
+                continue;
             memcpy(&vendor, attr->v, 4);
             vendor = ntohl(vendor);
             for (m = list_first(modvattrs); m; m = list_next(m)) {
