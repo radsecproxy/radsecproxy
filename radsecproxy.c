@@ -1015,6 +1015,9 @@ void respondprotoerror(struct request *rq, uint32_t errcause) {
     if (!rq->from->conf->protocolerror)
         return;
 
+    if (rq->msg->code == RAD_Access_Request && rq->from->conf->type == RAD_UDP && rq->msg->authstate != RSP_RADMSG_MSGAUTH_VALID)
+        return;
+
     msg = radmsg_init(RAD_Protocol_Error, rq->rqid, rq->rqauth);
     if (!msg) {
         debug(DBG_ERR, "respondprotoerror: malloc failed");
