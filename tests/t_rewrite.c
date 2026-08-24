@@ -84,7 +84,7 @@ void _reset_rewrite(struct rewrite *rewrite) {
 }
 
 int main(int argc, char *argv[]) {
-    int testcount = 26;
+    int testcount = 1;
     struct list *origattrs, *expectedattrs;
     struct rewrite rewrite;
     char *username = "user@realm";
@@ -101,9 +101,6 @@ int main(int argc, char *argv[]) {
     rewrite.modattrs = list_create();
     rewrite.modvattrs = list_create();
     rewrite.supattrs = list_create();
-
-    printf("1..%d\n", testcount);
-    testcount = 1;
 
     /* test empty rewrite */
     {
@@ -684,6 +681,7 @@ int main(int argc, char *argv[]) {
             printf("not ");
         printf("ok %d - issue #62\n", testcount++);
 
+        regfree(&regex);
         _tlv_list_clear(origattrs);
         _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
@@ -695,6 +693,8 @@ int main(int argc, char *argv[]) {
     list_destroy(rewrite.modattrs);
     list_destroy(rewrite.modvattrs);
     list_destroy(rewrite.supattrs);
+
+    printf("1..%d\n", testcount - 1);
 
     return 0;
 }
