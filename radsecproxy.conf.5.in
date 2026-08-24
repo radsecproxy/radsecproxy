@@ -183,7 +183,10 @@ or
 .BR Full.
 Its default value is \fBNone\fR. If FTicksReporting is set to anything other
 than \fBNone\fR, note that the default value for \fBFTicksMAC\fR needs
-\fBFTicksKey\fR to be set.
+\fBFTicksKey\fR to be set. 
+.br
+For F-Ticks records to be generated, at least the \fBFticksVISCOUNTRY\fR
+option has to be set on the originating client.
 
 See \fIradsecproxy.conf\-example\fR for details.
 .RE

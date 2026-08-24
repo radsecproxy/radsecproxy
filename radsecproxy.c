@@ -3665,7 +3665,7 @@ int radsecproxy_main(int argc, char **argv) {
         debug(DBG_WARN, "pthread_attr_setstacksize failed! Using system default. Memory footprint might be increased!");
 #if defined(HAVE_MALLOPT)
     if (mallopt(M_TRIM_THRESHOLD, 4 * 1024) != 1)
-        debugx(1, DBG_ERR, "mallopt failed");
+        debug(DBG_WARN, "mallopt M_TRIM_THRESHOLD failed");
 #endif
 
     for (i = 0; i < RAD_PROTOCOUNT; i++)

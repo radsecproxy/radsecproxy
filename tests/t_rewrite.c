@@ -84,7 +84,7 @@ void _reset_rewrite(struct rewrite *rewrite) {
 }
 
 int main(int argc, char *argv[]) {
-    int testcount = 26;
+    int testcount = 1;
     struct list *origattrs, *expectedattrs;
     struct rewrite rewrite;
     char *username = "user@realm";
@@ -101,9 +101,6 @@ int main(int argc, char *argv[]) {
     rewrite.modattrs = list_create();
     rewrite.modvattrs = list_create();
     rewrite.supattrs = list_create();
-
-    printf("1..%d\n", testcount);
-    testcount = 1;
 
     /* test empty rewrite */
     {
@@ -564,6 +561,31 @@ int main(int argc, char *argv[]) {
         _reset_rewrite(&rewrite);
     }
 
+    /* test modify vendor too short*/
+    {
+        struct modattr *mod = malloc(sizeof(struct modattr));
+        regex_t regex;
+        uint8_t vendorattrin[] = {0, 0, 0, 42};
+
+        mod->t = 1;
+        mod->vendor = 42;
+        mod->regex = &regex;
+        mod->replacement = "bb";
+        regcomp(mod->regex, "a", REG_ICASE | REG_EXTENDED);
+
+        list_push(rewrite.modvattrs, mod);
+        list_push(origattrs, maketlv(RAD_Attr_Vendor_Specific, sizeof(vendorattrin) - 1, vendorattrin));
+
+        if (_check_rewrite(origattrs, &rewrite, origattrs, 0))
+            printf("not ");
+        printf("ok %d - modify vendor too short\n", testcount++);
+
+        regfree(&regex);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
     /* test whitelist rewrite */
     {
         uint8_t whitelistattrs[] = {1, 0};
@@ -684,6 +706,7 @@ int main(int argc, char *argv[]) {
             printf("not ");
         printf("ok %d - issue #62\n", testcount++);
 
+        regfree(&regex);
         _tlv_list_clear(origattrs);
         _tlv_list_clear(expectedattrs);
         _reset_rewrite(&rewrite);
@@ -695,6 +718,8 @@ int main(int argc, char *argv[]) {
     list_destroy(rewrite.modattrs);
     list_destroy(rewrite.modvattrs);
     list_destroy(rewrite.supattrs);
+
+    printf("1..%d\n", testcount - 1);
 
     return 0;
 }

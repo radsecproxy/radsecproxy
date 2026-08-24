@@ -126,6 +126,8 @@ int main(int argc, char *argv[]) {
         if (verifyeapformat(msg) != 0)
             printf("not ");
         printf("ok %d - zero length second attribute\n", ++testcount);
+
+        radmsg_free(msg);
     }
 
     printf("1..%d\n", testcount);
