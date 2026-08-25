@@ -780,6 +780,12 @@ Djxuj56ZZL9t3+OVveS6\n\
     X509_free(certwildcard);
     X509_free(certmultiwildcard);
     X509_free(certpartialwildcard);
+    X509_free(certnairealmwildcard);
+    X509_free(certnairealmillegalwildcard);
+    X509_free(certnairealmshort);
+    X509_free(certnairealmillegalshort);
+    X509_free(certnairealmmulti);
+    X509_free(certnairealmanddns);
 
     return 0;
 }
