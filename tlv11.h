@@ -2,6 +2,9 @@
  * Copyright (c) 2010, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
+#ifndef _TLV_H
+#define _TLV_H
+
 #include <stdint.h>
 
 struct tlv {
@@ -28,6 +31,8 @@ uint8_t *tlv2str(struct tlv *tlv);
 struct tlv *resizetlv(struct tlv *, uint8_t);
 uint32_t tlv2longint(struct tlv *tlv);
 char *tlv2ipv4addr(struct tlv *tlv);
+
+#endif /* _TLV_H */
 
 /* Local Variables: */
 /* c-file-style: "stroustrup" */

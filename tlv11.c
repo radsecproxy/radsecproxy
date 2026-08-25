@@ -2,6 +2,7 @@
  * Copyright (c) 2010, NORDUnet A/S */
 /* See LICENSE for licensing information. */
 
+#include "radmsg.h"
 #include "list.h"
 #include "tlv11.h"
 #include <arpa/inet.h>
@@ -12,6 +13,9 @@
 
 struct tlv *maketlv(uint8_t t, uint8_t l, void *v) {
     struct tlv *tlv;
+
+    if (l > RAD_Max_Attr_Value_Length)
+        return NULL;
 
     tlv = malloc(sizeof(struct tlv));
     if (!tlv)

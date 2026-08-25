@@ -1293,9 +1293,6 @@ int radsrv(struct request *rq) {
     char tmp[INET6_ADDRSTRLEN];
 
     msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, NULL);
-    memset(rq->buf, 0, rq->buflen);
-    free(rq->buf);
-    rq->buf = NULL;
 
     if (!msg) {
         debug_limit(DBG_NOTICE, "radsrv: message decode error (code %d, id %d ?) from %s (%s)",
@@ -1304,10 +1301,11 @@ int radsrv(struct request *rq) {
         freerq(rq);
         return 0;
     }
+    memset(rq->buf, 0, rq->buflen);
+    free(rq->buf);
+    rq->buf = NULL;
 
     switch (msg->authstate) {
-    case RSP_RADMSG_AUTH_UNKNOWN:
-        debug(DBG_ERR, "radsrv: unknown auth state. this should never happen!");
     case RSP_RADMSG_INVALID:
     case RSP_RADMSG_MSGAUTH_INVALID:
         debug_limit(DBG_WARN, "radsrv: invalid %s in %s (id %d) from server %s",
@@ -1319,8 +1317,9 @@ int radsrv(struct request *rq) {
     case RSP_RADMSG_VALID:
     case RSP_RADMSG_MSGAUTH_VALID:
         break;
+    case RSP_RADMSG_AUTH_UNKNOWN:
     default:
-        debug(DBG_ERR, "radsrv: unhandled authenticator state, this is likely a bug!");
+        debug(DBG_ERR, "radsrv: unknown/unhandled authenticator state, this is likely a bug!");
         radmsg_free(msg);
         freerq(rq);
         return 0;
@@ -1639,8 +1638,6 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     }
 
     switch (msg->authstate) {
-    case RSP_RADMSG_AUTH_UNKNOWN:
-        debug(DBG_ERR, "replyh: unknown auth state. this should never happen!");
     case RSP_RADMSG_INVALID:
     case RSP_RADMSG_MSGAUTH_INVALID:
 
@@ -1653,8 +1650,9 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     case RSP_RADMSG_VALID:
     case RSP_RADMSG_MSGAUTH_VALID:
         break;
+    case RSP_RADMSG_AUTH_UNKNOWN:
     default:
-        debug(DBG_ERR, "replyh: unhandled authenticator state, this is likely a bug!");
+        debug(DBG_ERR, "radsrv: unknown/unhandled authenticator state, this is likely a bug!");
         goto errunlock;
     }
 
@@ -1902,7 +1900,8 @@ void *clientwr(void *arg) {
         if (!server->newrq) {
             gettimeofday(&now, NULL);
             /* random 0-7 seconds */
-            RAND_bytes(&rnd, 1);
+            if (RAND_bytes(&rnd, sizeof(rnd)) != 1)
+                rnd = 0;
             rnd /= 32;
             if (conf->statusserver != RSP_STATSRV_OFF) {
                 secs = server->lastrcv.tv_sec > laststatsrv.tv_sec ? server->lastrcv.tv_sec : laststatsrv.tv_sec;
