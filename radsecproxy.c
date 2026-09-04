@@ -3719,12 +3719,16 @@ int radsecproxy_main(int argc, char **argv) {
     if (pretend)
         debugx(0, DBG_ERR, "All OK so far; exiting since only pretending");
 
-    debug_timestamp_on();
-    debug(DBG_ERR, "radsecproxy %s starting", PACKAGE_VERSION);
+    if (!foreground && (daemon(1, 0) < 0))
+        debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
+
     if (!pidfile)
         pidfile = options.pidfile;
     if (pidfile && !createpidfile(pidfile))
         debugx(1, DBG_ERR, "failed to create pidfile %s: %s", pidfile, strerror(errno));
+
+    debug_timestamp_on();
+    debug(DBG_ERR, "radsecproxy %s starting", PACKAGE_VERSION);
 
     sigemptyset(&sigset);
     /* exit on all but SIGHUP|SIGPIPE, ignore more? */
@@ -3753,8 +3757,6 @@ int radsecproxy_main(int argc, char **argv) {
             createlisteners(i);
     }
 
-    if (!foreground && (daemon(1, 0) < 0))
-        debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
     debug(DBG_INFO, "radsecproxy startup complete");
 
     /* just hang around doing nothing, anything to do here? */
