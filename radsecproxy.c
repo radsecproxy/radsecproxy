@@ -3719,6 +3719,7 @@ int radsecproxy_main(int argc, char **argv) {
     if (pretend)
         debugx(0, DBG_ERR, "All OK so far; exiting since only pretending");
 
+    fflush(NULL);
     if (!foreground && (daemon(1, 0) < 0))
         debugx(1, DBG_ERR, "daemon() failed: %s", strerror(errno));
 
