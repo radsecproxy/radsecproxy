@@ -246,7 +246,8 @@ void *tcpclientrd(void *arg) {
     for (;;) {
         len = radtcpget(server->sock, server->conf->retryinterval * (server->conf->retrycount + 1), &buf);
         if (buf && len > 0) {
-            if (!replyh(server, buf, len))
+            /* shutdown connection if there is anything wrong with the packet */
+            if (replyh(server, buf, len) != 1)
                 if (closeh(server))
                     break;
             buf = NULL;

@@ -1599,7 +1599,7 @@ int closeh(struct server *server) {
 }
 
 /* Called from client readers, handling replies from servers. */
-/* returns 0 if validation/authentication fails, else 1 */
+/* returns 0 if packet decode fails, -1 if authentication fails else 1 */
 int replyh(struct server *server, uint8_t *buf, int len) {
     struct client *from;
     struct rqout *rqout;
@@ -1646,7 +1646,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
                     radmsgtype2string(msg->code), msg->id, server->conf->name);
         radmsg_free(msg);
         pthread_mutex_unlock(rqout->lock);
-        return 0;
+        return -1;
     case RSP_RADMSG_VALID:
     case RSP_RADMSG_MSGAUTH_VALID:
         break;

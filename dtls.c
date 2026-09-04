@@ -581,7 +581,8 @@ void *dtlsclientrd(void *arg) {
     for (;;) {
         len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf, 1);
         if (buf && len > 0) {
-            if (!replyh(server, buf, len))
+            /* shutdown connection only on decode errors, but ignore authentication */
+            if (replyh(server, buf, len) == 0)
                 if (closeh(server))
                     break;
             buf = NULL;
