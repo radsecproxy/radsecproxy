@@ -13,8 +13,8 @@ unreleased changes
 	- Update client-certificate validation to latest draft RFC
 
 	Bug Fixes:
-	- Fix config check error message for rewrite in server block
-	- Fix DtlsVersion config
+	- Fix startup fails when using address-sanitizer
+	- Fix failing authenticator validation (race condition) closes TLS connection (#208)
 
 2026-08-10 1.11.4
 	Bug Fixes:
