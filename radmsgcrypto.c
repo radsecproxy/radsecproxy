@@ -34,7 +34,7 @@ static EVP_MD_CTX *mdctxcreate(const EVP_MD *digest) {
 int pwdcrypt(char encrypt_flag, uint8_t *in, uint8_t len, uint8_t *shared, uint8_t sharedlen, uint8_t *auth, uint8_t *salt, uint8_t saltlen) {
     EVP_MD_CTX *mdctx = NULL;
     unsigned char hash[EVP_MD_size(md5digest())], *input;
-    uint8_t i, offset = 0, out[128];
+    uint8_t i, offset = 0, out[len];
     long err = 0;
 
     if (len % RAD_PWD_BLOCK_SIZE) {

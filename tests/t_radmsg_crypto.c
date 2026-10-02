@@ -122,6 +122,7 @@ int main(int argc, char *argv[]) {
     test_recryptattr(RAD_Attr_Tunnel_Password, 18, "\x12\x34passwordpassword", 0, "tunnel-password missing tag");
     test_recryptattr(RAD_Attr_Tunnel_Password, 16, "passwordpassword", 0, "tunnel-password missing salt");
     test_recryptattr(RAD_Attr_Tunnel_Password, 27, "t\x12\x34passwordpasswordpassword", 0, "tunnel-password odd length");
+    test_recryptattr(RAD_Attr_Tunnel_Password, 243, "t\x12\x34passwordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpasswordpassword", 1, "valid long tunnel-password");
 
     test_recryptattr(RAD_Attr_Vendor_Specific, 8, "\x00\x00\x00\x01test", 1, "vendor-specific non-microsoft");
     test_recryptattr(RAD_Attr_Vendor_Specific, 10, "\x00\x00\x01\x37\x01\x06test", 1, "vendor-specific microsoft not mppe");
