@@ -550,6 +550,7 @@ int dorewritesupattr(struct radmsg *msg, struct tlv *supattr) {
             exist = 1;
             break;
         } else if (supattr->t == RAD_Attr_Vendor_Specific && attr->t == RAD_Attr_Vendor_Specific &&
+                   attr->l > 4 &&
                    memcmp(supattr->v, attr->v, 4) == 0) {
             if (!attrvalidate(attr->v + 4, attr->l - 4)) {
                 debug(DBG_INFO, "dorewritesup: vendor attribute validation failed, no rewrite");
