@@ -420,8 +420,10 @@ int attrvalidate(unsigned char *attrs, int length) {
         }
         attrs += ATTRLEN(attrs);
     }
-    if (length)
+    if (length) {
         debug(DBG_INFO, "attrvalidate: malformed packet? remaining byte after last attribute");
+        return 0;
+    }
     return 1;
 }
 
