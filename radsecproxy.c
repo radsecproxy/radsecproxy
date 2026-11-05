@@ -3627,6 +3627,7 @@ void getmainconfig(const char *configfile) {
     char *log_key_str = NULL;
     char *reverse_coa_token_key_str = NULL;
     uint8_t reverse_coa_retry_on_nak = 1;
+    uint8_t reverse_coa_retry_on_403 = 0;
     uint8_t *fticks_reporting_str = NULL;
     uint8_t *fticks_mac_str = NULL;
     uint8_t *fticks_key_str = NULL;
@@ -3682,6 +3683,7 @@ void getmainconfig(const char *configfile) {
             "LogKey", CONF_STR, &log_key_str,
             "ReverseCoATokenKey", CONF_STR_NOESC, &reverse_coa_token_key_str,
             "ReverseCoARetryOnNak", CONF_BLN, &reverse_coa_retry_on_nak,
+            "ReverseCoARetryOn403", CONF_BLN, &reverse_coa_retry_on_403,
             "LogFullUsername", CONF_BLN, &options.logfullusername,
             "LoopPrevention", CONF_BLN, &options.loopprevention,
             "Client", CONF_CBK, confclient_cb, NULL,
@@ -3711,6 +3713,7 @@ void getmainconfig(const char *configfile) {
         options.loglevel = (uint8_t)loglevel;
     }
     reverse_coa_setretry(reverse_coa_retry_on_nak);
+    reverse_coa_setretry403(reverse_coa_retry_on_403);
     if (reverse_coa_token_key_str != NULL) {
         if (strlen(reverse_coa_token_key_str) < 16)
             debugx(1, DBG_ERR, "error in %s, ReverseCoATokenKey must be at least 16 characters", configfile);

@@ -23,6 +23,7 @@ int add_operator_nas_identifier(struct client *from, struct radmsg *msg);
 int reverse_coa_newtoken(char *token);
 void reverse_coa_settokenkey(const char *key);
 void reverse_coa_setretry(int on);
+void reverse_coa_setretry403(int on);
 void reverse_coa_plan_free(struct reverse_coa_plan *plan);
 int reverse_coa_peertoken(char *token, const char *identity, const struct sockaddr *addr);
 int reverse_coa_nastoken(char *token, const char *identity, struct radmsg *msg, const struct sockaddr *addr);

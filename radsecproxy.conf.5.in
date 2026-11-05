@@ -369,8 +369,20 @@ When a reverse CoA-Request or Disconnect-Request was sent to one of several cand
 and comes back with a NAK that says the request could not be routed there (Error-Cause
 502 from a proxy of the realm, 502 or 403 from a sibling proxy), send a fresh request
 to the next candidate and relay only the final answer (default \fBon\fR). A 403 from a
-proxy of another site is that site's answer and is relayed. Bounded by the candidates
+proxy of the realm is that site's answer and is relayed, unless \fBReverseCoARetryOn403\fR
+is on. Bounded by the candidates
 found when the request was first routed; nothing is kept once the request is answered.
+.RE
+
+.BR "ReverseCoARetryOn403 (" on | off )
+.RS
+Also move a reverse CoA-Request or Disconnect-Request to the next proxy of the realm
+when one answers with Error-Cause 403 (default \fBoff\fR). For a realm whose sites have
+no sibling link between their proxies: the hub does not know which site holds the NAS,
+so it asks the next on a 403 and relays the last one. Off by default because 403 is
+also the NAS's own answer (RFC 5176 section 3.5, NAS Identification Mismatch), which a
+proxy cannot tell from a site's; with the option on, a request a NAS refused is offered
+to every proxy of the realm before the refusal is relayed. Needs \fBReverseCoARetryOnNak\fR.
 .RE
 
 .BI "Include " file
@@ -1115,7 +1127,8 @@ not served here, is then handed to a sibling proxy of the site (\fBReverseCoASib
 the first that takes it, unless it came from a sibling itself; so a hub reaches a site
 through any of the site's proxies and the site gets the request to the proxy that holds
 the NAS. A 502 from a proxy of the realm, or a 403 or 502 from a sibling, moves the
-request to the next candidate (\fBReverseCoARetryOnNak\fR). A request never goes back to
+request to the next candidate (\fBReverseCoARetryOnNak\fR), a 403 from a proxy of the
+realm too with \fBReverseCoARetryOn403\fR. A request never goes back to
 the client it came from. An unknown Operator-Name realm is answered with Error-Cause 502, a known realm
 in which the NAS named is not found with 403, a request that names no NAS at all
 (no Operator-NAS-Identifier, NAS-Identifier, NAS-IP-Address or NAS-IPv6-Address) with

@@ -788,6 +788,25 @@ int main(int argc, char *argv[]) {
             radmsg_free(nak);
             freerq(rq);
 
+            /* with ReverseCoARetryOn403 the hub walks the realm on 403 too; the last 403 is
+               relayed */
+            reverse_coa_setretry403(1);
+            msg = request(RAD_CoA_Request, 46, "1example.com", "nas-9");
+            test_eq(0, dispatch(server, msg), "sent again");
+            rq = queued(p1);
+            nak = radmsg_init(RAD_CoA_NAK, rq ? rq->newid : 0, NULL);
+            radmsg_add(nak, make_error_cause_tlv(RAD_Err_NAS_Identification_Mismatch), 0);
+            sentcount = 0;
+            test_ok(forward_coa_response(p1, nak) && !sentcount, "retry on 403: the first 403 is not relayed");
+            rq2 = queued(p2);
+            test_ok(rq2 && rq2->rqid == 46 && rq2->to == server && rq2 != rq, "the second proxy of the realm gets a fresh request for the same one");
+            nak->id = rq2 ? rq2->newid : 0;
+            test_ok(forward_coa_response(p2, nak) && sentcount == 1, "the last 403 is relayed");
+            radmsg_free(nak);
+            freerq(rq);
+            freerq(rq2);
+            reverse_coa_setretry403(0);
+
             /* 503 is an answer about the session, relayed */
             msg = request(RAD_CoA_Request, 42, "1example.com", "nas-9");
             test_eq(0, dispatch(server, msg), "sent again");

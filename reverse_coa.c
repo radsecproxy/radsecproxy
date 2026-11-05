@@ -55,12 +55,14 @@ struct reverse_coa_plan {
     struct radmsg *msg; /* the request as received, before any editing for a hop */
     struct reverse_coa_route *routes[MAX_REVERSE_COA_FAILOVER];
     int n, next;
-    uint8_t on_403; /* siblings: 403 means not here, try the next; a hub never retries a 403 */
+    uint8_t on_403; /* 403 means not here, try the next: between siblings always, at a hub only with ReverseCoARetryOn403 */
 };
 
 static int reverse_coa_retry = 1;
+static int reverse_coa_retry_403 = 0; /* a hub walks a realm on 403 too (ReverseCoARetryOn403) */
 
 void reverse_coa_setretry(int on) { reverse_coa_retry = on; }
+void reverse_coa_setretry403(int on) { reverse_coa_retry_403 = on; }
 
 /* takes over the references in routes[0..n); NULL when out of memory, the references
    then still belong to the caller */
@@ -1413,7 +1415,7 @@ static int try_send_to_realm_clients(struct server *server, struct request *orig
     if (!nproxies)
         return result;
     /* the proxies in order; the ones not tried stay with the request for a 502 */
-    plan = reverse_coa_plan_new(msg, proxies, nproxies, 0);
+    plan = reverse_coa_plan_new(msg, proxies, nproxies, reverse_coa_retry_403);
     if (!plan) {
         for (i = 0; i < nproxies; i++)
             reverse_coa_route_deref(proxies[i]);
