@@ -175,9 +175,7 @@ int radmsg_copy_attrs(struct radmsg *dst,
     return n;
 }
 
-/* validates a RADIUS response packet's authenticator (RFC 2865 section 3) against the
-   request authenticator it answers, without touching the caller's buffer. used by the
-   reverse-CoA response path to tell apart clients sharing one source address. */
+/* returns 1 if buf carries a valid response authenticator for request_auth */
 int radmsg_validate_response_auth(const uint8_t *buf, int buflen,
                                   const uint8_t *secret, int secret_len,
                                   const uint8_t *request_auth) {

@@ -107,7 +107,8 @@ void *dtlsservernew(void *arg) {
     unsigned long error;
     struct timeval timeout;
     struct addrinfo tmpsrvaddr;
-    char tmp[INET6_ADDRSTRLEN], *subj;
+    char tmp[INET6_ADDRSTRLEN], *subj = NULL;
+    const char *identity = NULL;
     struct hostportres *hp = NULL;
 
     debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
@@ -165,6 +166,7 @@ void *dtlsservernew(void *arg) {
         debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, PSK identity %s wtih cipher %s up",
               addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)), conf->name, conf->pskid,
               SSL_CIPHER_get_name(SSL_get_current_cipher(params->ssl)));
+        identity = conf->pskid;
     } else {
         while (conf) {
             if (!conf->pskid && accepted_tls == conf->tlsconf &&
@@ -176,7 +178,7 @@ void *dtlsservernew(void *arg) {
                     debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, subject %s, %s with cipher %s up",
                           addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)), conf->name, subj,
                           SSL_get_version(params->ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(params->ssl)));
-                    free(subj);
+                    identity = subj;
                 }
                 X509_free(cert);
                 cert = NULL;
@@ -192,7 +194,9 @@ void *dtlsservernew(void *arg) {
         goto exit;
     }
 
-    client = addclient(conf, s, (struct sockaddr *)&params->addr, 1);
+    client = addclient(conf, s, (struct sockaddr *)&params->addr, identity, 1);
+    free(subj);
+    subj = NULL;
     if (client) {
         client->ssl = params->ssl;
         tlsserverrd(client, 1);

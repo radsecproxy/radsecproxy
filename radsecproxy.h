@@ -33,8 +33,8 @@
 #define DUPLICATE_INTERVAL REQUEST_RETRY_INTERVAL *REQUEST_RETRY_COUNT
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
-#define STATUS_SERVER_PERIOD_REVERSE_COA 15
 #define IDLE_TIMEOUT_DEFAULT 600
+#define REVERSE_COA_TOKEN_LEN 16
 #define PSK_MIN_LENGTH 16
 #define RSP_SECRET_LEN_WARN 12
 /* Older OpenSSL API had a 256 byte limit; keep this limit to maximize compatibility*/
@@ -135,7 +135,8 @@ struct request {
     uint8_t rqauth[16];
     uint8_t newid;
     int udpsock;                          /* only for UDP */
-    struct sockaddr_storage *to_override; /* reverse coa udp dest override, replaces from->addr for port fix-up */
+    struct sockaddr_storage *to_override; /* reverse coa to a udp client, else NULL */
+    struct request *origin;               /* client request a reverse coa response answers */
 };
 
 /* requests that our client will send */
@@ -204,14 +205,20 @@ struct clsrvconf {
     uint8_t reqmsgauthproxy;
     uint8_t protocolerror;
     char **reverse_coa_realms;
+    regex_t *reverse_coa_regexes; /* reverse_coa_realms compiled, see reverse_coa_compile_realms() */
     uint8_t accept_reverse_coa;
     char *nas_identifier;
+    regex_t *nas_identifier_regex; /* NASidentifier given as /regexp/: every connection on the block is a nas */
     long reverse_coa_timeout;
     uint16_t coaport; /* reverse coa destination port for udp clients, default 3799 */
     uint8_t accept_coa;
+    uint8_t add_operator_nas_id;
+    uint8_t reverse_coa_fallback;
 };
 
 #include "tlscommon.h"
+
+struct reverse_coa_route;
 
 struct coa_dedup_slot {
     uint8_t occupied;
@@ -219,9 +226,9 @@ struct coa_dedup_slot {
     time_t received;
     uint8_t *replybuf;
     int replybuflen;
+    struct reverse_coa_route *route; /* where the request went, for retransmissions */
+    uint8_t id;
 };
-
-struct reverse_coa_route;
 
 struct client {
     struct clsrvconf *conf;
@@ -233,9 +240,18 @@ struct client {
     struct sockaddr *addr;
     time_t expiry; /* for udp */
     struct timeval tlsnewkey;
-    struct rqout *reverse_coa_rqs;
+    struct rqout *reverse_coa_rqs; /* allocated on the first reverse coa sent */
     uint8_t reverse_coa_nextid;
+    int reverse_coa_pending;
     struct reverse_coa_route *reverse_coa_route;
+    char *identity;                        /* certificate subject, psk identity, or the block name */
+    char token[REVERSE_COA_TOKEN_LEN + 1]; /* names the nas on this connection in Operator-NAS-Identifier (learn_nas_identity()) */
+    time_t last_request;                   /* when this connection last sent a request (learn_nas_identity()) */
+    /* what this connection says it is, for a NASidentifier /regexp/ block (learn_nas_identity()) */
+    char nas_identifier_seen[256];
+    uint8_t nas_identifier_seen_len;
+    struct sockaddr_storage nas_addr_seen;
+    uint8_t nas_addr_seen_set;
 };
 
 struct server {
@@ -258,7 +274,7 @@ struct server {
     uint8_t conreset;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
-    struct coa_dedup_slot reverse_coa_seen[MAX_REQUESTS];
+    struct coa_dedup_slot *reverse_coa_seen; /* only with acceptReverseCoA */
     pthread_mutex_t reverse_coa_lock;
     time_t last_dedup_cleanup;
 };
@@ -306,7 +322,7 @@ struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_
 struct list *find_all_clconf(uint8_t type, struct sockaddr *addr, struct list_node *cur, struct hostportres **hp);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
 struct client *addclient(struct clsrvconf *conf, int sock,
-                         const struct sockaddr *from, uint8_t lock);
+                         const struct sockaddr *from, const char *identity, uint8_t lock);
 void removelockedclient(struct client *client);
 void removeclient(struct client *client);
 pthread_mutex_t *removeclientrqs_sendrq_freeserver_lock(void);
@@ -314,8 +330,8 @@ struct gqueue *newqueue(void);
 struct request *newrequest(void);
 struct request *newrqref(struct request *rq);
 int sendreply(struct request *rq);
+int ensuremsgauthfront(struct radmsg *msg);
 void freerq(struct request *rq);
-const char *radmsgtype2string(uint8_t code);
 int radsrv(struct request *rq);
 int msgauthrequired(const struct clsrvconf *conf, struct radmsg *msg);
 int recryptrequestattrs(struct radmsg *msg, struct clsrvconf *from, struct clsrvconf *to, uint8_t *rqauth);

@@ -15,6 +15,7 @@ char *stringcopy(const char *s, int len);
 int verifyutf8(const unsigned char *str, size_t str_len);
 const char *addr2string(struct sockaddr *addr, char *buf, size_t len);
 struct sockaddr *addr_copy(struct sockaddr *in);
+int addr_equal_ip(struct sockaddr *a, struct sockaddr *b);
 void port_set(struct sockaddr *sa, uint16_t port);
 void sock_dgram_skip(int socket);
 

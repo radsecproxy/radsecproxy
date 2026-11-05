@@ -358,12 +358,71 @@ pthread_mutex_destroy().
 4. CoA and Disconnect
 =====================
 
-Requests from clients are handled in coa.c.
+Requests from clients are handled in coa.c, from servers in reverse_coa.c.
 
 A CoA/Disconnect-Request from a client goes through radsrv() like any
 request, given acceptCoA and a fresh Event-Timestamp. findcoaserver()
 picks a coaServer of the Operator-Name realm, preferring one whose
-NASidentifier or host the request names. With no coaServer the client
-gets a NAK with Error-Cause 502, or 403 when the realm names NASes and
-none of them matches. replyh() pairs the response with the request code
-before passing it back.
+NASidentifier or host the request names. If none takes it and the
+client has reverseCoAFallback, route_reverse_coa_from_client() tries the
+routes below for a request with Operator-Name, without the udp block
+reach.
+
+A CoA/Disconnect-Request from a server is taken by
+try_handle_reverse_coa_request() in the client reader, before replyh().
+handle_reverse_coa_request() verifies it with the server's secret and
+drops duplicates (per-server slots keyed by id and authenticator, 300s).
+dispatch_reverse_coa() then tries the client named by the token we added
+as Operator-NAS-Identifier, the clients registered with ReverseCoAOperatorRealm for
+the Operator-Name realm (literal values before regexps, a named NAS before
+a proxy, the bound proxy before the others) and, without Operator-Name, a
+client named by NASidentifier or address. An idle udp NAS is made from its
+client block if the block declares the realm; the ReverseCoAOperatorRealm values
+of a block are compiled once, by reverse_coa_compile_realms().
+
+send_coa_to_client() copies the message, strips Operator-Name and
+Operator-NAS-Identifier when the client is the NAS, takes a free id
+from the client's reverse_coa_rqs[] (a second array, so ids never
+collide with replies), records the sent authenticator and hands the
+request to sendreply(), for udp with rq->to_override set to CoAPort.
+With no route the originator gets a NAK with Error-Cause 502, 403 or 506.
+
+The response comes in at the server reader. radsrv() gets the sent
+authenticator from lookup_reverse_coa_rqauth() so buf2radmsg() can
+verify it, and forward_coa_response() re-signs it for the originating
+server (clientradput) or client (sendreply on rq->origin). A udp
+response comes from the CoA port, so radudpget() falls back to
+findreversecoaclient().
+
+A proxy with several client connections for one operator must send a
+CoA down the connection that carried the session. The token we add as
+Operator-NAS-Identifier does that when the home server echoes it; the
+session binding is the fallback when it does not, or the connection it
+named is gone. sessionbind() binds Acct-Session-Id from a request, and
+Chargeable-User-Identity from the Access-Accept, with the Operator-Name
+realm to the client the session came through, only for a realm the client
+is registered for; a Stop unbinds. A Chargeable-User-Identity seen on
+another connection is the session moving and follows it; an
+Acct-Session-Id is only unique per NAS (RFC 2866), so one seen on two
+connections is marked ambiguous and not used. The binding only orders the proxies of a
+realm, it never overrides a NAS the request names. The table
+has 4096 buckets and an age list, at most 65536 entries kept for a day,
+so a lookup, a refresh and the eviction of the oldest entry cost the
+same whatever the number of sessions; a plain list cost a full walk per
+request at the limit, under the one lock every request takes.
+The token is random, made in addclient() per connection or per udp block.
+
+Locks, in the order they are taken: the client conf lock, the registry
+lock (realm_reverse_coa_lock), a route's refmutex, the client lock, the
+reply queue. A route is a refcounted handle to a client; unregistering
+sets its target to NULL under the refmutex, so a send in progress
+finishes before the client goes. forward_coa_response() holds the
+global request lock (removeclientrqs_sendrq_freeserver_lock()) from the
+slot read to the end of the send, as that is the lock the server and
+client teardown take. The binding table has its own lock.
+
+A udp client entry with a request pending is never swept. A request not
+answered within reverseCoATimeout is dropped with a notice and the
+originator hears nothing; a retransmission of a request still in flight
+is sent again to a udp or dtls client, a cached answer is replayed. A
+request is never sent back to the client it came from.

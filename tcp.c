@@ -373,7 +373,7 @@ void *tcpservernew(void *arg) {
 
     conf = find_clconf(handle, (struct sockaddr *)&from, NULL, NULL);
     if (conf) {
-        client = addclient(conf, s, (struct sockaddr *)&from, 1);
+        client = addclient(conf, s, (struct sockaddr *)&from, NULL, 1);
         if (client) {
             if (conf->keepalive)
                 enable_keepalive(s);

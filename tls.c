@@ -347,7 +347,8 @@ void *tlsservernew(void *arg) {
     unsigned long error;
     struct client *client;
     struct tls *accepted_tls = NULL;
-    char tmp[INET6_ADDRSTRLEN], *subj;
+    char tmp[INET6_ADDRSTRLEN], *subj = NULL;
+    const char *identity = NULL;
     struct hostportres *hp = NULL;
 
     s = *(int *)arg;
@@ -412,6 +413,7 @@ void *tlsservernew(void *arg) {
         debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, PSK identity %s wtih cipher %s up",
               addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)), conf->name, conf->pskid,
               SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
+        identity = conf->pskid;
     } else {
         while (conf) {
             if (!conf->pskid && accepted_tls == conf->tlsconf &&
@@ -423,7 +425,7 @@ void *tlsservernew(void *arg) {
                     debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s, %s with cipher %s up",
                           addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)), conf->name, subj,
                           SSL_get_version(ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
-                    free(subj);
+                    identity = subj;
                 }
                 X509_free(cert);
                 cert = NULL;
@@ -439,7 +441,9 @@ void *tlsservernew(void *arg) {
         goto exit;
     }
 
-    client = addclient(conf, s, (struct sockaddr *)&from, 1);
+    client = addclient(conf, s, (struct sockaddr *)&from, identity, 1);
+    free(subj);
+    subj = NULL;
     if (client) {
         if (conf->keepalive)
             enable_keepalive(s);

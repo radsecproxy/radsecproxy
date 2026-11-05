@@ -1,6 +1,7 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2016, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, CyB0rgg */
 /* See LICENSE for licensing information. */
 
 #include "util.h"
@@ -107,6 +108,20 @@ void port_set(struct sockaddr *sa, uint16_t port) {
     case AF_INET6:
         ((struct sockaddr_in6 *)sa)->sin6_port = htons(port);
         break;
+    }
+}
+
+/* returns 1 if the addresses are equal, ports are not compared */
+int addr_equal_ip(struct sockaddr *a, struct sockaddr *b) {
+    if (!a || !b || a->sa_family != b->sa_family)
+        return 0;
+    switch (a->sa_family) {
+    case AF_INET:
+        return !memcmp(&((struct sockaddr_in *)a)->sin_addr, &((struct sockaddr_in *)b)->sin_addr, sizeof(struct in_addr));
+    case AF_INET6:
+        return IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6 *)a)->sin6_addr, &((struct sockaddr_in6 *)b)->sin6_addr);
+    default:
+        return 0;
     }
 }
 

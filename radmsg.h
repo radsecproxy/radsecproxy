@@ -65,8 +65,6 @@
 #define RAD_Attr_Error_Cause 101
 #define RAD_Attr_Operator_Name 126
 #define RAD_ExtAttr_Operator_NAS_Identifier (struct extattrtype){241, 8}
-#define RAD_Attr_Extended_Type_1 241
-#define RAD_Extended_Operator_NAS_Id 8
 
 #define RAD_ExtAttr_Original_Packet_Code (struct extattrtype){241, 4}
 
@@ -149,10 +147,6 @@ int resizeattr(struct tlv *attr, size_t newlen);
 int verifyeapformat(struct radmsg *msg);
 const char *radmsgtype2string(uint8_t code);
 
-/* validates a RADIUS response packet's authenticator per rfc 2865 §3.
-   precondition: buf[0] is a response code (Access-Accept/Reject/Challenge, Accounting-Response,
-   or CoA/Disconnect ACK/NAK). for request-type validation use the appropriate primitive.
-   exposed here for reverse-coa response disambiguation across clients sharing a source ip. */
 int radmsg_validate_response_auth(const uint8_t *buf, int buflen,
                                   const uint8_t *secret, int secret_len,
                                   const uint8_t *request_auth);

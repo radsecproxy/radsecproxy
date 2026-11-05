@@ -1,5 +1,6 @@
 /* Copyright (c) 2007-2009, UNINETT AS
- * Copyright (c) 2012-2013, 2017, NORDUnet A/S */
+ * Copyright (c) 2012-2013, 2017, NORDUnet A/S
+ * Copyright (c) 2026, CyB0rgg */
 /* See LICENSE for licensing information. */
 
 #include <limits.h>
@@ -67,6 +68,32 @@ struct client_sock {
 
 static struct list *client_sock;
 static struct gqueue *server_replyq = NULL;
+static int udp_listener_v4 = -1, udp_listener_v6 = -1;
+static pthread_mutex_t udp_listener_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* one listening socket per family, for reverse coa to a client we have not heard from */
+static void rememberlistener(int s) {
+    struct sockaddr_storage ss;
+    socklen_t len = sizeof(ss);
+
+    if (getsockname(s, (struct sockaddr *)&ss, &len))
+        return;
+    pthread_mutex_lock(&udp_listener_lock);
+    if (ss.ss_family == AF_INET && udp_listener_v4 < 0)
+        udp_listener_v4 = s;
+    else if (ss.ss_family == AF_INET6 && udp_listener_v6 < 0)
+        udp_listener_v6 = s;
+    pthread_mutex_unlock(&udp_listener_lock);
+}
+
+int udplistenersocket(int family) {
+    int s;
+
+    pthread_mutex_lock(&udp_listener_lock);
+    s = family == AF_INET6 ? udp_listener_v6 : udp_listener_v4;
+    pthread_mutex_unlock(&udp_listener_lock);
+    return s;
+}
 
 static struct addrinfo *srcres = NULL;
 static uint8_t handle;
@@ -106,22 +133,6 @@ void removeudpclientfromreplyq(struct client *c) {
     pthread_mutex_unlock(&c->replyq->mutex);
 }
 
-static int addr_equal_ip_only(struct sockaddr *a, struct sockaddr *b) {
-    if (a->sa_family != b->sa_family)
-        return 0;
-    switch (a->sa_family) {
-    case AF_INET:
-        return !memcmp(&((struct sockaddr_in *)a)->sin_addr,
-                       &((struct sockaddr_in *)b)->sin_addr,
-                       sizeof(struct in_addr));
-    case AF_INET6:
-        return IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6 *)a)->sin6_addr,
-                                  &((struct sockaddr_in6 *)b)->sin6_addr);
-    default:
-        return 0;
-    }
-}
-
 uint16_t port_get(struct sockaddr *sa) {
     switch (sa->sa_family) {
     case AF_INET:
@@ -133,20 +144,12 @@ uint16_t port_get(struct sockaddr *sa) {
 }
 
 static int addr_equal(struct sockaddr *a, struct sockaddr *b) {
-    if (!addr_equal_ip_only(a, b))
-        return 0;
-    return port_get(a) == port_get(b);
+    return addr_equal_ip(a, b) && port_get(a) == port_get(b);
 }
 
-/* caller holds p->lock. c->reverse_coa_rqs and c->addr are
-   set once inside addclient() under p->lock and freed once in
-   removelockedclient() under p->lock — both are stable for the duration
-   of this walk. c->lock is taken briefly only to read the rqs[id] slot,
-   which can be mutated concurrently by send_coa_to_client and
-   forward_coa_response. returns the matched client or NULL. */
-struct client *find_reverse_coa_client_for_response(struct clsrvconf *p, int sock,
-                                                    struct sockaddr *from,
-                                                    const uint8_t *buf, int len) {
+/* caller holds p->lock. returns the client with a pending reverse coa matching the
+   response, or NULL */
+struct client *findreversecoaclient(struct clsrvconf *p, int sock, struct sockaddr *from, const uint8_t *buf, int len) {
     struct list_node *node;
     struct client *c;
 
@@ -160,7 +163,7 @@ struct client *find_reverse_coa_client_for_response(struct clsrvconf *p, int soc
             continue;
         if (!c->reverse_coa_rqs || !c->addr)
             continue;
-        if (!addr_equal_ip_only(from, c->addr))
+        if (!addr_equal_ip(from, c->addr))
             continue;
 
         pthread_mutex_lock(&c->lock);
@@ -258,7 +261,7 @@ int radudpget(int s, struct client **client, struct server **server, unsigned ch
                     c->expiry = now.tv_sec + 60;
                     *client = c;
                 }
-                if (c->expiry >= now.tv_sec)
+                if (c->expiry >= now.tv_sec || client_has_pending_reverse_coa(c))
                     continue;
 
                 debug(DBG_DBG, "radudpget: removing expired client (%s)", addr2string(c->addr, tmp, sizeof(tmp)));
@@ -268,27 +271,26 @@ int radudpget(int s, struct client **client, struct server **server, unsigned ch
                 removelockedclient(c);
                 break;
             }
-            /* coa response fallback. udp replies arrive from the nas coa listener
-               port (default 3799) instead of the ephemeral auth source port, so exact-sockaddr
-               lookup misses. find an ip-matching client with a pending reverse-coa rqout for this
-               msg->id whose shared secret validates the response authenticator. returning the
-               tracking client preserves correct secret/tracking for downstream radsrv without
-               creating a spurious client struct keyed on the coa port. */
+            /* a coa reply comes from the nas coa port, not the port the client was keyed
+               on; match by address, pending id and response authenticator */
             if (!*client && len >= 20 && IS_COA_RESPONSE((*buf)[0])) {
-                c = find_reverse_coa_client_for_response(p, s, (struct sockaddr *)&from, *buf, len);
-                if (c) {
-                    gettimeofday(&now, NULL);
-                    c->expiry = now.tv_sec + 60;
-                    *client = c;
-                    debug(DBG_DBG, "radudpget: coa response fallback matched client %s for id %u via ip+auth check",
-                          c->conf->name, (*buf)[1]);
-                } else {
-                    debug(DBG_DBG, "radudpget: coa response fallback: no matching client for id %u from %s (will create new client)",
-                          (*buf)[1], addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
+                c = findreversecoaclient(p, s, (struct sockaddr *)&from, *buf, len);
+                if (!c) {
+                    debug_limit(DBG_INFO, "radudpget: no pending reverse coa request for %s (id %d) from %s, ignoring",
+                                radmsgtype2string((*buf)[0]), (*buf)[1], addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)));
+                    pthread_mutex_unlock(p->lock);
+                    free(*buf);
+                    *buf = NULL;
+                    continue;
                 }
+                gettimeofday(&now, NULL);
+                c->expiry = now.tv_sec + 60;
+                *client = c;
+                debug(DBG_DBG, "radudpget: %s (id %d) from %s matched pending reverse coa of client %s",
+                      radmsgtype2string((*buf)[0]), (*buf)[1], addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)), c->conf->name);
             }
             if (!*client) {
-                c = addclient(p, s, (struct sockaddr *)&from, 0);
+                c = addclient(p, s, (struct sockaddr *)&from, NULL, 0);
                 if (!c) {
                     pthread_mutex_unlock(p->lock);
                     continue;
@@ -343,6 +345,7 @@ void *udpserverrd(void *arg) {
     struct request *rq;
     int *sp = (int *)arg;
 
+    rememberlistener(*sp);
     for (;;) {
         rq = newrequest();
         if (!rq) {
