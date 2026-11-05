@@ -703,7 +703,11 @@ below this one is configured with \fBReverseCoAOperatorRealm\fR only, never \fBN
 Seconds to wait for a reverse CoA request to be answered (default 30, range 10-120).
 An unanswered request is tried on the next candidate, if any (see
 \fBReverseCoARetryOnNak\fR), else answered with Error-Cause 502 to the server or client
-that sent it, and the answer is kept for its retransmissions.
+that sent it, and the answer is kept for its retransmissions. At a hub, set it on the
+blocks of the site's proxies to more than the value those proxies use for their sibling
+links, so that a site's 502 after an unanswered hand-over reaches a request the hub still
+holds and is what moves it to the next proxy; with both at the default, the hub's own
+timer fires in the same second.
 .RE
 
 .BR "AddOperatorNASIdentifier (" on | off )

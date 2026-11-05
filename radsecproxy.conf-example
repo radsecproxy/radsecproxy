@@ -19,6 +19,12 @@
 
 # Optional log level. 3 is default, 1 is less, 5 is more
 #LogLevel		3
+# Reverse CoA: the key under which the value naming a NAS in Operator-NAS-Identifier is
+# derived (at least 16 characters, the same on every proxy of the operator), and whether a
+# NAK saying the request could not be routed moves it to the next candidate, on a 403 too
+#ReverseCoATokenKey	<key>
+#ReverseCoARetryOnNak	on
+#ReverseCoARetryOn403	off
 # Optional LogDestination, else stderr used for logging
 # Logging to file
 #LogDestination		file:///tmp/rp.log
@@ -174,7 +180,10 @@ client radius.example.com {
 # secret is optional for TLS
 #	Route reverse CoA for this realm down this connection
 #	ReverseCoAOperatorRealm example.com
-#	reverseCoATimeout 30
+#	At a hub, more than the site's proxies use for their sibling links (see the manual)
+#	reverseCoATimeout 45
+#	Another proxy of this site: a reverse CoA for a NAS not held here is handed to it, once
+#	reverseCoASibling on
 }
 client radius.example.com {
 	type dtls
@@ -213,6 +222,8 @@ server [2001:db8::1] {
 # last resort
 #	Accept reverse CoA requests from this server
 #	acceptReverseCoA on
+#	Another proxy of this site, the outbound side of the link between the two
+#	reverseCoASibling on
 }
 server radius.example.com {
 	type	tls
