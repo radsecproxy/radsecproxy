@@ -183,8 +183,8 @@ static struct reverse_coa_regex_entry *find_regex_entry(const char *pattern) {
 }
 
 static struct list *resolve_realm_list_for_register(const char *realm,
-                                                     char *patbuf, size_t patbufsz,
-                                                     struct reverse_coa_regex_entry **re_out) {
+                                                    char *patbuf, size_t patbufsz,
+                                                    struct reverse_coa_regex_entry **re_out) {
     *re_out = NULL;
     if (realm[0] == '/') {
         const char *pattern = strip_regex_delimiters(realm, patbuf, patbufsz);
@@ -218,8 +218,8 @@ static struct list *resolve_realm_list_for_register(const char *realm,
 }
 
 static struct list *resolve_realm_list_for_unregister(const char *realm,
-                                                       char *patbuf, size_t patbufsz,
-                                                       struct reverse_coa_regex_entry **re_out) {
+                                                      char *patbuf, size_t patbufsz,
+                                                      struct reverse_coa_regex_entry **re_out) {
     *re_out = NULL;
     if (realm[0] == '/') {
         const char *pattern = strip_regex_delimiters(realm, patbuf, patbufsz);
@@ -447,7 +447,7 @@ static void expire_coa_dedup_entries(struct server *server) {
 }
 
 static int match_nas_ext_operator(const struct client *client, const struct tlv *attr,
-                                   const char **sublabel_out) {
+                                  const char **sublabel_out) {
     (void)sublabel_out;
     if (!client->conf->nas_identifier)
         return 0;
@@ -458,7 +458,7 @@ static int match_nas_ext_operator(const struct client *client, const struct tlv 
 }
 
 static int match_nas_identifier_attr(const struct client *client, const struct tlv *attr,
-                                      const char **sublabel_out) {
+                                     const char **sublabel_out) {
     (void)sublabel_out;
     if (!client->conf->nas_identifier)
         return 0;
@@ -468,7 +468,7 @@ static int match_nas_identifier_attr(const struct client *client, const struct t
 }
 
 static int match_nas_ipv4(const struct client *client, const struct tlv *attr,
-                           const char **sublabel_out) {
+                          const char **sublabel_out) {
     struct in_addr nas_ipv4;
     if (attr->l != 4 || !client->addr)
         return 0;
@@ -489,7 +489,7 @@ static int match_nas_ipv4(const struct client *client, const struct tlv *attr,
 }
 
 static int match_nas_ipv6(const struct client *client, const struct tlv *attr,
-                           const char **sublabel_out) {
+                          const char **sublabel_out) {
     (void)sublabel_out;
     if (attr->l != 16 || !client->addr || client->addr->sa_family != AF_INET6)
         return 0;
@@ -505,10 +505,10 @@ struct nas_matcher {
 };
 
 static const struct nas_matcher nas_matchers[] = {
-    {RAD_Attr_Extended_Type_1,  match_nas_ext_operator,    "operator-nas-identifier (241.8)", 1},
-    {RAD_Attr_NAS_Identifier,   match_nas_identifier_attr, "nas-identifier",                  0},
-    {RAD_Attr_NAS_IP_Address,   match_nas_ipv4,            "nas-ip-address",                  0},
-    {RAD_Attr_NAS_IPv6_Address, match_nas_ipv6,            "nas-ipv6-address",                0},
+    {RAD_Attr_Extended_Type_1, match_nas_ext_operator, "operator-nas-identifier (241.8)", 1},
+    {RAD_Attr_NAS_Identifier, match_nas_identifier_attr, "nas-identifier", 0},
+    {RAD_Attr_NAS_IP_Address, match_nas_ipv4, "nas-ip-address", 0},
+    {RAD_Attr_NAS_IPv6_Address, match_nas_ipv6, "nas-ipv6-address", 0},
 };
 
 static int match_nas_identifier(struct client *client, struct radmsg *msg) {
@@ -561,7 +561,7 @@ static void expire_reverse_coa_rqs(struct client *client) {
 }
 
 static int send_reverse_coa_nak(struct server *server, struct radmsg *req, uint32_t error_cause,
-                                 uint8_t **out_buf, int *out_len) {
+                                uint8_t **out_buf, int *out_len) {
     struct radmsg *nak;
     uint8_t nakcode;
     uint8_t *buf = NULL;
@@ -950,7 +950,8 @@ static void handle_reverse_coa_request(struct server *server, uint8_t *buf, int 
 
     if (is_coa_duplicate(server, msg)) {
         debug(DBG_DBG, "handle_reverse_coa_request: duplicate request "
-              "id %d from %s", msg->id, server->conf->name);
+                       "id %d from %s",
+              msg->id, server->conf->name);
         radmsg_free(msg);
         return;
     }

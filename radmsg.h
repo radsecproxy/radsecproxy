@@ -35,9 +35,6 @@
 #define IS_COA_REQUEST(c) ((c) == RAD_CoA_Request || (c) == RAD_Disconnect_Request)
 #define IS_COA_RESPONSE(c) ((c) == RAD_CoA_ACK || (c) == RAD_CoA_NAK || \
                             (c) == RAD_Disconnect_ACK || (c) == RAD_Disconnect_NAK)
-#define NEEDS_RADSIGN(c) ((c) == RAD_Access_Accept || (c) == RAD_Access_Reject || \
-                          (c) == RAD_Access_Challenge || (c) == RAD_Accounting_Response || \
-                          (c) == RAD_Accounting_Request || IS_COA_REQUEST(c) || IS_COA_RESPONSE(c))
 
 #define RAD_Attr_User_Name 1
 #define RAD_Attr_User_Password 2

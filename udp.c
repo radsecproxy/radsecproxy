@@ -144,8 +144,8 @@ static int addr_equal(struct sockaddr *a, struct sockaddr *b) {
    which can be mutated concurrently by send_coa_to_client and
    forward_coa_response. returns the matched client or NULL. */
 struct client *find_reverse_coa_client_for_response(struct clsrvconf *p, int sock,
-                                                            struct sockaddr *from,
-                                                            const uint8_t *buf, int len) {
+                                                    struct sockaddr *from,
+                                                    const uint8_t *buf, int len) {
     struct list_node *node;
     struct client *c;
 
@@ -155,9 +155,12 @@ struct client *find_reverse_coa_client_for_response(struct clsrvconf *p, int soc
         uint8_t resp_id = buf[1];
 
         c = (struct client *)node->data;
-        if (sock != c->sock) continue;
-        if (!c->reverse_coa_rqs || !c->addr) continue;
-        if (!addr_equal_ip_only(from, c->addr)) continue;
+        if (sock != c->sock)
+            continue;
+        if (!c->reverse_coa_rqs || !c->addr)
+            continue;
+        if (!addr_equal_ip_only(from, c->addr))
+            continue;
 
         pthread_mutex_lock(&c->lock);
         if (c->reverse_coa_rqs[resp_id].rq) {
@@ -165,7 +168,8 @@ struct client *find_reverse_coa_client_for_response(struct clsrvconf *p, int soc
             have_sent = 1;
         }
         pthread_mutex_unlock(&c->lock);
-        if (!have_sent) continue;
+        if (!have_sent)
+            continue;
 
         if (radmsg_validate_response_auth(buf, len,
                                           c->conf->secret, c->conf->secret_len,

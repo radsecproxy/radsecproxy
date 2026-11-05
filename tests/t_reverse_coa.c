@@ -48,16 +48,6 @@ int main(int argc, char *argv[]) {
     test_ok(!IS_COA_RESPONSE(RAD_CoA_Request), "!IS_COA_RESPONSE(CoA-Request)");
     test_ok(!IS_COA_RESPONSE(RAD_Access_Accept), "!IS_COA_RESPONSE(Access-Accept)");
 
-    /* test: NEEDS_RADSIGN includes coa codes */
-    test_ok(NEEDS_RADSIGN(RAD_CoA_Request), "NEEDS_RADSIGN(CoA-Request)");
-    test_ok(NEEDS_RADSIGN(RAD_Disconnect_Request), "NEEDS_RADSIGN(Disconnect-Request)");
-    test_ok(NEEDS_RADSIGN(RAD_CoA_ACK), "NEEDS_RADSIGN(CoA-ACK)");
-    test_ok(NEEDS_RADSIGN(RAD_CoA_NAK), "NEEDS_RADSIGN(CoA-NAK)");
-    test_ok(NEEDS_RADSIGN(RAD_Disconnect_ACK), "NEEDS_RADSIGN(Disconnect-ACK)");
-    test_ok(NEEDS_RADSIGN(RAD_Disconnect_NAK), "NEEDS_RADSIGN(Disconnect-NAK)");
-    test_ok(!NEEDS_RADSIGN(RAD_Access_Request), "!NEEDS_RADSIGN(Access-Request)");
-    test_ok(!NEEDS_RADSIGN(RAD_Status_Server), "!NEEDS_RADSIGN(Status-Server)");
-
     /* test: operator-name attribute encoding */
     {
         uint8_t auth[20] = {0};
@@ -210,15 +200,14 @@ int main(int argc, char *argv[]) {
         const int secret_len = 10;
         const uint8_t req_auth[16] = {
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-            0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10
-        };
+            0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10};
 
         /* 20-byte packet: code=44 id=7 length=20 auth=zeros(placeholder) */
         uint8_t pkt[20];
-        pkt[0] = 44;   /* CoA-ACK */
-        pkt[1] = 7;    /* id */
+        pkt[0] = 44; /* CoA-ACK */
+        pkt[1] = 7;  /* id */
         pkt[2] = 0;
-        pkt[3] = 20;   /* length = 20 */
+        pkt[3] = 20;            /* length = 20 */
         memset(pkt + 4, 0, 16); /* will be replaced by computed auth */
 
         /* compute: MD5(code||id||length||req_auth||secret) */
@@ -226,8 +215,8 @@ int main(int argc, char *argv[]) {
         const EVP_MD *md5 = EVP_md5();
         uint8_t computed[16];
         EVP_DigestInit_ex(ctx, md5, NULL);
-        EVP_DigestUpdate(ctx, pkt, 4);           /* code+id+length */
-        EVP_DigestUpdate(ctx, req_auth, 16);     /* request authenticator */
+        EVP_DigestUpdate(ctx, pkt, 4);       /* code+id+length */
+        EVP_DigestUpdate(ctx, req_auth, 16); /* request authenticator */
         /* no attributes in this packet */
         EVP_DigestUpdate(ctx, secret, secret_len);
         EVP_DigestFinal_ex(ctx, computed, NULL);
@@ -262,22 +251,25 @@ int main(int argc, char *argv[]) {
         /* test: len > 20 path — 26-byte packet with a 6-byte Proxy-State attribute */
         {
             uint8_t pkt26[26];
-            pkt26[0] = 44;   /* CoA-ACK */
-            pkt26[1] = 8;    /* id */
+            pkt26[0] = 44; /* CoA-ACK */
+            pkt26[1] = 8;  /* id */
             pkt26[2] = 0;
-            pkt26[3] = 26;   /* length = 26 */
+            pkt26[3] = 26;            /* length = 26 */
             memset(pkt26 + 4, 0, 16); /* auth placeholder */
             /* Proxy-State attribute: type=33, len=6, 4-byte value */
             pkt26[20] = 33;
             pkt26[21] = 6;
-            pkt26[22] = 0xde; pkt26[23] = 0xad; pkt26[24] = 0xbe; pkt26[25] = 0xef;
+            pkt26[22] = 0xde;
+            pkt26[23] = 0xad;
+            pkt26[24] = 0xbe;
+            pkt26[25] = 0xef;
 
             EVP_MD_CTX *ctx26 = EVP_MD_CTX_new();
             uint8_t computed26[16];
             EVP_DigestInit_ex(ctx26, md5, NULL);
-            EVP_DigestUpdate(ctx26, pkt26, 4);          /* code+id+length */
-            EVP_DigestUpdate(ctx26, req_auth, 16);      /* request authenticator */
-            EVP_DigestUpdate(ctx26, pkt26 + 20, 6);    /* attribute bytes */
+            EVP_DigestUpdate(ctx26, pkt26, 4);      /* code+id+length */
+            EVP_DigestUpdate(ctx26, req_auth, 16);  /* request authenticator */
+            EVP_DigestUpdate(ctx26, pkt26 + 20, 6); /* attribute bytes */
             EVP_DigestUpdate(ctx26, secret, secret_len);
             EVP_DigestFinal_ex(ctx26, computed26, NULL);
             EVP_MD_CTX_free(ctx26);
@@ -292,10 +284,10 @@ int main(int argc, char *argv[]) {
         {
             uint8_t pkt_pad[30];
             /* declared length in header = 20; rest of buffer is padding/noise */
-            pkt_pad[0] = 44;   /* CoA-ACK */
-            pkt_pad[1] = 9;    /* id */
+            pkt_pad[0] = 44; /* CoA-ACK */
+            pkt_pad[1] = 9;  /* id */
             pkt_pad[2] = 0;
-            pkt_pad[3] = 20;   /* declared length = 20, no attributes */
+            pkt_pad[3] = 20; /* declared length = 20, no attributes */
             memset(pkt_pad + 4, 0, 16);
             /* bytes 20-29 are noise — must not be included in hash */
             memset(pkt_pad + 20, 0xff, 10);
@@ -303,8 +295,8 @@ int main(int argc, char *argv[]) {
             EVP_MD_CTX *ctx_pad = EVP_MD_CTX_new();
             uint8_t computed_pad[16];
             EVP_DigestInit_ex(ctx_pad, md5, NULL);
-            EVP_DigestUpdate(ctx_pad, pkt_pad, 4);       /* code+id+length */
-            EVP_DigestUpdate(ctx_pad, req_auth, 16);     /* request authenticator */
+            EVP_DigestUpdate(ctx_pad, pkt_pad, 4);   /* code+id+length */
+            EVP_DigestUpdate(ctx_pad, req_auth, 16); /* request authenticator */
             /* no attributes (declared len = 20) */
             EVP_DigestUpdate(ctx_pad, secret, secret_len);
             EVP_DigestFinal_ex(ctx_pad, computed_pad, NULL);
@@ -327,14 +319,13 @@ int main(int argc, char *argv[]) {
            bytes that the NAS should echo back in its response auth field */
         const uint8_t sentauth[16] = {
             0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
-            0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00
-        };
+            0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00};
 
         /* build a 20-byte CoA-ACK whose response auth is computed as
            MD5(code||id||length||sentauth||secret) */
         uint8_t pkt[20];
         pkt[0] = RAD_CoA_ACK;
-        pkt[1] = 7;   /* id that maps to slot 7 in rqout */
+        pkt[1] = 7; /* id that maps to slot 7 in rqout */
         pkt[2] = 0;
         pkt[3] = 20;
         memset(pkt + 4, 0, 16);
@@ -429,28 +420,29 @@ int main(int argc, char *argv[]) {
         {
             uint8_t my_sentauth[16] = {
                 0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe,
-                0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef
-            };
+                0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef};
             /* 26-byte CoA-ACK: code=44, id=9, length=26,
                auth=placeholder, Proxy-State attr type=33 len=6 val=cafebabe */
             uint8_t pkt26[26];
             pkt26[0] = RAD_CoA_ACK;
-            pkt26[1] = 9;   /* id -> slot 9 */
+            pkt26[1] = 9; /* id -> slot 9 */
             pkt26[2] = 0;
             pkt26[3] = 26;
             memset(pkt26 + 4, 0, 16); /* auth placeholder */
             pkt26[20] = 33;           /* Proxy-State type */
             pkt26[21] = 6;            /* length (type+len+4 bytes) */
-            pkt26[22] = 0xca; pkt26[23] = 0xfe;
-            pkt26[24] = 0xba; pkt26[25] = 0xbe;
+            pkt26[22] = 0xca;
+            pkt26[23] = 0xfe;
+            pkt26[24] = 0xba;
+            pkt26[25] = 0xbe;
 
             /* compute response auth over attr bytes as well */
             EVP_MD_CTX *ctx9 = EVP_MD_CTX_new();
             uint8_t computed9[16];
             EVP_DigestInit_ex(ctx9, EVP_md5(), NULL);
-            EVP_DigestUpdate(ctx9, pkt26, 4);           /* code+id+length */
-            EVP_DigestUpdate(ctx9, my_sentauth, 16);    /* sentauth in the slot */
-            EVP_DigestUpdate(ctx9, pkt26 + 20, 6);     /* attribute bytes */
+            EVP_DigestUpdate(ctx9, pkt26, 4);        /* code+id+length */
+            EVP_DigestUpdate(ctx9, my_sentauth, 16); /* sentauth in the slot */
+            EVP_DigestUpdate(ctx9, pkt26 + 20, 6);   /* attribute bytes */
             EVP_DigestUpdate(ctx9, secret, secret_len);
             EVP_DigestFinal_ex(ctx9, computed9, NULL);
             EVP_MD_CTX_free(ctx9);

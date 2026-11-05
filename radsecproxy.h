@@ -134,7 +134,7 @@ struct request {
     uint8_t rqid;
     uint8_t rqauth[16];
     uint8_t newid;
-    int udpsock; /* only for UDP */
+    int udpsock;                          /* only for UDP */
     struct sockaddr_storage *to_override; /* reverse coa udp dest override, replaces from->addr for port fix-up */
 };
 
