@@ -77,6 +77,7 @@
 #define RAD_Acct_Status_Failed 15
 
 #define RAD_Err_Unsupported_Extension 406
+#define RAD_Err_Missing_Attribute 402
 #define RAD_Err_NAS_Identification_Mismatch 403
 #define RAD_Err_Request_Not_Routable 502
 #define RAD_Err_Other_Proxy_Processing_Error 505

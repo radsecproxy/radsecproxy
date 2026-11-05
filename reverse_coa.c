@@ -888,24 +888,24 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
     copy = radmsg_dup(msg);
     if (!copy) {
         debug(DBG_ERR, "send_coa_to_client: malloc failed");
-        return RAD_Err_Resources_Unavailable;
+        return RAD_Err_Other_Proxy_Processing_Error;
     }
     if (final_hop) {
         strip_operator_attrs(copy);
         if (!add_nas_identification(to_client, copy)) {
             radmsg_free(copy);
-            return RAD_Err_Resources_Unavailable;
+            return RAD_Err_Other_Proxy_Processing_Error;
         }
     }
     /* drop the previous hop's message-authenticator before signing, as radsrv() does */
     if (!ensuremsgauthfront(copy)) {
         radmsg_free(copy);
-        return RAD_Err_Resources_Unavailable;
+        return RAD_Err_Other_Proxy_Processing_Error;
     }
     rq = newrequest();
     if (!rq) {
         radmsg_free(copy);
-        return RAD_Err_Resources_Unavailable;
+        return RAD_Err_Other_Proxy_Processing_Error;
     }
 
     pthread_mutex_lock(&to_client->lock);
@@ -916,7 +916,7 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
         debug(DBG_ERR, "send_coa_to_client: malloc failed");
         freerq(rq);
         radmsg_free(copy);
-        return RAD_Err_Resources_Unavailable;
+        return RAD_Err_Other_Proxy_Processing_Error;
     }
     expire_reverse_coa_rqs(to_client);
     for (attempts = 0; attempts < MAX_REQUESTS; attempts++) {
@@ -930,7 +930,7 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
         debug(DBG_WARN, "send_coa_to_client: no free id for client %s", to_client->conf->name);
         freerq(rq);
         radmsg_free(copy);
-        return RAD_Err_Resources_Unavailable;
+        return RAD_Err_Other_Proxy_Processing_Error;
     }
 
     rq->rqid = msg->id;
@@ -948,7 +948,7 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
             debug(DBG_ERR, "send_coa_to_client: malloc failed");
             freerq(rq);
             radmsg_free(copy);
-            return RAD_Err_Resources_Unavailable;
+            return RAD_Err_Other_Proxy_Processing_Error;
         }
         memset(rq->to_override, 0, sizeof(struct sockaddr_storage));
         memcpy(rq->to_override, to_client->addr, SOCKADDRP_SIZE(to_client->addr));
@@ -963,7 +963,7 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
         pthread_mutex_unlock(&to_client->lock);
         debug(DBG_ERR, "send_coa_to_client: radmsg2buf failed for client %s", to_client->conf->name);
         freerq(rq);
-        return RAD_Err_Resources_Unavailable;
+        return RAD_Err_Other_Proxy_Processing_Error;
     }
     rq->replybuflen = replybuflen;
     rqout->rq = rq;
@@ -980,7 +980,7 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
         if (rqout->rq == rq)
             clear_rqout(to_client, rqout);
         pthread_mutex_unlock(&to_client->lock);
-        return RAD_Err_Resources_Unavailable;
+        return RAD_Err_Other_Proxy_Processing_Error;
     }
     if (sent) {
         sent->route = to_client->reverse_coa_route;
@@ -1105,7 +1105,7 @@ static int send_to_udp_block(struct server *server, struct request *origin, stru
     pthread_mutex_unlock(conf->lock);
     if (!client) {
         debug(DBG_ERR, "send_to_udp_block: addclient failed for %s", conf->name);
-        return RAD_Err_Resources_Unavailable;
+        return RAD_Err_Other_Proxy_Processing_Error;
     }
     return send_to_route(server, origin, route, msg, sent);
 }
@@ -1299,9 +1299,22 @@ static int try_send_to_nas_client(struct server *server, struct request *origin,
     return send_to_route(server, origin, route, msg, sent);
 }
 
+/* rfc 5176 section 3: a request names the nas by NAS-Identifier, NAS-IP-Address or
+   NAS-IPv6-Address, and across proxies by Operator-NAS-Identifier (rfc 8559 3.4) */
+static int names_a_nas(struct radmsg *msg) {
+    struct tlv *attr = radmsg_getexttype(msg, RAD_ExtAttr_Operator_NAS_Identifier);
+    struct sockaddr_storage addr;
+
+    if (attr && attr->l > 1)
+        return 1;
+    attr = radmsg_gettype(msg, RAD_Attr_NAS_Identifier);
+    return (attr && attr->l) || reverse_coa_nas_addr(msg, &addr);
+}
+
 /* by token, then the operator-name realm (rfc 8559 3.2); a request without
    operator-name is routed by nas identity. returns 0 when sent, else the Error-Cause
-   for the nak */
+   for the nak: 502 for a realm not served here (rfc 8559 3.2), 403 for a nas not found
+   in a realm that is (3.3), 402 when the request names no nas at all (rfc 5176 3.5) */
 static int dispatch_reverse_coa(struct server *server, struct request *origin, struct radmsg *msg, struct reverse_coa_sent *sent) {
     char realm_buf[256];
     char *realm = extract_operator_realm(msg, realm_buf, sizeof(realm_buf));
@@ -1318,6 +1331,8 @@ static int dispatch_reverse_coa(struct server *server, struct request *origin, s
         if (result == RAD_Err_Request_Not_Routable && !origin)
             result = try_send_to_udp_block(server, origin, realm, msg, sent);
 #endif
+        if (result == RAD_Err_NAS_Identification_Mismatch && !names_a_nas(msg))
+            result = RAD_Err_Missing_Attribute;
         if (result)
             debug_limit(DBG_INFO, "dispatch_reverse_coa: no route for %s (id %d) with operator-name realm %s, Error-Cause %d",
                         radmsgtype2string(msg->code), msg->id, realm, result);

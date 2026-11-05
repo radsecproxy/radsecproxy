@@ -438,6 +438,7 @@ int main(int argc, char *argv[]) {
         test_ok(rq != NULL, "regexp match delivered");
         freerq(rq);
         test_eq(RAD_Err_NAS_Identification_Mismatch, dispatch(server, request(RAD_CoA_Request, 3, "1example.com", "nas-2")), "nas not named 403");
+        test_eq(RAD_Err_Missing_Attribute, dispatch(server, request(RAD_CoA_Request, 6, "1example.com", NULL)), "no nas identification at all 402");
         test_eq(RAD_Err_Request_Not_Routable, dispatch(server, request(RAD_CoA_Request, 4, "1example.org", "nas-1")), "unknown realm 502");
         test_ok(!queued(nas) && !queued(other), "nothing queued");
         unregister_reverse_coa_client(other);

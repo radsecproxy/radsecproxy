@@ -1074,7 +1074,9 @@ most recently. Several proxies of one realm are tried in the order they register
 the next when a send fails; the proxy keeps no record of which connection a session
 was seen on (RFC 8559 section 2.1). A request never goes back to the client it came
 from. An unknown Operator-Name realm is answered with Error-Cause 502, a known realm
-in which no NAS is named with 403, lack of resources with 506.
+in which the NAS named is not found with 403, a request that names no NAS at all
+(no Operator-NAS-Identifier, NAS-Identifier, NAS-IP-Address or NAS-IPv6-Address) with
+402, and a failure of this proxy's own with 505 (RFC 5176 section 3.5).
 
 At the NAS (a udp client, or one with \fBNASidentifier\fR) Operator-Name and
 Operator-NAS-Identifier are removed and NAS identification added if missing (RFC 8559
