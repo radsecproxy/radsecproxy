@@ -2,6 +2,7 @@
 /* Copyright (c) 2026, CyB0rgg */
 /* See LICENSE for licensing information. */
 
+#include "../coa.h"
 #include "../debug.h"
 #include "../list.h"
 #include "../radmsg.h"
@@ -671,6 +672,119 @@ int main(int argc, char *argv[]) {
 
             freeserver(fromsib);
             freeclient(sib);
+        }
+
+        /* a nak that says "not here" moves the request to the next candidate with a fresh
+           request: 502 from a proxy of the realm, 403 or 502 from a sibling; anything else
+           is relayed, and a hub never retries a 403 */
+        {
+            struct client *p1 = newclienttype(RAD_TLS, "p1", NULL, literalrealm, "192.0.2.71");
+            struct client *p2 = newclienttype(RAD_TLS, "p2", NULL, literalrealm, "192.0.2.72");
+            struct client *s1 = newsibling("s1", "192.0.2.81");
+            struct client *s2 = newsibling("s2", "192.0.2.82");
+            struct radmsg *nak, *back;
+            struct request *rq2;
+            uint8_t *buf, auth[16];
+            int len;
+
+            /* the request through the server path, so the duplicate slot records the route */
+            msg = request(RAD_CoA_Request, 40, "1example.com", "nas-9");
+            memcpy(auth, msg->auth, 16);
+            len = radmsg2buf(msg, secret, secretlen, &buf);
+            sentcount = 0;
+            test_ok(try_handle_reverse_coa_request(server, buf, len) && !sentcount, "sent to the first proxy of the realm");
+            rq = queued(p1);
+            test_ok(rq && !queued(p2), "the first proxy has it");
+            nak = radmsg_init(RAD_CoA_NAK, rq ? rq->newid : 0, NULL);
+            radmsg_add(nak, make_error_cause_tlv(RAD_Err_Request_Not_Routable), 0);
+            test_ok(forward_coa_response(p1, nak) && !sentcount, "502 from the first proxy is not relayed");
+            rq2 = queued(p2);
+            test_ok(rq2 && rq2->rqid == 40 && rq2->to == server && rq2 != rq, "the second proxy gets a fresh request for the same one");
+            test_ok(_internal_reverse_coa_route_target(server->reverse_coa_seen[40].route) == p2, "retransmissions follow it");
+            radmsg_free(nak);
+            nak = radmsg_init(RAD_CoA_ACK, rq2 ? rq2->newid : 0, NULL);
+            test_ok(forward_coa_response(p2, nak) && sentcount == 1, "the ack from the second proxy is relayed");
+            back = buf2radmsg(sentbuf, sentlen, secret, secretlen, auth);
+            test_ok(back && back->code == RAD_CoA_ACK && back->id == 40, "under the original id");
+            radmsg_free(back);
+            radmsg_free(nak);
+            freerq(rq);
+            freerq(rq2);
+            radmsg_free(msg);
+
+            /* 403 from a proxy of the realm is the site's answer, relayed */
+            msg = request(RAD_CoA_Request, 41, "1example.com", "nas-9");
+            test_eq(0, dispatch(server, msg), "sent again");
+            rq = queued(p1);
+            nak = radmsg_init(RAD_CoA_NAK, rq ? rq->newid : 0, NULL);
+            radmsg_add(nak, make_error_cause_tlv(RAD_Err_NAS_Identification_Mismatch), 0);
+            sentcount = 0;
+            test_ok(forward_coa_response(p1, nak) && sentcount == 1 && !queued(p2), "403 from a proxy relayed, not retried");
+            radmsg_free(nak);
+            freerq(rq);
+
+            /* 503 is an answer about the session, relayed */
+            msg = request(RAD_CoA_Request, 42, "1example.com", "nas-9");
+            test_eq(0, dispatch(server, msg), "sent again");
+            rq = queued(p1);
+            nak = radmsg_init(RAD_CoA_NAK, rq ? rq->newid : 0, NULL);
+            radmsg_add(nak, make_error_cause_tlv(503), 0);
+            sentcount = 0;
+            test_ok(forward_coa_response(p1, nak) && sentcount == 1 && !queued(p2), "503 relayed, not retried");
+            radmsg_free(nak);
+            freerq(rq);
+
+            /* every candidate says 502: the last nak is relayed */
+            msg = request(RAD_CoA_Request, 43, "1example.com", "nas-9");
+            test_eq(0, dispatch(server, msg), "sent again");
+            rq = queued(p1);
+            nak = radmsg_init(RAD_CoA_NAK, rq ? rq->newid : 0, NULL);
+            radmsg_add(nak, make_error_cause_tlv(RAD_Err_Request_Not_Routable), 0);
+            sentcount = 0;
+            test_ok(forward_coa_response(p1, nak) && !sentcount, "first 502 not relayed");
+            freerq(rq);
+            rq = queued(p2);
+            nak->id = rq ? rq->newid : 0;
+            test_ok(forward_coa_response(p2, nak) && sentcount == 1, "last 502 relayed");
+            radmsg_free(nak);
+            freerq(rq);
+
+            /* at the edge: a realm not served here goes to the first sibling; its 403
+               means not there, the second sibling gets it */
+            msg = request(RAD_CoA_Request, 44, "1example.org", "nas-9");
+            test_eq(0, dispatch(server, msg), "handed to the first sibling");
+            rq = queued(s1);
+            test_ok(rq && !queued(s2), "the first sibling has it");
+            nak = radmsg_init(RAD_CoA_NAK, rq ? rq->newid : 0, NULL);
+            radmsg_add(nak, make_error_cause_tlv(RAD_Err_NAS_Identification_Mismatch), 0);
+            sentcount = 0;
+            test_ok(forward_coa_response(s1, nak) && !sentcount, "403 from the first sibling not relayed");
+            rq2 = queued(s2);
+            test_ok(rq2 && rq2->rqid == 44, "the second sibling gets it");
+            radmsg_free(nak);
+            nak = radmsg_init(RAD_CoA_ACK, rq2 ? rq2->newid : 0, NULL);
+            test_ok(forward_coa_response(s2, nak) && sentcount == 1, "the second sibling's ack relayed");
+            radmsg_free(nak);
+            freerq(rq);
+            freerq(rq2);
+
+            /* switched off: the first answer is the answer */
+            reverse_coa_setretry(0);
+            msg = request(RAD_CoA_Request, 45, "1example.com", "nas-9");
+            test_eq(0, dispatch(server, msg), "sent again");
+            rq = queued(p1);
+            nak = radmsg_init(RAD_CoA_NAK, rq ? rq->newid : 0, NULL);
+            radmsg_add(nak, make_error_cause_tlv(RAD_Err_Request_Not_Routable), 0);
+            sentcount = 0;
+            test_ok(forward_coa_response(p1, nak) && sentcount == 1 && !queued(p2), "retry off: 502 relayed");
+            radmsg_free(nak);
+            freerq(rq);
+            reverse_coa_setretry(1);
+
+            freeclient(s2);
+            freeclient(s1);
+            freeclient(p2);
+            freeclient(p1);
         }
 
         /* never back to the sender */

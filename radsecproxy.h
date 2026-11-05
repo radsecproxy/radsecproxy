@@ -137,6 +137,7 @@ struct request {
     int udpsock;                          /* only for UDP */
     struct sockaddr_storage *to_override; /* reverse coa to a udp client, else NULL */
     struct request *origin;               /* client request a reverse coa response answers */
+    struct reverse_coa_plan *plan;        /* the candidates left for a reverse coa in flight, see reverse_coa.c */
 };
 
 /* requests that our client will send */
@@ -220,6 +221,7 @@ struct clsrvconf {
 #include "tlscommon.h"
 
 struct reverse_coa_route;
+struct reverse_coa_plan;
 
 struct coa_dedup_slot {
     uint8_t occupied;

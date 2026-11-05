@@ -45,6 +45,51 @@ struct reverse_coa_sent {
     uint8_t id;
 };
 
+/* the candidates a request could still go to, kept with the request in flight: when the
+   one it went to answers that the nas is not there (Error-Cause 403 from a sibling) or
+   that it has no route (502 from a proxy of the realm), the next one gets a fresh
+   request, rfc 5176 2.3, with the originator's Proxy-State as it came. nothing in the
+   texts asks for this; it is this hop's own choice, bounded by the list, and it lives
+   and dies with the request. ReverseCoARetryOnNak turns it off */
+struct reverse_coa_plan {
+    struct radmsg *msg; /* the request as received, before any editing for a hop */
+    struct reverse_coa_route *routes[MAX_REVERSE_COA_FAILOVER];
+    int n, next;
+    uint8_t on_403; /* siblings: 403 means not here, try the next; a hub never retries a 403 */
+};
+
+static int reverse_coa_retry = 1;
+
+void reverse_coa_setretry(int on) { reverse_coa_retry = on; }
+
+/* takes over the references in routes[0..n); NULL when out of memory, the references
+   then still belong to the caller */
+static struct reverse_coa_plan *reverse_coa_plan_new(struct radmsg *msg, struct reverse_coa_route **routes, int n, uint8_t on_403) {
+    struct reverse_coa_plan *plan = malloc(sizeof(*plan));
+
+    if (!plan)
+        return NULL;
+    plan->msg = radmsg_dup(msg);
+    if (!plan->msg) {
+        free(plan);
+        return NULL;
+    }
+    memcpy(plan->routes, routes, n * sizeof(*routes));
+    plan->n = n;
+    plan->next = 0;
+    plan->on_403 = on_403;
+    return plan;
+}
+
+void reverse_coa_plan_free(struct reverse_coa_plan *plan) {
+    if (!plan)
+        return;
+    while (plan->next < plan->n)
+        reverse_coa_route_deref(plan->routes[plan->next++]);
+    radmsg_free(plan->msg);
+    free(plan);
+}
+
 struct reverse_coa_route *reverse_coa_route_new(struct client *target) {
     struct reverse_coa_route *route = malloc(sizeof(*route));
     if (!route)
@@ -545,20 +590,28 @@ static void record_coa_dedup(struct server *server, uint8_t id, uint8_t *auth) {
 
 void _internal_record_coa_dedup(struct server *server, uint8_t id, uint8_t *auth) { record_coa_dedup(server, id, auth); }
 
-/* takes over the reference held in sent */
-static void record_coa_route(struct server *server, uint8_t id, uint8_t *auth, struct reverse_coa_sent *sent) {
+/* takes over the reference held in sent; with replace, a route already in the slot is
+   let go, so a retransmission follows the request to the candidate it went to last */
+static void record_coa_route_opt(struct server *server, uint8_t id, uint8_t *auth, struct reverse_coa_sent *sent, int replace) {
     struct coa_dedup_slot *slot;
+    struct reverse_coa_route *old = NULL;
 
     pthread_mutex_lock(&server->reverse_coa_lock);
     slot = &server->reverse_coa_seen[id];
-    if (slot->occupied && !memcmp(slot->auth, auth, 16) && !slot->route) {
+    if (slot->occupied && !memcmp(slot->auth, auth, 16) && (!slot->route || replace)) {
+        old = slot->route;
         slot->route = sent->route;
         slot->id = sent->id;
         sent->route = NULL;
     }
     pthread_mutex_unlock(&server->reverse_coa_lock);
+    reverse_coa_route_deref(old);
     reverse_coa_route_deref(sent->route);
     sent->route = NULL;
+}
+
+static void record_coa_route(struct server *server, uint8_t id, uint8_t *auth, struct reverse_coa_sent *sent) {
+    record_coa_route_opt(server, id, auth, sent, 0);
 }
 
 static void cache_coa_dedup_reply(struct server *server, uint8_t id, uint8_t *auth,
@@ -874,11 +927,12 @@ static int send_reverse_coa_nak(struct server *server, struct radmsg *req, uint3
 }
 
 /* sends a copy of msg to the client with a new id and keeps it for the response.
-   from_server or origin says where the response goes. returns 0 when sent, else the
-   Error-Cause for the nak. the caller holds the client's route locked, so the client
-   cannot go away meanwhile */
+   from_server or origin says where the response goes; plan, if any, holds the
+   candidates left and belongs to the request once it went out. returns 0 when sent,
+   else the Error-Cause for the nak. the caller holds the client's route locked, so the
+   client cannot go away meanwhile */
 static int send_coa_to_client(struct server *from_server, struct request *origin, struct client *to_client,
-                              struct radmsg *msg, struct reverse_coa_sent *sent) {
+                              struct radmsg *msg, struct reverse_coa_sent *sent, struct reverse_coa_plan *plan) {
     struct request *rq;
     struct rqout *rqout;
     struct radmsg *copy;
@@ -977,6 +1031,7 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
         return RAD_Err_Other_Proxy_Processing_Error;
     }
     rq->replybuflen = replybuflen;
+    rq->plan = plan;
     rqout->rq = rq;
     to_client->reverse_coa_pending++;
     gettimeofday(&rqout->expiry, NULL);
@@ -988,6 +1043,7 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
           radmsgtype2string(copy->code), msg->id, newid, to_client->conf->name, final_hop ? " (nas)" : "");
     if (sendreply(newrqref(rq)) < 1) {
         pthread_mutex_lock(&to_client->lock);
+        rq->plan = NULL; /* stays with the caller, which tries the next candidate */
         if (rqout->rq == rq)
             clear_rqout(to_client, rqout);
         pthread_mutex_unlock(&to_client->lock);
@@ -1003,12 +1059,12 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
 /* sends down a route taken from the registry, the caller holds a reference which
    moves to sent when the request went out */
 static int send_to_route(struct server *server, struct request *origin, struct reverse_coa_route *route,
-                         struct radmsg *msg, struct reverse_coa_sent *sent) {
+                         struct radmsg *msg, struct reverse_coa_sent *sent, struct reverse_coa_plan *plan) {
     int result = RAD_Err_Request_Not_Routable;
 
     pthread_mutex_lock(&route->refmutex);
     if (route->target)
-        result = send_coa_to_client(server, origin, route->target, msg, sent);
+        result = send_coa_to_client(server, origin, route->target, msg, sent, plan);
     pthread_mutex_unlock(&route->refmutex);
     if (result)
         reverse_coa_route_deref(route);
@@ -1118,7 +1174,7 @@ static int send_to_udp_block(struct server *server, struct request *origin, stru
         debug(DBG_ERR, "send_to_udp_block: addclient failed for %s", conf->name);
         return RAD_Err_Other_Proxy_Processing_Error;
     }
-    return send_to_route(server, origin, route, msg, sent);
+    return send_to_route(server, origin, route, msg, sent, NULL);
 }
 
 /* the client block covering the address in NAS-IP-Address or NAS-IPv6-Address, or the
@@ -1218,7 +1274,7 @@ static int try_send_to_token_client(struct server *server, struct request *origi
                   named ? "the nas named in the request is one of them" : "taking the one that sent a request most recently");
         else
             debug(DBG_DBG, "try_send_to_token_client: operator-nas-identifier names a client connection");
-        return send_to_route(server, origin, route, msg, sent);
+        return send_to_route(server, origin, route, msg, sent, NULL);
     }
 #ifdef RADPROT_UDP
     /* a udp nas has no connection: its block name and what the request says the nas is
@@ -1242,6 +1298,7 @@ static int try_send_to_realm_clients(struct server *server, struct request *orig
                                      struct radmsg *msg, struct reverse_coa_sent *sent) {
     struct reverse_coa_route *nas = NULL, *proxies[MAX_REVERSE_COA_FAILOVER], *route;
     struct reverse_coa_realm *r;
+    struct reverse_coa_plan *plan;
     struct list_node *rnode, *node;
     int nases = 0, nproxies = 0, i, pass, result = RAD_Err_Request_Not_Routable;
 
@@ -1275,16 +1332,25 @@ static int try_send_to_realm_clients(struct server *server, struct request *orig
 
     if (nas) {
         debug(DBG_DBG, "try_send_to_realm_clients: realm %s, the nas named in the request is registered", realm);
-        result = send_to_route(server, origin, nas, msg, sent);
+        result = send_to_route(server, origin, nas, msg, sent, NULL);
     } else if (!nproxies)
         result = nases ? RAD_Err_NAS_Identification_Mismatch : RAD_Err_Request_Not_Routable;
-    for (i = 0; i < nproxies; i++) {
-        if (result && result != RAD_Err_NAS_Identification_Mismatch) {
-            debug(DBG_DBG, "try_send_to_realm_clients: realm %s, trying a proxy", realm);
-            result = send_to_route(server, origin, proxies[i], msg, sent);
-        } else
+    if (!nproxies)
+        return result;
+    /* the proxies in order; the ones not tried stay with the request for a 502 */
+    plan = reverse_coa_plan_new(msg, proxies, nproxies, 0);
+    if (!plan) {
+        for (i = 0; i < nproxies; i++)
             reverse_coa_route_deref(proxies[i]);
+        debug(DBG_ERR, "try_send_to_realm_clients: malloc failed");
+        return result ? RAD_Err_Other_Proxy_Processing_Error : 0;
     }
+    while (result && result != RAD_Err_NAS_Identification_Mismatch && plan->next < plan->n) {
+        debug(DBG_DBG, "try_send_to_realm_clients: realm %s, trying a proxy", realm);
+        result = send_to_route(server, origin, plan->routes[plan->next++], msg, sent, plan);
+    }
+    if (result)
+        reverse_coa_plan_free(plan);
     return result;
 }
 
@@ -1307,7 +1373,7 @@ static int try_send_to_nas_client(struct server *server, struct request *origin,
     if (!route)
         return RAD_Err_Request_Not_Routable;
     debug(DBG_DBG, "try_send_to_nas_client: the nas named in the request is a client");
-    return send_to_route(server, origin, route, msg, sent);
+    return send_to_route(server, origin, route, msg, sent, NULL);
 }
 
 /* the other proxies of this site (ReverseCoASibling), in the order they connected: a
@@ -1319,8 +1385,9 @@ static int try_send_to_nas_client(struct server *server, struct request *origin,
    returns 0 when sent, else the Error-Cause the caller already had */
 static int try_send_to_siblings(struct server *server, struct request *origin, struct radmsg *msg, struct reverse_coa_sent *sent, int result) {
     struct reverse_coa_route *siblings[MAX_REVERSE_COA_FAILOVER], *route;
+    struct reverse_coa_plan *plan;
     struct list_node *node;
-    int n = 0, i;
+    int n = 0, i, fallback = result;
 
     if (server && server->conf->reverse_coa_sibling) {
         debug(DBG_DBG, "try_send_to_siblings: %s (id %d) came from sibling %s, not handed on", radmsgtype2string(msg->code), msg->id, server->conf->name);
@@ -1337,14 +1404,25 @@ static int try_send_to_siblings(struct server *server, struct request *origin, s
         pthread_mutex_unlock(&route->refmutex);
     }
     pthread_mutex_unlock(&realm_reverse_coa_lock);
-    for (i = 0; i < n; i++) {
-        if (result) {
-            debug(DBG_DBG, "try_send_to_siblings: %s (id %d), handing to a sibling proxy", radmsgtype2string(msg->code), msg->id);
-            result = send_to_route(server, origin, siblings[i], msg, sent);
-        } else
+    if (!n)
+        return fallback;
+    /* the siblings in order; the ones not tried stay with the request for a 403 or 502 */
+    plan = reverse_coa_plan_new(msg, siblings, n, 1);
+    if (!plan) {
+        for (i = 0; i < n; i++)
             reverse_coa_route_deref(siblings[i]);
+        debug(DBG_ERR, "try_send_to_siblings: malloc failed");
+        return fallback;
     }
-    return result;
+    while (result && plan->next < plan->n) {
+        debug(DBG_DBG, "try_send_to_siblings: %s (id %d), handing to a sibling proxy", radmsgtype2string(msg->code), msg->id);
+        result = send_to_route(server, origin, plan->routes[plan->next++], msg, sent, plan);
+    }
+    if (result) {
+        reverse_coa_plan_free(plan);
+        return fallback;
+    }
+    return 0;
 }
 
 /* rfc 5176 section 3: a request names the nas by NAS-Identifier, NAS-IP-Address or
@@ -1481,6 +1559,9 @@ int forward_coa_response(struct client *from, struct radmsg *msg) {
     struct server *to_server;
     struct radmsg *reply;
     struct tlv *errorcause;
+    struct reverse_coa_plan *plan;
+    struct reverse_coa_sent sent = {NULL, 0};
+    uint32_t cause = 0;
     uint8_t sentcode, origid;
     uint8_t origauth[16];
     uint8_t *buf = NULL;
@@ -1513,6 +1594,8 @@ int forward_coa_response(struct client *from, struct radmsg *msg) {
     }
     origin = rqout->rq->origin;
     rqout->rq->origin = NULL;
+    plan = rqout->rq->plan;
+    rqout->rq->plan = NULL;
     to_server = rqout->rq->to;
     origid = rqout->rq->rqid;
     memcpy(origauth, rqout->rq->rqauth, 16);
@@ -1520,9 +1603,33 @@ int forward_coa_response(struct client *from, struct radmsg *msg) {
     pthread_mutex_unlock(&from->lock);
 
     errorcause = radmsg_gettype(msg, RAD_Attr_Error_Cause);
-    if (errorcause && errorcause->l == 4)
+    if (errorcause && errorcause->l == 4) {
+        cause = tlv2longint(errorcause);
         debug(DBG_INFO, "forward_coa_response: %s (id %d) from client %s with Error-Cause %u",
-              radmsgtype2string(msg->code), msg->id, from->conf->name, tlv2longint(errorcause));
+              radmsgtype2string(msg->code), msg->id, from->conf->name, cause);
+    }
+
+    /* a routing nak with candidates left: the next one gets a fresh request and this
+       answer is dropped. the global lock is held, as for the first attempt the routes
+       were taken at dispatch time, so nothing here enters a client block's lock */
+    if (plan && reverse_coa_retry && (msg->code == RAD_CoA_NAK || msg->code == RAD_Disconnect_NAK) &&
+        (cause == RAD_Err_Request_Not_Routable || (cause == RAD_Err_NAS_Identification_Mismatch && plan->on_403))) {
+        while (plan->next < plan->n) {
+            if (send_to_route(to_server, origin, plan->routes[plan->next++], plan->msg, &sent, plan))
+                continue;
+            debug(DBG_INFO, "forward_coa_response: request id %d tried on the next candidate after Error-Cause %u from client %s",
+                  origid, cause, from->conf->name);
+            if (to_server)
+                record_coa_route_opt(to_server, origid, origauth, &sent, 1);
+            else
+                reverse_coa_route_deref(sent.route);
+            if (origin)
+                freerq(origin); /* send_coa_to_client holds its own reference now */
+            pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
+            return 1;
+        }
+    }
+    reverse_coa_plan_free(plan);
 
     reply = radmsg_dup(msg);
     if (reply) {

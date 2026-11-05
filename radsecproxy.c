@@ -510,6 +510,8 @@ void freerq(struct request *rq) {
     }
     if (rq->msg)
         radmsg_free(rq->msg);
+    if (rq->plan)
+        reverse_coa_plan_free(rq->plan);
     if (rq->to_override)
         free(rq->to_override);
     if (rq->origin)
@@ -3623,6 +3625,7 @@ void getmainconfig(const char *configfile) {
     char *log_mac_str = NULL;
     char *log_key_str = NULL;
     char *reverse_coa_token_key_str = NULL;
+    uint8_t reverse_coa_retry_on_nak = 1;
     uint8_t *fticks_reporting_str = NULL;
     uint8_t *fticks_mac_str = NULL;
     uint8_t *fticks_key_str = NULL;
@@ -3677,6 +3680,7 @@ void getmainconfig(const char *configfile) {
             "LogMAC", CONF_STR, &log_mac_str,
             "LogKey", CONF_STR, &log_key_str,
             "ReverseCoATokenKey", CONF_STR_NOESC, &reverse_coa_token_key_str,
+            "ReverseCoARetryOnNak", CONF_BLN, &reverse_coa_retry_on_nak,
             "LogFullUsername", CONF_BLN, &options.logfullusername,
             "LoopPrevention", CONF_BLN, &options.loopprevention,
             "Client", CONF_CBK, confclient_cb, NULL,
@@ -3705,6 +3709,7 @@ void getmainconfig(const char *configfile) {
             debugx(1, DBG_ERR, "error in %s, value of option LogLevel is %d, must be 1, 2, 3, 4 or 5", configfile, loglevel);
         options.loglevel = (uint8_t)loglevel;
     }
+    reverse_coa_setretry(reverse_coa_retry_on_nak);
     if (reverse_coa_token_key_str != NULL) {
         if (strlen(reverse_coa_token_key_str) < 16)
             debugx(1, DBG_ERR, "error in %s, ReverseCoATokenKey must be at least 16 characters", configfile);
