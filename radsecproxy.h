@@ -35,6 +35,10 @@
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT_DEFAULT 600
 #define REVERSE_COA_TOKEN_LEN 16
+#define REVERSE_COA_TOKEN_NASID 0   /* the value from the NAS-Identifier the nas sends */
+#define REVERSE_COA_TOKEN_NASADDR 1 /* from its NAS-IP-Address or NAS-IPv6-Address */
+#define REVERSE_COA_TOKEN_PEER 2    /* from the address its requests come from */
+#define REVERSE_COA_TOKEN_KINDS 3
 #define PSK_MIN_LENGTH 16
 #define RSP_SECRET_LEN_WARN 12
 /* Older OpenSSL API had a 256 byte limit; keep this limit to maximize compatibility*/
@@ -248,7 +252,9 @@ struct client {
     int reverse_coa_pending;
     struct reverse_coa_route *reverse_coa_route;
     char *identity;                        /* certificate subject, psk identity, or the block name */
-    char token[REVERSE_COA_TOKEN_LEN + 1]; /* names the nas on this connection in Operator-NAS-Identifier (learn_nas_identity()) */
+    char token[REVERSE_COA_TOKEN_LEN + 1]; /* the value added in Operator-NAS-Identifier on the way up, naming the nas on this connection (learn_nas_identity()) */
+    /* the values naming it by each name it has used, empty where not seen; a request carrying any of them reaches it */
+    char tokens[REVERSE_COA_TOKEN_KINDS][REVERSE_COA_TOKEN_LEN + 1];
     time_t last_request;                   /* when this connection last sent a request (learn_nas_identity()) */
     /* what this connection says it is, for a NASidentifier /regexp/ block (learn_nas_identity()) */
     char nas_identifier_seen[256];

@@ -210,6 +210,49 @@ int reverse_coa_nastoken(char *token, const char *identity, struct radmsg *msg, 
     return keyedtoken(token, identity, qualifier);
 }
 
+/* every value naming the nas that sent msg, one per name it uses: its NAS-Identifier,
+   its NAS-IP-Address or NAS-IPv6-Address, and the address the request came from; empty
+   for a name it does not use, and all empty without a key, when the value stays the
+   random one the connection got. a nas that sends NAS-Identifier in authentication and
+   only its address in accounting is named two ways; a connection keeps every value it
+   was named by (learn_nas_identity()) and a request carrying any of them reaches it */
+void reverse_coa_nastokens(char tokens[][REVERSE_COA_TOKEN_LEN + 1], const char *identity, struct radmsg *msg, const struct sockaddr *addr) {
+    struct tlv *attr = radmsg_gettype(msg, RAD_Attr_NAS_Identifier);
+    struct sockaddr_storage nasaddr;
+    char qualifier[256];
+    int i;
+
+    for (i = 0; i < REVERSE_COA_TOKEN_KINDS; i++)
+        tokens[i][0] = '\0';
+    if (!reverse_coa_token_key || !identity || !*identity)
+        return;
+    if (attr && attr->l) {
+        memcpy(qualifier, attr->v, attr->l);
+        qualifier[attr->l] = '\0';
+        if (!keyedtoken(tokens[REVERSE_COA_TOKEN_NASID], identity, qualifier))
+            tokens[REVERSE_COA_TOKEN_NASID][0] = '\0';
+    }
+    if (reverse_coa_nas_addr(msg, &nasaddr) &&
+        !keyedtoken(tokens[REVERSE_COA_TOKEN_NASADDR], identity, addr2string((struct sockaddr *)&nasaddr, qualifier, sizeof(qualifier))))
+        tokens[REVERSE_COA_TOKEN_NASADDR][0] = '\0';
+    if (addr && !reverse_coa_peertoken(tokens[REVERSE_COA_TOKEN_PEER], identity, addr))
+        tokens[REVERSE_COA_TOKEN_PEER][0] = '\0';
+}
+
+/* the value naming a udp nas: its identity (the block name) and the address it is
+   reached at, the NAS-IP-Address or NAS-IPv6-Address it sends, else the address its
+   requests come from. a udp nas has no connection to keep values on, so the value has
+   to follow from what a request for it carries, and a request for a udp nas carries the
+   address it is sent to whatever else it says */
+int reverse_coa_udptoken(char *token, const char *identity, struct radmsg *msg, const struct sockaddr *addr) {
+    struct sockaddr_storage nasaddr;
+    char qualifier[INET6_ADDRSTRLEN];
+
+    if (reverse_coa_nas_addr(msg, &nasaddr))
+        return keyedtoken(token, identity, addr2string((struct sockaddr *)&nasaddr, qualifier, sizeof(qualifier)));
+    return reverse_coa_peertoken(token, identity, addr);
+}
+
 /* a value in slashes is a regexp, anything else is matched literally, as in addrealm() */
 static int reverse_coa_realm_regcomp(const char *value, regex_t *re) {
     char *regex, *s;
@@ -435,6 +478,7 @@ void unregister_reverse_coa_client(struct client *client) {
 }
 
 static void expire_reverse_coa_rqs(struct client *client);
+static int client_carries_token(struct client *client, const char *token);
 
 /* client->lock held */
 static void clear_rqout(struct client *client, struct rqout *rqout) {
@@ -645,24 +689,30 @@ void drain_coa_dedup(struct server *server) {
     pthread_mutex_unlock(&server->reverse_coa_lock);
 }
 
-/* another live connection of the block carrying the same token from another address:
-   two nases on one certificate sending the same NAS-Identifier, which a CoA cannot tell
-   apart; the one that sent a request most recently would get it */
+/* another live connection of the block carrying any of the same values from another
+   address: two nases on one certificate sending the same NAS-Identifier, or reporting the
+   same NAS-IP-Address, which a CoA carrying that value cannot tell apart; the nas the
+   request names gets it, else the one that sent a request most recently */
 static void warn_token_shared(struct client *from) {
     struct list_node *node;
     struct client *other;
     char a[INET6_ADDRSTRLEN], b[INET6_ADDRSTRLEN];
-    int shared = 0;
+    char mine[REVERSE_COA_TOKEN_KINDS][REVERSE_COA_TOKEN_LEN + 1];
+    int i, shared = 0;
 
     if (from->conf->type == RAD_UDP || !from->conf->lock)
         return;
+    pthread_mutex_lock(&from->lock);
+    memcpy(mine, from->tokens, sizeof(mine));
+    pthread_mutex_unlock(&from->lock);
     pthread_mutex_lock(from->conf->lock);
     for (node = list_first(from->conf->clients); node && !shared; node = list_next(node)) {
         other = (struct client *)node->data;
         if (other == from || !other->addr || !from->addr || addr_equal_ip(other->addr, from->addr))
             continue;
         pthread_mutex_lock(&other->lock);
-        shared = !strcmp(other->token, from->token);
+        for (i = 0; i < REVERSE_COA_TOKEN_KINDS && !shared; i++)
+            shared = mine[i][0] && client_carries_token(other, mine[i]);
         pthread_mutex_unlock(&other->lock);
     }
     pthread_mutex_unlock(from->conf->lock);
@@ -679,15 +729,27 @@ static void warn_token_shared(struct client *from) {
 void learn_nas_identity(struct client *from, struct radmsg *msg) {
     struct tlv *attr;
     struct sockaddr_storage addr;
-    char token[REVERSE_COA_TOKEN_LEN + 1];
-    int has_addr, changed = 0;
+    char tokens[REVERSE_COA_TOKEN_KINDS][REVERSE_COA_TOKEN_LEN + 1];
+    char named[REVERSE_COA_TOKEN_LEN + 1];
+    int i, has_addr, changed = 0;
 
-    if (!reverse_coa_nastoken(token, from->identity, msg, from->addr))
-        token[0] = '\0';
+    /* without a key the connection keeps the random value it got, so a request that
+       carries it still finds the connection; with one, the nas is named by what it sends */
+    memset(tokens, 0, sizeof(tokens));
+    named[0] = '\0';
+    if (reverse_coa_token_key) {
+        reverse_coa_nastokens(tokens, from->identity, msg, from->addr);
+        if (!(from->conf->type == RAD_UDP ? reverse_coa_udptoken(named, from->identity, msg, from->addr)
+                                          : reverse_coa_nastoken(named, from->identity, msg, from->addr)))
+            named[0] = '\0';
+    }
     pthread_mutex_lock(&from->lock);
     time(&from->last_request);
-    if (token[0] && strcmp(token, from->token)) {
-        memcpy(from->token, token, sizeof(from->token));
+    for (i = 0; i < REVERSE_COA_TOKEN_KINDS; i++)
+        if (tokens[i][0])
+            memcpy(from->tokens[i], tokens[i], sizeof(from->tokens[i]));
+    if (named[0] && strcmp(named, from->token)) {
+        memcpy(from->token, named, sizeof(from->token));
         changed = 1;
     }
     pthread_mutex_unlock(&from->lock);
@@ -1217,6 +1279,19 @@ static int try_send_to_udp_block(struct server *server, struct request *origin, 
 }
 #endif
 
+/* whether the connection carries the value: the one it adds on the way up, or any it
+   has been named by. the caller holds the client's lock */
+static int client_carries_token(struct client *client, const char *token) {
+    int i;
+
+    if (!strcmp(client->token, token))
+        return 1;
+    for (i = 0; i < REVERSE_COA_TOKEN_KINDS; i++)
+        if (client->tokens[i][0] && !strcmp(client->tokens[i], token))
+            return 1;
+    return 0;
+}
+
 /* the nas named by the token we added on the way out: the connection whose last
    request set that token, see reverse_coa_nastoken(); or a udp block whose name and
    the nas identification in the request give it, the nas address then picks the entry.
@@ -1248,7 +1323,7 @@ static int try_send_to_token_client(struct server *server, struct request *origi
         pthread_mutex_lock(&candidate->refmutex);
         if (candidate->target && reverse_coa_final_hop(candidate->target)) {
             pthread_mutex_lock(&candidate->target->lock);
-            same = !strcmp(candidate->target->token, token);
+            same = client_carries_token(candidate->target, token);
             seen = candidate->target->last_request;
             pthread_mutex_unlock(&candidate->target->lock);
             if (same && (candidate->target->conf->type != RAD_UDP || !has_addr || addr_equal_ip(candidate->target->addr, (struct sockaddr *)&addr))) {
@@ -1277,12 +1352,12 @@ static int try_send_to_token_client(struct server *server, struct request *origi
         return send_to_route(server, origin, route, msg, sent, NULL);
     }
 #ifdef RADPROT_UDP
-    /* a udp nas has no connection: its block name and what the request says the nas is
-       give the token the block added on the way out */
+    /* a udp nas has no connection: its block name and the address the request names it
+       by give the value the block added on the way up, see reverse_coa_udptoken() */
     if (has_addr)
         while ((conf = find_clconf_type(RAD_UDP, &cur)))
             if (addressmatches(conf->hostports, (struct sockaddr *)&addr, 0, NULL) &&
-                reverse_coa_nastoken(blocktoken, conf->name, msg, NULL) && !strcmp(blocktoken, token))
+                reverse_coa_udptoken(blocktoken, conf->name, msg, NULL) && !strcmp(blocktoken, token))
                 return send_to_udp_block(server, origin, conf, (struct sockaddr *)&addr, msg, sent);
 #endif
     debug(DBG_INFO, "try_send_to_token_client: no nas carries the operator-nas-identifier");

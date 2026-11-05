@@ -303,6 +303,43 @@ int main(int argc, char *argv[]) {
         test_ok(reverse_coa_peertoken(token2, NULL, NULL) && strlen(token2) == REVERSE_COA_TOKEN_LEN, "no identity gives a random token");
         reverse_coa_settokenkey(NULL);
         test_ok(reverse_coa_peertoken(token2, "CN=nas-1,O=lab", NULL) && strcmp(token, token2) != 0, "without a key the token is random");
+
+        /* without a key a connection keeps the random value it got, so a request carrying
+           it finds the connection after any number of requests from the nas */
+        {
+            struct client *nokey = newclienttype(RAD_TLS, "nokey", NULL, NULL, "192.0.2.77");
+            struct radmsg *acct = request(RAD_Accounting_Request, 1, NULL, "nokey-1");
+            char before[REVERSE_COA_TOKEN_LEN + 1];
+
+            reverse_coa_peertoken(nokey->token, nokey->identity, nokey->addr);
+            strcpy(before, nokey->token);
+            learn_nas_identity(nokey, acct);
+            learn_nas_identity(nokey, acct);
+            test_ok(!strcmp(nokey->token, before), "no key: the value does not change with requests");
+            radmsg_free(acct);
+            freeclient(nokey);
+        }
+
+        /* a udp nas is named by the address it is reached at: the value from its request
+           is the value from a CoA that carries only the address */
+        {
+            struct client *udpnas = newclienttype(RAD_UDP, "udpblock", NULL, NULL, "192.0.2.100");
+            struct radmsg *acct = request(RAD_Accounting_Request, 1, NULL, "udp-nas");
+            struct radmsg *coa = request(RAD_CoA_Request, 2, "1example.com", NULL);
+            uint8_t v4[4] = {192, 0, 2, 100};
+            char fromcoa[REVERSE_COA_TOKEN_LEN + 1];
+
+            reverse_coa_settokenkey("sixteen-char-key");
+            radmsg_add(acct, maketlv(RAD_Attr_NAS_IP_Address, 4, v4), 0);
+            radmsg_add(coa, maketlv(RAD_Attr_NAS_IP_Address, 4, v4), 0);
+            learn_nas_identity(udpnas, acct);
+            test_ok(reverse_coa_udptoken(fromcoa, "udpblock", coa, NULL) && !strcmp(fromcoa, udpnas->token), "udp: the value follows the address, not the nas-identifier");
+            test_ok(reverse_coa_nastoken(fromcoa, "udpblock", acct, NULL) && strcmp(fromcoa, udpnas->token) != 0, "and differs from the nas-identifier's");
+            radmsg_free(acct);
+            radmsg_free(coa);
+            freeclient(udpnas);
+            reverse_coa_settokenkey(NULL);
+        }
     }
 
     /* operator attributes */
@@ -617,6 +654,34 @@ int main(int argc, char *argv[]) {
                 test_ok(rq != NULL, "delivered on the connection that spoke last");
                 freerq(rq);
                 test_ok(queued(site_a) == NULL, "not on the lingering one");
+
+                /* site-a names itself by address only in accounting: a second value, kept
+                   next to the first; the value added follows the request, and a request
+                   carrying either reaches the connection */
+                {
+                    char byaddr[REVERSE_COA_TOKEN_LEN + 1];
+
+                    acct = request(RAD_Accounting_Request, 4, NULL, NULL);
+                    radmsg_add(acct, maketlv(RAD_Attr_NAS_IP_Address, 4, lan), 0);
+                    learn_nas_identity(site_a2, acct);
+                    test_ok(reverse_coa_nastoken(byaddr, site_a2->identity, acct, site_a2->addr) && !strcmp(site_a2->token, byaddr) && strcmp(byaddr, site_a->token) != 0,
+                            "named by address only: the value added is the address's");
+                    radmsg_free(acct);
+                    site_a->last_request = site_b->last_request = 1;
+                    site_a2->last_request = time(NULL) + 5;
+                    msg = request(RAD_CoA_Request, 22, "1example.com", NULL);
+                    radmsg_add(msg, makeexttlv(RAD_ExtAttr_Operator_NAS_Identifier, REVERSE_COA_TOKEN_LEN, site_a->token), 0);
+                    test_eq(0, dispatch(server, msg), "the nas-identifier's value still names the connection");
+                    rq = queued(site_a2);
+                    test_ok(rq != NULL, "delivered by the earlier value");
+                    freerq(rq);
+                    msg = request(RAD_CoA_Request, 23, "1example.com", NULL);
+                    radmsg_add(msg, makeexttlv(RAD_ExtAttr_Operator_NAS_Identifier, REVERSE_COA_TOKEN_LEN, byaddr), 0);
+                    test_eq(0, dispatch(server, msg), "the address's value names it too");
+                    rq = queued(site_a2);
+                    test_ok(rq != NULL, "delivered by the later value");
+                    freerq(rq);
+                }
                 freeclient(site_a2);
             }
 

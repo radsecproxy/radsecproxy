@@ -232,6 +232,7 @@ struct client *addclient(struct clsrvconf *conf, int sock,
     }
     if (!reverse_coa_peertoken(new->token, new->identity, from))
         goto out_undo_list;
+    memcpy(new->tokens[REVERSE_COA_TOKEN_PEER], new->token, sizeof(new->token));
     /* addr must be set before the client is registered for reverse coa */
     if (from) {
         new->addr = addr_copy((struct sockaddr *)from);

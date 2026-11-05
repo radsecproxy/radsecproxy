@@ -26,6 +26,8 @@ void reverse_coa_setretry(int on);
 void reverse_coa_plan_free(struct reverse_coa_plan *plan);
 int reverse_coa_peertoken(char *token, const char *identity, const struct sockaddr *addr);
 int reverse_coa_nastoken(char *token, const char *identity, struct radmsg *msg, const struct sockaddr *addr);
+void reverse_coa_nastokens(char tokens[][REVERSE_COA_TOKEN_LEN + 1], const char *identity, struct radmsg *msg, const struct sockaddr *addr);
+int reverse_coa_udptoken(char *token, const char *identity, struct radmsg *msg, const struct sockaddr *addr);
 int reverse_coa_token(const struct tlv *attr, char *token);
 void strip_operator_attrs(struct radmsg *msg);
 int reverse_coa_nas_addr(struct radmsg *msg, struct sockaddr_storage *out);

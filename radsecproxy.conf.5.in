@@ -352,7 +352,14 @@ reaches the NAS after a reconnection, from a new address too. A fleet of NASes o
 certificate gets one value per NAS because each sends its own NAS-Identifier; two
 NASes on one certificate sending the same NAS-Identifier share a value and the one
 that sent a request most recently gets the request, which is logged as a warning
-when seen. Without this option the value is random per connection.
+when seen. A NAS that names itself one way in authentication and another in
+accounting (NAS-Identifier in one, only its address in the other) has a value per
+name; the connection keeps every value it was named by and a request carrying any of
+them reaches it. A udp client is named by the address it reports in NAS-IP-Address or
+NAS-IPv6-Address, else the address its requests come from, so a request that carries
+that address finds the block; a udp NAS behind NAT is reached at the address its
+requests come from, and a request has to carry that one. Without this
+option the value is random per connection and stays so for the life of the connection.
 The key must be at least 16 characters; keep it as secret as a shared secret.
 .RE
 
@@ -691,7 +698,7 @@ Add an Operator-NAS-Identifier (RFC 8559 section 3.4) naming this client to forw
 Access-Request and Accounting-Request that carry Operator-Name and no
 Operator-NAS-Identifier yet (default \fBoff\fR). A CoA-Request or Disconnect-Request
 returning with the attribute is routed to this client before the realm and NAS
-identity matching. The udp clients of one block share the value. The server that
+identity matching. A udp client's value follows the address it reports. The server that
 originates the request has to record the attribute with the session and include it
 verbatim (RFC 8559 section 4.1): a realm with more than one NAS and none named is
 answered with Error-Cause 403.
