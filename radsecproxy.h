@@ -251,6 +251,9 @@ struct client {
        the connection's, a tls writer holds it across a blocking write */
     pthread_mutex_t reverse_coa_lock;
     struct rqout *reverse_coa_rqs; /* allocated on the first reverse coa sent */
+    /* requests of this client that the dup cache let go of while a reverse coa in flight
+       still holds them as its origin; teardown clears their client pointer (removeclientrq_()) */
+    struct list *reverse_coa_origins;
     uint8_t reverse_coa_nextid;
     int reverse_coa_pending;
     struct reverse_coa_route *reverse_coa_route;
@@ -337,6 +340,8 @@ struct client *addclient(struct clsrvconf *conf, int sock,
                          const struct sockaddr *from, const char *identity, uint8_t lock);
 void removelockedclient(struct client *client);
 void removeclient(struct client *client);
+void removeclientrq(struct client *client, int i);
+void removeclientrqs(struct client *client);
 pthread_mutex_t *removeclientrqs_sendrq_freeserver_lock(void);
 struct gqueue *newqueue(void);
 struct request *newrequest(void);

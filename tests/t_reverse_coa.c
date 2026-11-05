@@ -6,6 +6,7 @@
 #include "../debug.h"
 #include "../list.h"
 #include "../radmsg.h"
+#include "../radmsgcrypto.h"
 #include "../radsecproxy.h"
 #include "../reverse_coa.h"
 #include "../udp.h"
@@ -475,6 +476,69 @@ int main(int argc, char *argv[]) {
         reverse_coa_expire_client(client);
         test_ok(!client_has_pending_reverse_coa(client) && !client->reverse_coa_rqs[200].rq, "expired slot cleared by the sweep");
         freeclient(client);
+    }
+
+    /* a client's request the dup cache let go of while a reverse coa still holds it as
+       origin: kept on the client until teardown clears its client pointer */
+    {
+        struct client *c = newclient("gone", NULL, NULL, "192.0.2.199");
+        struct request *rq = newrequest(), *held;
+
+        rq->from = c;
+        rq->rqid = 7;
+        c->rqs[7] = newrqref(rq);
+        held = newrqref(rq); /* the reverse coa's origin reference */
+        freerq(rq);          /* the creator's */
+        removeclientrq(c, 7); /* the dup cache purge */
+        test_ok(!c->rqs[7] && held->from == c && c->reverse_coa_origins && list_first(c->reverse_coa_origins), "purged but kept while a reverse coa holds it");
+        removeclientrqs(c); /* teardown */
+        test_ok(held->from == NULL && !c->reverse_coa_origins, "teardown cleared the client pointer");
+        freerq(held);
+        freeclient(c);
+    }
+
+    /* tunnel-password obfuscated under the server's secret is readable at the nas under its own */
+    {
+        struct server *s2 = newserver("hub2");
+        struct client *n2 = newclient("nas2", "nas-7", literalrealm, "192.0.2.77");
+        struct request *rq;
+        struct radmsg *msg, *back;
+        struct tlv *attr;
+        uint8_t zero16[16] = {0}, plain[16], value[3 + 16];
+
+        s2->conf->secret = (uint8_t *)"server-secret";
+        s2->conf->secret_len = 13;
+        memset(plain, 0, sizeof(plain));
+        plain[0] = 8;
+        memcpy(plain + 1, "password", 8);
+        value[0] = 0;
+        value[1] = 0x80;
+        value[2] = 0x01;
+        memcpy(value + 3, plain, sizeof(plain));
+        pwdcrypt(1, value + 3, sizeof(plain), s2->conf->secret, s2->conf->secret_len, zero16, value + 1, 2);
+        msg = request(RAD_CoA_Request, 93, "1example.com", "nas-7");
+        radmsg_add(msg, maketlv(RAD_Attr_Tunnel_Password, sizeof(value), value), 0);
+        test_eq(0, dispatch(s2, msg), "coa with a tunnel-password sent to the nas");
+        rq = queued(n2);
+        back = sentmsg(rq);
+        attr = back ? radmsg_gettype(back, RAD_Attr_Tunnel_Password) : NULL;
+        test_ok(attr && attr->l == sizeof(value) &&
+                    pwdcrypt(0, attr->v + 3, sizeof(plain), secret, secretlen, zero16, attr->v + 1, 2) &&
+                    !memcmp(attr->v + 3, plain, sizeof(plain)),
+                "tunnel-password readable at the nas under the nas's secret");
+        radmsg_free(back);
+        freerq(rq);
+
+        /* a retry for a client that has gone is not sent at all */
+        rq = newrequest();
+        rq->from = NULL;
+        msg = request(RAD_CoA_Request, 94, "1example.com", "nas-7");
+        test_eq(RAD_Err_Request_Not_Routable, _internal_dispatch_reverse_coa(NULL, rq, msg), "client gone: not routed");
+        test_ok(!queued(n2), "nothing sent to the nas for it");
+        radmsg_free(msg);
+        freerq(rq);
+        freeclient(n2);
+        freeserver(s2);
     }
 
     server = newserver("hub");

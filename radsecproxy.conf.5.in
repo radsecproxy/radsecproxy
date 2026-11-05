@@ -574,8 +574,8 @@ receives a new request within a few seconds of a previous one, it may be treated
 the same if from the same client, with the same authenticator etc. The proxy
 will then ignore the new request (if it is still processing the previous one),
 or returned a copy of the previous reply. On a client with \fBacceptCoA\fR this is also
-the window for a stale Event-Timestamp, set it to 300 there (see \fBCOA/DISCONNECT
-ROUTING\fR).
+the window for a stale Event-Timestamp; set it to the maximum there, 255 (the option is
+limited to 255 seconds, RFC 5176 suggests 300; see \fBCOA/DISCONNECT ROUTING\fR).
 .RE
 
 .BI "IdleTimeout " seconds
@@ -1152,16 +1152,18 @@ carries at most 256 reverse CoA requests in flight, one RADIUS Identifier space;
 beyond that is answered 505. A request from a server whose \fBTTLAttribute\fR is
 exhausted is answered 502.
 
-At the NAS (a udp client, or one with \fBNASidentifier\fR) Operator-Name and
+At the NAS (a udp client, or one with \fBNASidentifier\fR or \fBaddOperatorNASIdentifier\fR)
+Operator-Name and
 Operator-NAS-Identifier are removed and NAS identification added if missing (RFC 8559
 section 4.2). The response answers the originating server or client; after
-\fBReverseCoATimeout\fR without one the request is dropped. Event-Timestamp, when
+\fBReverseCoATimeout\fR without one the request goes to the next candidate, if any,
+else is answered 502 (see \fBReverseCoATimeout\fR). Event-Timestamp, when
 present, must be within \fBDuplicateInterval\fR of the proxy clock for a request from a
 client and within 300 seconds for one from a server (RFC 5176 section 6.3, which wants
 the window the same as the one for duplicate detection and suggests 300 seconds). Set
-\fBDuplicateInterval\fR to 300 on a client block with \fBacceptCoA\fR: at the default
-10 seconds a request the sender repeats with its Event-Timestamp kept, as the RFC says
-it should, is discarded.
+\fBDuplicateInterval\fR to its maximum, 255, on a client block with \fBacceptCoA\fR (the
+option is limited to 255 seconds): at the default 10 seconds a request the sender repeats
+with its Event-Timestamp kept, as the RFC says it should, is discarded.
 
 .SH "TLS BLOCK"
 .nf

@@ -284,8 +284,21 @@ pthread_mutex_t *removeclientrqs_sendrq_freeserver_lock(void) {
     return &lock;
 }
 
+/* another holder than the client's table: a reverse coa in flight with it as origin, or
+   the reply queue for a moment */
+static int rq_referenced(struct request *rq) {
+    int held;
+
+    pthread_mutex_lock(&rq->refmutex);
+    held = rq->refcount > 1;
+    pthread_mutex_unlock(&rq->refmutex);
+    return held;
+}
+
 /* teardown: the client goes, so a reverse coa in flight that still holds the request
-   must not answer it; a dup cache purge leaves the client, and the reference, intact */
+   must not answer it. a dup cache purge leaves the client: a request still held is moved
+   to client->reverse_coa_origins, where teardown finds it; purgedupcache() frees it once
+   nothing else holds it */
 static void removeclientrq_(struct client *client, int i, int teardown) {
     struct request *rq;
     struct rqout *rqout;
@@ -305,6 +318,15 @@ static void removeclientrq_(struct client *client, int i, int teardown) {
     client->rqs[i] = NULL;
     if (teardown)
         rq->from = NULL;
+    else if (rq_referenced(rq)) {
+        if (!client->reverse_coa_origins)
+            client->reverse_coa_origins = list_create();
+        if (client->reverse_coa_origins && list_push(client->reverse_coa_origins, rq)) {
+            pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
+            return;
+        }
+        rq->from = NULL; /* no memory to keep it: the late answer is dropped, not the client touched */
+    }
     freerq(rq);
     pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
 }
@@ -314,10 +336,21 @@ void removeclientrq(struct client *client, int i) {
 }
 
 void removeclientrqs(struct client *client) {
+    struct request *rq;
     int i;
 
     for (i = 0; i < MAX_REQUESTS; i++)
         removeclientrq_(client, i, 1);
+    pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
+    if (client->reverse_coa_origins) {
+        while ((rq = (struct request *)list_shift(client->reverse_coa_origins))) {
+            rq->from = NULL;
+            freerq(rq);
+        }
+        list_free(client->reverse_coa_origins);
+        client->reverse_coa_origins = NULL;
+    }
+    pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
 }
 
 void removelockedclient(struct client *client) {
@@ -1264,6 +1297,7 @@ struct request *newrequest(void) {
 static void
 purgedupcache(struct client *client) {
     struct request *r;
+    struct list_node *node, *next;
     struct timeval now;
     int i;
 
@@ -1274,6 +1308,19 @@ purgedupcache(struct client *client) {
             removeclientrq(client, i);
         }
     }
+    /* purged requests a reverse coa no longer holds */
+    pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
+    if (client->reverse_coa_origins) {
+        for (node = list_first(client->reverse_coa_origins); node; node = next) {
+            next = list_next(node);
+            r = (struct request *)node->data;
+            if (!rq_referenced(r)) {
+                list_removedata(client->reverse_coa_origins, r);
+                freerq(r);
+            }
+        }
+    }
+    pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
 }
 
 int addclientrq(struct request *rq) {

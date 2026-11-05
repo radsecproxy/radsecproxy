@@ -412,11 +412,15 @@ same whatever the number of sessions; a plain list cost a full walk per
 request at the limit, under the one lock every request takes.
 The token is random, made in addclient() per connection or per udp block.
 
-Locks, in the order they are taken: the client conf lock, the registry
-lock (realm_reverse_coa_lock), a route's refmutex, the global request
-lock, the client's reverse coa lock (client->reverse_coa_lock: the
-slots, the tokens, what the connection was seen to say), the reply
-queue. The client lock proper is the connection's i/o lock, which a tls
+Locks, in the order they are taken: the client conf lock, the global
+request lock (removeclientrqs_sendrq_freeserver_lock()), the registry
+lock (realm_reverse_coa_lock), the server's reverse coa lock (the dedup
+slots), a route's refmutex, the client's reverse
+coa lock (client->reverse_coa_lock: the slots, the tokens, what the
+connection was seen to say), the reply queue. A request dispatched from
+a server takes no global lock; the expiry and retry paths hold it before
+a route's refmutex, and nothing takes the registry lock or a refmutex
+before the global lock. The client lock proper is the connection's i/o lock, which a tls
 writer holds across a blocking write; reverse coa code never takes it,
 so a thread holding the global or a conf lock never waits on a stuck
 peer. A route is a refcounted handle to a client; unregistering
@@ -432,8 +436,15 @@ request expires. A client torn down with requests in flight hands them
 to the expiry path at once (reverse_coa_abandon_client()), and an answer
 that matches nothing in flight is dropped in radsrv() before decoding,
 so a late or repeated one does not close a tls client's connection.
-A udp client entry with a request pending is never swept. A request not
-answered within reverseCoATimeout is dropped with a notice and the
-originator hears nothing; a retransmission of a request still in flight
+A client's own request that the dup cache let go of while a reverse coa
+still holds it as origin stays on the client's reverse_coa_origins list,
+so that teardown can clear its client pointer and a late answer or 502
+finds no client rather than a freed one (removeclientrq_()); a retry
+for a client that has gone is not sent. A udp client entry with a
+reverse coa in flight to it is never swept; one that only originated a
+request is swept 60 s after its last packet like any other, and its
+answer is then dropped. A request not
+answered within reverseCoATimeout goes to the next candidate or is
+answered 502, as above; a retransmission of a request still in flight
 is sent again to a udp or dtls client, a cached answer is replayed. A
 request is never sent back to the client it came from.

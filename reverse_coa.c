@@ -1105,6 +1105,7 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
     uint8_t newid;
     int attempts, replybuflen;
     int final_hop = reverse_coa_final_hop(to_client);
+    struct clsrvconf *fromconf;
 
     if (!to_client->reverse_coa_route) {
         debug(DBG_WARN, "send_coa_to_client: client %s not configured for reverse coa", to_client->conf->name);
@@ -1119,6 +1120,20 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
     copy = radmsg_dup(msg);
     if (!copy) {
         debug(DBG_ERR, "send_coa_to_client: malloc failed");
+        return RAD_Err_Other_Proxy_Processing_Error;
+    }
+    /* nobody to answer: a retry for a client that has gone is not sent. tunnel-password
+       and the like are obfuscated under the previous hop's secret */
+    fromconf = from_server ? from_server->conf : origin && origin->from ? origin->from->conf : NULL;
+    if (!fromconf) {
+        debug(DBG_INFO, "send_coa_to_client: client that sent %s (id %d) is gone, not sent to client %s",
+              radmsgtype2string(msg->code), msg->id, to_client->conf->name);
+        radmsg_free(copy);
+        return RAD_Err_Request_Not_Routable;
+    }
+    if (recryptrequestattrs(copy, fromconf, to_client->conf, msg->auth) < 1) {
+        debug(DBG_WARN, "send_coa_to_client: reencrypting attributes for client %s failed", to_client->conf->name);
+        radmsg_free(copy);
         return RAD_Err_Other_Proxy_Processing_Error;
     }
     if (final_hop) {
