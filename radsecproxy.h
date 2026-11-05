@@ -341,6 +341,7 @@ struct request *newrqref(struct request *rq);
 int sendreply(struct request *rq);
 int ensuremsgauthfront(struct radmsg *msg);
 void freerq(struct request *rq);
+int checkttl(struct radmsg *msg, uint32_t *attrtype);
 int radsrv(struct request *rq);
 int msgauthrequired(const struct clsrvconf *conf, struct radmsg *msg);
 int recryptrequestattrs(struct radmsg *msg, struct clsrvconf *from, struct clsrvconf *to, uint8_t *rqauth);

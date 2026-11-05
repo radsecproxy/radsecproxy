@@ -1436,7 +1436,7 @@ int radsrv(struct request *rq) {
         break;
     case RSP_RADMSG_AUTH_UNKNOWN:
     default:
-        debug(DBG_ERR, "radsrv: unknown/unhandled authenticator state, this is likely a bug!");
+        debug_limit(DBG_ERR, "radsrv: unknown/unhandled authenticator state, this is likely a bug!");
         radmsg_free(msg);
         freerq(rq);
         return 0;
@@ -1821,7 +1821,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         break;
     case RSP_RADMSG_AUTH_UNKNOWN:
     default:
-        debug(DBG_ERR, "radsrv: unknown/unhandled authenticator state, this is likely a bug!");
+        debug_limit(DBG_ERR, "radsrv: unknown/unhandled authenticator state, this is likely a bug!");
         goto errunlock;
     }
 
@@ -2323,6 +2323,16 @@ void createlistener(uint8_t type, char *arg) {
 
     debug(DBG_WARN, "createlistener: listening for %s on %s:%s", protodefs[type]->name, hp->host ? hp->host : "*", hp->port);
     freehostport(hp);
+}
+
+/* once a second: reverse coa requests whose answer is overdue go to the next candidate
+   or are answered 502, see reverse_coa_expire_clients() */
+static void *reverse_coa_sweeper(void *arg) {
+    for (;;) {
+        sleep(1);
+        reverse_coa_expire_clients(clconfs);
+    }
+    return NULL;
 }
 
 void createlisteners(uint8_t type) {
@@ -3921,7 +3931,7 @@ int createpidfile(const char *pidfile) {
 }
 
 int radsecproxy_main(int argc, char **argv) {
-    pthread_t sigth;
+    pthread_t sigth, sweepth;
     sigset_t sigset;
     size_t stacksize;
     struct list_node *entry;
@@ -4037,6 +4047,9 @@ int radsecproxy_main(int argc, char **argv) {
         if (find_clconf_type(i, NULL))
             createlisteners(i);
     }
+    reverse_coa_setttl(options.ttlattrtype);
+    if (pthread_create(&sweepth, &pthread_attr, reverse_coa_sweeper, NULL))
+        debugx(1, DBG_ERR, "pthread_create failed: reverse coa sweeper");
 
     debug(DBG_INFO, "radsecproxy startup complete");
 

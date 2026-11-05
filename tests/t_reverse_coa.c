@@ -185,6 +185,11 @@ static int dispatch(struct server *server, struct radmsg *msg) {
     return result;
 }
 
+/* the packet queued for a client, decoded: sendreply() frees the message once encoded */
+static struct radmsg *sentmsg(struct request *rq) {
+    return rq && rq->replybuf ? buf2radmsg(rq->replybuf, rq->replybuflen, secret, secretlen, NULL) : NULL;
+}
+
 /* the request queued for the client, NULL if none */
 static struct request *queued(struct client *client) {
     return (struct request *)list_shift(client->replyq->entries);
@@ -464,7 +469,9 @@ int main(int argc, char *argv[]) {
         client->reverse_coa_pending = 1;
         test_ok(client_has_pending_reverse_coa(client), "pending set");
         client->reverse_coa_rqs[200].expiry.tv_sec = time(NULL) - 30;
-        test_ok(!client_has_pending_reverse_coa(client) && !client->reverse_coa_rqs[200].rq, "expired slot cleared");
+        test_ok(client_has_pending_reverse_coa(client), "an overdue request still counts until the sweep");
+        reverse_coa_expire_client(client);
+        test_ok(!client_has_pending_reverse_coa(client) && !client->reverse_coa_rqs[200].rq, "expired slot cleared by the sweep");
         freeclient(client);
     }
 
@@ -652,6 +659,13 @@ int main(int argc, char *argv[]) {
                 test_eq(0, dispatch(server, msg), "token on two connections, none named");
                 rq = queued(site_a2);
                 test_ok(rq != NULL, "delivered on the connection that spoke last");
+                {
+                    struct radmsg *wire = sentmsg(rq);
+                    struct tlv *ni = wire ? radmsg_gettype(wire, RAD_Attr_NAS_Identifier) : NULL;
+
+                    test_ok(ni && ni->l == 6 && !memcmp(ni->v, "site-a", 6), "named by the nas-identifier it sent, not the regexp");
+                    radmsg_free(wire);
+                }
                 freerq(rq);
                 test_ok(queued(site_a) == NULL, "not on the lingering one");
 
@@ -852,6 +866,36 @@ int main(int argc, char *argv[]) {
             freerq(rq);
             freerq(rq2);
 
+            /* no answer from the first proxy: at expiry the next candidate gets a fresh
+               request; no answer from the last: 502 to the server, cached for its
+               retransmissions */
+            msg = request(RAD_CoA_Request, 47, "1example.com", "nas-9");
+            memcpy(auth, msg->auth, 16);
+            len = radmsg2buf(msg, secret, secretlen, &buf);
+            sentcount = 0;
+            test_ok(try_handle_reverse_coa_request(server, buf, len) && !sentcount, "sent to the first proxy");
+            rq = queued(p1);
+            test_ok(rq != NULL, "the first proxy has it");
+            p1->reverse_coa_rqs[rq ? rq->newid : 0].expiry.tv_sec = time(NULL) - 1;
+            reverse_coa_expire_client(p1);
+            rq2 = queued(p2);
+            test_ok(rq2 && rq2->rqid == 47 && rq2->to == server && !sentcount, "at expiry the second proxy gets a fresh request, nothing relayed");
+            test_ok(_internal_reverse_coa_route_target(server->reverse_coa_seen[47].route) == p2, "retransmissions follow it");
+            p2->reverse_coa_rqs[rq2 ? rq2->newid : 0].expiry.tv_sec = time(NULL) - 1;
+            reverse_coa_expire_client(p2);
+            test_ok(sentcount == 1, "no candidate left: answered");
+            back = buf2radmsg(sentbuf, sentlen, secret, secretlen, auth);
+            test_ok(back && back->code == RAD_CoA_NAK && back->id == 47, "with a nak under the original id");
+            {
+                struct tlv *ec = back ? radmsg_gettype(back, RAD_Attr_Error_Cause) : NULL;
+                test_ok(ec && ec->l == 4 && tlv2longint(ec) == RAD_Err_Request_Not_Routable, "error-cause 502");
+            }
+            radmsg_free(back);
+            test_ok(server->reverse_coa_seen[47].replybuf != NULL, "the nak is cached for a retransmission");
+            freerq(rq);
+            freerq(rq2);
+            radmsg_free(msg);
+
             /* switched off: the first answer is the answer */
             reverse_coa_setretry(0);
             msg = request(RAD_CoA_Request, 45, "1example.com", "nas-9");
@@ -869,6 +913,71 @@ int main(int argc, char *argv[]) {
             freeclient(s1);
             freeclient(p2);
             freeclient(p1);
+        }
+
+        /* a block declaring two realm values that both match is one candidate, not two */
+        {
+            char *tworealms[] = {"dup.example", "/^dup/", NULL};
+            struct client *p3 = newclienttype(RAD_TLS, "p3", NULL, tworealms, "192.0.2.73");
+            struct radmsg *nak;
+
+            msg = request(RAD_CoA_Request, 48, "1dup.example", "nas-9");
+            test_eq(0, dispatch(server, msg), "sent to the twice-registered proxy");
+            rq = queued(p3);
+            test_ok(rq != NULL, "it has the request");
+            nak = radmsg_init(RAD_CoA_NAK, rq ? rq->newid : 0, NULL);
+            radmsg_add(nak, make_error_cause_tlv(RAD_Err_Request_Not_Routable), 0);
+            sentcount = 0;
+            test_ok(forward_coa_response(p3, nak) && sentcount == 1 && !queued(p3), "its 502 is relayed, not sent back to it");
+            radmsg_free(nak);
+            freerq(rq);
+            freeclient(p3);
+        }
+
+        /* a tls nas without NASidentifier but with addOperatorNASIdentifier is the nas:
+           the operator attributes are stripped and it is named by its address */
+        {
+            char *hoprealm[] = {"hop.example", NULL};
+            struct client *plain = newclienttype(RAD_TLS, "plain-nas", NULL, hoprealm, "192.0.2.90");
+
+            plain->conf->add_operator_nas_id = 1;
+            strcpy(plain->token, "abcdefabcdef0123");
+            msg = request(RAD_CoA_Request, 49, "1hop.example", NULL);
+            radmsg_add(msg, makeexttlv(RAD_ExtAttr_Operator_NAS_Identifier, REVERSE_COA_TOKEN_LEN, plain->token), 0);
+            test_eq(0, dispatch(server, msg), "the value names the plain nas");
+            rq = queued(plain);
+            {
+                struct radmsg *wire = sentmsg(rq);
+
+                test_ok(wire && !radmsg_gettype(wire, RAD_Attr_Operator_Name) && !radmsg_getexttype(wire, RAD_ExtAttr_Operator_NAS_Identifier), "operator attributes stripped before the nas");
+                test_ok(wire && radmsg_gettype(wire, RAD_Attr_NAS_IP_Address), "named by its address");
+                radmsg_free(wire);
+            }
+            freerq(rq);
+            freeclient(plain);
+        }
+
+        /* a udp nas behind nat: the value names it; the request carries the address the
+           nas reports, delivery goes to the address its requests come from */
+        {
+            char *natrealm[] = {"nat.example", NULL};
+            struct client *natnas = newclienttype(RAD_UDP, "natblock", NULL, natrealm, "198.51.100.7");
+            struct radmsg *acct = request(RAD_Accounting_Request, 5, NULL, NULL);
+            uint8_t priv[4] = {10, 0, 0, 5};
+
+            reverse_coa_settokenkey("sixteen-char-key");
+            radmsg_add(acct, maketlv(RAD_Attr_NAS_IP_Address, 4, priv), 0);
+            learn_nas_identity(natnas, acct);
+            radmsg_free(acct);
+            msg = request(RAD_CoA_Request, 50, "1nat.example", NULL);
+            radmsg_add(msg, makeexttlv(RAD_ExtAttr_Operator_NAS_Identifier, REVERSE_COA_TOKEN_LEN, natnas->token), 0);
+            radmsg_add(msg, maketlv(RAD_Attr_NAS_IP_Address, 4, priv), 0);
+            test_eq(0, dispatch(server, msg), "udp nas behind nat reached by its value");
+            rq = queued(natnas);
+            test_ok(rq != NULL, "delivered to the entry");
+            freerq(rq);
+            freeclient(natnas);
+            reverse_coa_settokenkey(NULL);
         }
 
         /* never back to the sender */

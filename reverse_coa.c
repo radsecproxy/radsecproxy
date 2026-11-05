@@ -63,6 +63,8 @@ static int reverse_coa_retry_403 = 0; /* a hub walks a realm on 403 too (Reverse
 
 void reverse_coa_setretry(int on) { reverse_coa_retry = on; }
 void reverse_coa_setretry403(int on) { reverse_coa_retry_403 = on; }
+static uint32_t *reverse_coa_ttlattr = NULL; /* the TTLAttribute, checked on a request from a server (checkttl()) */
+void reverse_coa_setttl(uint32_t *attrtype) { reverse_coa_ttlattr = attrtype; }
 
 /* takes over the references in routes[0..n); NULL when out of memory, the references
    then still belong to the caller */
@@ -479,7 +481,8 @@ void unregister_reverse_coa_client(struct client *client) {
     pthread_mutex_unlock(&route->refmutex);
 }
 
-static void expire_reverse_coa_rqs(struct client *client);
+static void collect_expired_reverse_coa_rqs(struct client *client, struct list *expired);
+static void handle_expired_reverse_coa(struct list *expired);
 static int client_carries_token(struct client *client, const char *token);
 
 /* client->lock held */
@@ -499,7 +502,6 @@ int client_has_pending_reverse_coa(struct client *client) {
     if (!client || !client->reverse_coa_rqs)
         return 0;
     pthread_mutex_lock(&client->lock);
-    expire_reverse_coa_rqs(client);
     pending = client->reverse_coa_pending > 0;
     pthread_mutex_unlock(&client->lock);
     return pending;
@@ -897,7 +899,38 @@ void strip_operator_attrs(struct radmsg *msg) {
     }
 }
 
-/* rfc 8559 4.2: the packet sent to the nas names it, by NASidentifier or by address */
+/* a nas on a NASidentifier /regexp/ block is named by what it last sent, the
+   NAS-Identifier it uses or the address it reports (learn_nas_identity()); the regexp
+   itself names nothing. returns 1 with attr set when something was learned */
+static int learned_nas_identification(struct client *to, struct tlv **attr) {
+    struct sockaddr_storage addr;
+    char id[256];
+    uint8_t len;
+    int has_addr;
+
+    if (!to->conf->nas_identifier_regex)
+        return 0;
+    pthread_mutex_lock(&to->lock);
+    len = to->nas_identifier_seen_len;
+    if (len)
+        memcpy(id, to->nas_identifier_seen, len);
+    has_addr = to->nas_addr_seen_set;
+    if (has_addr)
+        memcpy(&addr, &to->nas_addr_seen, sizeof(addr));
+    pthread_mutex_unlock(&to->lock);
+    if (len)
+        *attr = maketlv(RAD_Attr_NAS_Identifier, len, id);
+    else if (has_addr && addr.ss_family == AF_INET)
+        *attr = maketlv(RAD_Attr_NAS_IP_Address, 4, &((struct sockaddr_in *)&addr)->sin_addr);
+    else if (has_addr && addr.ss_family == AF_INET6)
+        *attr = maketlv(RAD_Attr_NAS_IPv6_Address, 16, &((struct sockaddr_in6 *)&addr)->sin6_addr);
+    else
+        return 0;
+    return 1;
+}
+
+/* rfc 8559 4.2: the packet sent to the nas names it, by NASidentifier, by what a
+   /regexp/ block learned, or by address */
 static int add_nas_identification(struct client *to, struct radmsg *msg) {
     struct tlv *attr = NULL;
     struct sockaddr_in6 *sin6;
@@ -905,8 +938,10 @@ static int add_nas_identification(struct client *to, struct radmsg *msg) {
     if (radmsg_gettype(msg, RAD_Attr_NAS_Identifier) || radmsg_gettype(msg, RAD_Attr_NAS_IP_Address) ||
         radmsg_gettype(msg, RAD_Attr_NAS_IPv6_Address))
         return 1;
-    if (to->conf->nas_identifier)
+    if (to->conf->nas_identifier && !to->conf->nas_identifier_regex)
         attr = maketlv(RAD_Attr_NAS_Identifier, strlen(to->conf->nas_identifier), to->conf->nas_identifier);
+    else if (learned_nas_identification(to, &attr))
+        ;
     else if (to->addr && to->addr->sa_family == AF_INET)
         attr = maketlv(RAD_Attr_NAS_IP_Address, 4, &((struct sockaddr_in *)to->addr)->sin_addr);
     else if (to->addr && to->addr->sa_family == AF_INET6) {
@@ -924,12 +959,17 @@ static int add_nas_identification(struct client *to, struct radmsg *msg) {
     return 1;
 }
 
-/* a client with NASidentifier is the nas, as is any udp client; the others are proxies */
+/* a client with NASidentifier or addOperatorNASIdentifier is the nas, as is any udp
+   client; the others are proxies */
 static int reverse_coa_final_hop(struct client *client) {
-    return client->conf->type == RAD_UDP || client->conf->nas_identifier != NULL;
+    return client->conf->type == RAD_UDP || client->conf->nas_identifier != NULL || client->conf->add_operator_nas_id;
 }
 
-static void expire_reverse_coa_rqs(struct client *client) {
+/* moves the requests whose answer is overdue out of the client's slots into expired, for
+   handle_expired_reverse_coa() once the caller holds no client or route lock: each is
+   tried on the next candidate of its plan or answered 502. the slot is freed here, so
+   the id is available again at once. the caller holds client->lock */
+static void collect_expired_reverse_coa_rqs(struct client *client, struct list *expired) {
     struct timeval now;
     struct rqout *rqout;
     int i;
@@ -940,9 +980,19 @@ static void expire_reverse_coa_rqs(struct client *client) {
     for (i = 0; i < MAX_REQUESTS; i++) {
         rqout = &client->reverse_coa_rqs[i];
         if (rqout->rq && rqout->expiry.tv_sec > 0 && now.tv_sec > rqout->expiry.tv_sec) {
-            debug(DBG_NOTICE, "expire_reverse_coa_rqs: no answer to reverse coa request id %d from client %s, dropping",
+            if (!list_push(expired, rqout->rq)) {
+                debug(DBG_ERR, "expire_reverse_coa_rqs: malloc failed");
+                return;
+            }
+            /* sendreply() freed the message once encoded; the nak for the originator
+               needs its code and Proxy-State, decoded here while the client is held */
+            if (!rqout->rq->msg && rqout->rq->replybuf)
+                rqout->rq->msg = buf2radmsg(rqout->rq->replybuf, rqout->rq->replybuflen, client->conf->secret, client->conf->secret_len, NULL);
+            debug(DBG_NOTICE, "expire_reverse_coa_rqs: no answer to reverse coa request id %d from client %s",
                   i, client->conf->name);
-            clear_rqout(client, rqout);
+            client->reverse_coa_pending--;
+            rqout->rq = NULL;
+            memset(&rqout->expiry, 0, sizeof(struct timeval));
         }
     }
 }
@@ -1047,7 +1097,6 @@ static int send_coa_to_client(struct server *from_server, struct request *origin
         radmsg_free(copy);
         return RAD_Err_Other_Proxy_Processing_Error;
     }
-    expire_reverse_coa_rqs(to_client);
     for (attempts = 0; attempts < MAX_REQUESTS; attempts++) {
         newid = to_client->reverse_coa_nextid++;
         rqout = &to_client->reverse_coa_rqs[newid];
@@ -1163,6 +1212,7 @@ int reverse_coa_nas_addr(struct radmsg *msg, struct sockaddr_storage *out) {
    0 if not, -1 if the request carries neither */
 static int conf_nas_identifier_match(struct clsrvconf *conf, struct radmsg *msg) {
     struct tlv *attr;
+    char id[256];
     size_t len;
     int seen = 0;
 
@@ -1172,13 +1222,18 @@ static int conf_nas_identifier_match(struct clsrvconf *conf, struct radmsg *msg)
     attr = radmsg_gettype(msg, RAD_Attr_NAS_Identifier);
     if (attr) {
         seen = 1;
-        if (attr->l == len && !memcmp(attr->v, conf->nas_identifier, len))
+        if (conf->nas_identifier_regex) {
+            memcpy(id, attr->v, attr->l); /* at most 255 octets, the array holds 256 */
+            id[attr->l] = '\0';
+            if (!regexec(conf->nas_identifier_regex, id, 0, NULL, 0))
+                return 1;
+        } else if (attr->l == len && !memcmp(attr->v, conf->nas_identifier, len))
             return 1;
     }
     attr = radmsg_getexttype(msg, RAD_ExtAttr_Operator_NAS_Identifier);
     if (attr) {
         seen = 1;
-        if (attr->l == len + 1 && !memcmp(attr->v + 1, conf->nas_identifier, len))
+        if (!conf->nas_identifier_regex && attr->l == len + 1 && !memcmp(attr->v + 1, conf->nas_identifier, len))
             return 1;
     }
     return seen ? 0 : -1;
@@ -1328,7 +1383,7 @@ static int try_send_to_token_client(struct server *server, struct request *origi
             same = client_carries_token(candidate->target, token);
             seen = candidate->target->last_request;
             pthread_mutex_unlock(&candidate->target->lock);
-            if (same && (candidate->target->conf->type != RAD_UDP || !has_addr || addr_equal_ip(candidate->target->addr, (struct sockaddr *)&addr))) {
+            if (same) {
                 matches++;
                 if (match_nas_identifier(candidate->target, msg))
                     named = candidate;
@@ -1397,8 +1452,13 @@ static int try_send_to_realm_clients(struct server *server, struct request *orig
                             route->refcount++;
                         }
                     } else if (nproxies < MAX_REVERSE_COA_FAILOVER) {
-                        proxies[nproxies++] = route;
-                        route->refcount++;
+                        /* once, whatever the number of realm values the block declares */
+                        for (i = 0; i < nproxies && proxies[i] != route; i++)
+                            ;
+                        if (i == nproxies) {
+                            proxies[nproxies++] = route;
+                            route->refcount++;
+                        }
                     }
                 }
                 pthread_mutex_unlock(&route->refmutex);
@@ -1410,6 +1470,11 @@ static int try_send_to_realm_clients(struct server *server, struct request *orig
     if (nas) {
         debug(DBG_DBG, "try_send_to_realm_clients: realm %s, the nas named in the request is registered", realm);
         result = send_to_route(server, origin, nas, msg, sent, NULL);
+        if (!result) {
+            for (i = 0; i < nproxies; i++)
+                reverse_coa_route_deref(proxies[i]);
+            return 0;
+        }
     } else if (!nproxies)
         result = nases ? RAD_Err_NAS_Identification_Mismatch : RAD_Err_Request_Not_Routable;
     if (!nproxies)
@@ -1563,7 +1628,12 @@ static void route_reverse_coa(struct server *server, struct radmsg *msg) {
     int naklen = 0, result;
 
     record_coa_dedup(server, msg->id, msg->auth);
-    result = dispatch_reverse_coa(server, NULL, msg, &sent);
+    if (reverse_coa_ttlattr && !checkttl(msg, reverse_coa_ttlattr)) {
+        debug_limit(DBG_NOTICE, "route_reverse_coa: ttl exceeded in %s (id %d) from server %s",
+                    radmsgtype2string(msg->code), msg->id, server->conf->name);
+        result = RAD_Err_Request_Not_Routable;
+    } else
+        result = dispatch_reverse_coa(server, NULL, msg, &sent);
     if (!result) {
         record_coa_route(server, msg->id, msg->auth, &sent);
         radmsg_free(msg);
@@ -1629,8 +1699,9 @@ static void handle_reverse_coa_request(struct server *server, uint8_t *buf, int 
 
 /* answers the request a reverse coa response belongs to: the server it came from,
    or the client whose request was routed down a reverse coa route. returns 1 if
-   the response matched a pending request */
-int forward_coa_response(struct client *from, struct radmsg *msg) {
+   the response matched a pending request. the caller holds the global lock, under
+   which the originating server or client is freed, and deals with expired */
+static int answer_pending_request(struct client *from, struct radmsg *msg, struct list *expired) {
     struct rqout *rqout;
     struct request *origin;
     struct server *to_server;
@@ -1647,15 +1718,11 @@ int forward_coa_response(struct client *from, struct radmsg *msg) {
     if (!from->reverse_coa_rqs)
         return 0;
 
-    /* the originating server or client is freed under this lock, see freeserver()
-       and removeclientrq(); held until the answer is on its way */
-    pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
     pthread_mutex_lock(&from->lock);
-    expire_reverse_coa_rqs(from);
+    collect_expired_reverse_coa_rqs(from, expired);
     rqout = &from->reverse_coa_rqs[msg->id];
     if (!rqout->rq) {
         pthread_mutex_unlock(&from->lock);
-        pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
         debug_limit(DBG_INFO, "forward_coa_response: no pending reverse coa request with id %d from client %s, ignoring %s",
                     msg->id, from->conf->name, radmsgtype2string(msg->code));
         return 0;
@@ -1664,7 +1731,6 @@ int forward_coa_response(struct client *from, struct radmsg *msg) {
     if (msg->code != (sentcode == RAD_CoA_Request ? RAD_CoA_ACK : RAD_Disconnect_ACK) &&
         msg->code != (sentcode == RAD_CoA_Request ? RAD_CoA_NAK : RAD_Disconnect_NAK)) {
         pthread_mutex_unlock(&from->lock);
-        pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
         debug(DBG_INFO, "forward_coa_response: %s (id %d) from client %s does not answer the %s sent, ignoring",
               radmsgtype2string(msg->code), msg->id, from->conf->name, radmsgtype2string(sentcode));
         return 0;
@@ -1702,7 +1768,6 @@ int forward_coa_response(struct client *from, struct radmsg *msg) {
                 reverse_coa_route_deref(sent.route);
             if (origin)
                 freerq(origin); /* send_coa_to_client holds its own reference now */
-            pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
             return 1;
         }
     }
@@ -1750,14 +1815,163 @@ int forward_coa_response(struct client *from, struct radmsg *msg) {
             free(buf);
         }
     }
-    pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
     return 1;
+}
+
+int forward_coa_response(struct client *from, struct radmsg *msg) {
+    struct list *expired = list_create();
+    int result;
+
+    if (!expired) {
+        debug(DBG_ERR, "forward_coa_response: malloc failed");
+        return 0;
+    }
+    pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
+    result = answer_pending_request(from, msg, expired);
+    handle_expired_reverse_coa(expired);
+    pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
+    list_free(expired);
+    return result;
+}
+
+/* the requests collect_expired_reverse_coa_rqs() took out of their slots: one with
+   candidates left goes to the next, the others are answered 502 to the server or client
+   that sent them, as a request that cannot be forwarded is (draft reverse-coa section
+   6.1); the answer is cached for the originator's retransmissions. the caller holds the
+   global lock and no client or route lock */
+static void handle_expired_reverse_coa(struct list *expired) {
+    struct request *rq, *origin;
+    struct reverse_coa_plan *plan;
+    struct reverse_coa_sent sent;
+    struct server *to_server;
+    struct radmsg *msg, *reply;
+    uint8_t origid, origauth[16], *buf = NULL;
+    int radlen, retried;
+
+    while ((rq = (struct request *)list_shift(expired))) {
+        origin = rq->origin;
+        rq->origin = NULL;
+        plan = rq->plan;
+        rq->plan = NULL;
+        msg = rq->msg;
+        rq->msg = NULL;
+        to_server = rq->to;
+        origid = rq->rqid;
+        memcpy(origauth, rq->rqauth, 16);
+        freerq(rq);
+        retried = 0;
+        if (plan && reverse_coa_retry) {
+            sent.route = NULL;
+            sent.id = 0;
+            while (plan->next < plan->n) {
+                if (send_to_route(to_server, origin, plan->routes[plan->next++], plan->msg, &sent, plan))
+                    continue;
+                debug(DBG_INFO, "handle_expired_reverse_coa: request id %d tried on the next candidate after no answer", origid);
+                if (to_server)
+                    record_coa_route_opt(to_server, origid, origauth, &sent, 1);
+                else
+                    reverse_coa_route_deref(sent.route);
+                if (origin)
+                    freerq(origin); /* send_coa_to_client holds its own reference now */
+                retried = 1;
+                break;
+            }
+        }
+        if (!retried) {
+            reverse_coa_plan_free(plan);
+            if (msg) {
+                msg->id = origid;
+                memcpy(msg->auth, origauth, 16);
+            }
+            if (to_server && msg) {
+                debug(DBG_INFO, "handle_expired_reverse_coa: request id %d from server %s not answered, Error-Cause 502", origid, to_server->conf->name);
+                if (send_reverse_coa_nak(to_server, msg, RAD_Err_Request_Not_Routable, &buf, &radlen) && buf) {
+                    cache_coa_dedup_reply(to_server, origid, origauth, buf, radlen);
+                    free(buf);
+                    buf = NULL;
+                }
+            } else if (origin && msg) {
+                reply = radmsg_init(coa_nak_code(msg->code), origid, origauth);
+                if (reply && (!radmsg_add(reply, make_error_cause_tlv(RAD_Err_Request_Not_Routable), 0) ||
+                              radmsg_copy_attrs(reply, msg, RAD_Attr_Proxy_State) < 0 || !ensuremsgauthfront(reply))) {
+                    radmsg_free(reply);
+                    reply = NULL;
+                }
+                if (!reply) {
+                    debug(DBG_ERR, "handle_expired_reverse_coa: malloc failed");
+                    freerq(origin);
+                } else if (!origin->from) {
+                    debug(DBG_INFO, "handle_expired_reverse_coa: client that sent request id %d is gone", origid);
+                    radmsg_free(reply);
+                    freerq(origin);
+                } else {
+                    debug(DBG_INFO, "handle_expired_reverse_coa: request id %d from client %s not answered, Error-Cause 502", origid, origin->from->conf->name);
+                    radmsg_free(origin->msg);
+                    origin->msg = reply;
+                    if (sendreply(origin) < 1)
+                        debug(DBG_ERR, "handle_expired_reverse_coa: answering request id %d failed", origid);
+                }
+            } else if (origin)
+                freerq(origin);
+        }
+        radmsg_free(msg);
+    }
+}
+
+/* once a second from the sweeper thread, and whenever a client answers: the requests
+   whose answer is overdue. the lock order is the block's list, the global lock, the
+   client, as removeclient() and forward_coa_response() have it */
+void reverse_coa_expire_clients(struct list *clconfs) {
+    struct list_node *confentry, *cliententry;
+    struct clsrvconf *conf;
+    struct client *client;
+    struct list *expired;
+
+    for (confentry = list_first(clconfs); confentry; confentry = list_next(confentry)) {
+        conf = (struct clsrvconf *)confentry->data;
+        if (!conf || !conf->clients || !conf->lock)
+            continue;
+        pthread_mutex_lock(conf->lock);
+        for (cliententry = list_first(conf->clients); cliententry; cliententry = list_next(cliententry)) {
+            client = (struct client *)cliententry->data;
+            if (!client || !client->reverse_coa_rqs || !client->reverse_coa_pending)
+                continue;
+            expired = list_create();
+            if (!expired)
+                break;
+            pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
+            pthread_mutex_lock(&client->lock);
+            collect_expired_reverse_coa_rqs(client, expired);
+            pthread_mutex_unlock(&client->lock);
+            handle_expired_reverse_coa(expired);
+            pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
+            list_free(expired);
+        }
+        pthread_mutex_unlock(conf->lock);
+    }
+}
+
+/* one client, for the tests and for a udp entry about to be removed */
+void reverse_coa_expire_client(struct client *client) {
+    struct list *expired = list_create();
+
+    if (!expired)
+        return;
+    pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
+    pthread_mutex_lock(&client->lock);
+    collect_expired_reverse_coa_rqs(client, expired);
+    pthread_mutex_unlock(&client->lock);
+    handle_expired_reverse_coa(expired);
+    pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
+    list_free(expired);
 }
 
 void invalidate_reverse_coa_rqs_for_server(struct server *server, struct list *clconfs) {
     struct list_node *confentry, *cliententry;
     struct clsrvconf *conf;
     struct client *client;
+    struct request *rq;
+    struct list *gone = list_create(); /* freed once no lock is held: a plan holds route references */
     int i, cleaned = 0;
 
     for (confentry = list_first(clconfs); confentry; confentry = list_next(confentry)) {
@@ -1777,7 +1991,12 @@ void invalidate_reverse_coa_rqs_for_server(struct server *server, struct list *c
                 if (rqout->rq && rqout->rq->to == server) {
                     debug(DBG_DBG, "invalidate_reverse_coa_rqs_for_server: clearing request id %d from client %s (server %s disconnecting)",
                           i, client->conf->name, server->conf->name);
-                    clear_rqout(client, rqout);
+                    if (gone && list_push(gone, rqout->rq)) {
+                        client->reverse_coa_pending--;
+                        rqout->rq = NULL;
+                        memset(&rqout->expiry, 0, sizeof(struct timeval));
+                    } else
+                        clear_rqout(client, rqout);
                     cleaned++;
                 }
             }
@@ -1786,6 +2005,11 @@ void invalidate_reverse_coa_rqs_for_server(struct server *server, struct list *c
         pthread_mutex_unlock(conf->lock);
     }
 
+    if (gone) {
+        while ((rq = (struct request *)list_shift(gone)))
+            freerq(rq);
+        list_free(gone);
+    }
     if (cleaned > 0)
         debug(DBG_INFO, "invalidate_reverse_coa_rqs_for_server: cleared %d pending requests for server %s",
               cleaned, server->conf->name);
