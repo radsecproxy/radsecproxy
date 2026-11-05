@@ -247,6 +247,7 @@ struct client *addclient(struct clsrvconf *conf, int sock,
     else
         new->replyq = newqueue();
     pthread_mutex_init(&new->lock, NULL);
+    pthread_mutex_init(&new->reverse_coa_lock, NULL);
     if (conf->reverse_coa_realms || conf->nas_identifier || conf->add_operator_nas_id || conf->reverse_coa_sibling) {
         new->reverse_coa_route = reverse_coa_route_new(new);
         if (!new->reverse_coa_route) {
@@ -262,6 +263,7 @@ struct client *addclient(struct clsrvconf *conf, int sock,
 
 out_undo_client:
     pthread_mutex_destroy(&new->lock);
+    pthread_mutex_destroy(&new->reverse_coa_lock);
     /* udp clients share server_replyq, see addclientudp() */
     if (!conf->pdef->addclient)
         removequeue(new->replyq);
@@ -282,7 +284,9 @@ pthread_mutex_t *removeclientrqs_sendrq_freeserver_lock(void) {
     return &lock;
 }
 
-void removeclientrq(struct client *client, int i) {
+/* teardown: the client goes, so a reverse coa in flight that still holds the request
+   must not answer it; a dup cache purge leaves the client, and the reference, intact */
+static void removeclientrq_(struct client *client, int i, int teardown) {
     struct request *rq;
     struct rqout *rqout;
 
@@ -299,16 +303,21 @@ void removeclientrq(struct client *client, int i) {
         pthread_mutex_unlock(rqout->lock);
     }
     client->rqs[i] = NULL;
-    rq->from = NULL; /* a reverse coa in flight may still hold a reference */
+    if (teardown)
+        rq->from = NULL;
     freerq(rq);
     pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
+}
+
+void removeclientrq(struct client *client, int i) {
+    removeclientrq_(client, i, 0);
 }
 
 void removeclientrqs(struct client *client) {
     int i;
 
     for (i = 0; i < MAX_REQUESTS; i++)
-        removeclientrq(client, i);
+        removeclientrq_(client, i, 1);
 }
 
 void removelockedclient(struct client *client) {
@@ -322,9 +331,12 @@ void removelockedclient(struct client *client) {
         removequeue(client->replyq);
         reverse_coa_route_deref(client->reverse_coa_route);
         client->reverse_coa_route = NULL;
+        /* what is in flight to it goes to the next candidate or is answered 502 now */
+        reverse_coa_abandon_client(client);
         free_reverse_coa_rqs(client);
         list_removedata(conf->clients, client);
         pthread_mutex_destroy(&client->lock);
+        pthread_mutex_destroy(&client->reverse_coa_lock);
         free(client->addr);
         free(client->identity);
         free(client);
@@ -1406,9 +1418,17 @@ int radsrv(struct request *rq) {
     char tmp[INET6_ADDRSTRLEN];
     uint8_t rqauth[16], *rqauthp = NULL;
 
-    /* a reverse coa response is verified against the request we sent */
+    /* a reverse coa response is verified against the request we sent; one that answers
+       nothing in flight (late, repeated, unsolicited) is dropped here, as a decode
+       failure below would close a tls client's connection */
     if (lookup_reverse_coa_rqauth(from, rq->buf, rq->buflen, rqauth))
         rqauthp = rqauth;
+    else if (rq->buflen >= 2 && IS_COA_RESPONSE(rq->buf[0])) {
+        debug_limit(DBG_INFO, "radsrv: %s (id %d) from %s (%s) answers no reverse coa request in flight, ignoring",
+                    radmsgtype2string(rq->buf[0]), rq->buf[1], from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        freerq(rq);
+        return 1;
+    }
     msg = buf2radmsg(rq->buf, rq->buflen, from->conf->secret, from->conf->secret_len, rqauthp);
 
     if (!msg) {

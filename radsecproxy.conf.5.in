@@ -573,7 +573,9 @@ Specify for how many \fIseconds\fR duplicate checking should be done. If a proxy
 receives a new request within a few seconds of a previous one, it may be treated
 the same if from the same client, with the same authenticator etc. The proxy
 will then ignore the new request (if it is still processing the previous one),
-or returned a copy of the previous reply.
+or returned a copy of the previous reply. On a client with \fBacceptCoA\fR this is also
+the window for a stale Event-Timestamp, set it to 300 there (see \fBCOA/DISCONNECT
+ROUTING\fR).
 .RE
 
 .BI "IdleTimeout " seconds
@@ -662,8 +664,10 @@ up their state early and not having to wait for a timeout (default on).
 .BI "CoAPort " port
 .RS
 UDP \fIport\fR the client listens on for CoA-Request and Disconnect-Request (default
-3799). Reverse CoA for a udp client is sent there. Ignored for other transports, where
-it is sent on the existing connection.
+3799). Reverse CoA for a udp client is sent there, and sent again every 5 seconds until
+it is answered or \fBReverseCoATimeout\fR passes, as the transport does not retransmit
+(the same for a dtls client). Ignored for other transports, where it is sent once on
+the existing connection.
 .RE
 
 .BI "ReverseCoAOperatorRealm " realm
@@ -703,7 +707,8 @@ below this one is configured with \fBReverseCoAOperatorRealm\fR only, never \fBN
 Seconds to wait for a reverse CoA request to be answered (default 30, range 10-120).
 An unanswered request is tried on the next candidate, if any (see
 \fBReverseCoARetryOnNak\fR), else answered with Error-Cause 502 to the server or client
-that sent it, and the answer is kept for its retransmissions. At a hub, set it on the
+that sent it, and the answer is kept for its retransmissions; a request in flight on a
+connection that closes is treated the same at once. At a hub, set it on the
 blocks of the site's proxies to more than the value those proxies use for their sibling
 links, so that a site's 502 after an unanswered hand-over reaches a request the hub still
 holds and is what moves it to the next proxy; with both at the default, the hub's own
@@ -1152,7 +1157,11 @@ Operator-NAS-Identifier are removed and NAS identification added if missing (RFC
 section 4.2). The response answers the originating server or client; after
 \fBReverseCoATimeout\fR without one the request is dropped. Event-Timestamp, when
 present, must be within \fBDuplicateInterval\fR of the proxy clock for a request from a
-client and within 300 seconds for one from a server (RFC 5176 section 6.3).
+client and within 300 seconds for one from a server (RFC 5176 section 6.3, which wants
+the window the same as the one for duplicate detection and suggests 300 seconds). Set
+\fBDuplicateInterval\fR to 300 on a client block with \fBacceptCoA\fR: at the default
+10 seconds a request the sender repeats with its Event-Timestamp kept, as the RFC says
+it should, is discarded.
 
 .SH "TLS BLOCK"
 .nf

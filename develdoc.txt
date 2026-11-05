@@ -413,14 +413,25 @@ request at the limit, under the one lock every request takes.
 The token is random, made in addclient() per connection or per udp block.
 
 Locks, in the order they are taken: the client conf lock, the registry
-lock (realm_reverse_coa_lock), a route's refmutex, the client lock, the
-reply queue. A route is a refcounted handle to a client; unregistering
+lock (realm_reverse_coa_lock), a route's refmutex, the global request
+lock, the client's reverse coa lock (client->reverse_coa_lock: the
+slots, the tokens, what the connection was seen to say), the reply
+queue. The client lock proper is the connection's i/o lock, which a tls
+writer holds across a blocking write; reverse coa code never takes it,
+so a thread holding the global or a conf lock never waits on a stuck
+peer. A route is a refcounted handle to a client; unregistering
 sets its target to NULL under the refmutex, so a send in progress
 finishes before the client goes. forward_coa_response() holds the
 global request lock (removeclientrqs_sendrq_freeserver_lock()) from the
 slot read to the end of the send, as that is the lock the server and
 client teardown take. The binding table has its own lock.
 
+A udp or dtls client gets a request in flight again every
+REQUEST_RETRY_INTERVAL seconds from the sweeper until it answers or the
+request expires. A client torn down with requests in flight hands them
+to the expiry path at once (reverse_coa_abandon_client()), and an answer
+that matches nothing in flight is dropped in radsrv() before decoding,
+so a late or repeated one does not close a tls client's connection.
 A udp client entry with a request pending is never swept. A request not
 answered within reverseCoATimeout is dropped with a notice and the
 originator hears nothing; a retransmission of a request still in flight

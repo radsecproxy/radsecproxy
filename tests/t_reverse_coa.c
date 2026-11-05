@@ -106,6 +106,7 @@ static struct client *newclientfull(uint8_t type, char *name, char *nasid, char 
     client->addr = addr_copy((struct sockaddr *)&sin);
     client->identity = strdup(name);
     pthread_mutex_init(&client->lock, NULL);
+    pthread_mutex_init(&client->reverse_coa_lock, NULL);
     client->replyq = newqueue();
     client->reverse_coa_route = reverse_coa_route_new(client);
     register_reverse_coa_client(client);
@@ -131,6 +132,7 @@ static void freeclient(struct client *client) {
     reverse_coa_route_deref(client->reverse_coa_route);
     removequeue(client->replyq);
     pthread_mutex_destroy(&client->lock);
+    pthread_mutex_destroy(&client->reverse_coa_lock);
     free(client->addr);
     free(client->identity);
     list_free(client->conf->clients);
@@ -895,6 +897,89 @@ int main(int argc, char *argv[]) {
             freerq(rq);
             freerq(rq2);
             radmsg_free(msg);
+
+            /* the proxy holding the request goes away: the next candidate gets it at
+               once, not after the timeout; the last one going: 502 to the server */
+            msg = request(RAD_CoA_Request, 48, "1example.com", "nas-9");
+            memcpy(auth, msg->auth, 16);
+            len = radmsg2buf(msg, secret, secretlen, &buf);
+            sentcount = 0;
+            test_ok(try_handle_reverse_coa_request(server, buf, len) && !sentcount, "sent to the first proxy");
+            rq = queued(p1);
+            test_ok(rq != NULL && p1->reverse_coa_pending == 1, "the first proxy has it");
+            reverse_coa_abandon_client(p1);
+            test_ok(!p1->reverse_coa_pending && !p1->reverse_coa_rqs[rq ? rq->newid : 0].rq, "torn down: nothing left in flight to it");
+            rq2 = queued(p2);
+            test_ok(rq2 && rq2->rqid == 48 && rq2->to == server && !sentcount, "the second proxy gets it at once, nothing relayed");
+            test_ok(_internal_reverse_coa_route_target(server->reverse_coa_seen[48].route) == p2, "retransmissions follow it");
+            reverse_coa_abandon_client(p2);
+            test_ok(sentcount == 1 && !p2->reverse_coa_pending, "the last one torn down: answered");
+            back = buf2radmsg(sentbuf, sentlen, secret, secretlen, auth);
+            test_ok(back && back->code == RAD_CoA_NAK && back->id == 48, "with a nak under the original id");
+            {
+                struct tlv *ec = back ? radmsg_gettype(back, RAD_Attr_Error_Cause) : NULL;
+                test_ok(ec && ec->l == 4 && tlv2longint(ec) == RAD_Err_Request_Not_Routable, "error-cause 502");
+            }
+            radmsg_free(back);
+            test_ok(server->reverse_coa_seen[48].replybuf != NULL, "the nak is cached for a retransmission");
+            freerq(rq);
+            freerq(rq2);
+            radmsg_free(msg);
+            reverse_coa_abandon_client(p1);
+            test_ok(!p1->reverse_coa_pending, "nothing in flight: nothing to abandon");
+
+            /* a udp nas gets a request in flight again every 5 seconds until it answers
+               or the request expires; a tls proxy gets it once */
+            {
+                struct client *unas = newclient("unas", "nas-7", literalrealm, "192.0.2.77");
+                struct request *r1, *r2;
+                int id;
+
+                sentcount = 0;
+                test_eq(0, dispatch(server, request(RAD_CoA_Request, 90, "1example.com", "nas-7")), "sent to the udp nas");
+                r1 = queued(unas);
+                id = r1 ? r1->newid : 0;
+                test_ok(r1 && unas->reverse_coa_rqs[id].tries == 1 && !queued(unas), "one try so far");
+                reverse_coa_expire_client(unas);
+                test_ok(!queued(unas) && unas->reverse_coa_rqs[id].tries == 1, "not sent again within 5 s");
+                unas->reverse_coa_rqs[id].expiry.tv_sec -= 6;
+                reverse_coa_expire_client(unas);
+                r2 = queued(unas);
+                test_ok(r2 == r1 && unas->reverse_coa_rqs[id].tries == 2 && !queued(unas), "sent again after 5 s, the same packet, once");
+                if (r2)
+                    freerq(r2);
+                reverse_coa_expire_client(unas);
+                test_ok(!queued(unas) && unas->reverse_coa_rqs[id].tries == 2, "not again before another 5 s");
+                unas->reverse_coa_rqs[id].expiry.tv_sec -= 5;
+                reverse_coa_expire_client(unas);
+                r2 = queued(unas);
+                test_ok(r2 == r1 && unas->reverse_coa_rqs[id].tries == 3 && !sentcount, "third try after 10 s, nothing answered yet");
+                if (r2)
+                    freerq(r2);
+                unas->reverse_coa_rqs[id].expiry.tv_sec = time(NULL) - 1;
+                reverse_coa_expire_client(unas);
+                test_ok(!queued(unas) && !unas->reverse_coa_pending && sentcount == 1, "expired: not sent again, 502 to the server");
+                back = buf2radmsg(sentbuf, sentlen, secret, secretlen, NULL);
+                test_ok(back && back->code == RAD_CoA_NAK && back->id == 90, "nak under the original id");
+                radmsg_free(back);
+                freerq(r1);
+                freeclient(unas);
+
+                msg = request(RAD_CoA_Request, 91, "1example.com", "nas-9");
+                test_eq(0, dispatch(server, msg), "sent to the first proxy");
+                r1 = queued(p1);
+                id = r1 ? r1->newid : 0;
+                p1->reverse_coa_rqs[id].expiry.tv_sec -= 20;
+                reverse_coa_expire_client(p1);
+                test_ok(r1 && !queued(p1) && p1->reverse_coa_rqs[id].tries == 1, "a tls proxy gets it once");
+                reverse_coa_abandon_client(p1);
+                r2 = queued(p2);
+                freerq(r1);
+                if (r2) {
+                    reverse_coa_abandon_client(p2);
+                    freerq(r2);
+                }
+            }
 
             /* switched off: the first answer is the answer */
             reverse_coa_setretry(0);

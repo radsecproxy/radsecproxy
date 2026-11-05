@@ -247,6 +247,9 @@ struct client {
     struct sockaddr *addr;
     time_t expiry; /* for udp */
     struct timeval tlsnewkey;
+    /* guards the reverse coa fields below and is never held across i/o: lock above is
+       the connection's, a tls writer holds it across a blocking write */
+    pthread_mutex_t reverse_coa_lock;
     struct rqout *reverse_coa_rqs; /* allocated on the first reverse coa sent */
     uint8_t reverse_coa_nextid;
     int reverse_coa_pending;

@@ -166,12 +166,12 @@ struct client *findreversecoaclient(struct clsrvconf *p, int sock, struct sockad
         if (!addr_equal_ip(from, c->addr))
             continue;
 
-        pthread_mutex_lock(&c->lock);
+        pthread_mutex_lock(&c->reverse_coa_lock);
         if (c->reverse_coa_rqs[resp_id].rq) {
             memcpy(sentauth, c->reverse_coa_rqs[resp_id].sentauth, 16);
             have_sent = 1;
         }
-        pthread_mutex_unlock(&c->lock);
+        pthread_mutex_unlock(&c->reverse_coa_lock);
         if (!have_sent)
             continue;
 
