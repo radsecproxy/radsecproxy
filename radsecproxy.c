@@ -300,6 +300,7 @@ void removeclientrq(struct client *client, int i) {
         pthread_mutex_unlock(rqout->lock);
     }
     client->rqs[i] = NULL;
+    rq->from = NULL; /* a reverse coa in flight may still hold a reference */
     freerq(rq);
     pthread_mutex_unlock(removeclientrqs_sendrq_freeserver_lock());
 }
@@ -316,9 +317,10 @@ void removelockedclient(struct client *client) {
 
     conf = client->conf;
     if (conf->clients) {
+        /* first, so no reverse coa is sent to the client while it is torn down */
+        unregister_reverse_coa_client(client);
         removeclientrqs(client);
         removequeue(client->replyq);
-        unregister_reverse_coa_client(client);
         reverse_coa_route_deref(client->reverse_coa_route);
         client->reverse_coa_route = NULL;
         free_reverse_coa_rqs(client);
@@ -346,8 +348,6 @@ void freeserver(struct server *server, uint8_t destroymutex) {
 
     if (!server)
         return;
-
-    invalidate_reverse_coa_rqs_for_server(server, clconfs);
 
     pthread_mutex_lock(removeclientrqs_sendrq_freeserver_lock());
     if (server->requests) {
@@ -2222,6 +2222,7 @@ errexitwait:
 errexit:
     debug(DBG_DBG, "clientwr: server %s (%s) finished, cleaning up", server->conf->name,
           server->dynamiclookuparg ? server->dynamiclookuparg : "static");
+    invalidate_reverse_coa_rqs_for_server(server, clconfs);
     if (server->dynamiclookuparg) {
         removeserversubrealms(realms, conf);
         freeclsrvconf(conf);
@@ -2917,7 +2918,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         !mergeconfstring(&dst->fticks_visinst, src ? &src->fticks_visinst : NULL) ||
         !mergeconfstring(&dst->sniservername, src ? &src->sniservername : NULL) ||
         !mergeconfstring(&dst->servername, src ? &src->servername : NULL) ||
-        !mergeconfstring(&dst->nas_identifier, src ? &src->nas_identifier : NULL))
+        !mergeconfstring(&dst->nas_identifier, src ? &src->nas_identifier : NULL) ||
+        !mergeconfmstring(&dst->reverse_coa_realms, src ? &src->reverse_coa_realms : NULL))
         return 0;
 
     if (src) {

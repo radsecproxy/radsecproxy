@@ -309,6 +309,7 @@ struct client *addclient(struct clsrvconf *conf, int sock,
                          const struct sockaddr *from, uint8_t lock);
 void removelockedclient(struct client *client);
 void removeclient(struct client *client);
+pthread_mutex_t *removeclientrqs_sendrq_freeserver_lock(void);
 struct gqueue *newqueue(void);
 struct request *newrequest(void);
 struct request *newrqref(struct request *rq);

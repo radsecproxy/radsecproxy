@@ -26,6 +26,7 @@
 
 #ifdef RADPROT_UDP
 #include "debug.h"
+#include "reverse_coa.h"
 #include "util.h"
 
 static void setprotoopts(struct commonprotoopts *opts);
@@ -261,6 +262,7 @@ int radudpget(int s, struct client **client, struct server **server, unsigned ch
                     continue;
 
                 debug(DBG_DBG, "radudpget: removing expired client (%s)", addr2string(c->addr, tmp, sizeof(tmp)));
+                unregister_reverse_coa_client(c);
                 removeudpclientfromreplyq(c);
                 c->replyq = NULL; /* stop removeclient() from removing common udp replyq */
                 removelockedclient(c);
