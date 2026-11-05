@@ -1299,6 +1299,22 @@ int msgauthrequired(const struct clsrvconf *conf, struct radmsg *msg) {
     return conf->reqmsgauthproxy && radmsg_gettype(msg, RAD_Attr_Proxy_State) != NULL;
 }
 
+/**
+ * @brief reencrypts the obfuscated attributes of a request forwarded from one secret to another
+ *
+ * A CoA-Request or Disconnect-Request has no random Request Authenticator: it is computed over
+ * the packet like an Accounting-Request's (rfc 5176 section 2.3), so Tunnel-Password and the
+ * MS-MPPE keys (rfc 5176 section 3.6) are obfuscated with sixteen zero octets in its place, as
+ * FreeRADIUS does. Other requests use the Request Authenticator received and the one sent.
+ */
+int recryptrequestattrs(struct radmsg *msg, struct clsrvconf *from, struct clsrvconf *to, uint8_t *rqauth) {
+    uint8_t zeroauth[16] = {0};
+
+    if (IS_COA_REQUEST(msg->code))
+        return recryptattrs(msg->attrs, from->secret, from->secret_len, to->secret, to->secret_len, zeroauth, zeroauth);
+    return recryptattrs(msg->attrs, from->secret, from->secret_len, to->secret, to->secret_len, rqauth, msg->auth);
+}
+
 /* Called from server readers, handling incoming requests from
  * clients. */
 /* returns 0 if validation/authentication fails, else 1 */
@@ -1520,8 +1536,7 @@ int radsrv(struct request *rq) {
     printfchars(NULL, "auth", "%02x ", msg->auth, 16);
 #endif
 
-    if ((result = recryptattrs(msg->attrs, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len,
-                               rq->rqauth, msg->auth)) < 1) {
+    if ((result = recryptrequestattrs(msg, from->conf, to->conf, rq->rqauth)) < 1) {
         if (result == 0) {
             debug_limit(DBG_NOTICE, "radsrv: reencrypting passwords failed, invalid attribute(s) from %s (%s) to %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
             respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);

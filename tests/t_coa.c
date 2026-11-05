@@ -7,6 +7,7 @@
 #include "../hostport.h"
 #include "../list.h"
 #include "../radmsg.h"
+#include "../radmsgcrypto.h"
 #include "../radsecproxy.h"
 #include "../util.h"
 #include <arpa/inet.h>
@@ -348,6 +349,52 @@ static void test_msgauth_required(void) {
     radmsg_free(disconnect);
 }
 
+/* tunnel-password in a coa or disconnect request is obfuscated with a zero vector in place of
+   the request authenticator, before and after it is reencrypted for the next hop */
+static void test_recrypt_tunnel_password(void) {
+    struct {
+        uint8_t code;
+        char *recrypted, *readable;
+    } cases[] = {
+        {RAD_CoA_Request, "coa-request tunnel-password reencrypted", "coa-request tunnel-password readable at the next hop"},
+        {RAD_Disconnect_Request, "disconnect-request tunnel-password reencrypted", "disconnect-request tunnel-password readable at the next hop"},
+    };
+    struct clsrvconf from, to;
+    uint8_t zero16[16] = {0}, plain[16], value[3 + 16];
+    struct radmsg *msg;
+    struct tlv *attr;
+    size_t i;
+
+    memset(&from, 0, sizeof(from));
+    memset(&to, 0, sizeof(to));
+    from.secret = (uint8_t *)"server-secret";
+    from.secret_len = 13;
+    to.secret = (uint8_t *)"nas-secret";
+    to.secret_len = 10;
+    memset(plain, 0, sizeof(plain));
+    plain[0] = 8;
+    memcpy(plain + 1, "password", 8);
+
+    for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        value[0] = 0;
+        value[1] = 0x80;
+        value[2] = 0x01;
+        memcpy(value + 3, plain, sizeof(plain));
+        pwdcrypt(1, value + 3, sizeof(plain), from.secret, from.secret_len, zero16, value + 1, 2);
+        msg = radmsg_init(cases[i].code, 1, NULL);
+        /* the request authenticator received, an md5 over the packet */
+        memset(msg->auth, 0x42, 16);
+        radmsg_add(msg, maketlv(RAD_Attr_Tunnel_Password, sizeof(value), value), 0);
+        test_eq(1, recryptrequestattrs(msg, &from, &to, msg->auth), cases[i].recrypted);
+        attr = radmsg_gettype(msg, RAD_Attr_Tunnel_Password);
+        test_ok(attr && attr->l == sizeof(value) &&
+                    pwdcrypt(0, attr->v + 3, sizeof(plain), to.secret, to.secret_len, zero16, attr->v + 1, 2) &&
+                    !memcmp(attr->v + 3, plain, sizeof(plain)),
+                cases[i].readable);
+        radmsg_free(msg);
+    }
+}
+
 /* message-authenticator and request-authenticator for the coa codes */
 static void test_wire_format(void) {
     const char *secret = "testing123456";
@@ -399,6 +446,7 @@ int main(int argc, char *argv[]) {
     test_findcoaserver_identity();
     test_findcoaserver_realms();
     test_msgauth_required();
+    test_recrypt_tunnel_password();
     test_wire_format();
 
     list_free(realms);
