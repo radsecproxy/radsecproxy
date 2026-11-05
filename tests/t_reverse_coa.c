@@ -79,8 +79,8 @@ static int coaack(uint8_t *pkt, uint8_t id, int withattr, const uint8_t *rqauth)
     return len;
 }
 
-/* a client block with one entry, registered for reverse coa */
-static struct client *newclienttype(uint8_t type, char *name, char *nasid, char **realms, char *addr) {
+/* a client block with one entry, registered for reverse coa; a sibling when asked */
+static struct client *newclientfull(uint8_t type, char *name, char *nasid, char **realms, char *addr, int sibling) {
     struct clsrvconf *conf = calloc(1, sizeof(struct clsrvconf));
     struct client *client = calloc(1, sizeof(struct client));
     struct sockaddr_in sin = {.sin_family = AF_INET};
@@ -91,6 +91,7 @@ static struct client *newclienttype(uint8_t type, char *name, char *nasid, char 
     conf->secret_len = secretlen;
     conf->nas_identifier = nasid;
     conf->reverse_coa_realms = realms;
+    conf->reverse_coa_sibling = sibling;
     reverse_coa_compile_realms(conf);
     reverse_coa_compile_nas_identifier(conf);
     conf->coaport = 3799;
@@ -110,8 +111,17 @@ static struct client *newclienttype(uint8_t type, char *name, char *nasid, char 
     return client;
 }
 
+static struct client *newclienttype(uint8_t type, char *name, char *nasid, char **realms, char *addr) {
+    return newclientfull(type, name, nasid, realms, addr, 0);
+}
+
 static struct client *newclient(char *name, char *nasid, char **realms, char *addr) {
     return newclienttype(RAD_UDP, name, nasid, realms, addr);
+}
+
+/* a tls client that is another proxy of this site */
+static struct client *newsibling(char *name, char *addr) {
+    return newclientfull(RAD_TLS, name, NULL, NULL, addr, 1);
 }
 
 static void freeclient(struct client *client) {
@@ -617,6 +627,50 @@ int main(int argc, char *argv[]) {
             reverse_coa_settokenkey(NULL);
             freeclient(site_a);
             freeclient(site_b);
+        }
+
+        /* a sibling proxy of the site: a request for a nas not held here is handed to it,
+           once, with the operator attributes kept; one that came from a sibling is not */
+        {
+            struct client *sib = newsibling("edge2", "192.0.2.61");
+            struct server *fromsib = newserver("edge2-in");
+            struct radmsg *fwd;
+
+            fromsib->conf->reverse_coa_sibling = 1;
+            msg = request(RAD_CoA_Request, 30, "1example.com", "nas-9");
+            radmsg_add(msg, makeexttlv(RAD_ExtAttr_Operator_NAS_Identifier, REVERSE_COA_TOKEN_LEN, "00000000deadbeef"), 0);
+            test_eq(0, dispatch(server, msg), "nas not here, handed to the sibling");
+            rq = queued(sib);
+            fwd = rq ? buf2radmsg(rq->replybuf, rq->replybuflen, secret, secretlen, NULL) : NULL;
+            test_ok(fwd && radmsg_gettype(fwd, RAD_Attr_Operator_Name) && radmsg_getexttype(fwd, RAD_ExtAttr_Operator_NAS_Identifier), "operator attributes kept for the sibling");
+            test_ok(rq && rq->to == server, "the answer goes to the server");
+            radmsg_free(fwd);
+            freerq(rq);
+            test_ok(!queued(nas), "not to the local nas");
+
+            msg = request(RAD_CoA_Request, 31, "1example.com", "nas-9");
+            test_eq(RAD_Err_NAS_Identification_Mismatch, dispatch(fromsib, msg), "from a sibling, nas not here: 403, not handed on");
+            test_ok(!queued(sib) && !queued(nas), "nothing queued");
+
+            msg = request(RAD_CoA_Request, 32, "1example.com", "nas-1");
+            test_eq(0, dispatch(server, msg), "nas held here");
+            rq = queued(nas);
+            test_ok(rq && !queued(sib), "delivered here, not to the sibling");
+            freerq(rq);
+
+            msg = request(RAD_CoA_Request, 33, "1example.org", "nas-9");
+            test_eq(0, dispatch(server, msg), "realm not served here, handed to the sibling");
+            rq = queued(sib);
+            test_ok(rq != NULL, "handed by realm");
+            freerq(rq);
+            msg = request(RAD_CoA_Request, 34, "1example.org", "nas-9");
+            test_eq(RAD_Err_Request_Not_Routable, dispatch(fromsib, msg), "from a sibling, realm not served: 502");
+
+            msg = request(RAD_CoA_Request, 35, "1example.com", NULL);
+            test_eq(RAD_Err_Missing_Attribute, dispatch(fromsib, msg), "from a sibling, nothing names a nas: 402");
+
+            freeserver(fromsib);
+            freeclient(sib);
         }
 
         /* never back to the sender */

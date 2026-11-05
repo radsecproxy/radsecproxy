@@ -214,6 +214,7 @@ struct clsrvconf {
     uint8_t accept_coa;
     uint8_t add_operator_nas_id;
     uint8_t reverse_coa_fallback;
+    uint8_t reverse_coa_sibling; /* another proxy of this site: a reverse coa for a nas not here is handed to it, one it hands here is never handed on */
 };
 
 #include "tlscommon.h"

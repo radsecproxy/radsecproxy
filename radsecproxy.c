@@ -246,7 +246,7 @@ struct client *addclient(struct clsrvconf *conf, int sock,
     else
         new->replyq = newqueue();
     pthread_mutex_init(&new->lock, NULL);
-    if (conf->reverse_coa_realms || conf->nas_identifier || conf->add_operator_nas_id) {
+    if (conf->reverse_coa_realms || conf->nas_identifier || conf->add_operator_nas_id || conf->reverse_coa_sibling) {
         new->reverse_coa_route = reverse_coa_route_new(new);
         if (!new->reverse_coa_route) {
             debug(DBG_ERR, "malloc failed");
@@ -3077,6 +3077,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "acceptCoA", CONF_BLN, &conf->accept_coa,
             "addOperatorNASIdentifier", CONF_BLN, &conf->add_operator_nas_id,
             "reverseCoAFallback", CONF_BLN, &conf->reverse_coa_fallback,
+            "reverseCoASibling", CONF_BLN, &conf->reverse_coa_sibling,
             NULL))
         debugx(1, DBG_ERR, "configuration error");
 
@@ -3125,6 +3126,10 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         debugx(1, DBG_ERR, "error in block %s, invalid ReverseCoAOperatorRealm", block);
     if (!reverse_coa_compile_nas_identifier(conf))
         debugx(1, DBG_ERR, "error in block %s, invalid NASidentifier regexp", block);
+    if (conf->reverse_coa_sibling && conf->type != RAD_TLS && conf->type != RAD_DTLS)
+        debugx(1, DBG_ERR, "error in block %s, reverseCoASibling only supported for tls and dtls", block);
+    if (conf->reverse_coa_sibling && (conf->nas_identifier || conf->reverse_coa_realms))
+        debugx(1, DBG_ERR, "error in block %s, reverseCoASibling cannot be combined with NASidentifier or ReverseCoAOperatorRealm", block);
 
     if (conf->reverse_coa_timeout == 0)
         conf->reverse_coa_timeout = 30;
@@ -3327,6 +3332,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                           "DTLSForceMTU", CONF_LINT, &conf->dtlsmtu,
                           "requireMessageAuthenticator", CONF_BLN, &conf->reqmsgauth,
                           "acceptReverseCoA", CONF_BLN, &conf->accept_reverse_coa,
+                          "reverseCoASibling", CONF_BLN, &conf->reverse_coa_sibling,
                           "NASidentifier", CONF_STR, &conf->nas_identifier,
                           NULL)) {
         debug(DBG_ERR, "configuration error");
@@ -3413,8 +3419,11 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->addttl = (uint8_t)addttl;
     }
 
+    /* a sibling hands reverse coa over this connection, so it is accepted here */
+    if (conf->reverse_coa_sibling)
+        conf->accept_reverse_coa = 1;
     if (conf->accept_reverse_coa && conf->type != RAD_TLS && conf->type != RAD_DTLS) {
-        debug(DBG_ERR, "error in block %s, acceptReverseCoA only supported for tls and dtls", block);
+        debug(DBG_ERR, "error in block %s, %s only supported for tls and dtls", block, conf->reverse_coa_sibling ? "reverseCoASibling" : "acceptReverseCoA");
         goto errexit;
     }
 

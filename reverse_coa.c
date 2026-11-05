@@ -80,13 +80,15 @@ void reverse_coa_route_deref(struct reverse_coa_route *route) {
 struct client *_internal_reverse_coa_route_target(struct reverse_coa_route *route) { return route->target; }
 
 static struct list *reverse_coa_realm_list;
+static struct list *reverse_coa_sibling_routes; /* clients with ReverseCoASibling, in the order they connected */
 static struct list *reverse_coa_nas_routes;
 static pthread_mutex_t realm_reverse_coa_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void init_reverse_coa(void) {
     reverse_coa_realm_list = list_create();
     reverse_coa_nas_routes = list_create();
-    if (!reverse_coa_realm_list || !reverse_coa_nas_routes)
+    reverse_coa_sibling_routes = list_create();
+    if (!reverse_coa_realm_list || !reverse_coa_nas_routes || !reverse_coa_sibling_routes)
         debugx(1, DBG_ERR, "malloc failed");
 }
 
@@ -311,6 +313,14 @@ void register_reverse_coa_client(struct client *client) {
         reverse_coa_route_deref(route);
         debug(DBG_ERR, "register_reverse_coa_client: malloc failed");
     }
+    if (client->conf->reverse_coa_sibling) {
+        reverse_coa_route_ref(route);
+        if (!list_push(reverse_coa_sibling_routes, route)) {
+            reverse_coa_route_deref(route);
+            debug(DBG_ERR, "register_reverse_coa_client: malloc failed");
+        } else
+            debug(DBG_DBG, "register_reverse_coa_client: client %s registered as a sibling proxy", client->conf->name);
+    }
     for (i = 0; client->conf->reverse_coa_realms && client->conf->reverse_coa_realms[i]; i++) {
         r = reverse_coa_realm_find(client->conf->reverse_coa_realms[i]);
         if (!r) {
@@ -359,6 +369,7 @@ void unregister_reverse_coa_client(struct client *client) {
 
     pthread_mutex_lock(&realm_reverse_coa_lock);
     reverse_coa_route_remove(reverse_coa_nas_routes, route);
+    reverse_coa_route_remove(reverse_coa_sibling_routes, route);
     for (i = 0; client->conf->reverse_coa_realms && client->conf->reverse_coa_realms[i]; i++) {
         r = reverse_coa_realm_find(client->conf->reverse_coa_realms[i]);
         if (!r)
@@ -1299,6 +1310,43 @@ static int try_send_to_nas_client(struct server *server, struct request *origin,
     return send_to_route(server, origin, route, msg, sent);
 }
 
+/* the other proxies of this site (ReverseCoASibling), in the order they connected: a
+   request for a nas not held here is handed to the first one that takes it, with
+   Operator-Name and Operator-NAS-Identifier as they came (the sibling is not the last
+   hop). rfc 8559 2.2: how a network gets a CoA from the proxy that received it to the
+   one that holds the nas is its own affair. a request that itself came from a sibling
+   is never handed on, so the hand-over happens once whatever the number of siblings.
+   returns 0 when sent, else the Error-Cause the caller already had */
+static int try_send_to_siblings(struct server *server, struct request *origin, struct radmsg *msg, struct reverse_coa_sent *sent, int result) {
+    struct reverse_coa_route *siblings[MAX_REVERSE_COA_FAILOVER], *route;
+    struct list_node *node;
+    int n = 0, i;
+
+    if (server && server->conf->reverse_coa_sibling) {
+        debug(DBG_DBG, "try_send_to_siblings: %s (id %d) came from sibling %s, not handed on", radmsgtype2string(msg->code), msg->id, server->conf->name);
+        return result;
+    }
+    pthread_mutex_lock(&realm_reverse_coa_lock);
+    for (node = list_first(reverse_coa_sibling_routes); node && n < MAX_REVERSE_COA_FAILOVER; node = list_next(node)) {
+        route = (struct reverse_coa_route *)node->data;
+        pthread_mutex_lock(&route->refmutex);
+        if (route->target) {
+            siblings[n++] = route;
+            route->refcount++;
+        }
+        pthread_mutex_unlock(&route->refmutex);
+    }
+    pthread_mutex_unlock(&realm_reverse_coa_lock);
+    for (i = 0; i < n; i++) {
+        if (result) {
+            debug(DBG_DBG, "try_send_to_siblings: %s (id %d), handing to a sibling proxy", radmsgtype2string(msg->code), msg->id);
+            result = send_to_route(server, origin, siblings[i], msg, sent);
+        } else
+            reverse_coa_route_deref(siblings[i]);
+    }
+    return result;
+}
+
 /* rfc 5176 section 3: a request names the nas by NAS-Identifier, NAS-IP-Address or
    NAS-IPv6-Address, and across proxies by Operator-NAS-Identifier (rfc 8559 3.4) */
 static int names_a_nas(struct radmsg *msg) {
@@ -1311,10 +1359,11 @@ static int names_a_nas(struct radmsg *msg) {
     return (attr && attr->l) || reverse_coa_nas_addr(msg, &addr);
 }
 
-/* by token, then the operator-name realm (rfc 8559 3.2); a request without
-   operator-name is routed by nas identity. returns 0 when sent, else the Error-Cause
-   for the nak: 502 for a realm not served here (rfc 8559 3.2), 403 for a nas not found
-   in a realm that is (3.3), 402 when the request names no nas at all (rfc 5176 3.5) */
+/* by token, then the operator-name realm (rfc 8559 3.2), then the sibling proxies of
+   the site; a request without operator-name is routed by nas identity. returns 0 when
+   sent, else the Error-Cause for the nak: 502 for a realm not served here (rfc 8559
+   3.2), 403 for a nas not found in a realm that is (3.3), 402 when the request names
+   no nas at all (rfc 5176 3.5) */
 static int dispatch_reverse_coa(struct server *server, struct request *origin, struct radmsg *msg, struct reverse_coa_sent *sent) {
     char realm_buf[256];
     char *realm = extract_operator_realm(msg, realm_buf, sizeof(realm_buf));
@@ -1331,6 +1380,8 @@ static int dispatch_reverse_coa(struct server *server, struct request *origin, s
         if (result == RAD_Err_Request_Not_Routable && !origin)
             result = try_send_to_udp_block(server, origin, realm, msg, sent);
 #endif
+        if (result == RAD_Err_NAS_Identification_Mismatch || result == RAD_Err_Request_Not_Routable)
+            result = try_send_to_siblings(server, origin, msg, sent, result);
         if (result == RAD_Err_NAS_Identification_Mismatch && !names_a_nas(msg))
             result = RAD_Err_Missing_Attribute;
         if (result)
