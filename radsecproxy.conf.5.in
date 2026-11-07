@@ -677,7 +677,12 @@ The \fBnaptr:\fR and \fBsrv:\fR forms execute the corresponding DNS queries, eit
 for \fIservice\fR in NAPTR records (followed by SRV query), or querying for 
 \fIprefix\fB.realm\fR SRV records. Finally a server block will be constructed for 
 the dynamic realm taking this server block as a template and overriding the \fBhost\fR 
-entries with the content of the SRV records.
+entries with the content of the SRV records. NAPTR records are used in the sequence
+given by their order and preference fields and the SRV targets of every matching
+record are added to the server, those of the lowest order first, so that the next
+target is tried when a connection fails (RFC 7585). A target that does not resolve
+is left out, a target that cannot be checked (transient resolver error) is kept,
+and a target listed by more than one record is used once.
 
 Otherwise, the \fIcommand\fR should be an executable file or script, given with 
 full path, that will be invoked with the name of the realm as its first and only argument. 

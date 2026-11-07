@@ -64,4 +64,22 @@ struct srv_record **querysrv(const char *name, int timeout);
  */
 void freesrvresponse(struct srv_record **response);
 
+/**
+ * select the NAPTR records usable for dynamic discovery of a service and put
+ * them in the order they are to be tried: records whose service field matches
+ * (case-insensitive) and whose flag is "S", sorted by order, then preference,
+ * ascending (the sort key of RFC 3403 section 4.1); records with equal order
+ * and preference keep their response order. RFC 7585 evaluates the discovered
+ * targets in this order ("greedy result evaluation", defined in section 3.3,
+ * applied in the algorithm of section 3.4.3) and tries the next one in the set
+ * when a connection fails (section 2.1.1.2).
+ *
+ * @param naptr null terminated array as returned by querynaptr
+ * @param service the service to look for, e.g. "aaa+auth:radius.tls.tcp"
+ * @return newly allocated null terminated array of pointers into naptr (not
+ *         copies, do not free the elements), or NULL on allocation failure.
+ *         caller must free the array itself.
+ */
+struct naptr_record **naptrselect(struct naptr_record **naptr, const char *service);
+
 #endif /*_DNS_H*/
