@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <resolv.h>
 #include <string.h>
+#include <strings.h>
 
 /**
  * Read a character string from a dns response
@@ -347,3 +348,36 @@ void freesrvresponse(struct srv_record **response) {
 void freenaptrresponse(struct naptr_record **response) {
     freeresponselist((void **)response);
 }
+
+struct naptr_record **naptrselect(struct naptr_record **naptr, const char *service) {
+    struct naptr_record **selected;
+    int i, j, n = 0;
+
+    for (i = 0; naptr && naptr[i]; i++)
+        n++;
+    selected = calloc(n + 1, sizeof(struct naptr_record *));
+    if (!selected)
+        return NULL;
+
+    n = 0;
+    for (i = 0; naptr && naptr[i]; i++) {
+        if (strcasecmp(naptr[i]->services, service) != 0)
+            continue;
+        /* only the "S" flag (replacement names an SRV record) is supported */
+        if (strcasecmp(naptr[i]->flags, "S") != 0)
+            continue;
+        /* insertion sort by order, then preference; stable */
+        for (j = n; j > 0; j--) {
+            if (selected[j - 1]->order < naptr[i]->order)
+                break;
+            if (selected[j - 1]->order == naptr[i]->order && selected[j - 1]->preference <= naptr[i]->preference)
+                break;
+            selected[j] = selected[j - 1];
+        }
+        selected[j] = naptr[i];
+        n++;
+    }
+    selected[n] = NULL;
+    return selected;
+}
+

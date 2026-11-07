@@ -2470,44 +2470,128 @@ int dynamicconfigexternal(struct server *server) {
     return ok;
 }
 
-int dynamicconfigsrv(struct server *server, const char *srvstring) {
-    struct clsrvconf *conf = server->conf;
+/* resolve the SRV record srvstring for realm and return its targets as "host:port"
+ * strings sorted by priority (weight is not considered), NULL-terminated; the
+ * caller frees the list with freegconfmstr. A target that definitely does not
+ * resolve is left out, so that one stale record cannot fail the whole server
+ * later in resolvehostports; a target that cannot be checked (transient resolver
+ * error) is kept, as before. NULL if nothing is left or on error. */
+/* true if getaddrinfo's error means the name definitely does not resolve, as
+ * opposed to a transient resolver failure. glibc reports timeouts as EAI_AGAIN;
+ * some other libcs report them as EAI_NONAME, where a timed-out target is then
+ * skipped for this discovery. */
+static int gai_definite(int rc) {
+    return rc == EAI_NONAME || rc == EAI_FAIL
+#ifdef EAI_NODATA
+           || rc == EAI_NODATA
+#endif
+        ;
+}
+
+static char **srvhostports(const char *srvstring, const char *realm, int af, int socktype) {
     struct srv_record **srv;
-    char **hostports;
-    char *servername;
-    int i, j, srvcount = 0, result = 0;
+    struct addrinfo hints, *res;
+    char **hostports = NULL;
+    char *hostport;
+    int i, j, n = 0, rc;
 
-    debug(DBG_DBG, "dynamicconfigsrv: starting SRV lookup (%s) for %s", conf->dynamiclookupcommand, srvstring);
+    debug(DBG_DBG, "srvhostports: starting SRV lookup for %s (%s)", srvstring, realm);
     srv = querysrv(srvstring, 2);
-
     if (!srv || !srv[0]) {
-        debug(DBG_NOTICE, "dynamicconfigsrv: no SRV record for %s (%s)", server->dynamiclookuparg, srvstring);
+        debug(DBG_NOTICE, "srvhostports: no SRV record for %s (%s)", srvstring, realm);
         goto exitsrv;
     }
 
-    /* sort srv records by priority, ascending; counting the entries as a sideeffect */
+    /* sort srv records by priority, ascending */
     for (i = 1; srv[i]; i++) {
         struct srv_record *key = srv[i];
         for (j = i - 1; j >= 0 && srv[j]->priority > key->priority; j--)
             srv[j + 1] = srv[j];
         srv[j + 1] = key;
     }
-    srvcount = i;
 
-    hostports = calloc(srvcount + 1, sizeof(char *));
+    hostports = calloc(i + 1, sizeof(char *));
     if (!hostports) {
         debug(DBG_ERR, "malloc failed");
         goto exitsrv;
     }
 
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = af;
+    hints.ai_socktype = socktype;
     for (i = 0; srv[i]; i++) {
-        char *hostport;
+        rc = getaddrinfo(srv[i]->host, NULL, &hints, &res);
+        if (rc == 0) {
+            freeaddrinfo(res);
+        } else if (gai_definite(rc)) {
+            debug(DBG_NOTICE, "srvhostports: target %s of %s does not resolve (%s), skipped", srv[i]->host, srvstring, gai_strerror(rc));
+            continue;
+        } else {
+            debug(DBG_NOTICE, "srvhostports: could not check target %s of %s (%s), keeping it", srv[i]->host, srvstring, gai_strerror(rc));
+        }
         if (asprintf(&hostport, "%s:%d", srv[i]->host, srv[i]->port) < 0) {
             debug(DBG_ERR, "malloc failed");
-            goto exithostport;
+            freegconfmstr(hostports);
+            hostports = NULL;
+            goto exitsrv;
         }
-        hostports[i] = hostport;
+        hostports[n++] = hostport;
     }
+    if (!n) {
+        debug(DBG_NOTICE, "srvhostports: no usable target in %s (%s)", srvstring, realm);
+        free(hostports);
+        hostports = NULL;
+    }
+
+exitsrv:
+    freesrvresponse(srv);
+    return hostports;
+}
+
+/* append the strings of more to the NULL-terminated list *hostports (which may
+ * be NULL), leaving out entries already present (host names compare case-insensitively);
+ * takes ownership of the strings of more and frees its array. returns 0 on
+ * allocation failure, in which case *hostports is unchanged. */
+static int appendhostports(char ***hostports, char **more) {
+    int n, m, i, j;
+    char **merged;
+
+    if (!more || !more[0]) {
+        free(more);
+        return 1;
+    }
+    for (n = 0; *hostports && (*hostports)[n]; n++)
+        ;
+    for (m = 0; more[m]; m++)
+        ;
+    merged = realloc(*hostports, (n + m + 1) * sizeof(char *));
+    if (!merged) {
+        debug(DBG_ERR, "malloc failed");
+        freegconfmstr(more);
+        return 0;
+    }
+    *hostports = merged;
+    for (i = 0; i < m; i++) {
+        for (j = 0; j < n; j++)
+            if (strcasecmp(merged[j], more[i]) == 0)
+                break;
+        if (j < n) {
+            debug(DBG_DBG, "appendhostports: %s already listed", more[i]);
+            free(more[i]);
+            continue;
+        }
+        merged[n++] = more[i];
+    }
+    merged[n] = NULL;
+    free(more);
+    return 1;
+}
+
+/* build the dynamic server from the given "host:port" list; takes ownership of hostports */
+static int dynamicconfigapply(struct server *server, char **hostports) {
+    struct clsrvconf *conf = server->conf;
+    char *servername;
+    int result = 0;
 
     if (asprintf(&servername, "dynamic:%s", server->dynamiclookuparg) < 0) {
         debug(DBG_ERR, "malloc failed");
@@ -2526,14 +2610,25 @@ exitservername:
     free(servername);
 exithostport:
     freegconfmstr(hostports);
-exitsrv:
-    freesrvresponse(srv);
     return result;
+}
+
+int dynamicconfigsrv(struct server *server, const char *srvstring) {
+    char **hostports = NULL;
+
+    if (!appendhostports(&hostports, srvhostports(srvstring, server->dynamiclookuparg, server->conf->hostaf, server->conf->pdef->socktype)))
+        return 0;
+    if (!hostports)
+        return 0;
+    return dynamicconfigapply(server, hostports);
 }
 
 int dynamicconfignaptr(struct server *server) {
     int i, result = 0;
-    struct naptr_record **naptr;
+    struct naptr_record **naptr, **selected = NULL;
+    char **hostports = NULL;
+    const char *service = strchr(server->conf->dynamiclookupcommand, ':') + 1;
+
     debug(DBG_DBG, "dynamicconfignaptr: starting NAPTR lookup (%s) for %s", server->conf->dynamiclookupcommand, server->dynamiclookuparg);
     naptr = querynaptr(server->dynamiclookuparg, 2);
     if (!naptr) {
@@ -2541,17 +2636,37 @@ int dynamicconfignaptr(struct server *server) {
         return 0;
     }
 
-    for (i = 0; naptr[i]; i++) {
-        if (strcasecmp(strchr(server->conf->dynamiclookupcommand, ':') + 1, naptr[i]->services) == 0) {
-            /* currently only the 'S' flag (perform SRV lookup) is supported */
-            if (strncasecmp(naptr[i]->flags, "S", sizeof("S")) != 0)
-                continue;
-
-            debug(DBG_DBG, "dynamicconfignaptr: found matching NAPTR record: %s", naptr[i]->replacement);
-            result = dynamicconfigsrv(server, naptr[i]->replacement);
-            break;
-        }
+    /* RFC 7585: the discovered targets are evaluated in NAPTR order/preference
+     * order (greedy result evaluation, section 3.3, used by the algorithm in
+     * section 3.4.3) and the next target in the set is tried when a connection
+     * fails (section 2.1.1.2), regardless of NAPTR order; for RADIUS dynamic
+     * discovery this supersedes the stop-at-first-order rule of RFC 3403
+     * section 4.1. The server tries its hosts in sequence, so the SRV targets of
+     * every usable record are appended in that sequence. */
+    selected = naptrselect(naptr, service);
+    if (!selected) {
+        debug(DBG_ERR, "malloc failed");
+        goto exit;
     }
+    if (!selected[0]) {
+        debug(DBG_NOTICE, "dynamicconfignaptr: no usable NAPTR record for %s (%s)", server->dynamiclookuparg, service);
+        goto exit;
+    }
+    for (i = 0; selected[i]; i++) {
+        debug(DBG_DBG, "dynamicconfignaptr: NAPTR record order %d preference %d: %s", selected[i]->order, selected[i]->preference, selected[i]->replacement);
+        if (!appendhostports(&hostports, srvhostports(selected[i]->replacement, server->dynamiclookuparg, server->conf->hostaf, server->conf->pdef->socktype)))
+            goto exit;
+    }
+    if (!hostports) {
+        debug(DBG_NOTICE, "dynamicconfignaptr: no usable target behind the NAPTR records for %s", server->dynamiclookuparg);
+        goto exit;
+    }
+    result = dynamicconfigapply(server, hostports);
+    hostports = NULL;
+
+exit:
+    freegconfmstr(hostports);
+    free(selected);
     freenaptrresponse(naptr);
     return result;
 }
