@@ -2623,16 +2623,35 @@ int dynamicconfigsrv(struct server *server, const char *srvstring) {
     return dynamicconfigapply(server, hostports);
 }
 
+/* The DNS name to query for a realm. Normally the realm itself; a 3GPP realm is
+ * looked up under pub.3gppnetwork.org (see dns3gpppublicname) unless disabled by
+ * DynamicLookup3GPPPublic. The returned string must be freed by the caller;
+ * it is never NULL (both producers exit on allocation failure). */
+static char *dynamiclookupname(struct server *server) {
+    char *name = NULL;
+
+    if (server->conf->dynamiclookup3gpppublic)
+        name = dns3gpppublicname(server->dynamiclookuparg);
+    if (name)
+        debug(DBG_DBG, "dynamiclookupname: realm %s is a 3GPP realm, using %s for discovery", server->dynamiclookuparg, name);
+    else
+        name = stringcopy(server->dynamiclookuparg, 0); /* exits on allocation failure, as elsewhere */
+    return name;
+}
+
 int dynamicconfignaptr(struct server *server) {
     int i, result = 0;
     struct naptr_record **naptr, **selected = NULL;
     char **hostports = NULL;
+    char *lookupname;
     const char *service = strchr(server->conf->dynamiclookupcommand, ':') + 1;
 
-    debug(DBG_DBG, "dynamicconfignaptr: starting NAPTR lookup (%s) for %s", server->conf->dynamiclookupcommand, server->dynamiclookuparg);
-    naptr = querynaptr(server->dynamiclookuparg, 2);
+    lookupname = dynamiclookupname(server);
+    debug(DBG_DBG, "dynamicconfignaptr: starting NAPTR lookup (%s) for %s", server->conf->dynamiclookupcommand, lookupname);
+    naptr = querynaptr(lookupname, 2);
     if (!naptr) {
-        debug(DBG_NOTICE, "dynamicconfignaptr: no NAPTR record for %s", server->dynamiclookuparg);
+        debug(DBG_NOTICE, "dynamicconfignaptr: no NAPTR record for %s", lookupname);
+        free(lookupname);
         return 0;
     }
 
@@ -2649,7 +2668,7 @@ int dynamicconfignaptr(struct server *server) {
         goto exit;
     }
     if (!selected[0]) {
-        debug(DBG_NOTICE, "dynamicconfignaptr: no usable NAPTR record for %s (%s)", server->dynamiclookuparg, service);
+        debug(DBG_NOTICE, "dynamicconfignaptr: no usable NAPTR record for %s (%s)", lookupname, service);
         goto exit;
     }
     for (i = 0; selected[i]; i++) {
@@ -2668,6 +2687,7 @@ exit:
     freegconfmstr(hostports);
     free(selected);
     freenaptrresponse(naptr);
+    free(lookupname);
     return result;
 }
 
@@ -2680,12 +2700,19 @@ int dynamicconfig(struct server *server) {
     if (strncasecmp(conf->dynamiclookupcommand, "naptr:", sizeof("naptr:") - 1) == 0) {
         result = dynamicconfignaptr(server);
     } else if (strncasecmp(conf->dynamiclookupcommand, "srv:", sizeof("srv:") - 1) == 0) {
+        char *lookupname;
+
         srvext = strchr(conf->dynamiclookupcommand, ':');
         if (!srvext)
             return 0;
 
-        if (asprintf(&srvquery, "%s%s%s", srvext + 1, conf->dynamiclookupcommand[strlen(conf->dynamiclookupcommand) - 1] == '.' ? "" : ".", server->dynamiclookuparg) < 0)
+        lookupname = dynamiclookupname(server);
+        if (asprintf(&srvquery, "%s%s%s", srvext + 1, conf->dynamiclookupcommand[strlen(conf->dynamiclookupcommand) - 1] == '.' ? "" : ".", lookupname) < 0) {
+            debug(DBG_ERR, "malloc failed");
+            free(lookupname);
             return 0;
+        }
+        free(lookupname);
 
         result = dynamicconfigsrv(server, srvquery);
         free(srvquery);
@@ -2853,6 +2880,7 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         if (src->retrycount != 255)
             dst->retrycount = src->retrycount;
         dst->blockingstartup = src->blockingstartup;
+        dst->dynamiclookup3gpppublic = src->dynamiclookup3gpppublic;
         dst->sni = src->sni;
         dst->idletimeout = src->idletimeout;
     }
@@ -3157,12 +3185,14 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->certnamecheck = resconf->certnamecheck;
         conf->secret_len = resconf->secret_len;
         conf->blockingstartup = resconf->blockingstartup;
+        conf->dynamiclookup3gpppublic = resconf->dynamiclookup3gpppublic;
         conf->type = resconf->type;
         conf->sni = resconf->sni;
         conf->reqmsgauth = resconf->reqmsgauth;
         conf->idletimeout = resconf->idletimeout;
     } else {
         conf->certnamecheck = 1;
+        conf->dynamiclookup3gpppublic = 1;
         conf->sni = options.sni;
         conf->reqmsgauth = options.reqmsgauth;
     }
@@ -3194,6 +3224,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                           "RetryCount", CONF_LINT, &retrycount,
                           "IdleTimeout", CONF_LINT, &idletimeout,
                           "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
+                          "DynamicLookup3GPPPublic", CONF_BLN, &conf->dynamiclookup3gpppublic,
                           "LoopPrevention", CONF_BLN, &conf->loopprevention,
                           "BlockingStartup", CONF_BLN, &conf->blockingstartup,
                           "SNI", CONF_BLN, &conf->sni,
