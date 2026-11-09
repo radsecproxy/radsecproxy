@@ -696,6 +696,28 @@ An example of a shell script resolving the DNS NAPTR records
 for the realm and then the SRV records for each NAPTR matching
 \&'x-eduroam:radius.tls' is provided in \fItools/naptr\-eduroam.sh\fR.
 This is equivalent to configuring 'naptr:x-eduroam:radius.tls' directly.
+
+For the \fBnaptr:\fR and \fBsrv:\fR forms, ".pub" is inserted before
+"3gppnetwork.org" in a realm ending in \fImnc<MNC>.mcc<MCC>.3gppnetwork.org\fR, so
+that \fIwlan.mnc<MNC>.mcc<MCC>.3gppnetwork.org\fR (3GPP TS 23.003) is looked up as
+\fIwlan.mnc<MNC>.mcc<MCC>.pub.3gppnetwork.org\fR; any prefix, or none, is kept.
+The records for such realms are only publicly resolvable under the
+pub.3gppnetwork.org sub-domain (GSMA IR.67, under which an operator can have
+its whole mnc<MNC>.mcc<MCC>.pub sub-domain delegated; the OpenRoaming
+specification, draft-tomas-openroaming section 6.2, requires this for the wlan.
+form). The User-Name attribute is not
+modified. The NAIRealm certificate check uses the realm as sent, so a
+certificate relying on NAIRealm must carry the realm as sent, not the .pub
+form; the host name check against the SRV target is unchanged. See
+\fBDynamicLookup3GPPPublic\fR to disable this.
+.RE
+
+.BR "DynamicLookup3GPPPublic (" on | off)
+.RS
+For the \fBnaptr:\fR and \fBsrv:\fR forms of \fBDynamicLookupCommand\fR, look up
+3GPP realms under the pub.3gppnetwork.org sub-domain (default on). Turn this off
+only where the bare 3gppnetwork.org names resolve, i.e. on a proxy connected to
+the inter-PLMN IP backbone (GRX/IPX).
 .RE
 
 .BI "ServerName " servername

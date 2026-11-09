@@ -3,6 +3,7 @@
 
 #include "dns.h"
 #include "debug.h"
+#include <ctype.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <resolv.h>
@@ -381,3 +382,42 @@ struct naptr_record **naptrselect(struct naptr_record **naptr, const char *servi
     return selected;
 }
 
+/* true if s starts with three digits */
+static int threedigits(const char *s) {
+    return isdigit((unsigned char)s[0]) && isdigit((unsigned char)s[1]) && isdigit((unsigned char)s[2]);
+}
+
+char *dns3gpppublicname(const char *realm) {
+    static const char suffix[] = ".3gppnetwork.org";
+    static const char pub[] = ".pub";
+    const char *mcc, *mnc;
+    size_t len, prefixlen;
+    char *result;
+
+    if (!realm)
+        return NULL;
+    len = strlen(realm);
+    /* shortest possible form: mnc000.mcc000.3gppnetwork.org */
+    if (len < sizeof("mnc000.mcc000") - 1 + sizeof(suffix) - 1)
+        return NULL;
+    if (strcasecmp(realm + len - (sizeof(suffix) - 1), suffix) != 0)
+        return NULL;
+
+    /* the label before the suffix must be mcc<3 digits>, the one before that mnc<3 digits> */
+    mcc = realm + len - (sizeof(suffix) - 1) - (sizeof("mcc000") - 1);
+    if (mcc[-1] != '.' || strncasecmp(mcc, "mcc", 3) != 0 || !threedigits(mcc + 3))
+        return NULL;
+    mnc = mcc - 1 - (sizeof("mnc000") - 1);
+    if ((mnc > realm && mnc[-1] != '.') || strncasecmp(mnc, "mnc", 3) != 0 || !threedigits(mnc + 3))
+        return NULL;
+
+    /* insert ".pub" between mcc<MCC> and .3gppnetwork.org, keeping the realm's own case */
+    prefixlen = len - (sizeof(suffix) - 1);
+    result = malloc(len + sizeof(pub));
+    if (!result)
+        debugx(1, DBG_ERR, "malloc failed");
+    memcpy(result, realm, prefixlen);
+    memcpy(result + prefixlen, pub, sizeof(pub) - 1);
+    memcpy(result + prefixlen + sizeof(pub) - 1, realm + prefixlen, len - prefixlen + 1);
+    return result;
+}

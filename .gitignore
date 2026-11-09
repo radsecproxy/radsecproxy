@@ -41,5 +41,6 @@ tests/t_unhex
 tests/t_utf8
 tests/t_verify_eap
 tests/t_naptrselect
+tests/t_dns3gpp
 tests/*.log
 tests/*.trs

@@ -231,6 +231,9 @@ server dyndisc {
 	type tls
 	tls default
 	dynamicLookupCommand naptr:x-eduroam:radius.tls
+	#3GPP realms are looked up under pub.3gppnetwork.org (default on);
+	#turn off only on a proxy connected to the GRX/IPX backbone
+	#DynamicLookup3GPPPublic off
 	#alternatively call a script that poerforms the lookup
 	#dynamicLookupCommand /usr/local/bin/naptr-eduroam.sh
 }

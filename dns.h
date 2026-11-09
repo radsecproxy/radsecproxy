@@ -82,4 +82,21 @@ void freesrvresponse(struct srv_record **response);
  */
 struct naptr_record **naptrselect(struct naptr_record **naptr, const char *service);
 
+/**
+ * DNS name to use for dynamic discovery of a 3GPP realm.
+ *
+ * 3GPP TS 23.003 realms (wlan.mnc<MNC>.mcc<MCC>.3gppnetwork.org) are only
+ * resolvable on the inter-PLMN backbone; the publicly resolvable records live
+ * under the pub.3gppnetwork.org sub-domain (GSMA IR.67). OpenRoaming requires a
+ * RadSec client to insert ".pub" into such a realm before dynamic discovery
+ * (draft-tomas-openroaming section 6.2). The User-Name is never modified.
+ *
+ * @param realm the realm as taken from the User-Name
+ * @return newly allocated name to query, or NULL if the realm does not end in
+ *         mnc<MNC>.mcc<MCC>.3gppnetwork.org (a realm already under
+ *         pub.3gppnetwork.org included). caller must free the result.
+ *         exits on allocation failure, like stringcopy.
+ */
+char *dns3gpppublicname(const char *realm);
+
 #endif /*_DNS_H*/

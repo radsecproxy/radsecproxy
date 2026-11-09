@@ -173,6 +173,7 @@ struct clsrvconf {
     char *confrewriteusername;
     struct modattr *rewriteusername;
     char *dynamiclookupcommand;
+    uint8_t dynamiclookup3gpppublic;
     enum rsp_statsrv statusserver;
     uint8_t retryinterval;
     uint8_t retrycount;
