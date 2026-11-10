@@ -11,7 +11,7 @@
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 #define ASN1_STRING_get0_data(o) ((o)->data)
-#define ASN1_STRING_length(o) ((o)->length)
+#define ASN1_STRING_get_length(o) ((o)->length)
 #endif
 
 #define RSP_KEYLOG_ENV "SSLKEYLOGFILE"
