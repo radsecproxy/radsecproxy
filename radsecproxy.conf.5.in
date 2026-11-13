@@ -1150,6 +1150,17 @@ Supported keywords are:
 \fBsource_port\fR \- the source port of the client connection (string)
 .br
 \fBclient_name\fR \- the name of the client configuration block (string)
+
+The attribute 26 (Vendor-Specific) is not allowed here, use
+\fBAddMetaVendorAttribute\fR instead. If the value can not be determined or
+does not fit into an attribute, the attribute is not added and the message is
+forwarded without it.
+
+Note that an attribute with the same id which is already present on the
+message, e.g. because the client sent it, is neither removed nor replaced. If
+the receiver must only see the value set by the proxy, also remove the
+attribute in the same rewrite block using \fBRemoveAttribute\fR or
+\fBRemoveVendorAttribute\fR (which are performed first).
 .RE
 
 .BI "AddMetaVendorAttribute " vendor \fR: subattribute \fR: keyword
@@ -1163,7 +1174,7 @@ specified as numerical values. The \fIkeyword\fR is the same as for
 .BI "SupplementMetaAttribute " attribute \fR: keyword
 .RS
 Like \fBAddMetaAttribute\fR, but only adds the attribute if it is not already
-present on the message.
+present on the message. A value sent by the client therefore takes precedence.
 .RE
 
 .BI "SupplementMetaVendorAttribute " vendor \fR: subattribute \fR: keyword

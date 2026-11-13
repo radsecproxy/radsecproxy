@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* numeric address including a zone id (addr%zone) for scoped addresses */
+#define META_ADDRSTRLEN (INET6_ADDRSTRLEN + 1 + 16)
+
 static struct hash *rewriteconfs;
 
 /** Extract attributes from string NAMEVAL, create a struct tlv and
@@ -161,32 +164,53 @@ static int validmetafield(const char *field) {
            strcmp(field, "client_name") == 0;
 }
 
+/* Parse the decimal number in [s, end). Only digits are accepted and the
+ * value must be in the range 1..max. Returns 1 on success, 0 otherwise. */
+static int parseattrnum(const char *s, const char *end, uint32_t max, uint32_t *result) {
+    uint32_t val = 0;
+
+    if (s == end)
+        return 0;
+    for (; s < end; s++) {
+        if (!isdigit((unsigned char)*s))
+            return 0;
+        val = val * 10 + (*s - '0');
+        if (val > max)
+            return 0;
+    }
+    if (val < 1)
+        return 0;
+    *result = val;
+    return 1;
+}
+
 struct dynattr *extractdynattr(char *nameval, char vendor_flag) {
-    int name = 0;
-    long vendor = 0;
+    uint32_t name = 0, vendor = 0;
     char *s, *s2;
     struct dynattr *da;
 
     s = strchr(nameval, ':');
     if (!s)
         return NULL;
-    name = atoi(nameval);
 
     if (vendor_flag) {
         s2 = strchr(s + 1, ':');
         if (!s2)
             return NULL;
-        vendor = name;
-        name = atoi(s + 1);
+        /* RADIUS vendor PEN is 24-bit per RFC 2865 */
+        if (!parseattrnum(nameval, s, 0xFFFFFF, &vendor) ||
+            !parseattrnum(s + 1, s2, 255, &name))
+            return NULL;
         s = s2;
+    } else {
+        if (!parseattrnum(nameval, s, 255, &name))
+            return NULL;
+        /* the value would be taken as vendor id, the vendor form must be used */
+        if (name == RAD_Attr_Vendor_Specific)
+            return NULL;
     }
 
     s++;
-    if (name < 1 || name > 255)
-        return NULL;
-    /* RADIUS vendor PEN is 24-bit per RFC 2865 */
-    if (vendor_flag && (vendor < 1 || vendor > 0xFFFFFF))
-        return NULL;
     if (!validmetafield(s))
         return NULL;
 
@@ -203,14 +227,19 @@ struct dynattr *extractdynattr(char *nameval, char vendor_flag) {
     return da;
 }
 
-static struct tlv *resolvedynattr(struct dynattr *da, struct rewrite_context *ctx) {
-    char buf[INET6_ADDRSTRLEN];
+/* Resolve the value of a meta attribute from the rewrite context.
+ * Returns 1 and sets *result on success, 0 if the value can not be resolved
+ * or does not fit into an attribute (the attribute is skipped), -1 on memory
+ * error. */
+static int resolvedynattr(struct dynattr *da, struct rewrite_context *ctx, struct tlv **result) {
+    char buf[META_ADDRSTRLEN];
     char portbuf[6];
     const char *val = NULL;
-    struct tlv *a;
+    size_t maxlen = RAD_Max_Attr_Value_Length;
+    struct tlv *a, *va;
 
     if (!ctx)
-        return NULL;
+        return 0;
 
     if (strcmp(da->field, "source_ip") == 0) {
         if (ctx->clientaddr) {
@@ -234,26 +263,30 @@ static struct tlv *resolvedynattr(struct dynattr *da, struct rewrite_context *ct
 
     if (!val || !*val) {
         debug(DBG_INFO, "resolvedynattr: failed to resolve %s", da->field);
-        return NULL;
+        return 0;
     }
 
-    if (strlen(val) > RAD_Max_Attr_Value_Length) {
+    /* a vendor attribute carries the vendor id and the sub-attribute header */
+    if (da->vendor)
+        maxlen -= sizeof(uint32_t) + 2;
+    if (strlen(val) > maxlen) {
         debug(DBG_INFO, "resolvedynattr: value too long for %s", da->field);
-        return NULL;
+        return 0;
     }
 
     a = maketlv(da->t, strlen(val), (void *)val);
     if (!a)
-        return NULL;
+        return -1;
     if (da->vendor) {
-        struct tlv *va = makevendortlv(da->vendor, a);
+        va = makevendortlv(da->vendor, a);
         if (!va) {
             freetlv(a);
-            return NULL;
+            return -1;
         }
         a = va;
     }
-    return a;
+    *result = a;
+    return 1;
 }
 
 void addrewrite(char *value, uint8_t whitelist_mode, char **rmattrs, char **rmvattrs, char **addattrs,
@@ -763,10 +796,13 @@ int dorewritesup(struct radmsg *msg, struct list *supattrs) {
 static int dorewriteaddmeta(struct radmsg *msg, struct list *addmetaattrs, struct rewrite_context *ctx) {
     struct list_node *n;
     struct tlv *a;
+    int res;
 
     for (n = list_first(addmetaattrs); n; n = list_next(n)) {
-        a = resolvedynattr((struct dynattr *)n->data, ctx);
-        if (!a)
+        res = resolvedynattr((struct dynattr *)n->data, ctx, &a);
+        if (res < 0)
+            return 0;
+        if (res == 0)
             continue;
         if (!radmsg_add(msg, a, 0)) {
             freetlv(a);
@@ -779,10 +815,13 @@ static int dorewriteaddmeta(struct radmsg *msg, struct list *addmetaattrs, struc
 static int dorewritesupmeta(struct radmsg *msg, struct list *supmetaattrs, struct rewrite_context *ctx) {
     struct list_node *n;
     struct tlv *a;
+    int res;
 
     for (n = list_first(supmetaattrs); n; n = list_next(n)) {
-        a = resolvedynattr((struct dynattr *)n->data, ctx);
-        if (!a)
+        res = resolvedynattr((struct dynattr *)n->data, ctx, &a);
+        if (res < 0)
+            return 0;
+        if (res == 0)
             continue;
         if (!dorewritesupattr(msg, a)) {
             freetlv(a);
