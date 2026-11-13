@@ -4,6 +4,7 @@
 #include "../debug.h"
 #include "../radmsg.h"
 #include "../rewrite.h"
+#include <arpa/inet.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +30,7 @@ _check_rewrite(struct list *origattrs, struct rewrite *rewrite, struct list *exp
 
     msg.attrs = origattrs;
 
-    if (dorewrite(&msg, rewrite) == shouldfail) {
+    if (dorewrite(&msg, rewrite, NULL) == shouldfail) {
         if (shouldfail)
             printf("dorewrite expected to fail, but it didn't\n");
         else
@@ -73,6 +74,14 @@ void _tlv_list_clear(struct list *list) {
         freetlv(tlv);
 }
 
+void _dynattr_list_clear(struct list *list) {
+    struct dynattr *da;
+    while ((da = (struct dynattr *)list_shift(list))) {
+        free(da->field);
+        free(da);
+    }
+}
+
 void _reset_rewrite(struct rewrite *rewrite) {
     rewrite->whitelist_mode = 0;
     rewrite->removeattrs = NULL;
@@ -81,6 +90,18 @@ void _reset_rewrite(struct rewrite *rewrite) {
     _list_clear(rewrite->modattrs);
     _list_clear(rewrite->modvattrs);
     _tlv_list_clear(rewrite->supattrs);
+    _dynattr_list_clear(rewrite->addmetaattrs);
+    _dynattr_list_clear(rewrite->supmetaattrs);
+}
+
+static struct dynattr *makedynattr(uint8_t t, uint32_t vendor, const char *field) {
+    struct dynattr *da = malloc(sizeof(struct dynattr));
+    if (!da)
+        return NULL;
+    da->t = t;
+    da->vendor = vendor;
+    da->field = strdup(field);
+    return da;
 }
 
 int main(int argc, char *argv[]) {
@@ -101,6 +122,8 @@ int main(int argc, char *argv[]) {
     rewrite.modattrs = list_create();
     rewrite.modvattrs = list_create();
     rewrite.supattrs = list_create();
+    rewrite.addmetaattrs = list_create();
+    rewrite.supmetaattrs = list_create();
 
     /* test empty rewrite */
     {
@@ -760,12 +783,450 @@ int main(int argc, char *argv[]) {
         _reset_rewrite(&rewrite);
     }
 
+    /* test meta add source_ip IPv4 */
+    {
+        struct sockaddr_in sa4;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        char *expected_ip = "192.168.1.5";
+
+        memset(&sa4, 0, sizeof(sa4));
+        sa4.sin_family = AF_INET;
+        sa4.sin_port = htons(1812);
+        inet_pton(AF_INET, expected_ip, &sa4.sin_addr);
+        ctx.clientaddr = (struct sockaddr *)&sa4;
+        ctx.clientname = "testclient";
+
+        list_push(rewrite.addmetaattrs, makedynattr(31, 0, "source_ip"));
+
+        msg.attrs = origattrs;
+        list_push(expectedattrs, maketlv(31, strlen(expected_ip), expected_ip));
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 1 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data))
+            printf("not ");
+        printf("ok %d - meta add source_ip IPv4\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test meta add source_ip IPv6 */
+    {
+        struct sockaddr_in6 sa6;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        char *expected_ip = "2001:db8::1";
+
+        memset(&sa6, 0, sizeof(sa6));
+        sa6.sin6_family = AF_INET6;
+        sa6.sin6_port = htons(1812);
+        inet_pton(AF_INET6, expected_ip, &sa6.sin6_addr);
+        ctx.clientaddr = (struct sockaddr *)&sa6;
+        ctx.clientname = "testclient";
+
+        list_push(rewrite.addmetaattrs, makedynattr(31, 0, "source_ip"));
+
+        msg.attrs = origattrs;
+        list_push(expectedattrs, maketlv(31, strlen(expected_ip), expected_ip));
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 1 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data))
+            printf("not ");
+        printf("ok %d - meta add source_ip IPv6\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test meta add source_port */
+    {
+        struct sockaddr_in sa4;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        char *expected_port = "1812";
+
+        memset(&sa4, 0, sizeof(sa4));
+        sa4.sin_family = AF_INET;
+        sa4.sin_port = htons(1812);
+        inet_pton(AF_INET, "10.0.0.1", &sa4.sin_addr);
+        ctx.clientaddr = (struct sockaddr *)&sa4;
+        ctx.clientname = "testclient";
+
+        list_push(rewrite.addmetaattrs, makedynattr(5, 0, "source_port"));
+
+        msg.attrs = origattrs;
+        list_push(expectedattrs, maketlv(5, strlen(expected_port), expected_port));
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 1 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data))
+            printf("not ");
+        printf("ok %d - meta add source_port\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test meta add client_name */
+    {
+        struct sockaddr_in sa4;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        char *expected_name = "testclient";
+
+        memset(&sa4, 0, sizeof(sa4));
+        sa4.sin_family = AF_INET;
+        ctx.clientaddr = (struct sockaddr *)&sa4;
+        ctx.clientname = expected_name;
+
+        list_push(rewrite.addmetaattrs, makedynattr(32, 0, "client_name"));
+
+        msg.attrs = origattrs;
+        list_push(expectedattrs, maketlv(32, strlen(expected_name), expected_name));
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 1 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data))
+            printf("not ");
+        printf("ok %d - meta add client_name\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test meta supplement non-existing */
+    {
+        struct sockaddr_in sa4;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        char *expected_ip = "10.0.0.1";
+
+        memset(&sa4, 0, sizeof(sa4));
+        sa4.sin_family = AF_INET;
+        inet_pton(AF_INET, expected_ip, &sa4.sin_addr);
+        ctx.clientaddr = (struct sockaddr *)&sa4;
+        ctx.clientname = "testclient";
+
+        list_push(rewrite.supmetaattrs, makedynattr(31, 0, "source_ip"));
+
+        msg.attrs = origattrs;
+        list_push(expectedattrs, maketlv(31, strlen(expected_ip), expected_ip));
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 1 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data))
+            printf("not ");
+        printf("ok %d - meta supplement non-existing\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test meta supplement existing - should not add */
+    {
+        struct sockaddr_in sa4;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        char *existing_val = "existing";
+
+        memset(&sa4, 0, sizeof(sa4));
+        sa4.sin_family = AF_INET;
+        inet_pton(AF_INET, "10.0.0.1", &sa4.sin_addr);
+        ctx.clientaddr = (struct sockaddr *)&sa4;
+        ctx.clientname = "testclient";
+
+        list_push(rewrite.supmetaattrs, makedynattr(31, 0, "source_ip"));
+        list_push(origattrs, maketlv(31, strlen(existing_val), existing_val));
+        list_push(expectedattrs, maketlv(31, strlen(existing_val), existing_val));
+
+        msg.attrs = origattrs;
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 1 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data))
+            printf("not ");
+        printf("ok %d - meta supplement existing\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test meta add vendor attribute */
+    {
+        struct sockaddr_in sa4;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        char *expected_ip = "10.0.0.1";
+
+        memset(&sa4, 0, sizeof(sa4));
+        sa4.sin_family = AF_INET;
+        inet_pton(AF_INET, expected_ip, &sa4.sin_addr);
+        ctx.clientaddr = (struct sockaddr *)&sa4;
+        ctx.clientname = "testclient";
+
+        list_push(rewrite.addmetaattrs, makedynattr(1, 12345, "source_ip"));
+
+        msg.attrs = origattrs;
+        list_push(expectedattrs, makevendortlv(12345, maketlv(1, strlen(expected_ip), expected_ip)));
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 1 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data))
+            printf("not ");
+        printf("ok %d - meta add vendor attribute\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test meta with NULL context - should skip gracefully */
+    {
+        struct radmsg msg;
+
+        list_push(rewrite.addmetaattrs, makedynattr(31, 0, "source_ip"));
+
+        msg.attrs = origattrs;
+
+        if (dorewrite(&msg, &rewrite, NULL) != 1 ||
+            list_count(msg.attrs) != 0)
+            printf("not ");
+        printf("ok %d - meta with NULL context\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test meta add vendor attribute maximum value length */
+    {
+        struct sockaddr_in sa4;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        char name[255];
+
+        memset(&sa4, 0, sizeof(sa4));
+        sa4.sin_family = AF_INET;
+        ctx.clientaddr = (struct sockaddr *)&sa4;
+        ctx.clientname = name;
+        msg.attrs = origattrs;
+
+        /* vendor id and sub-attribute header leave 247 bytes for the value */
+        memset(name, 'a', sizeof(name));
+        name[247] = '\0';
+        list_push(rewrite.addmetaattrs, makedynattr(1, 12345, "client_name"));
+        list_push(expectedattrs, makevendortlv(12345, maketlv(1, strlen(name), name)));
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 1 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data))
+            printf("not ");
+        printf("ok %d - meta add vendor attribute max length\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+
+        /* one byte more does not fit, the attribute is skipped */
+        name[247] = 'a';
+        name[248] = '\0';
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 0)
+            printf("not ");
+        printf("ok %d - meta add vendor attribute too long is skipped\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test meta add attribute maximum value length */
+    {
+        struct sockaddr_in sa4;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        char name[255];
+
+        memset(&sa4, 0, sizeof(sa4));
+        sa4.sin_family = AF_INET;
+        ctx.clientaddr = (struct sockaddr *)&sa4;
+        ctx.clientname = name;
+        msg.attrs = origattrs;
+
+        memset(name, 'a', sizeof(name));
+        name[253] = '\0';
+        list_push(rewrite.addmetaattrs, makedynattr(32, 0, "client_name"));
+        list_push(expectedattrs, maketlv(32, strlen(name), name));
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 1 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data))
+            printf("not ");
+        printf("ok %d - meta add attribute max length\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+
+        name[253] = 'a';
+        name[254] = '\0';
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 0)
+            printf("not ");
+        printf("ok %d - meta add attribute too long is skipped\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test meta supplement vendor: existing sub-attribute is kept, missing one is added */
+    {
+        struct sockaddr_in sa4;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        char *existing_val = "existing";
+        char *expected_ip = "10.0.0.1";
+
+        memset(&sa4, 0, sizeof(sa4));
+        sa4.sin_family = AF_INET;
+        inet_pton(AF_INET, expected_ip, &sa4.sin_addr);
+        ctx.clientaddr = (struct sockaddr *)&sa4;
+        ctx.clientname = "testclient";
+        msg.attrs = origattrs;
+
+        list_push(rewrite.supmetaattrs, makedynattr(1, 12345, "source_ip"));
+        list_push(rewrite.supmetaattrs, makedynattr(2, 12345, "source_ip"));
+        list_push(origattrs, makevendortlv(12345, maketlv(1, strlen(existing_val), existing_val)));
+        list_push(expectedattrs, makevendortlv(12345, maketlv(1, strlen(existing_val), existing_val)));
+        list_push(expectedattrs, makevendortlv(12345, maketlv(2, strlen(expected_ip), expected_ip)));
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 2 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data) ||
+            !eqtlv((struct tlv *)list_next(list_first(msg.attrs))->data,
+                    (struct tlv *)list_next(list_first(expectedattrs))->data))
+            printf("not ");
+        printf("ok %d - meta supplement vendor attribute\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test remove and meta add in the same rewrite replaces a value sent by the client */
+    {
+        struct sockaddr_in sa4;
+        struct rewrite_context ctx;
+        struct radmsg msg;
+        uint32_t removevendorattrs[] = {12345, 1, 0};
+        char *forged_ip = "10.9.9.9";
+        char *expected_ip = "10.0.0.1";
+
+        memset(&sa4, 0, sizeof(sa4));
+        sa4.sin_family = AF_INET;
+        inet_pton(AF_INET, expected_ip, &sa4.sin_addr);
+        ctx.clientaddr = (struct sockaddr *)&sa4;
+        ctx.clientname = "testclient";
+        msg.attrs = origattrs;
+
+        rewrite.removevendorattrs = removevendorattrs;
+        list_push(rewrite.addmetaattrs, makedynattr(1, 12345, "source_ip"));
+        list_push(origattrs, makevendortlv(12345, maketlv(1, strlen(forged_ip), forged_ip)));
+        list_push(expectedattrs, makevendortlv(12345, maketlv(1, strlen(expected_ip), expected_ip)));
+
+        if (dorewrite(&msg, &rewrite, &ctx) != 1 ||
+            list_count(msg.attrs) != 1 ||
+            !eqtlv((struct tlv *)list_first(msg.attrs)->data,
+                    (struct tlv *)list_first(expectedattrs)->data))
+            printf("not ");
+        printf("ok %d - meta add replaces removed client value\n", testcount++);
+        _tlv_list_clear(origattrs);
+        _tlv_list_clear(expectedattrs);
+        _reset_rewrite(&rewrite);
+    }
+
+    /* test extractdynattr rejects invalid input */
+    {
+        struct {
+            char *spec;
+            char vendor_flag;
+        } invalid[] = {
+            {"31:bogus_field", 0},
+            {"31", 0},
+            {"0:source_ip", 0},
+            {"256:source_ip", 0},
+            {":source_ip", 0},
+            {"-1:source_ip", 0},
+            {" 31:source_ip", 0},
+            {"31x:source_ip", 0},
+            {"4294967327:source_ip", 0},
+            {"26:client_name", 0},
+            {"12345:1", 1},
+            {"0:1:source_ip", 1},
+            {"12345:0:source_ip", 1},
+            {"12345:256:source_ip", 1},
+            {"12345:1abc:source_ip", 1},
+            {"16777216:1:source_ip", 1},
+            {"4294967297:1:source_ip", 1},
+            {"12345::source_ip", 1},
+        };
+        size_t i;
+        int failed = 0;
+
+        for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+            char *spec = strdup(invalid[i].spec);
+            struct dynattr *da = extractdynattr(spec, invalid[i].vendor_flag);
+
+            if (da) {
+                printf("extractdynattr accepted invalid \"%s\"\n", invalid[i].spec);
+                failed = 1;
+                free(da->field);
+                free(da);
+            }
+            free(spec);
+        }
+        if (failed)
+            printf("not ");
+        printf("ok %d - extractdynattr rejects invalid input\n", testcount++);
+    }
+
+    /* test extractdynattr accepts valid input */
+    {
+        char *plain = strdup("31:source_ip");
+        char *vendor = strdup("16777215:26:client_name");
+        struct dynattr *da_plain = extractdynattr(plain, 0);
+        struct dynattr *da_vendor = extractdynattr(vendor, 1);
+
+        if (!da_plain || da_plain->t != 31 || da_plain->vendor != 0 ||
+            strcmp(da_plain->field, "source_ip") != 0 ||
+            !da_vendor || da_vendor->t != 26 || da_vendor->vendor != 0xFFFFFF ||
+            strcmp(da_vendor->field, "client_name") != 0)
+            printf("not ");
+        printf("ok %d - extractdynattr accepts valid input\n", testcount++);
+
+        if (da_plain) {
+            free(da_plain->field);
+            free(da_plain);
+        }
+        if (da_vendor) {
+            free(da_vendor->field);
+            free(da_vendor);
+        }
+        free(plain);
+        free(vendor);
+    }
+
     list_destroy(origattrs);
     list_destroy(expectedattrs);
     list_destroy(rewrite.addattrs);
     list_destroy(rewrite.modattrs);
     list_destroy(rewrite.modvattrs);
     list_destroy(rewrite.supattrs);
+    list_destroy(rewrite.addmetaattrs);
+    list_destroy(rewrite.supmetaattrs);
 
     printf("1..%d\n", testcount - 1);
 
