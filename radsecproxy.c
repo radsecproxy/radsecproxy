@@ -2428,11 +2428,11 @@ int dynamicconfigexternal(struct server *server) {
         close(fd[0]);
         if (fd[1] != STDOUT_FILENO) {
             if (dup2(fd[1], STDOUT_FILENO) != STDOUT_FILENO)
-                debugx(1, DBG_ERR, "dynamicconfigexternal: dup2 error for command %s", conf->dynamiclookupcommand);
+                _exit(127);
             close(fd[1]);
         }
         if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
-            debugx(1, DBG_ERR, "dynamicconfigexternal: exec error for command %s", conf->dynamiclookupcommand);
+            _exit(127);
     }
 
     close(fd[1]);
@@ -2701,7 +2701,8 @@ int mergeconfmstring(char ***dst, char ***src) {
 /**
  * Merge config src into dst.
  * Assumes that dst is a shallow copy. All values defined in src are
- * moved to dst (no memory is duplicated, but pointers in src are set to NULL). 
+ * moved to dst (no memory is duplicated, but pointers in src are set to NULL).
+ * All number values from src are copied to dst. 
  * For NULL values in src the shallow data in dst is duplicated, resulting in a deep copy of dst.
  * If src is NULL, simply a deep copy of dst is created.
  * 
@@ -2716,6 +2717,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         !mergeconfmstring(&dst->source, src ? &src->source : NULL) ||
         !mergeconfstring((char **)&dst->secret, (char **)(src ? &src->secret : NULL)) ||
         !mergeconfstring(&dst->tls, src ? &src->tls : NULL) ||
+        !mergeconfstring(&dst->pskid, src ? &src->pskid : NULL) ||
+        !mergeconfstring((char **)&dst->pskkey, src ? (char **)&src->pskkey : NULL) ||
         !mergeconfmstring(&dst->confmatchcertattrs, src ? &src->confmatchcertattrs : NULL) ||
         !mergeconfstring(&dst->confrewritein, src ? &src->confrewritein : NULL) ||
         !mergeconfstring(&dst->confrewriteout, src ? &src->confrewriteout : NULL) ||
@@ -2728,18 +2731,27 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         return 0;
 
     if (src) {
+        dst->type = src->type;
         if (src->pdef)
             dst->pdef = src->pdef;
-        dst->statusserver = src->statusserver;
+        dst->hostaf = src->hostaf;
+        dst->secret_len = src->secret_len;
+        dst->pskkeylen = src->pskkeylen;
         dst->certnamecheck = src->certnamecheck;
         dst->certcncheck = src->certcncheck;
         if (src->retryinterval != 255)
             dst->retryinterval = src->retryinterval;
         if (src->retrycount != 255)
             dst->retrycount = src->retrycount;
+        dst->addttl = src->addttl;
+        dst->keepalive = src->keepalive;
+        dst->statusserver = src->statusserver;
+        dst->idletimeout = src->idletimeout;
+        dst->loopprevention = src->loopprevention;
         dst->blockingstartup = src->blockingstartup;
         dst->sni = src->sni;
-        dst->idletimeout = src->idletimeout;
+        dst->dtlsmtu = src->dtlsmtu;
+        dst->reqmsgauth = src->reqmsgauth;
     }
     dst->shallow = 0;
     return 1;
@@ -2892,8 +2904,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->dupinterval = conf->pdef->duplicateintervaldefault;
 
     if (addttl != LONG_MIN) {
-        if (addttl < 1 || addttl > 255)
-            debugx(1, DBG_ERR, "error in block %s, value of option addTTL is %d, must be 1-255", block, addttl);
+        if (addttl < 0 || addttl > 255)
+            debugx(1, DBG_ERR, "error in block %s, value of option addTTL is %d, must be 0-255", block, addttl);
         conf->addttl = (uint8_t)addttl;
     }
 
@@ -3038,15 +3050,22 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->loopprevention = UCHAR_MAX; /* Uninitialized.  */
     resconf = (struct clsrvconf *)arg;
     if (resconf) {
-        conf->statusserver = resconf->statusserver;
-        conf->certnamecheck = resconf->certnamecheck;
-        conf->secret_len = resconf->secret_len;
-        conf->blockingstartup = resconf->blockingstartup;
         conf->type = resconf->type;
-        conf->sni = resconf->sni;
-        conf->reqmsgauth = resconf->reqmsgauth;
+        conf->hostaf = resconf->hostaf;
+        conf->secret_len = resconf->secret_len;
+        conf->pskkeylen = resconf->pskkeylen;
+        conf->certnamecheck = resconf->certnamecheck;
+        conf->addttl = resconf->addttl;
+        conf->keepalive = resconf->keepalive;
+        conf->statusserver = resconf->statusserver;
         conf->idletimeout = resconf->idletimeout;
+        conf->loopprevention = resconf->loopprevention;
+        conf->blockingstartup = resconf->blockingstartup;
+        conf->sni = resconf->sni;
+        conf->dtlsmtu = resconf->dtlsmtu;
+        conf->reqmsgauth = resconf->reqmsgauth;
     } else {
+        conf->hostaf = AF_UNSPEC;
         conf->certnamecheck = 1;
         conf->sni = options.sni;
         conf->reqmsgauth = options.reqmsgauth;
@@ -3119,8 +3138,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->pdef = protodefs[conf->type];
     }
 
-    conf->hostaf = AF_UNSPEC;
-    if (config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf) ||
+    if ((!resconf && config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf) != 0) ||
         config_hostaf(block, ipv4only, ipv6only, &conf->hostaf)) {
         debug(DBG_ERR, "config error: ^");
         goto errexit;
@@ -3163,8 +3181,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     }
 
     if (addttl != LONG_MIN) {
-        if (addttl < 1 || addttl > 255) {
-            debug(DBG_ERR, "error in block %s, value of option addTTL is %ld, must be 1-255", block, addttl);
+        if (addttl < 0 || addttl > 255) {
+            debug(DBG_ERR, "error in block %s, value of option addTTL is %ld, must be 0-255", block, addttl);
             goto errexit;
         }
         conf->addttl = (uint8_t)addttl;
@@ -3468,8 +3486,8 @@ void getmainconfig(const char *configfile) {
     }
 
     if (addttl != LONG_MIN) {
-        if (addttl < 1 || addttl > 255)
-            debugx(1, DBG_ERR, "error in %s, value of option addTTL is %d, must be 1-255", configfile, addttl);
+        if (addttl < 0 || addttl > 255)
+            debugx(1, DBG_ERR, "error in %s, value of option addTTL is %d, must be 0-255", configfile, addttl);
         options.addttl = (uint8_t)addttl;
     }
     if (!setttlattr(&options, DEFAULT_TTL_ATTR))

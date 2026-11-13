@@ -274,7 +274,7 @@ attribute, or two numerical values separated by column specifying a vendor
 attribute.
 .RE
 
-.BR "AddTTL " "1-255"
+.BR "AddTTL " "0-255"
 .RS
 If a TTL attribute is present, the proxy will decrement the value and discard
 the message if zero. Normally the proxy does nothing if no TTL attribute is
@@ -534,7 +534,7 @@ or returned a copy of the previous reply.
 After \fIseconds\fR without any traffic, connections from this client are closed. Default 600s.
 .RE
 
-.BR "AddTTL " 1-255
+.BR "AddTTL " 0-255
 .RS
 The AddTTL option has the same meaning as the option used in the basic config.
 See the \fBBASIC OPTIONS\fR section for details. Any value configured here
@@ -827,7 +827,7 @@ block. The details are not repeated here. Please refer to the definitions in the
 .br
 \fBMatchCertificateAttribute \fR...
 .br
-.BR "AddTTL " 1-255
+.BR "AddTTL " 0-255
 .br
 .BR "TCPKeepalive (" on | off )
 

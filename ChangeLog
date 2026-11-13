@@ -13,8 +13,15 @@ unreleased changes
 	- Update client-certificate validation to latest draft RFC
 
 	Bug Fixes:
-	- Fix startup fails when using address-sanitizer
 	- Fix failing authenticator validation (race condition) closes TLS connection (#208)
+
+2026-11-13 1.11.5
+	Bug Fixes:
+	- Fix vendor attribute rewrite checks (GHSA-mf4w-p52g-j253)
+	- Fix dynamic lookup config merge for TLS-PSK (GHSA-4pv5-j49w-wfpp)
+	- Fix some configuration values from dynamic lookup command ignored
+	- Fix config file issues with string quotation at end of file
+	- Fix startup fails when using address-sanitizer
 
 2026-08-10 1.11.4
 	Bug Fixes:
