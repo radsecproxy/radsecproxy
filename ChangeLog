@@ -3,6 +3,7 @@ unreleased changes
 	- Support wildcard certificates (#149)
 	- Support NAIRealm subjectAltName for dynamic discovery
 	- Global option to require Message-Authenticator on all clients and servers
+	- CoA/Disconnect-Request proxying by Operator-Name to coaServer blocks (#206)
 
 	Misc:
 	- Prevent TLS connections to self

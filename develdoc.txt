@@ -353,3 +353,17 @@ traverses the list of realms and for each realm:
 freeclsrvconf() performs 15 calls to free() and also invokes
 freegconfmstr(), freehostports(), regfree() and
 pthread_mutex_destroy().
+
+
+4. CoA and Disconnect
+=====================
+
+Requests from clients are handled in coa.c.
+
+A CoA/Disconnect-Request from a client goes through radsrv() like any
+request, given acceptCoA and a fresh Event-Timestamp. findcoaserver()
+picks a coaServer of the Operator-Name realm, preferring one whose
+NASidentifier or host the request names. With no coaServer the client
+gets a NAK with Error-Cause 502, or 403 when the realm names NASes and
+none of them matches. replyh() pairs the response with the request code
+before passing it back.

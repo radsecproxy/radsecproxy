@@ -1,6 +1,8 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2010-2012,2016, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs
+ * Copyright (c) 2026, CyB0rgg */
 /* See LICENSE for licensing information. */
 
 #ifndef _RADSECPROXY_H
@@ -198,6 +200,8 @@ struct clsrvconf {
     uint8_t reqmsgauth;
     uint8_t reqmsgauthproxy;
     uint8_t protocolerror;
+    char *nas_identifier;
+    uint8_t accept_coa;
 };
 
 #include "tlscommon.h"
@@ -249,6 +253,7 @@ struct realm {
     struct list *subrealms;
     struct list *srvconfs;
     struct list *accsrvconfs;
+    struct list *coasrvconfs;
 };
 
 struct protodefs {
@@ -284,6 +289,11 @@ struct gqueue *newqueue(void);
 struct request *newrequest(void);
 void freerq(struct request *rq);
 int radsrv(struct request *rq);
+int msgauthrequired(const struct clsrvconf *conf, struct radmsg *msg);
+int recryptrequestattrs(struct radmsg *msg, struct clsrvconf *from, struct clsrvconf *to, uint8_t *rqauth);
+struct realm *newrealmref(struct realm *r);
+struct clsrvconf *choosesrvconf(struct list *srvconfs);
+int addserver(struct clsrvconf *conf, const char *dynamiclookuparg);
 int timeouth(struct server *server);
 int closeh(struct server *server);
 int replyh(struct server *server, uint8_t *buf, int buflen);

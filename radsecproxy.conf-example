@@ -158,6 +158,8 @@ client 127.0.0.1 {
 #	rewriteIn example
 #	Can also do rewriting of outgoing messages
 #	rewriteOut example
+#	Accept CoA/Disconnect-Request from this client
+#	acceptCoA on
 }
 client 127.0.0.1 {
 	type	tcp
@@ -257,4 +259,14 @@ realm * {
 # reject all unknowns. Optionally you can also include a message
 #realm * {
 #        replymessage "User unknown"
+#}
+
+# CoA/Disconnect-Request is routed by Operator-Name, not User-Name
+#server 192.0.2.20 {
+#	type	udp
+#	port	3799
+#	secret	secret
+#}
+#realm example.com {
+#	coaServer 192.0.2.20
 #}

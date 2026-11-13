@@ -1,6 +1,8 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2010-2013,2015-2016, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs
+ * Copyright (c) 2026, CyB0rgg */
 /* See LICENSE for licensing information. */
 
 /* For UDP there is one server instance consisting of udpserverrd and udpserverth
@@ -47,6 +49,7 @@
 #ifdef SYS_SOLARIS
 #include <fcntl.h>
 #endif
+#include "coa.h"
 #include "debug.h"
 #include "dns.h"
 #include "dtls.h"
@@ -1279,6 +1282,39 @@ static int ensuremsgauthfront(struct radmsg *msg) {
     return 1;
 }
 
+/**
+ * @brief whether RequireMessageAuthenticator or RequireMessageAuthenticatorProxy applies to msg
+ *
+ * Only an Access-Request on UDP or TCP. A CoA-Request or Disconnect-Request may carry a
+ * Message-Authenticator (rfc 5176 section 3.4) and it is verified when present, but it is
+ * not required.
+ */
+int msgauthrequired(const struct clsrvconf *conf, struct radmsg *msg) {
+    if (conf->type != RAD_UDP && conf->type != RAD_TCP)
+        return 0;
+    if (msg->code != RAD_Access_Request)
+        return 0;
+    if (conf->reqmsgauth)
+        return 1;
+    return conf->reqmsgauthproxy && radmsg_gettype(msg, RAD_Attr_Proxy_State) != NULL;
+}
+
+/**
+ * @brief reencrypts the obfuscated attributes of a request forwarded from one secret to another
+ *
+ * A CoA-Request or Disconnect-Request has no random Request Authenticator: it is computed over
+ * the packet like an Accounting-Request's (rfc 5176 section 2.3), so Tunnel-Password and the
+ * MS-MPPE keys (rfc 5176 section 3.6) are obfuscated with sixteen zero octets in its place, as
+ * FreeRADIUS does. Other requests use the Request Authenticator received and the one sent.
+ */
+int recryptrequestattrs(struct radmsg *msg, struct clsrvconf *from, struct clsrvconf *to, uint8_t *rqauth) {
+    uint8_t zeroauth[16] = {0};
+
+    if (IS_COA_REQUEST(msg->code))
+        return recryptattrs(msg->attrs, from->secret, from->secret_len, to->secret, to->secret_len, zeroauth, zeroauth);
+    return recryptattrs(msg->attrs, from->secret, from->secret_len, to->secret, to->secret_len, rqauth, msg->auth);
+}
+
 /* Called from server readers, handling incoming requests from
  * clients. */
 /* returns 0 if validation/authentication fails, else 1 */
@@ -1330,8 +1366,10 @@ int radsrv(struct request *rq) {
     memcpy(rq->rqauth, msg->auth, 16);
 
     debug(DBG_DBG, "radsrv: code %d, id %d", msg->code, msg->id);
-    if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request) {
-        debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests and status-server, ignoring %s (code %d, id %d) from %s (%s)", radmsgtype2string(msg->code), msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+
+    if (msg->code != RAD_Access_Request && msg->code != RAD_Status_Server && msg->code != RAD_Accounting_Request &&
+        !IS_COA_REQUEST(msg->code)) {
+        debug_limit(DBG_INFO, "radsrv: server currently accepts only access-requests, accounting-requests, coa/disconnect-requests and status-server, ignoring %s (code %d, id %d) from %s (%s)", radmsgtype2string(msg->code), msg->code, msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
         if (from->conf->type != RAD_UDP)
             respondprotoerror(rq, RAD_Err_Unsupported_Extension);
         goto exit;
@@ -1346,15 +1384,26 @@ int radsrv(struct request *rq) {
         goto exit;
     }
 
-    /* below: code == RAD_Access_Request || code == RAD_Accounting_Request */
+    /* rfc 8559 4.3.1: a coa request from a client that is not a known dynamic
+       authorization client is refused with the same code as an unroutable one */
+    if (IS_COA_REQUEST(msg->code) && !from->conf->accept_coa) {
+        debug_limit(DBG_INFO, "radsrv: %s (id %d) from %s (%s) refused, acceptCoA not enabled",
+                    radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        respond(rq, coa_nak_code(msg->code), make_error_cause_tlv(RAD_Err_Request_Not_Routable), 1);
+        goto exit;
+    }
 
-    if ((from->conf->reqmsgauth || from->conf->reqmsgauthproxy) && (from->conf->type == RAD_UDP || from->conf->type == RAD_TCP) &&
-        msg->code == RAD_Access_Request) {
-        if (msg->authstate != RSP_RADMSG_MSGAUTH_VALID &&
-            (from->conf->reqmsgauth || (from->conf->reqmsgauthproxy && radmsg_gettype(msg, RAD_Attr_Proxy_State) != NULL))) {
-            debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), missing required message-authenticator", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
-            goto exit;
-        }
+    if (msgauthrequired(from->conf, msg) && msg->authstate != RSP_RADMSG_MSGAUTH_VALID) {
+        debug_limit(DBG_INFO, "radsrv: ignoring request from client %s (%s), missing required message-authenticator", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        goto exit;
+    }
+
+    /* rfc 5176 6.3: the same window as duplicate detection */
+    if (IS_COA_REQUEST(msg->code) && from->conf->dupinterval &&
+        !event_timestamp_fresh(radmsg_gettype(msg, RAD_Attr_Event_Timestamp), from->conf->dupinterval)) {
+        debug_limit(DBG_NOTICE, "radsrv: stale event-timestamp in %s (id %d) from %s (%s), ignoring",
+                    radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        goto exit;
     }
 
     if (options.verifyeap &&
@@ -1382,53 +1431,67 @@ int radsrv(struct request *rq) {
         goto exit;
     }
 
-    attr = radmsg_gettype(msg, RAD_Attr_User_Name);
-    if (!attr) {
-        if (msg->code == RAD_Accounting_Request)
-            respond(rq, RAD_Accounting_Response, NULL, 0);
-        else {
-            debug_limit(DBG_NOTICE, "radsrv: error in access request from %s (%s), no username attribute", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
-            respondprotoerror(rq, RAD_Err_Request_Not_Routable);
-        }
-        goto exit;
-    }
+    if (IS_COA_REQUEST(msg->code)) {
+        int nasmismatch;
 
-    if (from->conf->rewriteusername && (result = rewriteusername(rq, attr)) < 1) {
-        if (result == 0) {
-            debug_limit(DBG_NOTICE, "radsrv: username rewrite results in invalid attribute from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
-            respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
-        } else {
-            debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
+        to = findcoaserver(realms, &realm, msg, &nasmismatch);
+        if (!to) {
+            int errorcause = nasmismatch ? RAD_Err_NAS_Identification_Mismatch : RAD_Err_Request_Not_Routable;
+
+            debug_limit(DBG_INFO, "radsrv: no route for %s (id %d) from %s (%s), Error-Cause %d",
+                        radmsgtype2string(msg->code), msg->id, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), errorcause);
+            respond(rq, coa_nak_code(msg->code), make_error_cause_tlv(errorcause), 1);
+            goto exit;
+        }
+    } else {
+        attr = radmsg_gettype(msg, RAD_Attr_User_Name);
+        if (!attr) {
+            if (msg->code == RAD_Accounting_Request)
+                respond(rq, RAD_Accounting_Response, NULL, 0);
+            else {
+                debug_limit(DBG_NOTICE, "radsrv: error in access request from %s (%s), no username attribute", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+                respondprotoerror(rq, RAD_Err_Request_Not_Routable);
+            }
+            goto exit;
+        }
+
+        if (from->conf->rewriteusername && (result = rewriteusername(rq, attr)) < 1) {
+            if (result == 0) {
+                debug_limit(DBG_NOTICE, "radsrv: username rewrite results in invalid attribute from %s (%s)", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+                respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
+            } else {
+                debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
+                goto rmclrqexit;
+            }
+        }
+
+        /* converty any non printable ascii character to hexencoding for logging */
+        userascii = radattr2ascii(attr);
+        if (!userascii)
             goto rmclrqexit;
-        }
-    }
+        debug(DBG_INFO, "radsrv: got %s (id %d) with username: %s from client %s (%s)", radmsgtype2string(msg->code), msg->id, userascii, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
 
-    /* converty any non printable ascii character to hexencoding for logging */
-    userascii = radattr2ascii(attr);
-    if (!userascii)
-        goto rmclrqexit;
-    debug(DBG_INFO, "radsrv: got %s (id %d) with username: %s from client %s (%s)", radmsgtype2string(msg->code), msg->id, userascii, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
-
-    /* will return with lock on the realm */
-    to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
-    if (!realm) {
-        debug_limit(DBG_INFO, "radsrv: realm %s not found, don't know where to send it", userascii);
-        respondprotoerror(rq, RAD_Err_Request_Not_Routable);
-        goto exit;
-    }
-
-    if (!to) {
-        if (realm->message && msg->code == RAD_Access_Request) {
-            respond(rq, RAD_Access_Reject, maketlv(RAD_Attr_Reply_Message, strlen(realm->message), realm->message), 1);
-        } else if (realm->accresp && msg->code == RAD_Accounting_Request) {
-            if (realm->acclog)
-                log_accounting_resp(from, msg, (char *)userascii);
-            respond(rq, RAD_Accounting_Response, NULL, 0);
-        } else {
-            debug_limit(DBG_INFO, "radsrv: no servers configured for realm %s (from client %s (%s))", realm->name, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+        /* will return with lock on the realm */
+        to = findserver(&realm, attr, msg->code == RAD_Accounting_Request);
+        if (!realm) {
+            debug_limit(DBG_INFO, "radsrv: realm %s not found, don't know where to send it", userascii);
             respondprotoerror(rq, RAD_Err_Request_Not_Routable);
+            goto exit;
         }
-        goto exit;
+
+        if (!to) {
+            if (realm->message && msg->code == RAD_Access_Request) {
+                respond(rq, RAD_Access_Reject, maketlv(RAD_Attr_Reply_Message, strlen(realm->message), realm->message), 1);
+            } else if (realm->accresp && msg->code == RAD_Accounting_Request) {
+                if (realm->acclog)
+                    log_accounting_resp(from, msg, (char *)userascii);
+                respond(rq, RAD_Accounting_Response, NULL, 0);
+            } else {
+                debug_limit(DBG_INFO, "radsrv: no servers configured for realm %s (from client %s (%s))", realm->name, from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)));
+                respondprotoerror(rq, RAD_Err_Request_Not_Routable);
+            }
+            goto exit;
+        }
     }
 
     if ((to->conf->loopprevention == 1 || (to->conf->loopprevention == UCHAR_MAX && options.loopprevention == 1)) &&
@@ -1443,20 +1506,22 @@ int radsrv(struct request *rq) {
      * one, create a CHAP-Challenge containing the Request
      * Authenticator because that's what the CHAP-Password is based
      * on. */
-    attr = radmsg_gettype(msg, RAD_Attr_CHAP_Password);
-    if (attr) {
-        debug(DBG_DBG, "%s: found CHAP-Password with value length %d", __func__,
-              attr->l);
-        attr = radmsg_gettype(msg, RAD_Attr_CHAP_Challenge);
-        if (attr == NULL) {
-            debug(DBG_DBG, "%s: no CHAP-Challenge found, creating one", __func__);
-            attr = maketlv(RAD_Attr_CHAP_Challenge, 16, msg->auth);
-            if (attr == NULL || radmsg_add(msg, attr, 0) != 1) {
-                debug(DBG_ERR, "%s: adding CHAP-Challenge failed, "
-                               "CHAP-Password request dropped",
-                      __func__);
-                freetlv(attr);
-                goto rmclrqexit;
+    if (!IS_COA_REQUEST(msg->code)) {
+        attr = radmsg_gettype(msg, RAD_Attr_CHAP_Password);
+        if (attr) {
+            debug(DBG_DBG, "%s: found CHAP-Password with value length %d", __func__,
+                  attr->l);
+            attr = radmsg_gettype(msg, RAD_Attr_CHAP_Challenge);
+            if (attr == NULL) {
+                debug(DBG_DBG, "%s: no CHAP-Challenge found, creating one", __func__);
+                attr = maketlv(RAD_Attr_CHAP_Challenge, 16, msg->auth);
+                if (attr == NULL || radmsg_add(msg, attr, 0) != 1) {
+                    debug(DBG_ERR, "%s: adding CHAP-Challenge failed, "
+                                   "CHAP-Password request dropped",
+                          __func__);
+                    freetlv(attr);
+                    goto rmclrqexit;
+                }
             }
         }
     }
@@ -1471,8 +1536,7 @@ int radsrv(struct request *rq) {
     printfchars(NULL, "auth", "%02x ", msg->auth, 16);
 #endif
 
-    if ((result = recryptattrs(msg->attrs, from->conf->secret, from->conf->secret_len, to->conf->secret, to->conf->secret_len,
-                               rq->rqauth, msg->auth)) < 1) {
+    if ((result = recryptrequestattrs(msg, from->conf, to->conf, rq->rqauth)) < 1) {
         if (result == 0) {
             debug_limit(DBG_NOTICE, "radsrv: reencrypting passwords failed, invalid attribute(s) from %s (%s) to %s", from->conf->name, addr2string(from->addr, tmp, sizeof(tmp)), to->conf->name);
             respondprotoerror(rq, RAD_Err_Other_Proxy_Processing_Error);
@@ -1494,7 +1558,7 @@ int radsrv(struct request *rq) {
         }
     }
 
-    if (msg->code == RAD_Access_Request &&
+    if ((msg->code == RAD_Access_Request || IS_COA_REQUEST(msg->code)) &&
         !ensuremsgauthfront(msg))
         goto rmclrqexit;
 
@@ -1627,8 +1691,8 @@ int replyh(struct server *server, uint8_t *buf, int len) {
     buf = NULL;
 
     if (msg->code != RAD_Access_Accept && msg->code != RAD_Access_Reject && msg->code != RAD_Access_Challenge &&
-        msg->code != RAD_Accounting_Response && msg->code != RAD_Protocol_Error) {
-        debug_limit(DBG_INFO, "replyh: discarding message type %s (code %d), accepting only access accept, access reject, access challenge and accounting response messages", radmsgtype2string(msg->code), msg->code);
+        msg->code != RAD_Accounting_Response && msg->code != RAD_Protocol_Error && !IS_COA_RESPONSE(msg->code)) {
+        debug_limit(DBG_INFO, "replyh: discarding message type %s (code %d), accepting only access accept, access reject, access challenge, accounting response, protocol error and coa/disconnect ack/nak messages", radmsgtype2string(msg->code), msg->code);
         goto errunlock;
     }
 
@@ -1656,7 +1720,28 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         goto errunlock;
     }
 
+    if (IS_COA_REQUEST(rqout->rq->msg->code)) {
+        uint8_t reqcode = rqout->rq->msg->code;
+        if ((reqcode == RAD_Disconnect_Request && msg->code != RAD_Disconnect_ACK && msg->code != RAD_Disconnect_NAK) ||
+            (reqcode == RAD_CoA_Request && msg->code != RAD_CoA_ACK && msg->code != RAD_CoA_NAK)) {
+            debug(DBG_INFO, "replyh: %s (id %d) from %s does not match outstanding request code %d, ignoring",
+                  radmsgtype2string(msg->code), msg->id, server->conf->name, reqcode);
+            goto errunlock;
+        }
+    } else if (IS_COA_RESPONSE(msg->code)) {
+        debug(DBG_INFO, "replyh: unexpected %s (id %d) from %s for outstanding request code %d, ignoring",
+              radmsgtype2string(msg->code), msg->id, server->conf->name, rqout->rq->msg->code);
+        goto errunlock;
+    }
+
     debug(DBG_DBG, "got %s message with id %d", radmsgtype2string(msg->code), msg->id);
+
+    if (msg->code == RAD_CoA_NAK || msg->code == RAD_Disconnect_NAK) {
+        struct tlv *errorcause = radmsg_gettype(msg, RAD_Attr_Error_Cause);
+        if (errorcause && errorcause->l == 4)
+            debug(DBG_INFO, "replyh: %s (id %d) from %s with Error-Cause %u",
+                  radmsgtype2string(msg->code), msg->id, server->conf->name, tlv2longint(errorcause));
+    }
 
     gettimeofday(&server->lastrcv, NULL);
 
@@ -1776,7 +1861,7 @@ int replyh(struct server *server, uint8_t *buf, int len) {
         goto errunlock;
     }
 
-    if ((msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject) &&
+    if ((msg->code == RAD_Access_Challenge || msg->code == RAD_Access_Accept || msg->code == RAD_Access_Reject || IS_COA_RESPONSE(msg->code)) &&
         !ensuremsgauthfront(msg))
         goto errunlock;
 
@@ -2216,11 +2301,13 @@ void freerealm(struct realm *realm) {
     list_destroy(realm->srvconfs);
     /* if refcount == 0, all accsrvconfs gone */
     list_destroy(realm->accsrvconfs);
+    /* if refcount == 0, all coasrvconfs gone */
+    list_destroy(realm->coasrvconfs);
     freerealm(realm->parent);
     free(realm);
 }
 
-struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char *message, uint8_t accresp, uint8_t acclog) {
+struct realm *addrealm(struct list *realmlist, char *value, char **servers, char **accservers, char **coaservers, char *message, uint8_t accresp, uint8_t acclog) {
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
@@ -2303,6 +2390,19 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers, char
             goto errexit;
     }
 
+    if (coaservers && *coaservers) {
+        struct list_node *coaentry;
+
+        realm->coasrvconfs = addsrvconfs(value, coaservers);
+        if (!realm->coasrvconfs)
+            goto errexit;
+
+        for (coaentry = list_first(realm->coasrvconfs); coaentry; coaentry = list_next(coaentry))
+            if (((struct clsrvconf *)coaentry->data)->dynamiclookupcommand)
+                debug(DBG_WARN, "addrealm: coaServer %s for realm %s has DynamicLookupCommand, not supported for coa",
+                      ((struct clsrvconf *)coaentry->data)->name, value);
+    }
+
     if (!list_push(realmlist, realm)) {
         debug(DBG_ERR, "malloc failed");
         pthread_mutex_destroy(&realm->mutex);
@@ -2316,6 +2416,8 @@ errexit:
     while (list_shift(realm->srvconfs))
         ;
     while (list_shift(realm->accsrvconfs))
+        ;
+    while (list_shift(realm->coasrvconfs))
         ;
     freerealm(realm);
     realm = NULL;
@@ -2332,6 +2434,12 @@ exit:
             for (n = 0; accservers[n]; n++)
                 newrealmref(realm);
         freegconfmstr(accservers);
+    }
+    if (coaservers) {
+        if (realm)
+            for (n = 0; coaservers[n]; n++)
+                newrealmref(realm);
+        freegconfmstr(coaservers);
     }
     return realm;
 }
@@ -2391,7 +2499,7 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
     if (!realm->subrealms)
         return NULL;
 
-    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, stringcopy(realm->message, 0), realm->accresp, realm->acclog);
+    newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, NULL, stringcopy(realm->message, 0), realm->accresp, realm->acclog);
     if (!newrealm) {
         list_destroy(realm->subrealms);
         realm->subrealms = NULL;
@@ -2604,6 +2712,7 @@ void freeclsrvconf(struct clsrvconf *conf) {
         freegconfmstr(conf->confmatchcertattrs);
         freematchcertattr(conf);
 #endif
+        free(conf->nas_identifier);
         free(conf->name);
         if (conf->hostsrc)
             freegconfmstr(conf->hostsrc);
@@ -2727,7 +2836,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         !mergeconfstring(&dst->fticks_viscountry, src ? &src->fticks_viscountry : NULL) ||
         !mergeconfstring(&dst->fticks_visinst, src ? &src->fticks_visinst : NULL) ||
         !mergeconfstring(&dst->sniservername, src ? &src->sniservername : NULL) ||
-        !mergeconfstring(&dst->servername, src ? &src->servername : NULL))
+        !mergeconfstring(&dst->servername, src ? &src->servername : NULL) ||
+        !mergeconfstring(&dst->nas_identifier, src ? &src->nas_identifier : NULL))
         return 0;
 
     if (src) {
@@ -2865,6 +2975,7 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "requireMessageAuthenticator", CONF_BLN, &conf->reqmsgauth,
             "requireMessageAuthenticatorProxy", CONF_BLN, &conf->reqmsgauthproxy,
             "ProtocolError", CONF_BLN, &conf->protocolerror,
+            "acceptCoA", CONF_BLN, &conf->accept_coa,
             NULL))
         debugx(1, DBG_ERR, "configuration error");
 
@@ -3104,6 +3215,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
                           "SNIservername", CONF_STR, &conf->sniservername,
                           "DTLSForceMTU", CONF_LINT, &conf->dtlsmtu,
                           "requireMessageAuthenticator", CONF_BLN, &conf->reqmsgauth,
+                          "NASidentifier", CONF_STR, &conf->nas_identifier,
                           NULL)) {
         debug(DBG_ERR, "configuration error");
         goto errexit;
@@ -3313,7 +3425,7 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
 }
 
 int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
-    char **servers = NULL, **accservers = NULL, *msg = NULL;
+    char **servers = NULL, **accservers = NULL, **coaservers = NULL, *msg = NULL;
     uint8_t accresp = 0, acclog = 0;
 
     debug(DBG_DBG, "confrealm_cb called for %s", block);
@@ -3321,13 +3433,14 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
     if (!getgenericconfig(cf, block,
                           "server", CONF_MSTR, &servers,
                           "accountingServer", CONF_MSTR, &accservers,
+                          "coaServer", CONF_MSTR, &coaservers,
                           "ReplyMessage", CONF_STR, &msg,
                           "AccountingResponse", CONF_BLN, &accresp,
                           "AccountingLog", CONF_BLN, &acclog,
                           NULL))
         debugx(1, DBG_ERR, "configuration error");
 
-    if (!addrealm(realms, val, servers, accservers, msg, accresp, acclog)) {
+    if (!addrealm(realms, val, servers, accservers, coaservers, msg, accresp, acclog)) {
         debug(DBG_ERR, "failed to add %s", block);
         return 0;
     }

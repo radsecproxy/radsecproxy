@@ -612,6 +612,14 @@ Send Protocol-Error responses if requests can't be forwarded, allowing clients t
 up their state early and not having to wait for a timeout (default on).
 .RE
 
+.BR "AcceptCoA (" on | off )
+.RS
+Accept CoA-Request and Disconnect-Request from this client (default \fBoff\fR).
+Requests from other clients are answered with a NAK carrying Error-Cause 502.
+Duplicate detection and the Event-Timestamp check use this client's
+\fBDuplicateInterval\fR, see \fBCOA/DISCONNECT ROUTING\fR.
+.RE
+
 .SH "SERVER BLOCK"
 .nf
 .BI "server (" name |(( fqdn | address )[\fR: port ])) "\fR {"
@@ -810,6 +818,13 @@ This should always be be enabled unless the server is known to only support lega
 This setting is ignored when using TLS/DTLS transport.
 .RE
 
+.BI "NASidentifier " identifier
+.RS
+NAS identity of this \fBcoaServer\fR. A CoA-Request or Disconnect-Request whose
+Operator-NAS-Identifier or NAS-Identifier equals \fIidentifier\fR, or whose
+NAS-IP-Address or NAS-IPv6-Address matches \fBHost\fR, is sent here.
+.RE
+
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
 
@@ -852,15 +867,19 @@ The allowed options in a realm block are:
 .BI "Server " server
 .br
 .BI "AccountingServer " server
+.br
+.BI "CoAServer " server
 .RS
 Specify the \fIserver\fR to which requests for this realm should be forwarded.
 \fIserver\fR references a previously defined \fBserver\fR block (see the
-\fBSERVER BLOCK\fR section). Each \fBserver\fR and \fBaccountingServer\fR can be
-specified multiple times, or omitted completely. If no \fBserver\fR is
-configured, the proxy will deny all Access-Requests for this realm. If no
-\fBaccountingServer\fR is configured, the proxy will silently ignore all
-Accounting-Requests for this realm. See the \fBSERVER SELECTION\fR section below
-for details.
+\fBSERVER BLOCK\fR section). Each \fBserver\fR, \fBaccountingServer\fR and
+\fBcoaServer\fR can be specified multiple times, or omitted completely. If no
+\fBserver\fR is configured, the proxy will deny all Access-Requests for this
+realm. If no \fBaccountingServer\fR is configured, the proxy will silently
+ignore all Accounting-Requests for this realm. If no \fBcoaServer\fR is
+configured, CoA-Request and Disconnect-Request for this realm are answered with
+Error-Cause 502. See the \fBSERVER SELECTION\fR and \fBCOA/DISCONNECT ROUTING\fR
+sections below for details.
 .RE
 
 .BR "AccountingResponse (" on | off )
@@ -932,6 +951,19 @@ nothing, ignoring accounting requests. If instead \fBAccountingResponse\fR is
 set to on, the proxy will log some of the accounting information and send an
 Accounting-Response back. This stops clients from retransmitting
 Accounting-Request messages when a realm has no accountingServer configured.
+
+.SS "COA/DISCONNECT ROUTING"
+CoA-Request and Disconnect-Request (RFC 5176) are routed by Operator-Name (RFC 8559
+section 3.2), never by User-Name. For namespace 1 the realm is the text after the
+namespace byte, example.com for 1example.com; for other namespaces it is the whole
+value, such as 4EXAMPLE:XX, matched against the realm block names like a User-Name realm.
+A request without Operator-Name is answered with Error-Cause 502.
+
+A request from a client with \fBAcceptCoA\fR goes to a \fBcoaServer\fR of the realm,
+preferring one whose \fBNASidentifier\fR or \fBHost\fR the request names. When the realm
+names NASes and none matches the answer is Error-Cause 403; when no coaServer takes it
+otherwise, Error-Cause 502. Event-Timestamp, when present, must be within
+\fBDuplicateInterval\fR of the proxy clock (RFC 5176 section 6.3).
 
 .SH "TLS BLOCK"
 .nf
