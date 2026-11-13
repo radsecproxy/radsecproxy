@@ -2438,11 +2438,11 @@ int dynamicconfigexternal(struct server *server) {
         close(fd[0]);
         if (fd[1] != STDOUT_FILENO) {
             if (dup2(fd[1], STDOUT_FILENO) != STDOUT_FILENO)
-                debugx(1, DBG_ERR, "dynamicconfigexternal: dup2 error for command %s", conf->dynamiclookupcommand);
+                _exit(127);
             close(fd[1]);
         }
         if (execlp(conf->dynamiclookupcommand, conf->dynamiclookupcommand, server->dynamiclookuparg, NULL) < 0)
-            debugx(1, DBG_ERR, "dynamicconfigexternal: exec error for command %s", conf->dynamiclookupcommand);
+            _exit(127);
     }
 
     close(fd[1]);
