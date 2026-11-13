@@ -2711,7 +2711,8 @@ int mergeconfmstring(char ***dst, char ***src) {
 /**
  * Merge config src into dst.
  * Assumes that dst is a shallow copy. All values defined in src are
- * moved to dst (no memory is duplicated, but pointers in src are set to NULL). 
+ * moved to dst (no memory is duplicated, but pointers in src are set to NULL).
+ * All number values from src are copied to dst. 
  * For NULL values in src the shallow data in dst is duplicated, resulting in a deep copy of dst.
  * If src is NULL, simply a deep copy of dst is created.
  * 
@@ -2740,18 +2741,25 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         return 0;
 
     if (src) {
+        dst->type = src->type;
         if (src->pdef)
             dst->pdef = src->pdef;
+        dst->hostaf = src->hostaf;
         dst->secret_len = src->secret_len;
         dst->pskkeylen = src->pskkeylen;
-        dst->statusserver = src->statusserver;
         dst->certnamecheck = src->certnamecheck;
         if (src->retryinterval != 255)
             dst->retryinterval = src->retryinterval;
         if (src->retrycount != 255)
             dst->retrycount = src->retrycount;
+        dst->addttl = src->addttl;
+        dst->keepalive = src->keepalive;
+        dst->statusserver = src->statusserver;
+        dst->loopprevention = src->loopprevention;
         dst->blockingstartup = src->blockingstartup;
         dst->sni = src->sni;
+        dst->dtlsmtu = src->dtlsmtu;
+        dst->reqmsgauth = src->reqmsgauth;
     }
     dst->shallow = 0;
     return 1;
@@ -3043,14 +3051,21 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
     conf->loopprevention = UCHAR_MAX; /* Uninitialized.  */
     resconf = (struct clsrvconf *)arg;
     if (resconf) {
-        conf->statusserver = resconf->statusserver;
-        conf->certnamecheck = resconf->certnamecheck;
+        conf->type = resconf->type;
+        conf->hostaf = resconf->hostaf;
         conf->secret_len = resconf->secret_len;
         conf->pskkeylen = resconf->pskkeylen;
+        conf->certnamecheck = resconf->certnamecheck;
+        conf->addttl = resconf->addttl;
+        conf->keepalive = resconf->keepalive;
+        conf->statusserver = resconf->statusserver;
+        conf->loopprevention = resconf->loopprevention;
         conf->blockingstartup = resconf->blockingstartup;
-        conf->type = resconf->type;
         conf->sni = resconf->sni;
+        conf->dtlsmtu = resconf->dtlsmtu;
+        conf->reqmsgauth = resconf->reqmsgauth;
     } else {
+        conf->hostaf = AF_UNSPEC;
         conf->certnamecheck = 1;
         conf->sni = options.sni;
     }
@@ -3120,8 +3135,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->pdef = protodefs[conf->type];
     }
 
-    conf->hostaf = AF_UNSPEC;
-    if (config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf) ||
+    if ((!resconf && config_hostaf("top level", options.ipv4only, options.ipv6only, &conf->hostaf) != 0) ||
         config_hostaf(block, ipv4only, ipv6only, &conf->hostaf)) {
         debug(DBG_ERR, "config error: ^");
         goto errexit;
