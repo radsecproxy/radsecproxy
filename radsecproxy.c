@@ -2906,8 +2906,8 @@ int confclient_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->dupinterval = conf->pdef->duplicateintervaldefault;
 
     if (addttl != LONG_MIN) {
-        if (addttl < 1 || addttl > 255)
-            debugx(1, DBG_ERR, "error in block %s, value of option addTTL is %d, must be 1-255", block, addttl);
+        if (addttl < 0 || addttl > 255)
+            debugx(1, DBG_ERR, "error in block %s, value of option addTTL is %d, must be 0-255", block, addttl);
         conf->addttl = (uint8_t)addttl;
     }
 
@@ -3166,8 +3166,8 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->retrycount = 255;
 
     if (addttl != LONG_MIN) {
-        if (addttl < 1 || addttl > 255) {
-            debug(DBG_ERR, "error in block %s, value of option addTTL is %ld, must be 1-255", block, addttl);
+        if (addttl < 0 || addttl > 255) {
+            debug(DBG_ERR, "error in block %s, value of option addTTL is %ld, must be 0-255", block, addttl);
             goto errexit;
         }
         conf->addttl = (uint8_t)addttl;
@@ -3463,8 +3463,8 @@ void getmainconfig(const char *configfile) {
     }
 
     if (addttl != LONG_MIN) {
-        if (addttl < 1 || addttl > 255)
-            debugx(1, DBG_ERR, "error in %s, value of option addTTL is %d, must be 1-255", configfile, addttl);
+        if (addttl < 0 || addttl > 255)
+            debugx(1, DBG_ERR, "error in %s, value of option addTTL is %d, must be 0-255", configfile, addttl);
         options.addttl = (uint8_t)addttl;
     }
     if (!setttlattr(&options, DEFAULT_TTL_ATTR))
