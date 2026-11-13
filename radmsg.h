@@ -1,6 +1,8 @@
 /* Copyright (c) 2007-2008, UNINETT AS
  * Copyright (c) 2015, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs
+ * Copyright (c) 2026, CyB0rgg */
 /* See LICENSE for licensing information. */
 
 #ifndef _RADMSG_H
@@ -30,6 +32,10 @@
 #define RAD_CoA_NAK 45
 #define RAD_Protocol_Error 52
 
+#define IS_COA_REQUEST(c) ((c) == RAD_CoA_Request || (c) == RAD_Disconnect_Request)
+#define IS_COA_RESPONSE(c) ((c) == RAD_CoA_ACK || (c) == RAD_CoA_NAK || \
+                            (c) == RAD_Disconnect_ACK || (c) == RAD_Disconnect_NAK)
+
 #define RAD_Attr_User_Name 1
 #define RAD_Attr_User_Password 2
 #define RAD_Attr_CHAP_Password 3
@@ -39,6 +45,7 @@
 #define RAD_Attr_Vendor_Specific 26
 #define RAD_Attr_Called_Station_Id 30
 #define RAD_Attr_Calling_Station_Id 31
+#define RAD_Attr_NAS_Identifier 32
 #define RAD_Attr_Proxy_State 33
 #define RAD_Attr_Acct_Status_Type 40
 #define RAD_Attr_Acct_Input_Octets 42
@@ -54,8 +61,10 @@
 #define RAD_Attr_EAP_Message 79
 #define RAD_Attr_Message_Authenticator 80
 #define RAD_Attr_CUI 89
+#define RAD_Attr_NAS_IPv6_Address 95
 #define RAD_Attr_Error_Cause 101
 #define RAD_Attr_Operator_Name 126
+#define RAD_ExtAttr_Operator_NAS_Identifier (struct extattrtype){241, 8}
 
 #define RAD_ExtAttr_Original_Packet_Code (struct extattrtype){241, 4}
 
@@ -68,6 +77,8 @@
 #define RAD_Acct_Status_Failed 15
 
 #define RAD_Err_Unsupported_Extension 406
+#define RAD_Err_Missing_Attribute 402
+#define RAD_Err_NAS_Identification_Mismatch 403
 #define RAD_Err_Request_Not_Routable 502
 #define RAD_Err_Other_Proxy_Processing_Error 505
 #define RAD_Err_Resources_Unavailable 506
@@ -118,6 +129,7 @@ struct radmsg {
 int get_checked_rad_length(uint8_t *buf);
 void radmsg_free(struct radmsg *);
 struct radmsg *radmsg_init(uint8_t, uint8_t, uint8_t *);
+struct radmsg *radmsg_dup(const struct radmsg *src);
 int radmsg_add(struct radmsg *, struct tlv *, uint8_t front);
 struct tlv *radmsg_gettype(struct radmsg *, uint8_t);
 struct tlv *radmsg_getexttype(struct radmsg *msg, struct extattrtype type);
@@ -135,6 +147,10 @@ struct tlv *makevendortlv(uint32_t vendor, struct tlv *attr);
 int resizeattr(struct tlv *attr, size_t newlen);
 int verifyeapformat(struct radmsg *msg);
 const char *radmsgtype2string(uint8_t code);
+
+int radmsg_validate_response_auth(const uint8_t *buf, int buflen,
+                                  const uint8_t *secret, int secret_len,
+                                  const uint8_t *request_auth);
 
 /**
  * convert the attribute value to its string representation form the dictionary 

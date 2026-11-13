@@ -1,11 +1,13 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2012, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs */
 /* See LICENSE for licensing information. */
 
 #include "debug.h"
 #include "hostport.h"
 #include "radsecproxy.h"
+#include "reverse_coa.h"
 #include "util.h"
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -300,6 +302,10 @@ void *tlsclientrd(void *arg) {
     for (;;) {
         len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf, 0);
         if (buf && len > 0) {
+            if (try_handle_reverse_coa_request(server, buf, len)) {
+                buf = NULL;
+                continue;
+            }
             /* shutdown connection only on decode errors, but ignore authentication */
             if (replyh(server, buf, len) == 0)
                 if (closeh(server))
@@ -341,7 +347,8 @@ void *tlsservernew(void *arg) {
     unsigned long error;
     struct client *client;
     struct tls *accepted_tls = NULL;
-    char tmp[INET6_ADDRSTRLEN], *subj;
+    char tmp[INET6_ADDRSTRLEN], *subj = NULL;
+    const char *identity = NULL;
     struct hostportres *hp = NULL;
 
     s = *(int *)arg;
@@ -406,6 +413,7 @@ void *tlsservernew(void *arg) {
         debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, PSK identity %s wtih cipher %s up",
               addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)), conf->name, conf->pskid,
               SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
+        identity = conf->pskid;
     } else {
         while (conf) {
             if (!conf->pskid && accepted_tls == conf->tlsconf &&
@@ -417,7 +425,7 @@ void *tlsservernew(void *arg) {
                     debug(DBG_WARN, "tlsservernew: TLS connection from %s, client %s, subject %s, %s with cipher %s up",
                           addr2string((struct sockaddr *)&from, tmp, sizeof(tmp)), conf->name, subj,
                           SSL_get_version(ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(ssl)));
-                    free(subj);
+                    identity = subj;
                 }
                 X509_free(cert);
                 cert = NULL;
@@ -433,12 +441,13 @@ void *tlsservernew(void *arg) {
         goto exit;
     }
 
-    client = addclient(conf, 1);
+    client = addclient(conf, s, (struct sockaddr *)&from, identity, 1);
+    free(subj);
+    subj = NULL;
     if (client) {
         if (conf->keepalive)
             enable_keepalive(s);
         client->ssl = ssl;
-        client->addr = addr_copy((struct sockaddr *)&from);
         tlsserverrd(client, 0);
         removeclient(client);
     } else

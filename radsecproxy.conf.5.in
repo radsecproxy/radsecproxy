@@ -338,6 +338,53 @@ up their state early and not having to wait for a timeout.
 This setting can be overridden per client (default on).
 .RE
 
+.BI "ReverseCoATokenKey " key
+.RS
+When set, the value that names a NAS in Operator-NAS-Identifier
+(\fBAddOperatorNASIdentifier\fR) is derived under this key from the client's
+certificate subject or PSK identity (the block name for udp and tcp clients) and
+from what the NAS says it is: the NAS-Identifier it sends, or its NAS-IP-Address or
+NAS-IPv6-Address when it sends no NAS-Identifier. The value is then the same for one
+NAS on every connection, from every address, after a restart and on every proxy
+configured with the same key (RFC 8559 section 3.4, a token identifying a NAS,
+obfuscated under a local key), so a CoA-Request or Disconnect-Request that carries it
+reaches the NAS after a reconnection, from a new address too. A fleet of NASes on one
+certificate gets one value per NAS because each sends its own NAS-Identifier; two
+NASes on one certificate sending the same NAS-Identifier share a value and the one
+that sent a request most recently gets the request, which is logged as a warning
+when seen. A NAS that names itself one way in authentication and another in
+accounting (NAS-Identifier in one, only its address in the other) has a value per
+name; the connection keeps every value it was named by and a request carrying any of
+them reaches it. A udp client is named by the address it reports in NAS-IP-Address or
+NAS-IPv6-Address, else the address its requests come from, so a request that carries
+that address finds the block; a udp NAS behind NAT is reached at the address its
+requests come from, and a request has to carry that one. Without this
+option the value is random per connection and stays so for the life of the connection.
+The key must be at least 16 characters; keep it as secret as a shared secret.
+.RE
+
+.BR "ReverseCoARetryOnNak (" on | off )
+.RS
+When a reverse CoA-Request or Disconnect-Request was sent to one of several candidates
+and comes back with a NAK that says the request could not be routed there (Error-Cause
+502 from a proxy of the realm, 502 or 403 from a sibling proxy), send a fresh request
+to the next candidate and relay only the final answer (default \fBon\fR). A 403 from a
+proxy of the realm is that site's answer and is relayed, unless \fBReverseCoARetryOn403\fR
+is on. Bounded by the candidates
+found when the request was first routed; nothing is kept once the request is answered.
+.RE
+
+.BR "ReverseCoARetryOn403 (" on | off )
+.RS
+Also move a reverse CoA-Request or Disconnect-Request to the next proxy of the realm
+when one answers with Error-Cause 403 (default \fBoff\fR). For a realm whose sites have
+no sibling link between their proxies: the hub does not know which site holds the NAS,
+so it asks the next on a 403 and relays the last one. Off by default because 403 is
+also the NAS's own answer (RFC 5176 section 3.5, NAS Identification Mismatch), which a
+proxy cannot tell from a site's; with the option on, a request a NAS refused is offered
+to every proxy of the realm before the refusal is relayed. Needs \fBReverseCoARetryOnNak\fR.
+.RE
+
 .BI "Include " file
 .RS
 This is not a normal configuration option; it can be specified multiple times.
@@ -526,7 +573,9 @@ Specify for how many \fIseconds\fR duplicate checking should be done. If a proxy
 receives a new request within a few seconds of a previous one, it may be treated
 the same if from the same client, with the same authenticator etc. The proxy
 will then ignore the new request (if it is still processing the previous one),
-or returned a copy of the previous reply.
+or returned a copy of the previous reply. On a client with \fBacceptCoA\fR this is also
+the window for a stale Event-Timestamp; set it to the maximum there, 255 (the option is
+limited to 255 seconds, RFC 5176 suggests 300; see \fBCOA/DISCONNECT ROUTING\fR).
 .RE
 
 .BI "IdleTimeout " seconds
@@ -610,6 +659,105 @@ enabled.
 .RS
 Send Protocol-Error responses if requests can't be forwarded, allowing clients to clean 
 up their state early and not having to wait for a timeout (default on).
+.RE
+
+.BI "CoAPort " port
+.RS
+UDP \fIport\fR the client listens on for CoA-Request and Disconnect-Request (default
+3799). Reverse CoA for a udp client is sent there, and sent again every 5 seconds until
+it is answered or \fBReverseCoATimeout\fR passes, as the transport does not retransmit
+(the same for a dtls client). Ignored for other transports, where it is sent once on
+the existing connection.
+.RE
+
+.BI "ReverseCoAOperatorRealm " realm
+.RS
+Route reverse CoA-Request and Disconnect-Request whose Operator-Name realm matches
+\fIrealm\fR to this client. The realm is taken from Operator-Name (RFC 8559 section
+3.2), not from User-Name: for namespace 1 the text after the namespace byte, for other
+namespaces the whole value. \fIrealm\fR is matched like a realm block name, as a
+literal (case insensitive) or a regexp in slashes, see \fBCOA/DISCONNECT ROUTING\fR.
+Can be specified multiple times.
+.RE
+
+.BI "NASidentifier " identifier
+.RS
+This client is the NAS. A reverse CoA-Request or Disconnect-Request whose
+NAS-Identifier or Operator-NAS-Identifier equals \fIidentifier\fR, or whose
+NAS-IP-Address or NAS-IPv6-Address is the client's address, is delivered here with
+Operator-Name and Operator-NAS-Identifier removed and NAS identification added if
+missing (RFC 8559 section 4.2).
+.IP
+Given as \fI/regexp/\fR, the block is a fleet of NASes, typically sharing one client
+certificate: each connection is the NAS whose own NAS-Identifier (admitted by the
+regexp) it has sent in its requests, or, when a NAS-Identifier is missing on either
+side, whose NAS-IP-Address or NAS-IPv6-Address it has sent. A connection that has not
+sent a request since it was established matches nothing yet. Two NASes on one
+certificate and one address that also send the same NAS-Identifier cannot be told
+apart; give each NAS its own certificate where you can.
+.IP
+An idle udp client is reached by NAS-IP-Address,
+NAS-IPv6-Address or, if the block names a single host, by \fIidentifier\fR; with several
+\fBListenUDP\fR addresses it is sent from the first one of the address family. A proxy
+below this one is configured with \fBReverseCoAOperatorRealm\fR only, never \fBNASidentifier\fR.
+.RE
+
+.BI "ReverseCoATimeout " seconds
+.RS
+Seconds to wait for a reverse CoA request to be answered (default 30, range 10-120).
+An unanswered request is tried on the next candidate, if any (see
+\fBReverseCoARetryOnNak\fR), else answered with Error-Cause 502 to the server or client
+that sent it, and the answer is kept for its retransmissions; a request in flight on a
+connection that closes is treated the same at once. At a hub, set it on the
+blocks of the site's proxies to more than the value those proxies use for their sibling
+links, so that a site's 502 after an unanswered hand-over reaches a request the hub still
+holds and is what moves it to the next proxy; with both at the default, the hub's own
+timer fires in the same second.
+.RE
+
+.BR "AddOperatorNASIdentifier (" on | off )
+.RS
+Add an Operator-NAS-Identifier (RFC 8559 section 3.4) naming this client to forwarded
+Access-Request and Accounting-Request that carry Operator-Name and no
+Operator-NAS-Identifier yet (default \fBoff\fR). A tls or dtls client with this option is
+the NAS, as one with \fBNASidentifier\fR is: Operator-Name and the value are removed
+before the packet reaches it. A CoA-Request or Disconnect-Request
+returning with the attribute is routed to this client before the realm and NAS
+identity matching. A udp client's value follows the address it reports. The server that
+originates the request has to record the attribute with the session and include it
+verbatim (RFC 8559 section 4.1): a realm with more than one NAS and none named is
+answered with Error-Cause 403.
+See \fBReverseCoATokenKey\fR for a value that survives a reconnection.
+.RE
+
+.BR "ReverseCoASibling (" on | off )
+.RS
+This client is another proxy of the same site, connected here (default \fBoff\fR). A
+reverse CoA-Request or Disconnect-Request for a NAS that is not on this proxy, or for a
+realm this proxy does not serve, is handed down this connection, once: a request that
+arrived from a sibling (a \fBserver\fR with \fBReverseCoASibling\fR) is never handed on.
+Two proxies of one site each have a \fBclient\fR and a \fBserver\fR block for the other.
+Only for tls and dtls clients; not combined with \fBNASidentifier\fR or
+\fBReverseCoAOperatorRealm\fR. The sibling is trusted like the server the request came
+from (RFC 5176 section 6.1, an explicitly authorised source). Give the block an
+\fBidleTimeout\fR (and \fBtcpKeepalive\fR): a link that died unnoticed keeps its route and
+a request handed down it waits \fBReverseCoATimeout\fR before it moves on; the same holds
+for any client block a reverse CoA is routed to. See \fBCOA/DISCONNECT ROUTING\fR.
+.RE
+
+.BR "ReverseCoAFallback (" on | off )
+.RS
+Offer a CoA-Request or Disconnect-Request from this client that no \fBcoaServer\fR takes
+to the reverse CoA routes (default \fBoff\fR), see \fBCOA/DISCONNECT ROUTING\fR. Needs
+\fBAcceptCoA\fR; the request must carry Operator-Name.
+.RE
+
+.BR "AcceptCoA (" on | off )
+.RS
+Accept CoA-Request and Disconnect-Request from this client (default \fBoff\fR).
+Requests from other clients are answered with a NAK carrying Error-Cause 502.
+Duplicate detection and the Event-Timestamp check use this client's
+\fBDuplicateInterval\fR, see \fBCOA/DISCONNECT ROUTING\fR.
 .RE
 
 .SH "SERVER BLOCK"
@@ -724,6 +872,21 @@ The meaning of these options are very similar as for the client block, with mino
 of the referenced \fBtls\fR block is used.
 .RE
 
+.BR "AcceptReverseCoA (" on | off )
+.RS
+Accept CoA-Request and Disconnect-Request from this server and route them to a client,
+see \fBCOA/DISCONNECT ROUTING\fR (default \fBoff\fR). Only for tls and dtls servers.
+\fBStatusServer\fR defaults to \fBon\fR for such a server.
+.RE
+
+.BR "ReverseCoASibling (" on | off )
+.RS
+This server is another proxy of the same site (default \fBoff\fR). It hands over
+reverse CoA-Request and Disconnect-Request for NASes on this proxy, so
+\fBAcceptReverseCoA\fR is implied; a request received from it is delivered here or
+answered, never handed to a further sibling. See the client option of the same name.
+.RE
+
 .BR "StatusServer (" on | off | minimal | auto )
 .RS
 Enable the use of status-server messages for this server (default \fBoff\fR).  If
@@ -810,6 +973,13 @@ This should always be be enabled unless the server is known to only support lega
 This setting is ignored when using TLS/DTLS transport.
 .RE
 
+.BI "NASidentifier " identifier
+.RS
+NAS identity of this \fBcoaServer\fR. A CoA-Request or Disconnect-Request whose
+Operator-NAS-Identifier or NAS-Identifier equals \fIidentifier\fR, or whose
+NAS-IP-Address or NAS-IPv6-Address matches \fBHost\fR, is sent here.
+.RE
+
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
 
@@ -852,15 +1022,20 @@ The allowed options in a realm block are:
 .BI "Server " server
 .br
 .BI "AccountingServer " server
+.br
+.BI "CoAServer " server
 .RS
 Specify the \fIserver\fR to which requests for this realm should be forwarded.
 \fIserver\fR references a previously defined \fBserver\fR block (see the
-\fBSERVER BLOCK\fR section). Each \fBserver\fR and \fBaccountingServer\fR can be
-specified multiple times, or omitted completely. If no \fBserver\fR is
-configured, the proxy will deny all Access-Requests for this realm. If no
-\fBaccountingServer\fR is configured, the proxy will silently ignore all
-Accounting-Requests for this realm. See the \fBSERVER SELECTION\fR section below
-for details.
+\fBSERVER BLOCK\fR section). Each \fBserver\fR, \fBaccountingServer\fR and
+\fBcoaServer\fR can be specified multiple times, or omitted completely. If no
+\fBserver\fR is configured, the proxy will deny all Access-Requests for this
+realm. If no \fBaccountingServer\fR is configured, the proxy will silently
+ignore all Accounting-Requests for this realm. If no \fBcoaServer\fR is
+configured, CoA-Request and Disconnect-Request for this realm are answered with
+Error-Cause 502, or offered to the reverse CoA routes when the client has
+\fBReverseCoAFallback\fR. See the
+\fBSERVER SELECTION\fR and \fBCOA/DISCONNECT ROUTING\fR sections below for details.
 .RE
 
 .BR "AccountingResponse (" on | off )
@@ -932,6 +1107,63 @@ nothing, ignoring accounting requests. If instead \fBAccountingResponse\fR is
 set to on, the proxy will log some of the accounting information and send an
 Accounting-Response back. This stops clients from retransmitting
 Accounting-Request messages when a realm has no accountingServer configured.
+
+.SS "COA/DISCONNECT ROUTING"
+CoA-Request and Disconnect-Request (RFC 5176) are routed by Operator-Name (RFC 8559
+section 3.2), never by User-Name. For namespace 1 the realm is the text after the
+namespace byte, example.com for 1example.com; for other namespaces it is the whole
+value, such as 4EXAMPLE:XX, matched against the realm block names like a User-Name realm.
+RFC 8559 describes the REALM namespace only. The other namespaces registered with IANA
+for the attribute, such as 4 for a WBAID (RFC 5580 section 4.1), carry no realm inside
+the value, so the whole value is the key; a proxy that only takes namespace 1 answers
+every OpenRoaming request with Error-Cause 502.
+
+A request from a client with \fBAcceptCoA\fR goes to a \fBcoaServer\fR of the realm,
+preferring one whose \fBNASidentifier\fR or \fBHost\fR the request names. When the realm
+names NASes and none matches the answer is Error-Cause 403; when no coaServer takes
+it otherwise, the answer is Error-Cause 502, unless the client has
+\fBReverseCoAFallback\fR: then a request with Operator-Name is offered to the reverse
+CoA routes below, without reaching idle udp clients.
+
+A request from a server with \fBAcceptReverseCoA\fR goes to the first of: the client
+named by an Operator-NAS-Identifier this proxy added (\fBAddOperatorNASIdentifier\fR);
+a client with a matching \fBReverseCoAOperatorRealm\fR, literal values before regexps and a
+named NAS before a proxy; or, without Operator-Name, a client named by
+\fBNASidentifier\fR or address. A NAS is reached by the Operator-NAS-Identifier this
+proxy added, by NAS-Identifier or by address, so the originating server sends back the
+Operator-NAS-Identifier it received with the Access-Request. When several connections
+carry the same Operator-NAS-Identifier (a fleet on one certificate behind one address,
+or a NAS with separate connections for authentication and accounting) the one the
+request names by NAS-Identifier or address gets it, else the one that sent a request
+most recently. Several proxies of one realm are tried in the order they registered,
+the next when a send fails; the proxy keeps no record of which connection a session
+was seen on (RFC 8559 section 2.1). A request for a NAS not found here, or for a realm
+not served here, is then handed to a sibling proxy of the site (\fBReverseCoASibling\fR),
+the first that takes it, unless it came from a sibling itself; so a hub reaches a site
+through any of the site's proxies and the site gets the request to the proxy that holds
+the NAS. A 502 from a proxy of the realm, or a 403 or 502 from a sibling, moves the
+request to the next candidate (\fBReverseCoARetryOnNak\fR), a 403 from a proxy of the
+realm too with \fBReverseCoARetryOn403\fR. A request never goes back to
+the client it came from. An unknown Operator-Name realm is answered with Error-Cause 502, a known realm
+in which the NAS named is not found with 403, a request that names no NAS at all
+(no Operator-NAS-Identifier, NAS-Identifier, NAS-IP-Address or NAS-IPv6-Address) with
+402, and a failure of this proxy's own with 505 (RFC 5176 section 3.5). A connection
+carries at most 256 reverse CoA requests in flight, one RADIUS Identifier space; one
+beyond that is answered 505. A request from a server whose \fBTTLAttribute\fR is
+exhausted is answered 502.
+
+At the NAS (a udp client, or one with \fBNASidentifier\fR or \fBaddOperatorNASIdentifier\fR)
+Operator-Name and
+Operator-NAS-Identifier are removed and NAS identification added if missing (RFC 8559
+section 4.2). The response answers the originating server or client; after
+\fBReverseCoATimeout\fR without one the request goes to the next candidate, if any,
+else is answered 502 (see \fBReverseCoATimeout\fR). Event-Timestamp, when
+present, must be within \fBDuplicateInterval\fR of the proxy clock for a request from a
+client and within 300 seconds for one from a server (RFC 5176 section 6.3, which wants
+the window the same as the one for duplicate detection and suggests 300 seconds). Set
+\fBDuplicateInterval\fR to its maximum, 255, on a client block with \fBacceptCoA\fR (the
+option is limited to 255 seconds): at the default 10 seconds a request the sender repeats
+with its Event-Timestamp kept, as the RFC says it should, is discarded.
 
 .SH "TLS BLOCK"
 .nf

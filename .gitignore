@@ -40,5 +40,7 @@ tests/t_radmsg_crypto
 tests/t_unhex
 tests/t_utf8
 tests/t_verify_eap
+tests/t_coa
+tests/t_reverse_coa
 tests/*.log
 tests/*.trs

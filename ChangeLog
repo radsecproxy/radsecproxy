@@ -3,6 +3,12 @@ unreleased changes
 	- Support wildcard certificates (#149)
 	- Support NAIRealm subjectAltName for dynamic discovery
 	- Global option to require Message-Authenticator on all clients and servers
+	- Reverse CoA: route CoA/Disconnect-Request from a server down to the client (#186)
+	- CoA/Disconnect-Request proxying by Operator-Name to coaServer blocks (#206)
+	- Operator-NAS-Identifier for reverse CoA routing
+	- Reach idle udp clients for reverse CoA from their client block
+	- Session binding for reverse CoA routing
+	- Optional fallback of client CoA to the reverse CoA routes (reverseCoAFallback)
 
 	Misc:
 	- Prevent TLS connections to self
