@@ -2726,6 +2726,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
         !mergeconfmstring(&dst->source, src ? &src->source : NULL) ||
         !mergeconfstring((char **)&dst->secret, (char **)(src ? &src->secret : NULL)) ||
         !mergeconfstring(&dst->tls, src ? &src->tls : NULL) ||
+        !mergeconfstring(&dst->pskid, src ? &src->pskid : NULL) ||
+        !mergeconfstring((char **)&dst->pskkey, src ? (char **)&src->pskkey : NULL) ||
         !mergeconfmstring(&dst->confmatchcertattrs, src ? &src->confmatchcertattrs : NULL) ||
         !mergeconfstring(&dst->confrewritein, src ? &src->confrewritein : NULL) ||
         !mergeconfstring(&dst->confrewriteout, src ? &src->confrewriteout : NULL) ||
@@ -2740,6 +2742,8 @@ int mergesrvconf(struct clsrvconf *dst, struct clsrvconf *src) {
     if (src) {
         if (src->pdef)
             dst->pdef = src->pdef;
+        dst->secret_len = src->secret_len;
+        dst->pskkeylen = src->pskkeylen;
         dst->statusserver = src->statusserver;
         dst->certnamecheck = src->certnamecheck;
         if (src->retryinterval != 255)
@@ -3042,6 +3046,7 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
         conf->statusserver = resconf->statusserver;
         conf->certnamecheck = resconf->certnamecheck;
         conf->secret_len = resconf->secret_len;
+        conf->pskkeylen = resconf->pskkeylen;
         conf->blockingstartup = resconf->blockingstartup;
         conf->type = resconf->type;
         conf->sni = resconf->sni;
