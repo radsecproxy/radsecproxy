@@ -3,6 +3,7 @@ unreleased changes
 	- Support wildcard certificates (#149)
 	- Support NAIRealm subjectAltName for dynamic discovery
 	- Global option to require Message-Authenticator on all clients and servers
+	- Dynamic discovery of 3GPP realms via pub.3gppnetwork.org (DynamicLookup3GPPPublic)
 
 	Misc:
 	- Prevent TLS connections to self
@@ -14,6 +15,8 @@ unreleased changes
 
 	Bug Fixes:
 	- Fix failing authenticator validation (race condition) closes TLS connection (#208)
+	- Fix dynamic discovery to honour NAPTR order and preference and use every
+	  matching record (RFC 7585)
 
 2026-11-13 1.11.5
 	Bug Fixes:
