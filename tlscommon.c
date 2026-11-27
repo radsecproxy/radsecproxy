@@ -1058,7 +1058,7 @@ int certnamecheck(X509 *cert, const char *name, int cncheck) {
     }
 
     /* it's technically allowed to put an IP address in a SubjectAltDNS, so check it too */
-    r = X509_check_host(cert, name, 0, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS | (cncheck ? 0 : X509_CHECK_FLAG_NEVER_CHECK_SUBJECT), NULL);
+    r = X509_check_host(cert, name, 0, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS | (cncheck ? X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT : X509_CHECK_FLAG_NEVER_CHECK_SUBJECT), NULL);
     if (r == 1) {
         debug(DBG_DBG, "certnamecheck: found matching subjectaltname DNS %s", name);
         return 1;
