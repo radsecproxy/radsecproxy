@@ -884,17 +884,15 @@ static int certattr_matchrid(GENERAL_NAME *gn, struct certattrmatch *match) {
 }
 
 static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match) {
-    int l = ASN1_STRING_get_length(gn->d.iPAddress);
+    size_t l = ASN1_STRING_get_length(gn->d.iPAddress);
     return (((match->af == AF_INET && l == sizeof(struct in_addr)) || (match->af == AF_INET6 && l == sizeof(struct in6_addr))) &&
             !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), &match->ipaddr, l))
                ? 1
                : 0;
 }
 
-static int _general_name_regex_match(char *v, int l, struct certattrmatch *match) {
+static int _general_name_regex_match(char *v, size_t l, struct certattrmatch *match) {
     char *s;
-    if (l <= 0)
-        return 0;
     if (!match->regex) {
         debug(DBG_ERR, "matchregex: regex not defined!");
         return 0;

@@ -11,7 +11,7 @@
 
 #define SOCKADDRP_SIZE(addr) ((addr)->sa_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6))
 
-char *stringcopy(const char *s, int len);
+char *stringcopy(const char *s, size_t len);
 int verifyutf8(const unsigned char *str, size_t str_len);
 const char *addr2string(struct sockaddr *addr, char *buf, size_t len);
 struct sockaddr *addr_copy(struct sockaddr *in);
