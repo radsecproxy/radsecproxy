@@ -1,12 +1,14 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2012,2016-2017, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs */
 /* See LICENSE for licensing information. */
 
 #define _GNU_SOURCE
 
 #include "hash.h"
 #include "radsecproxy.h"
+#include "reverse_coa.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <ctype.h>
@@ -105,7 +107,8 @@ void *dtlsservernew(void *arg) {
     unsigned long error;
     struct timeval timeout;
     struct addrinfo tmpsrvaddr;
-    char tmp[INET6_ADDRSTRLEN], *subj;
+    char tmp[INET6_ADDRSTRLEN], *subj = NULL;
+    const char *identity = NULL;
     struct hostportres *hp = NULL;
 
     debug(DBG_WARN, "dtlsservernew: incoming DTLS connection from %s", addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)));
@@ -163,6 +166,7 @@ void *dtlsservernew(void *arg) {
         debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, PSK identity %s wtih cipher %s up",
               addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)), conf->name, conf->pskid,
               SSL_CIPHER_get_name(SSL_get_current_cipher(params->ssl)));
+        identity = conf->pskid;
     } else {
         while (conf) {
             if (!conf->pskid && accepted_tls == conf->tlsconf &&
@@ -174,7 +178,7 @@ void *dtlsservernew(void *arg) {
                     debug(DBG_WARN, "dtlsservernew: DTLS connection from %s, client %s, subject %s, %s with cipher %s up",
                           addr2string((struct sockaddr *)&params->addr, tmp, sizeof(tmp)), conf->name, subj,
                           SSL_get_version(params->ssl), SSL_CIPHER_get_name(SSL_get_current_cipher(params->ssl)));
-                    free(subj);
+                    identity = subj;
                 }
                 X509_free(cert);
                 cert = NULL;
@@ -190,10 +194,10 @@ void *dtlsservernew(void *arg) {
         goto exit;
     }
 
-    client = addclient(conf, 1);
+    client = addclient(conf, s, (struct sockaddr *)&params->addr, identity, 1);
+    free(subj);
+    subj = NULL;
     if (client) {
-        client->sock = s;
-        client->addr = addr_copy((struct sockaddr *)&params->addr);
         client->ssl = params->ssl;
         tlsserverrd(client, 1);
         removeclient(client);
@@ -581,6 +585,10 @@ void *dtlsclientrd(void *arg) {
     for (;;) {
         len = radtlsget(server->ssl, server->conf->retryinterval * (server->conf->retrycount + 1), &server->lock, &buf, 1);
         if (buf && len > 0) {
+            if (try_handle_reverse_coa_request(server, buf, len)) {
+                buf = NULL;
+                continue;
+            }
             /* shutdown connection only on decode errors, but ignore authentication */
             if (replyh(server, buf, len) == 0)
                 if (closeh(server))

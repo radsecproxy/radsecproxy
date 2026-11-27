@@ -201,7 +201,9 @@ int radmsgsign(uint8_t *buf, size_t len, unsigned char *secret, size_t secret_le
     case RAD_Access_Challenge:
     case RAD_Access_Reject:
     case RAD_Accounting_Response:
+    case RAD_CoA_ACK:
     case RAD_CoA_NAK:
+    case RAD_Disconnect_ACK:
     case RAD_Disconnect_NAK:
         if (!rqauth) {
             debug(DBG_ERR, "radmsgsign: missing original request to sign response");

@@ -1,5 +1,7 @@
 /* Copyright (c) 2007-2009, UNINETT AS
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs
+ * Copyright (c) 2026, CyB0rgg */
 /* See LICENSE for licensing information. */
 
 #include "debug.h"
@@ -61,6 +63,26 @@ struct radmsg *radmsg_init(uint8_t code, uint8_t id, uint8_t *auth) {
     return msg;
 }
 
+struct radmsg *radmsg_dup(const struct radmsg *src) {
+    struct radmsg *dst;
+
+    if (!src)
+        return NULL;
+    dst = radmsg_init(src->code, src->id, (uint8_t *)src->auth);
+    if (!dst)
+        return NULL;
+    dst->authstate = src->authstate;
+    if (src->attrs) {
+        list_destroy(dst->attrs);
+        dst->attrs = copytlvlist(src->attrs);
+        if (!dst->attrs) {
+            radmsg_free(dst);
+            return NULL;
+        }
+    }
+    return dst;
+}
+
 int radmsg_add(struct radmsg *msg, struct tlv *attr, uint8_t front) {
     if (!msg || !msg->attrs)
         return 0;
@@ -116,7 +138,7 @@ struct tlv *radmsg_getexttype(struct radmsg *msg, struct extattrtype type) {
         return NULL;
 
     for (node = list_first(tlvs); node; node = list_next(node)) {
-        if (((struct tlv *)node->data)->v[0] == type.s) {
+        if (((struct tlv *)node->data)->l > 0 && ((struct tlv *)node->data)->v[0] == type.s) {
             tlv = (struct tlv *)node->data;
             break;
         }
@@ -151,6 +173,25 @@ int radmsg_copy_attrs(struct radmsg *dst,
     }
     list_free(list);
     return n;
+}
+
+/* returns 1 if buf carries a valid response authenticator for request_auth */
+int radmsg_validate_response_auth(const uint8_t *buf, int buflen,
+                                  const uint8_t *secret, int secret_len,
+                                  const uint8_t *request_auth) {
+    uint8_t *copy;
+    int ok;
+
+    if (!buf || buflen < RADHDRLEN || !secret || !request_auth)
+        return 0;
+    copy = malloc(buflen);
+    if (!copy)
+        return 0;
+    memcpy(copy, buf, buflen);
+    ok = radmsgsign(copy, buflen, (unsigned char *)secret, secret_len, NULL, (uint8_t *)request_auth) &&
+         CRYPTO_memcmp(RADAUTH(copy), RADAUTH(buf), RADAUTHLEN) == 0;
+    free(copy);
+    return ok;
 }
 
 uint8_t *tlv2buf(uint8_t *p, const struct tlv *tlv) {
@@ -454,12 +495,40 @@ exit:
 }
 
 const char *radmsgtype2string(uint8_t code) {
-    static const char *rad_msg_names[] = {
-        "", "Access-Request", "Access-Accept", "Access-Reject",
-        "Accounting-Request", "Accounting-Response", "", "",
-        "", "", "", "Access-Challenge",
-        "Status-Server", "Status-Client"};
-    return code < 14 && *rad_msg_names[code] ? rad_msg_names[code] : "Unknown";
+    switch (code) {
+    case RAD_Access_Request:
+        return "Access-Request";
+    case RAD_Access_Accept:
+        return "Access-Accept";
+    case RAD_Access_Reject:
+        return "Access-Reject";
+    case RAD_Accounting_Request:
+        return "Accounting-Request";
+    case RAD_Accounting_Response:
+        return "Accounting-Response";
+    case RAD_Access_Challenge:
+        return "Access-Challenge";
+    case RAD_Status_Server:
+        return "Status-Server";
+    case RAD_Status_Client:
+        return "Status-Client";
+    case RAD_Disconnect_Request:
+        return "Disconnect-Request";
+    case RAD_Disconnect_ACK:
+        return "Disconnect-ACK";
+    case RAD_Disconnect_NAK:
+        return "Disconnect-NAK";
+    case RAD_CoA_Request:
+        return "CoA-Request";
+    case RAD_CoA_ACK:
+        return "CoA-ACK";
+    case RAD_CoA_NAK:
+        return "CoA-NAK";
+    case RAD_Protocol_Error:
+        return "Protocol-Error";
+    default:
+        return "Unknown";
+    }
 }
 
 const char *attrval2strdict(struct tlv *attr) {

@@ -13,6 +13,7 @@ noinst_LIBRARIES = librsp.a
 radsecproxy_SOURCES = main.c
 
 librsp_a_SOURCES = \
+	coa.c coa.h \
 	debug.c debug.h \
 	dns.c dns.h \
 	dtls.c dtls.h \
@@ -24,6 +25,7 @@ librsp_a_SOURCES = \
 	radmsg.c radmsg.h raddict.h \
 	radmsgcrypto.c radmsgcrypto.h \
 	radsecproxy.c radsecproxy.h \
+	reverse_coa.c reverse_coa.h \
 	rewrite.c rewrite.h \
 	tcp.c tcp.h \
 	tls.c tls.h \

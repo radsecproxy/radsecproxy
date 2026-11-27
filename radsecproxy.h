@@ -1,6 +1,8 @@
 /* Copyright (c) 2007-2009, UNINETT AS
  * Copyright (c) 2010-2012,2016, NORDUnet A/S
- * Copyright (c) 2023, SWITCH */
+ * Copyright (c) 2023, SWITCH
+ * Copyright (c) 2026, Nova Labs
+ * Copyright (c) 2026, CyB0rgg */
 /* See LICENSE for licensing information. */
 
 #ifndef _RADSECPROXY_H
@@ -32,6 +34,11 @@
 #define MAX_CERT_DEPTH 5
 #define STATUS_SERVER_PERIOD 25
 #define IDLE_TIMEOUT_DEFAULT 600
+#define REVERSE_COA_TOKEN_LEN 16
+#define REVERSE_COA_TOKEN_NASID 0   /* the value from the NAS-Identifier the nas sends */
+#define REVERSE_COA_TOKEN_NASADDR 1 /* from its NAS-IP-Address or NAS-IPv6-Address */
+#define REVERSE_COA_TOKEN_PEER 2    /* from the address its requests come from */
+#define REVERSE_COA_TOKEN_KINDS 3
 #define PSK_MIN_LENGTH 16
 #define RSP_SECRET_LEN_WARN 12
 /* Older OpenSSL API had a 256 byte limit; keep this limit to maximize compatibility*/
@@ -131,7 +138,10 @@ struct request {
     uint8_t rqid;
     uint8_t rqauth[16];
     uint8_t newid;
-    int udpsock; /* only for UDP */
+    int udpsock;                          /* only for UDP */
+    struct sockaddr_storage *to_override; /* reverse coa to a udp client, else NULL */
+    struct request *origin;               /* client request a reverse coa response answers */
+    struct reverse_coa_plan *plan;        /* the candidates left for a reverse coa in flight, see reverse_coa.c */
 };
 
 /* requests that our client will send */
@@ -140,6 +150,7 @@ struct rqout {
     struct request *rq;
     uint8_t tries;
     struct timeval expiry;
+    uint8_t sentauth[16];
 };
 
 struct gqueue {
@@ -198,9 +209,33 @@ struct clsrvconf {
     uint8_t reqmsgauth;
     uint8_t reqmsgauthproxy;
     uint8_t protocolerror;
+    char **reverse_coa_realms;
+    regex_t *reverse_coa_regexes; /* reverse_coa_realms compiled, see reverse_coa_compile_realms() */
+    uint8_t accept_reverse_coa;
+    char *nas_identifier;
+    regex_t *nas_identifier_regex; /* NASidentifier given as /regexp/: every connection on the block is a nas */
+    long reverse_coa_timeout;
+    uint16_t coaport; /* reverse coa destination port for udp clients, default 3799 */
+    uint8_t accept_coa;
+    uint8_t add_operator_nas_id;
+    uint8_t reverse_coa_fallback;
+    uint8_t reverse_coa_sibling; /* another proxy of this site: a reverse coa for a nas not here is handed to it, one it hands here is never handed on */
 };
 
 #include "tlscommon.h"
+
+struct reverse_coa_route;
+struct reverse_coa_plan;
+
+struct coa_dedup_slot {
+    uint8_t occupied;
+    uint8_t auth[16];
+    time_t received;
+    uint8_t *replybuf;
+    int replybuflen;
+    struct reverse_coa_route *route; /* where the request went, for retransmissions */
+    uint8_t id;
+};
 
 struct client {
     struct clsrvconf *conf;
@@ -212,6 +247,26 @@ struct client {
     struct sockaddr *addr;
     time_t expiry; /* for udp */
     struct timeval tlsnewkey;
+    /* guards the reverse coa fields below and is never held across i/o: lock above is
+       the connection's, a tls writer holds it across a blocking write */
+    pthread_mutex_t reverse_coa_lock;
+    struct rqout *reverse_coa_rqs; /* allocated on the first reverse coa sent */
+    /* requests of this client that the dup cache let go of while a reverse coa in flight
+       still holds them as its origin; teardown clears their client pointer (removeclientrq_()) */
+    struct list *reverse_coa_origins;
+    uint8_t reverse_coa_nextid;
+    int reverse_coa_pending;
+    struct reverse_coa_route *reverse_coa_route;
+    char *identity;                        /* certificate subject, psk identity, or the block name */
+    char token[REVERSE_COA_TOKEN_LEN + 1]; /* the value added in Operator-NAS-Identifier on the way up, naming the nas on this connection (learn_nas_identity()) */
+    /* the values naming it by each name it has used, empty where not seen; a request carrying any of them reaches it */
+    char tokens[REVERSE_COA_TOKEN_KINDS][REVERSE_COA_TOKEN_LEN + 1];
+    time_t last_request;                   /* when this connection last sent a request (learn_nas_identity()) */
+    /* what this connection says it is, for a NASidentifier /regexp/ block (learn_nas_identity()) */
+    char nas_identifier_seen[256];
+    uint8_t nas_identifier_seen_len;
+    struct sockaddr_storage nas_addr_seen;
+    uint8_t nas_addr_seen_set;
 };
 
 struct server {
@@ -234,6 +289,9 @@ struct server {
     uint8_t conreset;
     pthread_mutex_t newrq_mutex;
     pthread_cond_t newrq_cond;
+    struct coa_dedup_slot *reverse_coa_seen; /* only with acceptReverseCoA */
+    pthread_mutex_t reverse_coa_lock;
+    time_t last_dedup_cleanup;
 };
 
 struct realm {
@@ -249,6 +307,7 @@ struct realm {
     struct list *subrealms;
     struct list *srvconfs;
     struct list *accsrvconfs;
+    struct list *coasrvconfs;
 };
 
 struct protodefs {
@@ -277,13 +336,26 @@ struct clsrvconf *find_clconf(uint8_t type, struct sockaddr *addr, struct list_n
 struct clsrvconf *find_srvconf(uint8_t type, struct sockaddr *addr, struct list_node **cur);
 struct list *find_all_clconf(uint8_t type, struct sockaddr *addr, struct list_node *cur, struct hostportres **hp);
 struct clsrvconf *find_clconf_type(uint8_t type, struct list_node **cur);
-struct client *addclient(struct clsrvconf *conf, uint8_t lock);
+struct client *addclient(struct clsrvconf *conf, int sock,
+                         const struct sockaddr *from, const char *identity, uint8_t lock);
 void removelockedclient(struct client *client);
 void removeclient(struct client *client);
+void removeclientrq(struct client *client, int i);
+void removeclientrqs(struct client *client);
+pthread_mutex_t *removeclientrqs_sendrq_freeserver_lock(void);
 struct gqueue *newqueue(void);
 struct request *newrequest(void);
+struct request *newrqref(struct request *rq);
+int sendreply(struct request *rq);
+int ensuremsgauthfront(struct radmsg *msg);
 void freerq(struct request *rq);
+int checkttl(struct radmsg *msg, uint32_t *attrtype);
 int radsrv(struct request *rq);
+int msgauthrequired(const struct clsrvconf *conf, struct radmsg *msg);
+int recryptrequestattrs(struct radmsg *msg, struct clsrvconf *from, struct clsrvconf *to, uint8_t *rqauth);
+struct realm *newrealmref(struct realm *r);
+struct clsrvconf *choosesrvconf(struct list *srvconfs);
+int addserver(struct clsrvconf *conf, const char *dynamiclookuparg);
 int timeouth(struct server *server);
 int closeh(struct server *server);
 int replyh(struct server *server, uint8_t *buf, int buflen);
