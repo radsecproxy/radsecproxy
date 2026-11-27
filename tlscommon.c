@@ -884,17 +884,15 @@ static int certattr_matchrid(GENERAL_NAME *gn, struct certattrmatch *match) {
 }
 
 static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match) {
-    int l = ASN1_STRING_length(gn->d.iPAddress);
+    size_t l = ASN1_STRING_get_length(gn->d.iPAddress);
     return (((match->af == AF_INET && l == sizeof(struct in_addr)) || (match->af == AF_INET6 && l == sizeof(struct in6_addr))) &&
             !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), &match->ipaddr, l))
                ? 1
                : 0;
 }
 
-static int _general_name_regex_match(char *v, int l, struct certattrmatch *match) {
+static int _general_name_regex_match(char *v, size_t l, struct certattrmatch *match) {
     char *s;
-    if (l <= 0)
-        return 0;
     if (!match->regex) {
         debug(DBG_ERR, "matchregex: regex not defined!");
         return 0;
@@ -916,14 +914,14 @@ static int _general_name_regex_match(char *v, int l, struct certattrmatch *match
 }
 
 static int certattr_matchregex(GENERAL_NAME *gn, struct certattrmatch *match) {
-    return _general_name_regex_match((char *)ASN1_STRING_get0_data(gn->d.ia5), ASN1_STRING_length(gn->d.ia5), match);
+    return _general_name_regex_match((char *)ASN1_STRING_get0_data(gn->d.ia5), ASN1_STRING_get_length(gn->d.ia5), match);
 }
 
 static int certattr_matchothername(GENERAL_NAME *gn, struct certattrmatch *match) {
     if (OBJ_cmp(gn->d.otherName->type_id, match->oid) != 0)
         return 0;
     return _general_name_regex_match((char *)ASN1_STRING_get0_data(gn->d.otherName->value->value.octet_string),
-                                     ASN1_STRING_length(gn->d.otherName->value->value.octet_string),
+                                     ASN1_STRING_get_length(gn->d.otherName->value->value.octet_string),
                                      match);
 }
 
@@ -937,7 +935,7 @@ static int certattr_matchwildcard(GENERAL_NAME *gn, struct certattrmatch *match)
     if (OBJ_cmp(gn->d.otherName->type_id, match->oid) != 0)
         return 0;
 
-    l = ASN1_STRING_length(gn->d.otherName->value->value.octet_string);
+    l = ASN1_STRING_get_length(gn->d.otherName->value->value.octet_string);
     if (!(v = stringcopy(((char *)ASN1_STRING_get0_data(gn->d.otherName->value->value.octet_string)), l)))
         return 0;
 
@@ -976,7 +974,7 @@ static int certattr_matchcn(X509 *cert, struct certattrmatch *match) {
 
         e = X509_NAME_get_entry(nm, loc);
         t = X509_NAME_ENTRY_get_data(e);
-        if (_general_name_regex_match((char *)ASN1_STRING_get0_data(t), ASN1_STRING_length(t), match))
+        if (_general_name_regex_match((char *)ASN1_STRING_get0_data(t), ASN1_STRING_get_length(t), match))
             return 1;
     }
     return 0;
@@ -1015,7 +1013,7 @@ static int matchsubjaltname(X509 *cert, struct certattrmatch *match) {
         }
         /*legacy print non-matching SAN*/
         if (gn->type == GEN_DNS || gn->type == GEN_URI) {
-            s = stringcopy((char *)ASN1_STRING_get0_data(gn->d.ia5), ASN1_STRING_length(gn->d.ia5));
+            s = stringcopy((char *)ASN1_STRING_get0_data(gn->d.ia5), ASN1_STRING_get_length(gn->d.ia5));
             if (!s)
                 continue;
             tmp = fail;
@@ -1060,7 +1058,7 @@ int certnamecheck(X509 *cert, const char *name, int cncheck) {
     }
 
     /* it's technically allowed to put an IP address in a SubjectAltDNS, so check it too */
-    r = X509_check_host(cert, name, 0, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS | (cncheck ? 0 : X509_CHECK_FLAG_NEVER_CHECK_SUBJECT), NULL);
+    r = X509_check_host(cert, name, 0, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS | (cncheck ? X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT : X509_CHECK_FLAG_NEVER_CHECK_SUBJECT), NULL);
     if (r == 1) {
         debug(DBG_DBG, "certnamecheck: found matching subjectaltname DNS %s", name);
         return 1;

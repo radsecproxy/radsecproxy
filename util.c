@@ -19,7 +19,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-char *stringcopy(const char *s, int len) {
+char *stringcopy(const char *s, size_t len) {
     char *r;
     if (!s)
         return NULL;

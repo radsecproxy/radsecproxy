@@ -24,7 +24,8 @@ static struct hash *rewriteconfs;
  * FIXME: Should accept both names and numeric values, only numeric
  * right now */
 struct tlv *extractattr(char *nameval, char vendor_flag) {
-    int len, name = 0;
+    size_t len;
+    int name = 0;
     int vendor = 0; /* Vendor 0 is reserved, see RFC 1700.  */
     uint32_t ival = 0;
     char *s, *s2;
