@@ -11,6 +11,7 @@ unreleased changes
 	- Remove dependency on libnettle
 	- Allow relative paths and Windows paths for file log destination
 	- Update client-certificate validation to latest draft RFC
+	- Maintain compatibility with OpenSSL 4.1
 
 	Bug Fixes:
 	- Fix failing authenticator validation (race condition) closes TLS connection (#208)
