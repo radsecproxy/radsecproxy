@@ -45,7 +45,7 @@ struct tlv *extractattr(char *nameval, char vendor_flag) {
     }
 
     s++;
-    if (isdigit((int)*s)) {
+    if (isdigit((unsigned char)*s)) {
         ival = atoi(s);
         ival = htonl(ival);
         len = 4;
