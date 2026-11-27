@@ -68,6 +68,14 @@ AC_ARG_ENABLE(dtls,
 # check if we need -lresolv
 AC_CHECK_LIB([resolv], [inet_aton])
 
+dnl Check for ns_initparse (BIND libresolv extension, absent on OpenBSD).
+dnl When missing, dns.c compiles no-op stubs and SRV/NAPTR discovery is
+dnl disabled. Follows the same -D flag pattern used for RADPROT_* options.
+AC_CHECK_FUNC([ns_initparse],
+  [TARGET_CFLAGS="$TARGET_CFLAGS -DHAVE_NS_INITPARSE"
+   AC_MSG_NOTICE([ns_initparse found; SRV/NAPTR DNS discovery enabled])],
+  [AC_MSG_WARN([ns_initparse not found; SRV/NAPTR DNS discovery disabled])])
+
 dnl Check if we're on Solaris and set CFLAGS accordingly
 AC_CANONICAL_TARGET
 case "${target_os}" in

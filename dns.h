@@ -6,6 +6,11 @@
 
 #include <sys/types.h>
 #include <arpa/nameser.h>
+
+/* NS_MAXDNAME is a BIND extension absent from some systems (e.g. OpenBSD). */
+#ifndef NS_MAXDNAME
+#define NS_MAXDNAME MAXDNAME
+#endif
 #include <stdlib.h>
 
 /* maximum character string length in a DNS response, including null-terminator */
